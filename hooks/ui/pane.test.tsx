@@ -414,3 +414,17 @@ test('a /loop wakeup offers no delete on every surface', async ($, on) => {
     await ui.unmount()
   }
 })
+
+test('/rabe opens the pane so that Esc closes it', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  on('state.get', async () => ({ value: { value: undefined, version: 0 } }))
+  const opens: unknown[] = []
+  on('ui.open', async (_$, e) => {
+    opens.push(e)
+    return { value: { isPlaced: true as const } }
+  })
+  await $.command.run({ command: 'rabe', args: '' } as never)
+  await clock.advance(2000)
+  expect(opens).toHaveLength(2)
+  for (const one of opens) expect(one).toMatchObject({ id: 'rabe', closeOnEscape: true })
+})

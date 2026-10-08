@@ -263,7 +263,7 @@ A `ui.render` hook on `AbovePrompt`. With no running item, or while a survey hol
 
 ### The pane
 
-`/rabe` opens the pane `rabe`. The command cannot focus it (see feasibility), so `pane.tsx` opens it again with `focus: true` from `$.clock.after(1500)`. Until the pane holds the keys, the last line says "tab to select · esc close".
+`/rabe` opens the pane `rabe` with `closeOnEscape`, so Esc closes it; without it Esc only hands the keys back and the pane stays. The command cannot focus it (see feasibility), so `pane.tsx` opens it again with `focus: true` from `$.clock.after(1500)`. Until the pane holds the keys, the last line says "tab to select · esc close".
 
 The tab Buttons have the hotkeys `1` to `4`. The selected tab is `rabe.tab`. Each other value the pane keeps is a `$.state` key too, so a hot reload keeps it:
 

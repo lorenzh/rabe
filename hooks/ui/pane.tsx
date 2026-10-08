@@ -186,8 +186,11 @@ export function pane(on: On): void {
   })
 
   on('command.run', { command: 'rabe' }, async $ => {
-    await $.ui.open({ id: PANE, title: 'Rabe' })
-    $.clock.after(1500, () => void $.ui.open({ id: PANE, title: 'Rabe', focus: true }))
+    await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })
+    $.clock.after(
+      1500,
+      () => void $.ui.open({ id: PANE, title: 'Rabe', focus: true, closeOnEscape: true }),
+    )
 
     return { text: 'Rabe opened.' }
   })
