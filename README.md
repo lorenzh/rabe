@@ -35,3 +35,7 @@ bun run check
 ```
 
 Contributor and agent rules are in [AGENTS.md](AGENTS.md).
+
+## License
+
+[MIT](LICENSE)

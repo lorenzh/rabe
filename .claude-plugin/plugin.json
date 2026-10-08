@@ -4,5 +4,6 @@
   "description": "Watch Claude Code's background work: subagents, Codex jobs, shells, monitors, cron jobs and workflows.",
   "author": {
     "name": "Lorenz Hilpert"
-  }
+  },
+  "license": "MIT"
 }
