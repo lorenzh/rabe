@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
 import type { RabeItem } from '../model'
-import { phaseNames, taskNotification } from './workflows'
+import { phaseNames } from './workflows'
 
 const SCRIPT = `export const meta = {
   name: 'review-changes',
@@ -57,11 +57,9 @@ test('phase names come from the meta block, as objects or strings', () => {
   expect(phaseNames("export const meta = { name: 'x' }")).toBeUndefined()
 })
 
-test('a task notification gives the task id and how it ended', () => {
-  expect(taskNotification(NOTIFICATION)).toEqual({ taskId: 'w1', status: 'stopped' })
-  expect(taskNotification(NOTIFICATION.replace('killed', 'completed'))?.status).toBe('done')
-  expect(taskNotification(NOTIFICATION.replace('killed', 'failed'))?.status).toBe('failed')
-  expect(taskNotification('just a prompt')).toBeUndefined()
+test('phase names keep their order when strings and objects mix', () => {
+  const script = "meta = { phases: ['Plan', { title: 'Build', detail: 'x' }, \"Test\"] }"
+  expect(phaseNames(script)).toEqual(['Plan', 'Build', 'Test'])
 })
 
 test('a workflow call adds a running run with its name, files and phases', async ($, on) => {
@@ -91,6 +89,15 @@ test('the task notification of a run ends it', async ($, on) => {
   await $.tool.call({ tool: 'Workflow', script: SCRIPT })
   await $.prompt.submit({ text: NOTIFICATION, wait: false, origin: { kind: 'task-notification' } })
   expect(held.items?.[0]).toMatchObject({ status: 'stopped', endedAt: 7000 })
+})
+
+test('a run ends also when another task comes first in the same prompt', async ($, on) => {
+  const held = engine(on)
+  await $.tool.call({ tool: 'Workflow', script: SCRIPT })
+  const shell = NOTIFICATION.replace('w1', 'bg_9').replace('killed', 'completed')
+  const text = `${shell}\n${NOTIFICATION.replace('killed', 'failed')}`
+  await $.prompt.submit({ text, wait: false, origin: { kind: 'task-notification' } })
+  expect(held.items?.[0]).toMatchObject({ status: 'failed', endedAt: 7000 })
 })
 
 test('a prompt from the person ends nothing', async ($, on) => {

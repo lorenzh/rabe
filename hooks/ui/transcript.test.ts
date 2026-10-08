@@ -68,3 +68,17 @@ test('a transcript becomes the brief and turns of text and tools', () => {
 test('an empty transcript has no turns', () => {
   expect(parseClaude('')).toEqual({ toolCount: 0, turns: [] })
 })
+
+test('null records and content of the wrong shape are skipped', () => {
+  const text = [
+    'null',
+    '42',
+    JSON.stringify({ type: 'user', message: { content: { text: 'odd' } } }),
+    JSON.stringify({ type: 'assistant', message: { content: { type: 'text' } } }),
+    JSON.stringify({
+      type: 'assistant',
+      message: { content: [null, { type: 'text', text: 'Hi.' }] },
+    }),
+  ].join('\n')
+  expect(parseClaude(text)).toEqual({ toolCount: 0, turns: [{ text: 'Hi.', tools: [] }] })
+})

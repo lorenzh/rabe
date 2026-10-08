@@ -174,8 +174,9 @@ function jobStart(job: CodexJob): number | undefined {
 }
 
 export function codexItem(job: CodexJob, session: CodexSession | undefined): NewItem {
-  const request = rec(job.request)
   const rollout = session?.rollout
+  // an unchanged session file is not parsed again; the held item keeps what it gave
+  const request = session?.path && !rollout ? {} : rec(job.request)
 
   return defined({
     id: itemId('codex', job.id),
@@ -257,20 +258,17 @@ async function readSession(
   if (!path || !stat) return jobEnd(job.status) ? { isMissing: true } : undefined
   const updatedAt = stat.mtimeMs
   if (updatedAt === held?.detail.sessionUpdatedAt) return { path, updatedAt }
+  // no updatedAt on failure, so the next poll tries again
   if (stat.size <= MAX_READ) {
-    const text = String(await $.fs.read(path))
+    const text = await $.fs.read(path).catch(() => undefined)
 
-    return { path, updatedAt, rollout: parseRollout(text) }
+    return text === undefined ? { path } : { path, updatedAt, rollout: parseRollout(String(text)) }
   }
-  const head = await $.process.run([
-    'grep',
-    '-m',
-    '2',
-    '-E',
-    '"type":"(turn_context|UserMessage)"',
-    path,
-  ])
-  const tail = await $.process.run(['tail', '-n', String(TAIL_LINES), path])
+  const head = await $.process
+    .run(['grep', '-m', '2', '-E', '"type":"(turn_context|UserMessage)"', path])
+    .catch(() => undefined)
+  const tail = await $.process.run(['tail', '-n', String(TAIL_LINES), path]).catch(() => undefined)
+  if (!head || !tail || tail.exitCode !== 0) return { path }
 
   return {
     path,
@@ -329,7 +327,7 @@ async function poll($: EngineInterface): Promise<void> {
         `${stateRoot}/${dir.name}/jobs/${id}.json`,
         { ...entry, id },
         held,
-      )
+      ).catch(() => undefined)
     }
   }
 }

@@ -66,8 +66,10 @@ test('the meta file gives worktree, branch and phase, and bad text gives nothing
     worktreeBranch: 'agent-a1',
     workflowPhase: 'Verify',
     agentType: 'workflow-subagent',
+    cwd: '/wt/a1',
   })
   expect(metaPatch(text)).toEqual({
+    cwd: '/wt/a1',
     worktreePath: '/wt/a1',
     worktreeBranch: 'agent-a1',
     workflowPhase: 'Verify',
@@ -157,6 +159,7 @@ test('subagent start sets the transcript and a worktree outside the session fold
   expect(held.items?.[0]?.detail).toMatchObject({
     transcriptPath: '/p/s1/subagents/agent-a1.jsonl',
     worktreePath: '/repo/.claude/worktrees/a1',
+    cwd: '/repo/.claude/worktrees/a1',
   })
 })
 
@@ -179,7 +182,7 @@ test('SubagentStart during the spawn keeps the transcript once the spawn adds th
   expect(held.items).toHaveLength(1)
   expect(held.items?.[0]).toMatchObject({
     title: 'verify:db.ts',
-    detail: { agentId: 'a1', transcriptPath: '/p/s1/subagents/agent-a1.jsonl' },
+    detail: { agentId: 'a1', transcriptPath: '/p/s1/subagents/agent-a1.jsonl', cwd: '/repo' },
   })
 })
 
@@ -226,7 +229,7 @@ test('a step adds tokens, tools and a turn; the end of the run ends the agent', 
   expect(item).toMatchObject({
     status: 'done',
     endedAt: 5000,
-    tokens: { input: 220, output: 40, cached: 100 },
+    tokens: { input: 320, output: 40, cached: 100 },
     detail: { toolCount: 2, lastTool: 'Read', lastToolAt: 5000 },
   })
   expect(held.turns?.['agent:a1']).toEqual([

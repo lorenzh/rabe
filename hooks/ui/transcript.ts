@@ -19,7 +19,8 @@ export function parseLines<T>(text: string): T[] {
   for (const line of text.split('\n')) {
     if (!line.trim()) continue
     try {
-      out.push(JSON.parse(line) as T)
+      const value: unknown = JSON.parse(line)
+      if (value && typeof value === 'object' && !Array.isArray(value)) out.push(value as T)
     } catch {}
   }
 
@@ -30,7 +31,8 @@ export function firstLine(value: unknown): string {
   return typeof value === 'string' ? (value.split('\n')[0] ?? '') : ''
 }
 
-function target(input: Record<string, unknown> = {}): string {
+function target(input: Record<string, unknown> | undefined): string {
+  if (!input || typeof input !== 'object') return ''
   const value =
     input.file_path ??
     input.command ??
@@ -46,11 +48,16 @@ export function parseClaude(text: string): ClaudeLog {
   const log: ClaudeLog = { toolCount: 0, turns: [] }
   const byId = new Map<string, ClaudeTool>()
   for (const line of parseLines<Line>(text)) {
-    const content = line.message?.content
+    const raw = line.message?.content
+    const content = Array.isArray(raw) ? raw.filter(b => b && typeof b === 'object') : raw
     if (line.type === 'user') {
       if (log.brief === undefined && log.turns.length === 0) {
         const brief =
-          typeof content === 'string' ? content : content?.find(b => b.type === 'text')?.text
+          typeof content === 'string'
+            ? content
+            : Array.isArray(content)
+              ? content.find(b => b.type === 'text')?.text
+              : undefined
         if (brief) log.brief = brief
       }
       for (const block of Array.isArray(content) ? content : []) {

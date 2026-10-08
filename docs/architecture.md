@@ -61,7 +61,7 @@ type RabeItemOf<K extends RabeItemKind> = {
   endedAt?: number      // set by endItem
   parentId?: string     // item id of the parent (a workflow, an agent); absent: main session
   tokens?: RabeTokens   // absent: n/a
-  costUsd?: number      // estimate from Rabe's price table; absent: n/a
+  costUsd?: number      // dollar estimate; no source sets it yet (no price table), so views show n/a
   detail: RabeItemDetails[K]
 }
 
@@ -72,7 +72,7 @@ type RabeItem = { [K in RabeItemKind]: RabeItemOf<K> }[RabeItemKind]
 
 | Kind | Detail fields |
 |---|---|
-| `agent` | `agentId`, `type?`, `model?`, `description?`, `transcriptPath?`, `worktreePath?`, `worktreeBranch?`, `workflowPhase?`, `workflowIndex?`, `toolCount?`, `lastTool?`, `lastToolAt?` |
+| `agent` | `agentId`, `type?`, `model?`, `description?`, `transcriptPath?`, `cwd?`, `worktreePath?`, `worktreeBranch?`, `workflowPhase?`, `workflowIndex?`, `toolCount?`, `lastTool?`, `lastToolAt?` |
 | `workflow` | `runId`, `taskId?`, `scriptPath?`, `transcriptDir?`, `phases?` |
 | `codex` | `jobId`, `jobKind?`, `threadId?`, `model?`, `effort?`, `sandbox?`, `prompt?`, `workspaceRoot?`, `logPath?`, `sessionPath?`, `sessionUpdatedAt?`, `isSessionMissing?`, `isSessionPartial?`, `commandCount?`, `steps?` |
 | `shell` | `command`, `taskId?`, `outputPath?`, `exitCode?`, `port?` |
@@ -160,9 +160,9 @@ A source owns the items of its kind. It uses `itemId(kind, nativeId)` for ids, s
 
 `pane.tsx` owns the plain `session.start` hook. Each source gives its own start hook a matcher (see the rule above): the agents source uses `{ cwd: /^/ }`, and the Codex source uses `{ isInteractive: true }`, since only a person at the prompt sees the band and the pane.
 
-### Stopping an item: `/rabe-stop <item id>`
+### Stopping an item
 
-A view cannot pass `$` to a source, so stopping goes through a command. `/rabe-stop <item id>` is registered by the Codex source (with `immediate: true`, so it also runs during a turn). Each source that can stop its items answers it with a matcher on the id prefix, for example `{ command: 'rabe-stop', args: /^\s*codex:/ }`, and returns `{ text }` that says what happened. A view calls `$.command.run({ command: 'rabe-stop', args: item.id })` and shows the text as a toast. When a second source adds stopping, move the registration to `pane.tsx`.
+The pane stops agents, shells, monitors and workflows itself: it calls `TaskStop` through `$.tool.call` (see Actions under The pane). A Codex job has no task id, so it stops through a command instead. `/rabe-stop <item id>` is registered by the Codex source (with `immediate: true`, so it also runs during a turn). It answers with a matcher on the id prefix, `{ command: 'rabe-stop', args: /^\s*codex:/ }`, and returns `{ text }` that says what happened. The person types `/rabe-stop codex:<job id>`; the pane has no stop action for Codex jobs yet.
 
 ## The sources
 
@@ -173,12 +173,12 @@ One `agent` item per subagent, id `agent:<agentId>`. It covers agents the model 
 | Hook | What it does |
 |---|---|
 | `agent.spawn` | After `next(e)` gives the `agentId`, adds a running item: title from the description (else the type), type, model, `startedAt`. A workflow agent gets `parentId` `workflow:<runId>` and `workflowIndex`; an agent started by another agent gets `agent:<parentAgentId>`. A refused spawn adds nothing. |
-| `classic.SubagentStart` | Fires inside the spawn, before `agent.spawn` adds the item, so it adds a running item (title the agent type) when none exists; the spawn then merges its fields in. Sets `transcriptPath` (`<session>/subagents/agent-<id>.jsonl`, built from the hook's `transcript_path`) and, when the hook's `cwd` is not the session's, `worktreePath`. |
-| `turn.step` with `agentId` | After the response, adds its tokens (`input` is uncached plus cache writes, `cached` is cache reads), sets `model`, `toolCount`, `lastTool` and `lastToolAt`, puts the item back to running, and adds a turn to `rabe.turns`. Steps of loops Rabe has no item for (forks for compaction or memory) are ignored. |
+| `classic.SubagentStart` | Fires inside the spawn, before `agent.spawn` adds the item, so it adds a running item (title the agent type) when none exists; the spawn then merges its fields in. Sets `transcriptPath` (`<session>/subagents/agent-<id>.jsonl`, built from the hook's `transcript_path`), `cwd`, and, when the hook's `cwd` is not the session's, `worktreePath`. |
+| `turn.step` with `agentId` | After the response, adds its tokens (`input` is uncached input plus cache writes plus cache reads, `cached` is the cache reads inside `input`, the same as Codex counts them), sets `model`, `toolCount`, `lastTool` and `lastToolAt`, puts the item back to running, and adds a turn to `rabe.turns`. Steps of loops Rabe has no item for (forks for compaction or memory) are ignored. |
 | `turn.complete` with `agentId` | Ends the item: `answer` is done, `aborted` is stopped, `refusal` and `error` are failed. Reads the meta file once more. |
 | `session.start` | Runs the poll once, then every 3 seconds with `$.clock.every`. |
 
-The poll reads `$.agent.list()`. It adds agents Rabe has no item for (started before Rabe loaded) and ends items the list reports as `completed`, `failed` or `killed`. Then it reads the meta file of each running agent and copies `worktreePath`, `worktreeBranch` and `workflowPhase`. The meta file sits next to the transcript (`agent-<id>.meta.json`); for a workflow agent without a transcript path it is in the run's `transcriptDir`. The file appears about 1.5 seconds after the start and changes later, so the poll reads it each time.
+The poll reads `$.agent.list()`. It adds agents Rabe has no item for (started before Rabe loaded) and ends items the list reports as `completed`, `failed` or `killed`. Then it reads the meta file of each running agent and copies `cwd`, `worktreePath`, `worktreeBranch` and `workflowPhase`. An agent with neither `cwd` nor `worktreePath` shows its tree as `n/a`, not as the main tree. The meta file sits next to the transcript (`agent-<id>.meta.json`); for a workflow agent without a transcript path it is in the run's `transcriptDir`. The file appears about 1.5 seconds after the start and changes later, so the poll reads it each time.
 
 Workflow agents are not in `$.agent.list()`: only `turn.complete` ends them.
 
@@ -188,8 +188,8 @@ One `workflow` item per run, id `workflow:<runId>`.
 
 | Hook | What it does |
 |---|---|
-| `tool.call` for `Workflow` | After the call, takes `runId`, `taskId`, `workflowName`, `scriptPath` and `transcriptDir` from the result and adds a running item. A resumed run keeps its `runId` and runs again under the same item. Then it reads the script and stores the phase names of its `meta.phases` block in `phases`. A remote run has no `runId` and gets no item. |
-| `prompt.submit` with origin `task-notification` | Reads `<task-id>` and `<status>` from the notification text. When the task id is a run's `taskId`, it ends the run: `completed` is done, `failed` is failed, `killed` is stopped. |
+| `tool.call` for `Workflow` | After the call, takes `runId`, `taskId`, `workflowName`, `scriptPath` and `transcriptDir` from the result and adds a running item. A resumed run keeps its `runId` and runs again under the same item. Then it reads the script and stores the phase names of its `meta.phases` block in `phases`, in order, from strings and from the `title` of objects alike. A remote run has no `runId` and gets no item. |
+| `prompt.submit` with origin `task-notification` | Reads `<task-id>` and `<status>` of each `<task-notification>` in the text (with `parseNotifications`; one prompt can carry several). When a task id is a run's `taskId`, it ends the run: `completed` is done, `failed` is failed, `killed` is stopped. |
 
 The run's agents come from `agents.ts`; they point to the run with `parentId` and carry their phase in `workflowPhase`. A view gets a run's tokens by adding up its agents.
 
@@ -199,7 +199,7 @@ Tracks the jobs that the Codex plugin (`codex@openai-codex`) starts for this ses
 
 - **Poll.** `session.start` (interactive only) starts `$.clock.every(2000)`. Each poll lists the plugin's state folders, skips each whose `state.json` was not changed since the session started (`$.session.usage().startedAt`), and reads the rest. It keeps the jobs whose `sessionId` is this session's (`$.session.id()`), and checks that again in the job file, because `state.json` can hold a bare status patch without it. A job whose item already ended is not read again.
 - **Item.** `codexItem(job, session)` builds the item. Title: the first line of the job's `summary` (the prompt's start). Status: `queued` and `running` are running; `completed`, `failed` and `cancelled` end the item as `done`, `failed` and `stopped`, with `endedAt` from `completedAt`. Undefined fields are left out, so a merge never erases a known value.
-- **Session file.** The rollout file is found once by `threadId` in `sessions/YYYY/MM/DD` of the start day and the day before and after (the folder date is local time), then kept in `detail.sessionPath`. It is parsed again only when its `mtimeMs` differs from `detail.sessionUpdatedAt`, so an idle job causes no write. Files up to 4 MiB are read with `$.fs.read`; larger ones with `grep -m 2` (turn context and prompt) and `tail -n 200` through `$.process.run`, and the item gets `isSessionPartial`. A finished job without a session file gets `isSessionMissing`; its model and effort then come from the job's `request`, when the job was a background job.
+- **Session file.** The rollout file is found once by `threadId` in `sessions/YYYY/MM/DD` of the start day and the day before and after (the folder date is local time), then kept in `detail.sessionPath`. It is parsed again only when its `mtimeMs` differs from `detail.sessionUpdatedAt`, so an idle job causes no write. Files up to 4 MiB are read with `$.fs.read`; larger ones with `grep -m 2` (turn context and prompt) and `tail -n 200` through `$.process.run`, and the item gets `isSessionPartial`. A finished job without a session file gets `isSessionMissing`; its model and effort then come from the job's `request`, when the job was a background job. An unchanged file gives no new fields, so the item keeps the model and effort the file gave. A file that cannot be read gives no `sessionUpdatedAt`, so the next poll tries again; the job still ends. A failure in one job never stops the poll for the others.
 - **`parseRollout(text)`.** Pure. Reads model, effort and sandbox (`turn_context`), the prompt (first `UserMessage`), tokens (last `token_count` total), and the steps: assistant messages, reasoning summaries when present, finished commands (`CommandExecution`, with exit code and output line count), and a running command (a `custom_tool_call` that has no output yet). Steps keep the last 50, each text cut at 300 characters. Lines that do not parse (a line still being written) are skipped.
 - **Stop.** `/rabe-stop codex:<job id>` runs `node <plugin root>/scripts/codex-companion.mjs cancel <job id> --json --cwd <workspaceRoot>` with `CLAUDE_PLUGIN_DATA` set to the plugin's data folder. The plugin root is the `installPath` in `plugins/installed_plugins.json`. On success the item ends as `stopped`.
 
@@ -233,7 +233,7 @@ Monitor lines are kept apart from the item, in the `$.state` key `rabe.lines`: `
 | `session.start` | Calls `CronList` and adds the jobs made before Rabe loaded. |
 | `classic.Stop` | Syncs with `session_crons`: a job gone from the list ends as done (a one-time job fired, a job expired); a new one is added. Wakeups are not ended here, and a listed job whose prompt matches a running wakeup is not added twice. |
 
-`schedule.ts` has `nextRun(expr, from)` and `nextRuns(expr, from, count)`: the next times a 5-field cron expression matches in local time, after `from`. It reads `*`, numbers, ranges, lists and steps; day of month and day of week match either one when both are set, as in cron. A broken or impossible expression gives `undefined` (an empty list). Claude Code adds up to 10 % jitter to recurring jobs, which this does not show. The band countdown and the cron detail use `nextRuns` too.
+`schedule.ts` has `nextRun(expr, from)` and `nextRuns(expr, from, count)`: the next times a 5-field cron expression matches in local time, after `from`. It reads `*`, numbers, ranges, lists and steps; day of month and day of week match either one when both are set, as in cron. Minutes advance in real time, so a next run is never earlier than `from`, also in the hour that repeats when summer time ends (a job in that hour can show twice). A broken or impossible expression gives `undefined` (an empty list). Claude Code adds up to 10 % jitter to recurring jobs, which this does not show. The band countdown and the cron detail use `nextRuns` too.
 
 ## Testing sources
 
@@ -254,7 +254,7 @@ The band and the pane read `rabe.items` and draw. Neither writes items. Shared v
 | `ui/facts.ts` | The fact lines of one item (model, worktree, spend, start, exit code) |
 | `ui/format.ts` | Durations, ages, countdowns, token and dollar amounts, `fit` |
 | `ui/transcript.ts` | `parseClaude(text)`: a subagent transcript as brief, turns and tools |
-| `ui/rollout.ts` | `parseCodex(text)`: a Codex session file as model, tokens, turns and commands |
+| `ui/rollout.ts` | `parseCodex(text)`: a Codex session file as model, tokens, turns (with reasoning summaries) and commands; running commands are tracked by `call_id` |
 | `ui/fixtures.ts` | Fake items for the tests; nothing else imports it |
 
 ### The band
@@ -283,19 +283,19 @@ Keys follow the feasibility key model: every row is a focusable `Button` (`row:<
 **Detail per kind.** Every detail shows the item's facts, then:
 
 - Agent: brief, older turns folded into one line with tool counts, the last turns with their tools (`⎿ Edit path`, running or error marks), from the transcript at `transcriptPath`.
-- Codex: prompt, turns (`◆`) with their commands, exit codes and line counts, the result when done, from the session file at `sessionPath`.
+- Codex: prompt, turns (`◆`) with the reasoning summary before them (`thinking: …`, when Codex writes one), their commands, exit codes and line counts, the result when done, from the session file at `sessionPath`.
 - Workflow: the phases as `✓ Review → ◐ Verify → · Report`, and the agents of each phase as rows.
 - Shell and monitor: the last lines of the output file.
-- Cron: the next five runs, computed from the schedule.
+- Cron: the next five runs, computed from the schedule. Delete shows for cron jobs only: a `/loop` wakeup has no id `CronDelete` knows.
 
-A file that cannot be read shows a line starting with `Error`; a file over 4 MiB is read with `tail -n 400` through `$.process.run` and shows a `Warning`. Missing fields show `n/a`, and an item without `startedAt` says "started before Rabe loaded".
+A file that cannot be read shows a line starting with `Error`, also when `tail` fails or a record cannot be parsed; a file over 4 MiB is read with `tail -n 400` through `$.process.run` and shows a `Warning`. The parsers skip records that are not objects and content of the wrong shape. Missing fields show `n/a`, and an item without `startedAt` says "started before Rabe loaded".
 
-**Cost tab.** Session total, tokens, Claude and Codex totals, the number of items without tokens, and agents and Codex jobs sorted by tokens. **Effects tab.** Worktrees from agent details, and ports of running shells with the `ssh -L` command; Enter copies it. **Timeline tab.** One bar per item over the session, and the tree of who started what, from `parentId`.
+**Cost tab.** Session total, tokens, Claude and Codex totals, the number of items without tokens, and agents and Codex jobs sorted by tokens. A dollar total with no known amount shows `cost n/a`, never `$0.00`; the band does the same. **Effects tab.** Worktrees from agent details, the agents known to share the main tree, the agents whose tree is `n/a`, and ports of running shells with the `ssh -L` command; Enter copies it. **Timeline tab.** One bar per item over the session, and the tree of who started what, from `parentId`.
 
 **Long lists.** The pane draws only what fits in `scroll.bodyRows`: each group in the All view shows a share of the rows and ends with "… N more", which opens that group's filter; a filtered list is paged ("… N more · page 1 of 3"). Turn views keep the last turns and fold the rest; Cost and Timeline end with "… N more".
 
 **Live updates.** `session.start` starts `$.clock.every(1000)`, which calls `$.ui.invalidate('ui.render')` while any item runs. The pane re-reads the open item's file on each draw.
 
-**Actions.** Stop calls `TaskStop` with the task id (shells, monitors, workflows) or the agent id. Delete calls `CronDelete`. Message calls `$.session.send` to the agent. Copy calls `$.ui.copy`. Each answers with a toast: "Stopping …", "Stop refused: …", "Stopped 7 of 9; 2 had already finished", "Message sent to …".
+**Actions.** Stop calls `TaskStop` with the task id (shells, monitors, workflows) or the agent id. Delete calls `CronDelete` (cron jobs only, not `/loop` wakeups). Message calls `$.session.send` to the agent. Copy calls `$.ui.copy`. Each answers with a toast: "Stopping …", "Stop refused: …", "Stopped 7 of 9; 2 had already finished", "Message sent to …".
 
 Both views are tested on the `terminal` and `desktop` surfaces. Tests feed items with a test hook on `state.get` that answers `rabe.items`, files with hooks on `fs.stat` and `fs.read`, and fix the time with `mock.clock`.

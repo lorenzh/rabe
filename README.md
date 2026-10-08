@@ -16,7 +16,7 @@ Status: early development. Rabe tracks Claude subagents, workflows, Codex jobs s
 - **The band** above the prompt shows one row per kind while something runs: Claude agents, Codex jobs, workflows, shells with their ports, failures from the last 10 minutes, monitors, cron countdowns, and the token cost. It draws nothing when nothing runs, and one line when the rows do not fit.
 - **`/rabe`** opens a pane with four tabs (`1` to `4`):
   - **Items**: every item grouped by kind, failures first, with a filter row and a search field. Enter opens an item: the turns of a Claude agent or a Codex job, the phases and agents of a workflow, the output of a shell or monitor, the next runs of a cron job.
-  - **Cost**: tokens and estimated dollars per agent and Codex job.
+  - **Cost**: tokens per agent and Codex job. Dollars show `n/a` until Rabe has a price table.
   - **Effects**: worktrees and open ports, with the `ssh -L` command to reach a port.
   - **Timeline**: when each item ran, and who started what.
 

@@ -175,22 +175,33 @@ export function phaseProgress(items: RabeItem[], flow: RabeItem): string {
   return `${list[at]?.name} ${at + 1}/${list.length}`
 }
 
-export type Totals = { usd: number; tokens: number; unknown: number; claude: number; codex: number }
+export type Totals = {
+  usd?: number
+  tokens: number
+  unknown: number
+  claude?: number
+  codex?: number
+}
+
+const plus = (sum: number | undefined, value: number | undefined) =>
+  value === undefined ? sum : (sum ?? 0) + value
 
 export function totals(items: RabeItem[]): Totals {
-  const out: Totals = { usd: 0, tokens: 0, unknown: 0, claude: 0, codex: 0 }
+  const out: Totals = { tokens: 0, unknown: 0 }
   for (const item of items) {
     if (item.kind !== 'agent' && item.kind !== 'codex') continue
     if (!item.tokens) out.unknown += 1
-    const tok = item.tokens ? item.tokens.input + item.tokens.output : 0
-    out.tokens += tok
-    out.usd += item.costUsd ?? 0
-    if (item.kind === 'agent') out.claude += item.costUsd ?? 0
-    else out.codex += item.costUsd ?? 0
+    out.tokens += item.tokens ? item.tokens.input + item.tokens.output : 0
+    if (item.costUsd === undefined) continue
+    out.usd = plus(out.usd, item.costUsd)
+    if (item.kind === 'agent') out.claude = plus(out.claude, item.costUsd)
+    else out.codex = plus(out.codex, item.costUsd)
   }
 
   return out
 }
+
+export const cost = (n: number | undefined) => (n === undefined ? 'n/a' : usd(n))
 
 export const tokenSum = (item: RabeItem) =>
   item.tokens ? item.tokens.input + item.tokens.output : -1
@@ -214,7 +225,9 @@ export function costLine(items: RabeItem[]): string | undefined {
   const top = byTokens(items)[0]
   const topText = top?.tokens ? ` · top: ${top.title} ${tokens(tokenSum(top))}` : ''
 
-  return `${tokens(sum.tokens)} tok ≈ ${usd(sum.usd)}${topText}`
+  const dollars = sum.usd === undefined ? ' · cost n/a' : ` ≈ ${usd(sum.usd)}`
+
+  return `${tokens(sum.tokens)} tok${dollars}${topText}`
 }
 
 export type BandRow = { glyph: string; tone: string; label: string; names: string[] }

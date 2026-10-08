@@ -67,7 +67,7 @@ function next(cron: Cron, from: number): number | undefined {
     } else if (!hours.has(date.getHours())) {
       date.setHours(date.getHours() + 1, 0)
     } else if (!minutes.has(date.getMinutes())) {
-      date.setMinutes(date.getMinutes() + 1)
+      date.setTime(date.getTime() + MINUTE)
     } else {
       return date.getTime()
     }

@@ -41,8 +41,9 @@ async function readText(
     const stat = await $.fs.stat(path)
     if (stat.size <= MAX_READ) return { text: await $.fs.read(path) }
     const run = await $.process.run(['tail', '-n', String(TAIL_LINES), path])
+    if (run.exitCode !== 0) throw new Error(run.stderr.trim() || `tail exit ${run.exitCode}`)
     return {
-      text: run.stdout.slice(run.stdout.indexOf('\n') + 1),
+      text: run.stdout,
       notice: {
         level: 'Warning',
         text: `The file is over 4 MiB. Showing the last ${TAIL_LINES} lines only.`,
@@ -60,8 +61,13 @@ async function load($: EngineInterface, item: RabeItem): Promise<Loaded> {
   if (typeof path !== 'string') return {}
   const { text, notice } = await readText($, path)
   if (text === undefined) return { notice }
-  if (item.kind === 'agent') return { claude: parseClaude(text), notice }
-  if (item.kind === 'codex') return { codex: parseCodex(text), notice }
+  try {
+    if (item.kind === 'agent') return { claude: parseClaude(text), notice }
+    if (item.kind === 'codex') return { codex: parseCodex(text), notice }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error)
+    return { notice: { level: 'Error', text: `Could not parse ${path}: ${reason}` } }
+  }
 
   return { output: text.split('\n').filter(line => line.trim() !== ''), notice }
 }
@@ -141,7 +147,7 @@ async function act($: EngineInterface, action: Action): Promise<void> {
     case 'delete': {
       const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
       const item = items.find(one => one.id === action.id)
-      if (item?.kind !== 'cron') return
+      if (item?.kind !== 'cron' || item.detail.scheduledFor !== undefined) return
       const result = await $.tool.call({ tool: 'CronDelete', id: item.detail.jobId })
       const reason = result.deny ?? (result.isError ? (result.text ?? 'n/a') : undefined)
       $.ui.toast(reason ? `Delete refused: ${reason}` : `Deleted cron ${item.title}`)

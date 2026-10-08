@@ -287,6 +287,12 @@ function codexBody(v: View, item: RabeItem, loaded: Loaded, keep: number) {
       {older > 0 && <Text dimColor>▸ turns 1–{older} folded</Text>}
       {log?.turns.slice(older).map((turn, i) => (
         <Box flexDirection="column">
+          {turn.reasoning && (
+            <Text dimColor wrap="wrap">
+              {'  thinking: '}
+              {turn.reasoning}
+            </Text>
+          )}
           {turn.text && (
             <Text wrap="wrap">
               {older + i + 1} ◆ {turn.text}
@@ -450,7 +456,7 @@ function detailActions(v: View, item: RabeItem) {
           }
         />
       )}
-      {item.kind === 'cron' && (
+      {item.kind === 'cron' && item.detail.scheduledFor === undefined && (
         <Button
           key="delete"
           plain

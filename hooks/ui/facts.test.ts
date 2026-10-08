@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { facts, upcoming } from './facts'
-import { ALL, babysit, ci, dev, explore, flow, lint, NOW, plan, review } from './fixtures'
+import { ALL, babysit, ci, dev, explore, flow, lint, NOW, plan, review, verify } from './fixtures'
 
 test('agent facts show type, model, worktree, spend and start', () => {
   const { title, status, lines } = facts(explore, NOW, ALL)
@@ -20,6 +20,7 @@ test('missing data shows n/a', () => {
   expect(facts(plan, NOW, ALL).lines).toContain('Plan · n/a · main tree')
   expect(facts(plan, NOW, ALL).lines).toContain('tokens n/a · cost n/a')
   expect(facts(dev, NOW, ALL).lines).toContain('started before Rabe loaded · start time not known')
+  expect(facts(verify, NOW, ALL).lines[0]).toBe('n/a · n/a · tree n/a')
 })
 
 test('codex facts show model, effort, job and cached tokens', () => {

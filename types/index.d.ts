@@ -10,6 +10,7 @@ export type RabeAgentDetail = {
   model?: string
   description?: string
   transcriptPath?: string
+  cwd?: string
   worktreePath?: string
   worktreeBranch?: string
   workflowPhase?: string

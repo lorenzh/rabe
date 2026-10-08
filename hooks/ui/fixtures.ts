@@ -31,7 +31,7 @@ export const plan: RabeItem = {
   seenAt: NOW - 10 * min,
   startedAt: NOW - 10 * min,
   endedAt: NOW - 6 * min,
-  detail: { agentId: 'a2', type: 'Plan' },
+  detail: { agentId: 'a2', type: 'Plan', cwd: '/repo' },
 }
 
 export const review: RabeItem = {

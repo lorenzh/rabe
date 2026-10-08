@@ -39,6 +39,10 @@ const FILES: Record<string, string> = {
     { type: 'turn_context', payload: { model: 'gpt-6.1-sol', effort: 'high' } },
     {
       type: 'response_item',
+      payload: { type: 'reasoning', summary: [{ type: 'summary_text', text: 'Diff first.' }] },
+    },
+    {
+      type: 'response_item',
       payload: { type: 'message', role: 'assistant', content: [{ text: 'Reading the diff.' }] },
     },
     {
@@ -202,6 +206,7 @@ test('a codex job shows its turns and commands on every surface', async ($, on) 
       await ui.find({ type: 'Text', text: 'Review middleware/auth.ts for token-expiry bugs.' }),
     ).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '1 ◆ Reading the diff.' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: '  thinking: Diff first.' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /\$ git diff\s+✓ exit 0 · 1 lines/ })).toBeDefined()
     await ui.press({ key: 'back' })
     await ui.unmount()
@@ -308,6 +313,8 @@ test('cost, effects and timeline tabs draw their sections on every surface', asy
     ).toBeDefined()
     await ui.press({ key: 'tab-effects' })
     expect(await ui.find({ type: 'Text', text: 'WORKTREES 1' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /1 agent shares the main tree/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /2 agents: tree n\/a/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: ':5173 bun run dev' })).toBeDefined()
     expect(await ui.find({ type: 'Button', text: /ssh -L 5173:localhost:5173/ })).toBeDefined()
     await ui.press({ key: 'tab-timeline' })
@@ -333,6 +340,77 @@ test('moving the focus onto a row selects it on every surface', async ($, on) =>
     expect(
       await ui.find({ type: 'Text', text: /^bun run lint · command bun run lint/ }),
     ).toBeDefined()
+    await ui.unmount()
+  }
+})
+
+function holdBig(
+  on: On,
+  item: RabeItem,
+  run: { exitCode: number; stdout: string; stderr: string },
+) {
+  mock.clock(on, { now: NOW })
+  on('state.get', async (_$, e, next) =>
+    e.plugin === 'rabe' && e.key === 'items' ? { value: { value: [item], version: 1 } } : next(e),
+  )
+  on('ui.toast', async () => ({ value: undefined }))
+  on('fs.stat', async () => ({
+    value: { kind: 'file' as const, size: 5 * 1024 * 1024, mtimeMs: NOW, isLink: false },
+  }))
+  on('process.run', async () => ({ value: run }) as never)
+}
+
+const big: RabeItem = {
+  id: dev.id,
+  kind: 'shell',
+  title: dev.title,
+  status: 'running',
+  seenAt: dev.seenAt,
+  detail: { command: 'bun run dev', outputPath: '/big' },
+}
+
+test('a file over 4 MiB shows every line tail gives on every surface', async ($, on) => {
+  holdBig(on, big, { exitCode: 0, stdout: 'first line\nlast line\n', stderr: '' })
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    await ui.press({ key: `row:${dev.id}` })
+    expect(await ui.find({ type: 'Text', text: 'first line' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^Warning The file is over 4 MiB/ })).toBeDefined()
+    await ui.press({ key: 'back' })
+    await ui.unmount()
+  }
+})
+
+test('a failed tail shows an error and n/a on every surface', async ($, on) => {
+  holdBig(on, big, { exitCode: 1, stdout: '', stderr: 'tail: /big: No such file' })
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    await ui.press({ key: `row:${dev.id}` })
+    expect(
+      await ui.find({ type: 'Text', text: /^Error Could not read \/big: tail: \/big: No such/ }),
+    ).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'Output n/a.' })).toBeDefined()
+    await ui.press({ key: 'back' })
+    await ui.unmount()
+  }
+})
+
+test('a /loop wakeup offers no delete on every surface', async ($, on) => {
+  const wakeup: RabeItem = {
+    id: 'cron:wakeup-1',
+    kind: 'cron',
+    title: 'autonomous loop',
+    status: 'running',
+    seenAt: NOW,
+    detail: { jobId: 'wakeup-1', prompt: 'x', scheduledFor: NOW + 60_000 },
+  }
+  hold(on, [wakeup])
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    await ui.press({ key: `row:${wakeup.id}` })
+    expect(await ui.find({ type: 'Button', text: 'copy prompt' })).toBeDefined()
+    expect(await ui.find({ type: 'Button', text: 'delete job' })).toBeUndefined()
+    await ui.press({ key: 'back' })
     await ui.unmount()
   }
 })

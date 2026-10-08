@@ -1,6 +1,17 @@
 import { clockTime, fit, tokens, usd } from './format'
 import { elapsed } from './items'
-import { bar, byTokens, glyph, KIND_LABEL, tokenSum, tone, totals, tree, worktrees } from './lists'
+import {
+  bar,
+  byTokens,
+  cost,
+  glyph,
+  KIND_LABEL,
+  tokenSum,
+  tone,
+  totals,
+  tree,
+  worktrees,
+} from './lists'
 import type { View } from './view'
 
 export function costTab(v: View) {
@@ -13,16 +24,16 @@ export function costTab(v: View) {
 
   return (
     <Box flexDirection="column">
-      <Text bold>session total ≈ {usd(sum.usd)}</Text>
+      <Text bold>session total {sum.usd === undefined ? 'cost n/a' : `≈ ${usd(sum.usd)}`}</Text>
       <Text dimColor wrap="wrap">
-        tokens {tokens(sum.tokens)} · claude agents {usd(sum.claude)} · codex {usd(sum.codex)}
+        tokens {tokens(sum.tokens)} · claude agents {cost(sum.claude)} · codex {cost(sum.codex)}
         {sum.unknown ? ` · ${sum.unknown} n/a` : ''} · running now {running}
       </Text>
       <Text dimColor>by worker · sorted by tokens</Text>
       <Text dimColor>{`  ${fit('NAME', nameWidth)} ${fit('TOKENS', 8)}${fit('COST', 8)}TIME`}</Text>
       {list.slice(0, room).map(item => {
         const tok = tokenSum(item)
-        const label = `${fit(`${KIND_LABEL[item.kind]} ${item.title}`, nameWidth)} ${fit(tok < 0 ? 'n/a' : tokens(tok), 8)}${fit(item.costUsd === undefined ? 'n/a' : usd(item.costUsd), 8)}${elapsed(item, v.now)}`
+        const label = `${fit(`${KIND_LABEL[item.kind]} ${item.title}`, nameWidth)} ${fit(tok < 0 ? 'n/a' : tokens(tok), 8)}${fit(cost(item.costUsd), 8)}${elapsed(item, v.now)}`
         return (
           <Box flexDirection="row" columnGap={1}>
             <Text color={tone(item)}>{glyph(item)}</Text>
@@ -40,7 +51,8 @@ export function costTab(v: View) {
       {list.length === 0 && <Text dimColor>No agent or Codex job yet.</Text>}
       <Text dimColor wrap="wrap">
         Tokens come from Claude Code's per-request usage and the Codex session files; n/a where a
-        session file is gone. Dollar amounts use a price table inside Rabe and are estimates.
+        session file is gone. Input counts cached tokens for both. Rabe has no price table yet, so
+        cost shows n/a.
       </Text>
     </Box>
   )
@@ -50,7 +62,11 @@ export function effectsTab(v: View) {
   const { Box, Button, Text } = v.ui
   const trees = worktrees(v.items)
   const agents = v.items.filter(item => item.kind === 'agent')
-  const shared = agents.filter(item => item.kind === 'agent' && !item.detail.worktreePath).length
+  const plain = agents.flatMap(item =>
+    item.kind === 'agent' && !item.detail.worktreePath ? [item] : [],
+  )
+  const shared = plain.filter(item => item.detail.cwd).length
+  const unknown = plain.length - shared
   const ports = v.items.filter(
     item => item.kind === 'shell' && item.status === 'running' && item.detail.port !== undefined,
   )
@@ -68,6 +84,11 @@ export function effectsTab(v: View) {
       {shared > 0 && (
         <Text wrap="truncate">
           {fit('main', 14)} {shared} {shared === 1 ? 'agent shares' : 'agents share'} the main tree
+        </Text>
+      )}
+      {unknown > 0 && (
+        <Text dimColor wrap="truncate">
+          {fit('n/a', 14)} {unknown} {unknown === 1 ? 'agent' : 'agents'}: tree n/a
         </Text>
       )}
       {agents.length === 0 && <Text dimColor>No agents yet.</Text>}

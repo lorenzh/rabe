@@ -1,27 +1,20 @@
 import type { BuiltinToolResults, EngineInterface, On } from 'claude-code'
 
-import { type EndStatus, itemId, type RabeItem } from '../model'
+import { itemId } from '../model'
 import { addItem, type Change, commit, endItem, updateItem } from '../registry'
+import { endStatus, parseNotifications } from '../tasks'
 
 type Launched = BuiltinToolResults['Workflow']
-
-const ENDED: Record<string, EndStatus> = { completed: 'done', failed: 'failed', killed: 'stopped' }
 
 export function phaseNames(script: string): string[] | undefined {
   const list = /\bphases\s*:\s*\[([\s\S]*?)\]/.exec(script)?.[1]
   if (list === undefined) return undefined
-  const titles = [...list.matchAll(/\btitle\s*:\s*(['"`])(.*?)\1/g)].map(match => match[2] ?? '')
-  if (titles.length > 0) return titles
 
-  return [...list.matchAll(/(['"`])(.*?)\1/g)].map(match => match[2] ?? '')
-}
-
-export function taskNotification(text: string): { taskId: string; status: EndStatus } | undefined {
-  const taskId = /<task-id>(.*?)<\/task-id>/.exec(text)?.[1]
-  const status = /<status>(.*?)<\/status>/.exec(text)?.[1]
-  if (!taskId || !status) return undefined
-
-  return { taskId, status: ENDED[status] ?? 'done' }
+  return [...list.matchAll(/\{[^}]*\}|(['"`])(.*?)\1/g)].flatMap(([whole, quote, text]) => {
+    if (quote) return [text ?? '']
+    const title = /\btitle\s*:\s*(['"`])(.*?)\1/.exec(whole)?.[2]
+    return title === undefined ? [] : [title]
+  })
 }
 
 async function write($: Pick<EngineInterface, 'state'>, change: Change): Promise<void> {
@@ -68,15 +61,15 @@ async function launched($: EngineInterface, result: Launched, name?: string): Pr
 }
 
 async function notified($: EngineInterface, text: string): Promise<void> {
-  const note = taskNotification(text)
-  if (!note) return
+  const notes = parseNotifications(text).filter(note => note.status)
+  if (notes.length === 0) return
   const now = await $.clock.now()
-  const isRun = (item: RabeItem) => item.kind === 'workflow' && item.detail.taskId === note.taskId
-  await write($, items => {
-    const run = items.find(isRun)
-
-    return run ? endItem(items, run.id, note.status, now) : items
-  })
+  await write($, items =>
+    notes.reduce((list, note) => {
+      const run = list.find(item => item.kind === 'workflow' && item.detail.taskId === note.taskId)
+      return run ? endItem(list, run.id, endStatus(note.status), now) : list
+    }, items),
+  )
 }
 
 export function workflows(on: On): void {

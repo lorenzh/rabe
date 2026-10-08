@@ -84,3 +84,47 @@ test('task_complete ends the job with its last message', () => {
   expect(log.isComplete).toBe(true)
   expect(log.result).toBe('All good.')
 })
+
+test('null records and content of the wrong shape are skipped', () => {
+  const text = [
+    'null',
+    '"x"',
+    record('response_item', null),
+    record('response_item', { type: 'message', role: 'assistant', content: { text: 'odd' } }),
+    record('response_item', { type: 'message', role: 'assistant', content: [null] }),
+    message('Fine.'),
+  ].join('\n')
+  expect(parseCodex(text).turns.map(turn => turn.text)).toEqual(['', '', 'Fine.'])
+})
+
+test('concurrent commands each stay running until their own output', () => {
+  const log = parseCodex(
+    [
+      message('Two at once.'),
+      record('response_item', { type: 'custom_tool_call', call_id: 'c1', input: '{cmd:"ls"}' }),
+      record('response_item', { type: 'custom_tool_call', call_id: 'c2', input: '{cmd:"pwd"}' }),
+      done('ls', 0, 'a'),
+      record('response_item', { type: 'custom_tool_call_output', call_id: 'c1' }),
+    ].join('\n'),
+  )
+  expect(log.turns[0]?.commands).toEqual([
+    { command: 'ls', state: 'ok', exitCode: 0, lines: 1 },
+    { command: 'pwd', state: 'running' },
+  ])
+})
+
+test('reasoning summaries go with the turn they come before', () => {
+  const log = parseCodex(
+    [
+      record('response_item', {
+        type: 'reasoning',
+        summary: [{ type: 'summary_text', text: '**Checking verify.ts**' }],
+      }),
+      record('response_item', { type: 'reasoning', summary: [], encrypted_content: 'x' }),
+      message('Found it.'),
+    ].join('\n'),
+  )
+  expect(log.turns).toEqual([
+    { text: 'Found it.', reasoning: '**Checking verify.ts**', commands: [] },
+  ])
+})

@@ -42,3 +42,12 @@ test('an impossible or broken schedule has no next run', () => {
   expect(nextRun('61 * * * *', at(10, 8, 10, 0))).toBeUndefined()
   expect(nextRuns('nope', 0, 3)).toEqual([])
 })
+
+test('the next run never goes back in a repeated hour at the end of summer time', () => {
+  // In Europe/Berlin 02:00–03:00 runs twice on 2026-10-25; elsewhere this is an ordinary night.
+  const start = Date.parse('2026-10-24T23:00:00Z')
+  for (let from = start; from < start + 5 * 3_600_000; from += 10 * 60_000) {
+    expect(nextRun('30 2 * * *', from)).toBeGreaterThan(from)
+    expect(nextRun('*/20 * * * *', from)).toBeGreaterThan(from)
+  }
+})

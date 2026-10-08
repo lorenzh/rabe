@@ -27,7 +27,7 @@ const MAX_TURNS = 30
 const MAX_TEXT = 300
 const MAX_SUMMARY = 80
 const SUMMARY_FIELDS = ['file_path', 'command', 'pattern', 'path', 'url', 'query', 'description']
-const META_FIELDS = ['worktreePath', 'worktreeBranch', 'workflowPhase'] as const
+const META_FIELDS = ['cwd', 'worktreePath', 'worktreeBranch', 'workflowPhase'] as const
 
 const LISTED: Record<AgentStatus, RabeItemStatus> = {
   pending: 'running',
@@ -92,7 +92,11 @@ export function addTurn(turns: Turns, id: string, turn: RabeTurn, keep: string[]
 
 function addUsage(tokens: RabeTokens | undefined, usage: TurnUsage): RabeTokens {
   return {
-    input: (tokens?.input ?? 0) + usage.input_tokens + usage.cache_creation_input_tokens,
+    input:
+      (tokens?.input ?? 0) +
+      usage.input_tokens +
+      usage.cache_creation_input_tokens +
+      usage.cache_read_input_tokens,
     output: (tokens?.output ?? 0) + usage.output_tokens,
     cached: (tokens?.cached ?? 0) + usage.cache_read_input_tokens,
   }
@@ -257,6 +261,7 @@ export function agents(on: On): void {
     const detail = {
       agentId: e.agent_id,
       ...(transcriptPath && { transcriptPath }),
+      ...(e.cwd && { cwd: e.cwd }),
       ...(e.cwd && e.cwd !== cwd && { worktreePath: e.cwd }),
     }
     const id = itemId('agent', e.agent_id)

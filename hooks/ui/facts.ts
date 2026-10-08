@@ -54,7 +54,11 @@ export function facts(item: RabeItem, now: number, items: RabeItem[]): Facts {
   switch (item.kind) {
     case 'agent': {
       const d = item.detail
-      const tree = d.worktreePath ? `worktree ${base(d.worktreePath)}` : 'main tree'
+      const tree = d.worktreePath
+        ? `worktree ${base(d.worktreePath)}`
+        : d.cwd
+          ? 'main tree'
+          : 'tree n/a'
       lines.push(`${na(d.type)} · ${na(d.model)} · ${tree}`)
       if (d.worktreeBranch) lines.push(`branch ${d.worktreeBranch}`)
       if (d.workflowPhase) lines.push(`phase ${d.workflowPhase}`)

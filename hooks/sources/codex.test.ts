@@ -326,3 +326,24 @@ test('/rabe-stop cancels the job through the companion script', async ($, on) =>
   ])
   expect(answer).toEqual({ text: 'Stopped codex Review pkg/auth after the logger migration.' })
 })
+
+test('an unchanged session file keeps the model and effort it gave', () => {
+  const item = codexItem({ ...job(), id: 'task-1' }, { path: ROLLOUT_PATH, updatedAt: 5000 })
+  expect(item.detail).not.toHaveProperty('model')
+  expect(item.detail).not.toHaveProperty('effort')
+})
+
+test('a session file that cannot be read still lets the job end', async ($, on) => {
+  on('fs.read', { path: ROLLOUT_PATH }, async () => ({ deny: 'EACCES' }))
+  const writes = watchItems(on)
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job({
+      status: 'completed',
+      completedAt: '1970-01-01T00:00:09.000Z',
+    }),
+    [ROLLOUT_PATH]: ROLLOUT,
+  })
+  await startAndTick($, w)
+  expect(writes.at(-1)?.[0]).toMatchObject({ status: 'done', endedAt: 9000 })
+})

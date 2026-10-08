@@ -1,5 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
+import type { RabeItem } from '../model'
+
 import {
   ALL,
   babysit,
@@ -19,6 +21,7 @@ import {
   bandRows,
   bar,
   byTokens,
+  costLine,
   grouped,
   groupNote,
   joinFit,
@@ -94,6 +97,12 @@ test('cost totals sum tokens and dollars and count unknowns', () => {
   expect(byTokens(ALL).slice(0, 3)).toEqual([explore, review, verify])
   expect(share(ALL, explore)).toBe('45%')
   expect(share(ALL, plan)).toBe('n/a')
+})
+
+test('without any dollar amount the cost is n/a, not $0.00', () => {
+  const unpriced = ALL.map(({ costUsd: _, ...item }) => item as RabeItem)
+  expect(totals(unpriced)).toEqual({ tokens: 91_000, unknown: 2 })
+  expect(costLine(unpriced)).toBe('91k tok · cost n/a · top: Explore verifyToken 41k')
 })
 
 test('workflow phases follow the agents in them', () => {
