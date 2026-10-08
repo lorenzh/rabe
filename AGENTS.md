@@ -41,6 +41,16 @@
 - UI text: sentence case, plain words, no emoji. Status always has a word, never only a colour.
 - Workflows: pin actions to full SHAs, least-privilege `permissions`.
 
+## Documentation
+- Read the docs before the code: start with the table under External References.
+- Every change updates the docs in the same pull request: behaviour, data sources, hooks, modules, commands and settings.
+- The first code that adds a module also creates `docs/architecture.md`; each later module adds its section there.
+- A new or changed data source updates `docs/feasibility.md`.
+- User-visible changes also update `README.md`.
+- Each file in `docs/` starts with frontmatter: `title`, `description`, `tags`, `keywords`.
+- Docs say what a part does and why; code comments do not repeat them.
+- CI fails a pull request that changes code under `hooks/` but not `docs/` or `README.md`. A pure refactor gets the `no-docs` label.
+
 ## Commits and PRs
 - Conventional Commits, imperative, lower case, no period.
 - Commit email: `5694425+lorenzh@users.noreply.github.com`.
@@ -50,6 +60,7 @@
 ## External References
 | Need | File |
 |------|------|
+| How Rabe is built (once code exists) | `docs/architecture.md` |
 | What data exists and where it comes from | `docs/feasibility.md` |
 | Mod API (grep a name, read its doc comment) | `types/claude-code.d.ts` |
 | UI mockups (private) | https://claude.ai/artifact/1Fb364t1W9Fa1Gbi2KXvMq |
