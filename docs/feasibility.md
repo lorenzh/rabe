@@ -2,7 +2,7 @@
 title: What Rabe can see
 description: Where Rabe gets each piece of data about background work (mod API, files on disk, source code), what is not available, the pane key model, and what still needs a runtime test.
 tags: [feasibility, data-sources, mod-api, claude-code, codex, runtime-tests]
-keywords: [subagent, workflow, workflowPhase, meta.json, worktree, codex, rollout, threadId, token_count, model_reasoning_summary, shell, task output, monitor, cron, CronList, TaskStop, tool.check, hotkey, Button, focus, band, pane, 4 MiB, n/a]
+keywords: [transcript, tool_use, tool_result, item_completed, CommandExecution, custom_tool_call, task_complete, subagent, workflow, workflowPhase, meta.json, worktree, codex, rollout, threadId, token_count, model_reasoning_summary, shell, task output, monitor, cron, CronList, TaskStop, tool.check, hotkey, Button, focus, band, pane, 4 MiB, n/a]
 ---
 
 # What Rabe can see
@@ -94,6 +94,18 @@ Line times: task notifications are delayed and often carry several lines, so the
 - **Opening focused.** `$.ui.open({ focus: true })` inside `command.run` places the pane but does not focus it. The same call from `$.clock.after(1500)` after the command does focus it.
 - **Large lists.** A tree draws at most 100,000 characters. Draw the visible part and use `$.ui.scroll`.
 - **Status line and toasts.** `$.ui.status` (d.ts:2449) and `$.ui.toast` (d.ts:2437).
+
+## Files the pane reads
+
+The pane reads the file of the item it shows on each draw, through `$.fs.read` (`$.fs.stat` first; a file over 4 MiB is read with `tail -n 400` through `$.process.run`). What it takes from each:
+
+| File | Records used |
+|---|---|
+| Subagent transcript (`transcriptPath`) | The first `user` record is the brief. Each `assistant` record with text starts a turn; its `tool_use` blocks (`name`, `input.file_path`, `command`, `pattern`, `description`, `url` or `prompt`) are the turn's tools. A `user` record's `tool_result` with the same `tool_use_id` ends the tool; `is_error` marks it failed. |
+| Codex session file (`sessionPath`) | `turn_context` (`model`, `effort`, `sandbox_policy.type`); `response_item` `message` from the assistant starts a turn; `event_msg` `item_completed` of type `CommandExecution` (`command`, last element; `exit_code`; `aggregated_output` line count); a `custom_tool_call` with no `custom_tool_call_output` yet is a running command, its text taken from `cmd:"..."` in the script; `token_count` `info.total_token_usage`; `task_complete` `last_agent_message` is the result. Checked against Codex CLI 0.160.1 files. |
+| Task output (`outputPath`) | The lines, last ones shown. The `[exited with code N]` line shows as written. |
+
+Each one is undocumented: a record or field that is missing is skipped, and a file that cannot be read shows an `Error` line in the pane.
 
 ## Files outside the project
 

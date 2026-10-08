@@ -2,7 +2,7 @@
 title: How Rabe is built
 description: The item model, the registry in session state, the source contract and the split between band and pane, so that each source and view can be built on its own.
 tags: [architecture, item-model, registry, sources, ui, state]
-keywords: [RabeItem, RabeItemKind, RabeItemStatus, NewItem, ItemPatch, itemId, addItem, updateItem, endItem, capEnded, commit, MAX_ENDED, write loop, Source, sources, register.tsx, band, pane, AbovePrompt, Pane, tab, $.state, ifVersion, scanner]
+keywords: [nextRuns, parseClaude, parseCodex, act, rabe.filter, rabe.open, RabeItem, RabeItemKind, RabeItemStatus, NewItem, ItemPatch, itemId, addItem, updateItem, endItem, capEnded, commit, MAX_ENDED, write loop, Source, sources, register.tsx, band, pane, AbovePrompt, Pane, tab, $.state, ifVersion, scanner]
 ---
 
 # How Rabe is built
@@ -17,7 +17,8 @@ hooks/
   sources/index.ts    Source type and sources(on), which calls each source
   sources/<kind>.ts   one module per source (none yet)
   ui/band.tsx         the band above the prompt
-  ui/pane.tsx         the /rabe command and its pane
+  ui/pane.tsx         the /rabe command, its pane, file reads and actions
+  ui/*.ts(x)          pure view code: lists, facts, format, cron, parsers, tabs
 types/index.d.ts      the state contract: item types and the $.state keys
 ```
 
@@ -137,9 +138,62 @@ A source owns the items of its kind. It uses `itemId(kind, nativeId)` for ids, s
 
 ## The views
 
-The band and the pane read `rabe.items` and draw. Neither writes items.
+The band and the pane read `rabe.items` and draw. Neither writes items. Shared view code is pure: it gets the surface's element table and an `act(action)` callback, never `$`. Only `pane.tsx` turns an action into `$` calls, in its top-level `act($, action)`.
 
-- `hooks/ui/band.tsx`, `band(on)`: a `ui.render` hook on `AbovePrompt`. With no running item, or while a survey holds the band, it calls `next(e)` and draws nothing. Otherwise it draws one line: the number of running items.
-- `hooks/ui/pane.tsx`, `pane(on)`: registers `/rabe`, opens the pane `rabe`, and draws it. A row of Buttons selects the tab: Items (with the item count), Cost, Effects and Timeline. The selected tab is the `$.state` key `rabe.tab`. With no items the pane shows "Nothing runs in the background." The Items tab lists each item as status word, kind and title; the other tabs are not built yet. The last line is the key hint "tab to select · esc close", because nothing holds focus when the pane opens.
+| File | What it holds |
+|---|---|
+| `ui/band.tsx` | `band(on)`: the band above the prompt |
+| `ui/pane.tsx` | `pane(on)`: `/rabe`, the pane, the redraw tick, file reads and actions |
+| `ui/items.tsx` | Items tab: filter row, search, grouped list, summary, detail views per kind |
+| `ui/tabs.tsx` | Cost, Effects and Timeline tabs |
+| `ui/view.ts` | `Ui`, `View`, `Action`, `Loaded`, and which items can be stopped |
+| `ui/lists.ts` | Pure grouping, sorting, labels, band rows, totals, phases, tree, bars |
+| `ui/facts.ts` | The fact lines of one item (model, worktree, spend, start, exit code) |
+| `ui/format.ts` | Durations, ages, countdowns, token and dollar amounts, `fit` |
+| `ui/cron.ts` | `nextRuns(schedule, from, count)`: the next runs of a five-field cron schedule |
+| `ui/transcript.ts` | `parseClaude(text)`: a subagent transcript as brief, turns and tools |
+| `ui/rollout.ts` | `parseCodex(text)`: a Codex session file as model, tokens, turns and commands |
+| `ui/fixtures.ts` | Fake items for the tests; nothing else imports it |
 
-Both views are tested on the `terminal` and `desktop` surfaces. Tests feed items with a test hook on `state.get` that answers `rabe.items`.
+### The band
+
+A `ui.render` hook on `AbovePrompt`. With no running item, or while a survey holds the band, it calls `next(e)` and draws nothing. Otherwise it draws one row per kind that has something to show: `claude`, `codex`, `workflow` (phase and agent count), `shells` (with port), `failed` (ended in the last 10 minutes), `watch` (monitors) and `cron` (countdown to the next run), then a `$ cost` row when any tokens are known. Each row lists names until the width is used and ends with `+N`. When the rows do not fit in `maxRows`, the band draws one line instead: `◐ 3 agents (2 claude, 1 codex) · ▶ 2 shells · ✗ 1 failed · …`. The engine owns collapsing (ctrl+x ctrl+a); the hook gets no collapsed flag.
+
+### The pane
+
+`/rabe` opens the pane `rabe`. The command cannot focus it (see feasibility), so `pane.tsx` opens it again with `focus: true` from `$.clock.after(1500)`. Until the pane holds the keys, the last line says "tab to select · esc close".
+
+The tab Buttons have the hotkeys `1` to `4`. The selected tab is `rabe.tab`. Each other value the pane keeps is a `$.state` key too, so a hot reload keeps it:
+
+| Key | What it holds |
+|---|---|
+| `rabe.filter` | `all`, `agents`, `shells`, `monitors`, `cron` or `failed` |
+| `rabe.query` | The search text; matches title, kind, command, prompt, description and agent type |
+| `rabe.page` | The page of a filtered list |
+| `rabe.folded` | The groups folded in the All view |
+| `rabe.selected` | The item under the focus (set from `ui.focus`) or last opened |
+| `rabe.open` | The item whose full detail shows; `''` shows the list |
+
+Keys follow the feasibility key model: every row is a focusable `Button` (`row:<item id>`), Tab and Down move, Enter opens. Hotkeys are lowercase letters: `s` search (moves the focus to the search `Input`), `x` stop, `g` stop group or stop run, `f` follow (scroll to the end), `m` message agent, `c` copy command or prompt, `d` delete a cron job, `b` back to the list. Mobile has no `Input`, so the search and the message field are left out there.
+
+**Items tab.** A filter row (All, Agents, Shells, Monitors, Cron, Failed when any) and the search field. The All view groups items: failed first, then agents (Claude, Codex, workflows), shells, monitors and cron. Inside a group, running items come first, then the newest. A group header folds the group. Each row reads status word, kind, name, time. A docked pane 100 or more columns wide shows the selected item beside the list; a narrow or inline pane shows one summary line under the list. Enter opens the full detail in the same pane.
+
+**Detail per kind.** Every detail shows the item's facts, then:
+
+- Agent: brief, older turns folded into one line with tool counts, the last turns with their tools (`⎿ Edit path`, running or error marks), from the transcript at `transcriptPath`.
+- Codex: prompt, turns (`◆`) with their commands, exit codes and line counts, the result when done, from the session file at `sessionPath`.
+- Workflow: the phases as `✓ Review → ◐ Verify → · Report`, and the agents of each phase as rows.
+- Shell and monitor: the last lines of the output file.
+- Cron: the next five runs, computed from the schedule.
+
+A file that cannot be read shows a line starting with `Error`; a file over 4 MiB is read with `tail -n 400` through `$.process.run` and shows a `Warning`. Missing fields show `n/a`, and an item without `startedAt` says "started before Rabe loaded".
+
+**Cost tab.** Session total, tokens, Claude and Codex totals, the number of items without tokens, and agents and Codex jobs sorted by tokens. **Effects tab.** Worktrees from agent details, and ports of running shells with the `ssh -L` command; Enter copies it. **Timeline tab.** One bar per item over the session, and the tree of who started what, from `parentId`.
+
+**Long lists.** The pane draws only what fits in `scroll.bodyRows`: each group in the All view shows a share of the rows and ends with "… N more", which opens that group's filter; a filtered list is paged ("… N more · page 1 of 3"). Turn views keep the last turns and fold the rest; Cost and Timeline end with "… N more".
+
+**Live updates.** `session.start` starts `$.clock.every(1000)`, which calls `$.ui.invalidate('ui.render')` while any item runs. The pane re-reads the open item's file on each draw.
+
+**Actions.** Stop calls `TaskStop` with the task id (shells, monitors, workflows) or the agent id. Delete calls `CronDelete`. Message calls `$.session.send` to the agent. Copy calls `$.ui.copy`. Each answers with a toast: "Stopping …", "Stop refused: …", "Stopped 7 of 9; 2 had already finished", "Message sent to …".
+
+Both views are tested on the `terminal` and `desktop` surfaces. Tests feed items with a test hook on `state.get` that answers `rabe.items`, files with hooks on `fs.stat` and `fs.read`, and fix the time with `mock.clock`.
