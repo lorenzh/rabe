@@ -1,7 +1,7 @@
 ---
 description: Report a Rabe bug as a GitHub issue in lorenzh/rabe, after you check the draft
 argument-hint: "[what went wrong]"
-allowed-tools: Bash(claude --version), Bash(uname -sr), Bash(gh auth status), Bash(gh issue create:*)
+allowed-tools: Bash(claude --version), Bash(uname -sr), Bash(gh auth status)
 ---
 
 Help the person report a bug in Rabe, the Claude Code mod, as an issue in the public repository `lorenzh/rabe`.
@@ -18,4 +18,10 @@ Steps:
 2. Write a draft with a short title and these sections, matching `.github/ISSUE_TEMPLATE/bug_report.yml`: What happened, What you expected, Steps to reproduce, Rabe version, Claude Code version, Operating system, Error lines.
 3. Keep private data out: no home paths, user or project names, prompts, transcript text, tokens or email addresses. Replace them with placeholders such as `<project>`. Include such data only if the person asks for it.
 4. Show the full draft and ask: "Create this issue in lorenzh/rabe? It will be public." Do nothing more until they say yes. Apply any changes they ask for and show the draft again.
-5. After a yes: if `gh auth status` succeeds, run `gh issue create --repo lorenzh/rabe --label bug --title "<title>" --body "<body>"` and give them the issue link. Otherwise give them this link to open, with the title and body URL-encoded: `https://github.com/lorenzh/rabe/issues/new?template=bug_report.yml&labels=bug&title=<title>&what-happened=<what happened>&expected=<expected>&steps=<steps>&rabe-version=<version>&claude-code-version=<version>&os=<os>&errors=<errors>`.
+5. After a yes: if `gh auth status` succeeds, create the issue with the body passed through a quoted heredoc, so nothing in the text is expanded by the shell, and the title in single quotes with each `'` written as `'\''`:
+   ```sh
+   gh issue create --repo lorenzh/rabe --label bug --title '<title>' --body-file - <<'RABE_ISSUE_BODY'
+   <body>
+   RABE_ISSUE_BODY
+   ```
+   Claude Code asks the person to allow this command; that is the second confirmation. Then give them the issue link. Otherwise give them this link to open, with every value URL-encoded: `https://github.com/lorenzh/rabe/issues/new?template=bug_report.yml&title=<title>&what-happened=<what happened>&expected=<expected>&steps=<steps>&rabe-version=<version>&claude-code-version=<version>&os=<os>&errors=<errors>`.
