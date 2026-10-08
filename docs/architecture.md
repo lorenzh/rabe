@@ -214,7 +214,7 @@ The next three sources follow the work Claude Code runs as background tasks. Eac
 | `tool.call` `{ tool: 'Bash' }` | After `next(e)`: a result with `backgroundTaskId` adds `shell:<taskId>`, title the command. `outputPath` comes from the result text (`Output is being written to: …`). This covers `run_in_background`, Ctrl+B and a timed-out command. In a subagent, `parentId` is `agent:<agentId>`. |
 | `prompt.submit` `{ origin: { kind: 'task-notification' } }` | Each `<task-notification>` with a `<status>` ends its shell: `completed` is done, `failed` failed, `killed` stopped. The exit code comes from the summary (`failed with exit code 3`). |
 | `session.start` | Starts a poll every 2 s. It reads the output file of each running shell, guesses a port (`localhost:5173`, `port 4000`), and ends the shell at the last line `[exited with code N]` or `[killed]`. |
-| `classic.Stop` | A running shell missing from `background_tasks` ends by its exit line, else as stopped. A shell in `background_tasks` that Rabe never saw is added, without `startedAt`. |
+| `classic.Stop` | A running shell missing from `background_tasks` ends by its exit line, else as stopped. A shell in `background_tasks` that Rabe never saw is added, without `startedAt`. Claude Code lists a Monitor tool task with type `shell` too, so a task id Rabe already has as `monitor:<id>` is skipped; a monitor started before Rabe loaded still shows as a shell. |
 
 ### Monitors: `hooks/sources/monitors.ts`
 

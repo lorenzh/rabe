@@ -81,7 +81,7 @@ Limits: Codex deletes old session files, so older jobs show `n/a` for tokens and
 | Output file path | The result `text`: `Command running in background with ID: <id>. Output is being written to: <path>.` Tested. |
 | Output, exit code | `/tmp/claude-<uid>/<project>/<session>/tasks/<taskId>.output`. Live output, then an empty line and `[exited with code N]`, or `[killed]` for a stopped task. Tested. Read with `$.fs` up to 4 MiB, beyond that with `tail -c` through `$.process.run`. |
 | End | `prompt.submit` with `origin.kind` `task-notification`. Its text holds `<task-notification>` blocks with `<task-id>`, `<tool-use-id>`, `<output-file>`, `<status>` (`completed`, `failed`, `killed`) and `<summary>` (`… failed with exit code 3`). Tested. The `UserMessage` row's `task` (d.ts:14467) has the same fields and `durationMs`, but only while the row is drawn. |
-| Still running | `classic.Stop` `background_tasks` lists running work (`type` `shell` with `command`, `monitor`, `subagent`, `workflow`); a finished task is not in it. |
+| Still running | `classic.Stop` `background_tasks` lists running work (`type` `shell` with `command`, `monitor`, `subagent`, `workflow`); a finished task is not in it. A Monitor tool task runs as a `local_bash` task, so it is listed as `shell` with a `command`; `monitor` is only an MCP or WebSocket monitor (checked in the 2.1.295 source, `local_bash: "shell"`, `monitor_mcp` and `monitor_ws: "monitor"`). |
 | Port | Not reported. Guessed from the output (`localhost:5173`, `127.0.0.1:8080`, `port 4000`). `ss -ltnp` is not used. |
 | Stop | `TaskStop`. |
 

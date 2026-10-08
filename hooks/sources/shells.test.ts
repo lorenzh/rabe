@@ -178,3 +178,31 @@ test('at Stop a shell started before Rabe loaded is added', async ($, on) => {
     },
   ])
 })
+
+test('at Stop a monitor, which Claude Code lists as a shell, is not added as a shell', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const monitor = {
+    id: 'monitor:m1',
+    kind: 'monitor',
+    title: 'CI run',
+    status: 'running',
+    seenAt: 500,
+    detail: { command: 'gh run watch 1', taskId: 'm1' },
+  }
+  state['rabe.items'] = { value: [monitor], version: 1 }
+  core(on)
+  await $.classic.Stop({
+    stop_hook_active: false,
+    background_tasks: [
+      {
+        id: 'm1',
+        type: 'shell',
+        status: 'running',
+        description: 'CI run',
+        command: 'gh run watch 1',
+      },
+    ],
+  })
+  expect(state['rabe.items']?.value).toEqual([monitor])
+})

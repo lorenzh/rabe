@@ -107,7 +107,11 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
   await write($, held =>
     tasks.reduce((next, task) => {
       const id = itemId('shell', task.id)
-      if (task.type !== 'shell' || !task.command || next.some(item => item.id === id)) return next
+      // Claude Code lists a Monitor tool task as type 'shell' too.
+      const known = [id, itemId('monitor', task.id)]
+      if (task.type !== 'shell' || !task.command || next.some(item => known.includes(item.id))) {
+        return next
+      }
       const outputPath = taskOutput(items, task.id)
 
       return addItem(
