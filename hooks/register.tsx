@@ -2,10 +2,12 @@ import type { Register } from 'claude-code'
 
 import { sources } from './sources'
 import { band } from './ui/band'
+import { builtin } from './ui/builtin'
 import { pane } from './ui/pane'
 
-export const register: Register = on => {
+export const register: Register = (on, options) => {
   sources(on)
   band(on)
   pane(on)
+  if (options.hideBuiltinTasks !== false) builtin(on)
 }
