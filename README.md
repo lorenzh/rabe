@@ -36,6 +36,10 @@ bun run check
 
 Contributor and agent rules are in [AGENTS.md](AGENTS.md).
 
+## Feedback and bugs
+
+In Claude Code, `/rabe:report-bug` and `/rabe:feedback` draft an issue for this repo. You check the draft before anything is sent. They use the `gh` CLI when you are logged in, and otherwise give you a link to a prefilled issue. You can also [open an issue](https://github.com/lorenzh/rabe/issues/new/choose) directly.
+
 ## License
 
 [MIT](LICENSE)
