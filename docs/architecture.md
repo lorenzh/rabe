@@ -76,11 +76,11 @@ An optional field that is absent means the data is not known. Views show it as `
 - `NewItem`: an item without `seenAt`, what a source passes to `addItem`.
 - `ItemPatch`: the fields `updateItem` can change; `detail` is merged, not replaced.
 - `EndStatus`: `done`, `failed` or `stopped`.
-- `itemId(kind, nativeId)` and `mergeItem(item, patch)`.
+- `itemId(kind, nativeId)` and `mergeItem(item, patch)`. `mergeItem` always keeps the item's own `seenAt`, also when a full `RabeItem` is passed as the patch.
 
 ## The registry
 
-The items live in one session value, `$.state` key `rabe.items`, an array in the order Rabe first saw them. It survives a hot reload. `registry.ts` has pure functions that take the list and return the next list. Each returns the same array when nothing changed:
+The items live in one session value, `$.state` key `rabe.items`, an array in the order Rabe first saw them. It survives a hot reload. `registry.ts` has pure functions that take the list and return the next list. Each returns the same array when nothing changed. Values are compared with their object keys sorted, so `{ input: 10, output: 20 }` and `{ output: 20, input: 10 }` count as the same and cause no write:
 
 | Function | What it does |
 |---|---|

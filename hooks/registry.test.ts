@@ -75,3 +75,17 @@ test('commit answers undefined when nothing changed, else the capped list', () =
   }))
   expect(commit(many, held => held.slice())).toHaveLength(MAX_ENDED)
 })
+
+test('add keeps seenAt when a full item comes back', () => {
+  const items = addItem(
+    [{ ...shell, seenAt: 1 }],
+    { ...shell, title: 'tests', seenAt: 99 } as NewItem,
+    900,
+  )
+  expect(items[0]?.seenAt).toBe(1)
+})
+
+test('update treats objects with the same values in another key order as no change', () => {
+  const items = [{ ...shell, seenAt: 500, tokens: { input: 10, output: 20 } }]
+  expect(updateItem(items, shell.id, { tokens: { output: 20, input: 10 } })).toBe(items)
+})

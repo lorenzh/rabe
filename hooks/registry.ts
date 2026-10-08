@@ -4,8 +4,14 @@ export const MAX_ENDED = 200
 
 export type Change = (items: RabeItem[]) => RabeItem[]
 
+function sortKeys(_key: string, value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+
+  return Object.fromEntries(Object.entries(value).toSorted(([a], [b]) => (a < b ? -1 : 1)))
+}
+
 function replace(items: RabeItem[], index: number, next: RabeItem): RabeItem[] {
-  if (JSON.stringify(items[index]) === JSON.stringify(next)) return items
+  if (JSON.stringify(items[index], sortKeys) === JSON.stringify(next, sortKeys)) return items
 
   return items.with(index, next)
 }

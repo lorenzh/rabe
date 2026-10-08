@@ -22,5 +22,10 @@ export function itemId(kind: RabeItemKind, nativeId: string): string {
 }
 
 export function mergeItem(item: RabeItem, patch: ItemPatch): RabeItem {
-  return { ...item, ...patch, detail: { ...item.detail, ...patch.detail } } as RabeItem
+  return {
+    ...item,
+    ...patch,
+    seenAt: item.seenAt,
+    detail: { ...item.detail, ...patch.detail },
+  } as RabeItem
 }
