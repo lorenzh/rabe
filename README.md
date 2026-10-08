@@ -15,14 +15,18 @@ Status: early development. Rabe tracks Claude subagents, workflows, Codex jobs s
 
 ## What you see
 
-- **The band** above the prompt shows one row per kind while something runs: Claude agents, Codex jobs, workflows, shells with their ports, failures from the last 10 minutes, monitors, cron countdowns, and the token cost. It draws nothing when nothing runs, and one line when the rows do not fit.
+- **The band** above the prompt shows one row per kind while something runs: failures from the last 10 minutes first, then Claude agents, Codex jobs, workflows, shells with their ports, monitors, cron countdowns, and the token cost. It draws nothing when nothing runs, and one line when the rows do not fit.
 - **`/rabe`** opens a pane with four tabs (`1` to `4`):
-  - **Items**: every item grouped by kind, failures first, with a filter row and a search field. Enter opens an item: the turns of a Claude agent or a Codex job, the phases and agents of a workflow, the output of a shell or monitor, the next runs of a cron job.
+  - **Items**: every item grouped by kind, failures first, with a search field. A wide terminal pane shows the selected item beside the list. Enter opens an item: the turns of a Claude agent or a Codex job, the phases and agents of a workflow, the output of a shell or monitor, the next runs of a cron job.
   - **Cost**: tokens per agent and Codex job. Dollars show `n/a` until Rabe has a price table.
   - **Effects**: worktrees and open ports, with the `ssh -L` command to reach a port.
   - **Timeline**: when each item ran, and who started what.
 
-Keys: press Tab first (nothing holds the focus when the pane opens), then Tab or Down to move and Enter to open. Letters act on the selected item: `s` search, `x` stop, `g` stop group, `f` follow, `m` message an agent, `c` copy, `d` delete a cron job, `b` back. Esc closes the pane.
+In the terminal the band and the pane are drawn as colored cells; the desktop app shows the same content as text and buttons.
+
+Keys: `j` and `k` move, Enter opens, `b` goes back. Letters act on the selected item: `s` search, `x` stop, `g` stop group or run, `m` message an agent, `c` copy, `d` delete a cron job. The buttons under the pane show each key. A letter that is not bound goes to the prompt. Esc closes the pane.
+
+Rabe hides Claude Code's own count of background work (`2 shells, 1 monitor · ↓ to manage` under the prompt, and `still running` at the end of a turn), since the band shows it. Turn this off with the plugin option `hideBuiltinTasks` in `/plugin`. The agent list under the prompt cannot be hidden.
 
 ## Install
 

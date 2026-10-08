@@ -24,12 +24,12 @@
 - A test's `$` has no `state` noun: watch writes with a test hook on `state.set`. A test needs `mock.clock(on)` when the code reads the clock.
 
 ## Code Layout
-- `hooks/register.tsx`: entry point; calls `sources(on)`, `band(on)` and `pane(on)`, nothing else.
+- `hooks/register.tsx`: entry point; calls `sources(on)`, `band(on)`, `pane(on)` and, unless the option `hideBuiltinTasks` is false, `builtin(on)`; nothing else.
 - `hooks/model.ts`: the item types and pure item helpers. `hooks/registry.ts`: pure changes to the item list.
 - `hooks/sources/<kind>.ts`: one module per source (agents, codex, shells, monitors, crons, workflows) that turns events and files into items; `hooks/sources/index.ts` calls each one.
-- `hooks/tasks.ts`, `hooks/schedule.ts`: pure parsers for task notifications, task output files and cron schedules.
+- `hooks/tasks.ts`, `hooks/schedule.ts`: pure parsers for task notifications, task output files and cron schedules. Views read session state only, never files.
 - `hooks/testing.ts`: test helpers (`memoryState`, `files`, `core`); the test's `$` has no `state` noun.
-- `hooks/ui/`: band and pane drawing. Only `band.tsx` and `pane.tsx` touch `$`; the other view files are pure and take the element table and an `act` callback.
+- `hooks/ui/`: band and pane drawing. Only `band.tsx`, `pane.tsx` and `builtin.tsx` touch `$`. Views are pure `View` functions in `hooks/ui/views/` that return a cell grid and their Buttons; `render.tsx` draws them; the cell engine is `hooks/ui/cells/` (see `docs/architecture.md`).
 - `$.state` keys: declare each in `types/index.d.ts` and name that file as `"types"` in `.claude-plugin/plugin.json`.
 - `types/claude-code.d.ts`: API types written by Claude Code. Do not edit; replace it when the pinned Claude Code version changes.
 
@@ -45,7 +45,7 @@
 - Module variables reset on every reload. Keep session values in `$.state` and values across sessions in `$.store`.
 - Poll with `$.clock.every`, and write state only when a value changed.
 - Keys: focusable Buttons and lowercase letter hotkeys only. `X`, `/`, space and `←→` cannot be bindings.
-- UI text: sentence case, plain words, no emoji. Status always has a word, never only a colour.
+- UI text: sentence case, plain words, no emoji. Status always has a word, never only a colour. Raster cells take width-1 BMP characters only; `safe()` replaces the rest.
 - Workflows: pin actions to full SHAs, least-privilege `permissions`.
 
 ## Documentation

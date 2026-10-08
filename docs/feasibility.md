@@ -1,8 +1,8 @@
 ---
 title: What Rabe can see
-description: Where Rabe gets each piece of data about background work (mod API, files on disk, source code), what is not available, the pane key model, and what still needs a runtime test.
+description: Where Rabe gets each piece of data about background work (mod API, files on disk, source code), what is not available, the pane key model, what a Raster can draw, what of Claude Code's own display a mod can hide, and what still needs a runtime test.
 tags: [feasibility, data-sources, mod-api, claude-code, codex, runtime-tests]
-keywords: [installed_plugins.json, CLAUDE_PLUGIN_DATA, CODEX_HOME, sessionId, custom_tool_call, CommandExecution, subagent, workflow, workflowPhase, meta.json, worktree, codex, rollout, threadId, token_count, model_reasoning_summary, shell, task output, monitor, cron, CronList, TaskStop, tool.check, hotkey, Button, focus, band, pane, 4 MiB, n/a, task-notification, output-file, exited with code, killed, backgroundTaskId, background_tasks, session_crons, ScheduleWakeup, scheduledFor, scheduled-trigger, transcript, tool_use, tool_result, item_completed, task_complete]
+keywords: [Raster, cells, bodyColumns, blit, autoFocus, closeOnEscape, PromptHint, TurnDuration, disableAgentView, agent list, local_bash, installed_plugins.json, CLAUDE_PLUGIN_DATA, CODEX_HOME, sessionId, custom_tool_call, CommandExecution, subagent, workflow, workflowPhase, meta.json, worktree, codex, rollout, threadId, token_count, model_reasoning_summary, shell, task output, monitor, cron, CronList, TaskStop, tool.check, hotkey, Button, focus, band, pane, 4 MiB, n/a, task-notification, output-file, exited with code, killed, backgroundTaskId, background_tasks, session_crons, ScheduleWakeup, scheduledFor, scheduled-trigger, transcript, tool_use, tool_result, item_completed, task_complete]
 ---
 
 # What Rabe can see
@@ -111,28 +111,54 @@ Line times: task notifications are delayed and often carry several lines, so the
 
 - **Band above the prompt.** Several lines up to `maxRows`; the engine draws its own "n more" row (d.ts:10200). Collapse belongs to the engine (ctrl+x ctrl+a, d.ts:10184); the hook gets no collapsed flag. When nothing runs, the band draws nothing.
 - **Pane.** Docks beside the transcript, or sits inline at about a third of the height. There is no full screen (d.ts:10241). Design for narrow widths with `bodyColumns`.
-- **Keys.** Tested: nothing holds focus when the pane opens, so Enter does nothing until Tab is pressed. Tab and Down move focus between Buttons (`ui.focus` fires); Left and Right do nothing. Enter presses the focused Button. Space never presses a Button: it takes the keys away from the pane. Hotkeys are one digit or one lowercase letter, and Shift is ignored, so `X` is the same as `x` (d.ts:1070, d.ts:9334). `/`, space and `←→` cannot be bindings. Esc closes the pane. `Client.onKey` gets every key, but only after a mouse click (d.ts:1583).
+- **Keys.** Tested: nothing holds focus when the pane opens, so Enter does nothing until Tab is pressed, unless a Button has `autoFocus`. Tab and Down move focus between Buttons (`ui.focus` fires); Left and Right do nothing. Enter presses the focused Button. Space never presses a Button: it takes the keys away from the pane. Hotkeys are one digit or one lowercase letter, and Shift is ignored, so `X` is the same as `x` (d.ts:1070, d.ts:9334). `/`, space and `←→` cannot be bindings. `Client.onKey` gets every key, but only after a mouse click (d.ts:1583).
+- **Esc.** Without `closeOnEscape` Esc only returns the keys and the pane stays. With it, Esc closes the pane while it holds the keys, and at an idle, empty prompt (`PaneOpenArgs.closeOnEscape`).
 - **Opening focused.** `$.ui.open({ focus: true })` inside `command.run` places the pane but does not focus it. The same call from `$.clock.after(1500)` after the command does focus it.
 - **Large lists.** A tree draws at most 100,000 characters. Draw the visible part and use `$.ui.scroll`.
 - **Status line and toasts.** `$.ui.status` (d.ts:2449) and `$.ui.toast` (d.ts:2437).
 
-## Files the pane reads
+### Raster
 
-The pane reads the file of the item it shows on each draw, through `$.fs.read` (`$.fs.stat` first; a file over 4 MiB is read with `tail -n 400` through `$.process.run`). What it takes from each:
+`Raster` (d.ts:9188) is a fixed grid of cells: `columns` 1 to 512, `rows` 1 to 256, and `cells`, standard padded base64 of little-endian u32 triplets `[codePoint, foreground, background]`. A code point is one printable width-1 BMP character, or the tree is refused naming the cell's index. A color is `0x00RRGGBB`, or `0x01000000` for the terminal's default. No bold, underline or italic. It is a leaf (no press, no focus), and only the terminal's element table has it.
 
-| File | Records used |
-|---|---|
-| Subagent transcript (`transcriptPath`) | The first `user` record is the brief. Each `assistant` record with text starts a turn; its `tool_use` blocks (`name`, `input.file_path`, `command`, `pattern`, `description`, `url` or `prompt`) are the turn's tools. A `user` record's `tool_result` with the same `tool_use_id` ends the tool; `is_error` marks it failed. |
-| Codex session file (`sessionPath`) | `turn_context` (`model`, `effort`, `sandbox_policy.type`); `response_item` `message` from the assistant starts a turn; `event_msg` `item_completed` of type `CommandExecution` (`command`, last element; `exit_code`; `aggregated_output` line count); a `custom_tool_call` with no `custom_tool_call_output` of the same `call_id` yet is a running command, its text taken from `cmd:"..."` in the script; `response_item` `reasoning` with `summary[].text` goes with the next turn; `token_count` `info.total_token_usage`; `task_complete` `last_agent_message` is the result. Checked against Codex CLI 0.160.1 files. |
-| Task output (`outputPath`) | The lines, last ones shown. The `[exited with code N]` line shows as written. |
+Tested in a live 2.1.295 session in tmux (a spike mod, 2026-10-08):
 
-Each one is undocumented: a record or field that is missing is skipped, and a file that cannot be read shows an `Error` line in the pane.
+1. A Raster draws in a docked pane and in the AbovePrompt band, with colored backgrounds, box drawing, blocks and the icons `◐ ▶ ✗ ◉ ⟳`. A Button row draws below a Raster.
+2. Size: `$.ui.open({ columns: 100 })` gave a dock of `bodyColumns` 72 at a 200-column terminal; the person can drag it wider. At 100 terminal columns the pane goes inline with `bodyColumns` 96. A Raster wider than the body is cut on the right, and the engine's `[-]` draws over its top row. So every Raster is sized from `bodyColumns` and `scroll.bodyRows` on every draw.
+3. `$.ui.blit` repaints only the changed cells (about 80 bytes a frame) and is refused after a size change ("a resize is a redraw"). Blit only between resizes, otherwise redraw.
+4. Default focus works: `autoFocus` on a Button, or `$.ui.focus({ requestId, key })` right after the open. `$.ui.focus` is refused while keys are still arriving.
+5. Button hotkeys `j`, `k`, `x` fire while the pane holds the keys. A letter no Button binds moves the focus to the prompt, and the next keys type into the composer. No hook can keep the keys: there is no `ui.key` event, and a focused Input takes every key and stops the hotkeys. So Rabe binds the common letters on Buttons and shows the hint.
+6. Under tmux the colors become 256-color codes.
+7. Text in Raster cells copies intact through terminal selection.
+8. On the desktop `$.ui.resolve` still returns a Raster constructor, but it draws an empty Box. The text fallback is chosen by `e.surface === 'terminal'`, not by checking for `Raster`.
+
+### Claude Code's own count of background work
+
+- **PromptHint** (d.ts:10152). `hint` is one string, the parts joined by ` · `: `PR #5 · 2 shells, 1 monitor · esc to interrupt · ↓ to manage`. Tested: `next({ ...e, props: { ...e.props, hint } })` with the task part removed hides it, and the mode label (`⏵⏵ auto mode on`) is not part of `hint` and stays. Rewriting the whole hint would drop `esc to interrupt` and `PR #5`, so only the task part goes. ↓ still opens Claude Code's background manager.
+- **TurnDuration** (d.ts:10078). The line reads `✻ Brewed for 5s · done 1:16 · 2 shells, 1 monitor still running`, but the props are only `word`, `durationMs` and `onScreen`. The source shows the rest comes from the message's timestamp (`done`), a token budget, hidden messages and the live task list, none of them props. To drop the "still running" part a hook must draw the whole line, and it then cannot show `done 1:16`. While background agents or workflows are pending, the engine draws "Waiting for …" and no "still running" part.
+- **The agent list under the prompt** cannot be hidden by a mod: it is no `RenderComponent`, and no setting hides it. `disableAgentView` does not hide it, and it turns off agent view, `claude agents`, `--bg` and the daemon, so Rabe does not use it.
+
+## Where the views get their data
+
+The views read no files. The sources keep what the views show in session state:
+
+| Data | Where the views read it | Written by |
+|---|---|---|
+| Agent turns | `rabe.turns` | `turn.step` with `agentId` (agents source); agents that ran before Rabe loaded have no turns |
+| Codex steps, prompt, model | the item's `detail` (`steps`, `prompt`, `model`, `effort`) | the Codex source, from the Codex session file |
+| Shell and monitor output | `rabe.lines` | the shells and monitors sources, from the task output file |
+
+A file the source cannot read leaves the value as it was, and the view shows `n/a`.
 
 ## Files outside the project
 
 Tested: `$.fs.stat` and `$.fs.read` read files under `~/.codex/sessions` and `/tmp/claude-<uid>/…/tasks/` without a prompt or a denial.
 
 ## Still to test at runtime
+
+- Does Rabe's own turn line (`✻ Brewed for 5s`, one empty line above) sit where the engine's did, in every transcript layout?
+- Which words does the hint use for agents, workflows and teammates in its task part? `stripTasks` drops parts like `1 background agent`; others stay.
+- Is the grid's background readable in light terminal themes? Plain text and the background use the terminal's default; chips and the selected row use fixed dark backgrounds.
 
 - Does `CronList` also list `ScheduleWakeup` wakeups, and with which id?
 - Is a `prompt.submit` raised for a task notification delivered into a running turn, as for one dequeued when idle?

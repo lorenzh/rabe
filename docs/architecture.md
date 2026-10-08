@@ -1,8 +1,8 @@
 ---
 title: How Rabe is built
-description: The item model, the registry in session state, the source contract and the split between band and pane, so that each source and view can be built on its own.
-tags: [architecture, item-model, registry, sources, ui, state]
-keywords: [RabeTurn, rabe.turns, agents, workflows, agent.spawn, turn.step, turn.complete, SubagentStart, meta.json, task-notification, matcher, codex source, rabe-stop, parseRollout, codexItem, RabeCodexStep, RabeItem, RabeItemKind, RabeItemStatus, NewItem, ItemPatch, itemId, addItem, updateItem, endItem, capEnded, commit, MAX_ENDED, write loop, Source, sources, register.tsx, band, pane, AbovePrompt, Pane, tab, $.state, ifVersion, scanner, shells, monitors, crons, tasks.ts, schedule.ts, nextRun, nextRuns, parseNotifications, parseOutput, guessPort, rabe.lines, RabeLines, memoryState, parseClaude, parseCodex, act, rabe.filter, rabe.open]
+description: The item model, the registry in session state, the source contract, the cell engine and the view contract behind the band and the pane, and how Rabe hides Claude Code's own count of background work, so that each source and view can be built on its own.
+tags: [architecture, item-model, registry, sources, ui, state, raster]
+keywords: [Raster, cells, grid, palette, DEFAULT, View, Drawn, ViewButton, ViewInput, Selection, render, paneView, bandView, itemsView, detailView, TABS, controlRows, SPLIT_COLUMNS, bodyColumns, closeOnEscape, PromptHint, TurnDuration, hideBuiltinTasks, stripTasks, RabeTurn, rabe.turns, agents, workflows, agent.spawn, turn.step, turn.complete, SubagentStart, meta.json, task-notification, matcher, codex source, rabe-stop, parseRollout, codexItem, RabeCodexStep, RabeItem, RabeItemKind, RabeItemStatus, NewItem, ItemPatch, itemId, addItem, updateItem, endItem, capEnded, commit, MAX_ENDED, write loop, Source, sources, register.tsx, band, pane, AbovePrompt, Pane, tab, $.state, ifVersion, scanner, shells, monitors, crons, tasks.ts, schedule.ts, nextRun, nextRuns, parseNotifications, parseOutput, guessPort, rabe.lines, RabeLines, memoryState, act, rabe.selected, rabe.open]
 ---
 
 # How Rabe is built
@@ -25,8 +25,13 @@ hooks/
   schedule.ts         pure: next runs of a cron expression
   testing.ts          test helpers: state in memory, files, core stubs
   ui/band.tsx         the band above the prompt
-  ui/pane.tsx         the /rabe command, its pane, file reads and actions
-  ui/*.ts(x)          pure view code: lists, facts, format, parsers, tabs
+  ui/pane.tsx         the /rabe command, its pane and actions
+  ui/builtin.tsx      hides Claude Code's own count of background work
+  ui/render.tsx       one renderer: a view's grid as a Raster, or as Text and Buttons
+  ui/view.ts          the view contract: Model, Size, Selection, Drawn, View, Action
+  ui/cells/           pure cell engine (grid.ts) and the mockup colors (palette.ts)
+  ui/views/           pure views: band, pane frame, items, detail, cost, effects, timeline
+  ui/*.ts             pure helpers: lists, facts, format
 types/index.d.ts      the state contract: item types and the $.state keys
 ```
 
@@ -212,13 +217,15 @@ The next three sources follow the work Claude Code runs as background tasks. Eac
 | Hook | What it does |
 |---|---|
 | `tool.call` `{ tool: 'Bash' }` | After `next(e)`: a result with `backgroundTaskId` adds `shell:<taskId>`, title the command. `outputPath` comes from the result text (`Output is being written to: …`). This covers `run_in_background`, Ctrl+B and a timed-out command. In a subagent, `parentId` is `agent:<agentId>`. |
-| `prompt.submit` `{ origin: { kind: 'task-notification' } }` | Each `<task-notification>` with a `<status>` ends its shell: `completed` is done, `failed` failed, `killed` stopped. The exit code comes from the summary (`failed with exit code 3`). |
-| `session.start` | Starts a poll every 2 s. It reads the output file of each running shell, guesses a port (`localhost:5173`, `port 4000`), and ends the shell at the last line `[exited with code N]` or `[killed]`. |
+| `prompt.submit` `{ origin: { kind: 'task-notification' } }` | Each `<task-notification>` with a `<status>` ends its shell: `completed` is done, `failed` failed, `killed` stopped. The exit code comes from the summary (`failed with exit code 3`). It reads the output file once more first, so a shell that ended between two polls keeps its last lines. |
+| `session.start` | Starts a poll every 2 s. It reads the output file of each running shell, keeps its lines in `rabe.lines` (as the monitors source does), guesses a port (`localhost:5173`, `port 4000`), and ends the shell at the last line `[exited with code N]` or `[killed]`. A file over 4 MiB is read with `tail -c` for the port and the exit line only, so its lines stop at what the poll read before. |
 | `classic.Stop` | A running shell missing from `background_tasks` ends by its exit line, else as stopped. A shell in `background_tasks` that Rabe never saw is added, without `startedAt`. Claude Code lists a Monitor tool task with type `shell` too, so a task id Rabe already has as `monitor:<id>` is skipped; a monitor started before Rabe loaded still shows as a shell. |
 
 ### Monitors: `hooks/sources/monitors.ts`
 
 The same four hooks for the Monitor tool. The Monitor result has no file path, so `outputPath` is the sibling of a task output file Rabe already knows (`taskOutput`), or the `<output-file>` of the end notification.
+
+The end notification is handled only for task ids Rabe has as `monitor:<id>`: a shell's notification also carries an `<output-file>`, and reading it would file shell lines under a monitor id.
 
 Monitor lines are kept apart from the item, in the `$.state` key `rabe.lines`: `Record<itemId, { seen, lines: { at, text }[] }>`. `seen` counts the lines read from the file; `lines` holds the newest 200, each with the time the poll first read it ("received"). The poll and the end notification both read the file, so the last lines are kept even when the notification comes first. Notification `<event>` lines are not used: they come late and in batches.
 
@@ -241,61 +248,136 @@ The test's `$` has no `state` noun. `memoryState(on)` from `hooks/testing.ts` an
 
 ## The views
 
-The band and the pane read `rabe.items` and draw. Neither writes items. Shared view code is pure: it gets the surface's element table and an `act(action)` callback, never `$`. Only `pane.tsx` turns an action into `$` calls, in its top-level `act($, action)`.
+The band and the pane read the sources' session values and draw. Neither writes items, and no view reads a file: the agent turns come from `rabe.turns`, Codex steps from the item's `detail.steps`, and shell and monitor output from `rabe.lines`. Views are pure functions. Only `band.tsx`, `pane.tsx` and `builtin.tsx` touch `$`; `pane.tsx` turns an action into `$` calls in its top-level `act($, action, surface)`.
 
 | File | What it holds |
 |---|---|
-| `ui/band.tsx` | `band(on)`: the band above the prompt |
-| `ui/pane.tsx` | `pane(on)`: `/rabe`, the pane, the redraw tick, file reads and actions |
-| `ui/items.tsx` | Items tab: filter row, search, grouped list, summary, detail views per kind |
-| `ui/tabs.tsx` | Cost, Effects and Timeline tabs |
-| `ui/view.ts` | `Ui`, `View`, `Action`, `Loaded`, and which items can be stopped |
+| `ui/cells/grid.ts` | The cell engine: a grid, text, spans, fill, box lines, bars, wrap, paste, the `cells` encoding |
+| `ui/cells/palette.ts` | The mockup colors, `DEFAULT` (the terminal's own color), chip colors per kind, `tone(item)` |
+| `ui/view.ts` | The view contract: `Model`, `Size`, `Selection`, `Action`, `ViewButton`, `ViewInput`, `Drawn`, `View`; `controlRows`, `canStop`, `taskIdOf` |
+| `ui/render.tsx` | `render(ui, surface, drawn, act)`: a Raster on the terminal, else Text and Buttons |
+| `ui/views/band.ts` | `bandView`: the band's rows |
+| `ui/views/pane.ts` | `paneView` and `TABS`: the tab row, the tab's view or the open item, the hint |
+| `ui/views/items.ts` | `itemsView`: grouped list, split or one-line summary, list Buttons, search |
+| `ui/views/detail.ts` | `detailView` and `bodyLines`: one item in full, per kind |
+| `ui/views/cost.ts`, `effects.ts`, `timeline.ts` | The other tabs |
+| `ui/views/lines.ts` | `Line`, `draw`, `text`, `itemLine`, `headLines`: shared row drawing |
 | `ui/lists.ts` | Pure grouping, sorting, labels, band rows, totals, phases, tree, bars |
 | `ui/facts.ts` | The fact lines of one item (model, worktree, spend, start, exit code) |
-| `ui/format.ts` | Durations, ages, countdowns, token and dollar amounts, `fit` |
-| `ui/transcript.ts` | `parseClaude(text)`: a subagent transcript as brief, turns and tools |
-| `ui/rollout.ts` | `parseCodex(text)`: a Codex session file as model, tokens, turns (with reasoning summaries) and commands; running commands are tracked by `call_id` |
-| `ui/fixtures.ts` | Fake items for the tests; nothing else imports it |
+| `ui/format.ts` | Durations, ages, countdowns, token and dollar amounts |
+| `ui/fixtures.ts` | Fake items and `screen(ui)` for the tests; nothing else imports it |
+
+### The cell engine
+
+A Raster is a fixed grid of terminal cells. Each cell is exactly `[codePoint, foreground, background]`: a code point is one printable width-1 BMP character, a color is `0x00RRGGBB` or `0x01000000` for the terminal's default. A Raster has no bold, underline or italic, so emphasis is color and background (the active tab gets a `━` line under it, the selected row a background and a `▌`). It is a leaf: no press and no focus.
+
+`hooks/ui/cells/grid.ts` builds such grids with plain functions and no `$`. They change the grid they are given and return nothing or the next column:
+
+| Function | What it does |
+|---|---|
+| `grid(columns, rows, style?)` | A grid of spaces in the default colors (or the style's) |
+| `safe(text)` | One cell per character: whitespace becomes a space; a wide, zero-width, emoji, control or non-BMP character becomes `?` |
+| `fit(text, width)` | Pads, or cuts with `…`, to exactly `width` cells |
+| `write(g, x, y, text, style?)` | Text from `(x, y)`, clipped at the edge; a style leaves the colors it does not name |
+| `spans(g, x, y, [[text, style], …], width?)` | Runs of styled text, the last cut with `…` at `width` |
+| `wrap(text, width)` | Lines of at most `width` cells, split at spaces |
+| `fill(g, x, y, w, h, style?, ch?)`, `hline`, `vline`, `box` | Rectangles and box lines (`─ │ ┌ ┐ └ ┘`) |
+| `bar(value, max, width)` | A bar in eighths of a block (`█▉▊▋▌▍▎▏`), padded |
+| `paste(g, src, x, y)` | Copies one grid into another, clipped |
+| `encode(g)` / `decode(columns, rows, base64)` | The Raster `cells` string: little-endian u32 triplets in padded base64 |
+| `lines(g)` | The text of each row, trailing spaces cut: the text fallback and the tests |
+
+`palette.ts` holds the colors of the mockups (`C.orange`, `C.yellow`, `C.dim`, `C.selected` …), `CHIP` (foreground and background per kind, for failed, done and cost), and `tone(item)`, the glyph color of an item. Plain text and the background use `DEFAULT`, so the pane follows the person's theme.
+
+The table of characters that are not width 1 is short; one it misses makes the engine refuse the Raster, naming the cell's index.
+
+### The view contract
+
+Each view is a pure function from the model, the size and the selection to a grid and the controls it needs:
+
+```ts
+type Model = { items: RabeItem[]; turns: Record<string, RabeTurn[]>; lines: Record<string, RabeLines>; now: number }
+type Size = { columns: number; rows: number; surface: RenderSurface; hasInput: boolean }
+type Selection = { tab: RabeTab; query: string; folded: string[]; selected: string; open: string; isFocused: boolean }
+
+type ViewButton = { key: string; label: string; action: Action; hotkey?: string; autoFocus?: true }
+type ViewInput = { key: string; label: string; placeholder: string; submitLabel: string; value?: string; isLive?: boolean; action: (text: string) => Action }
+type Drawn = {
+  grid: Grid
+  buttons: ViewButton[]
+  inputs?: ViewInput[]
+  rows?: Record<number, { key: string; action: Action }>
+}
+type View = (model: Model, size: Size, selection: Selection) => Drawn
+```
+
+- A view draws a grid of exactly `size.columns` columns and at most `size.rows` rows. `columns` is the site's `bodyColumns`, read on every draw, so a Raster is never wider than the body (a wider one is cut on the right, and the engine's `[-]` draws over its top row).
+- A view registers its keys by returning `buttons`. The label carries the key (`j: down`), since the engine does not draw hotkeys. Hotkeys are one digit or one lowercase letter. A Button with `autoFocus` takes the focus, so Enter presses it: the list's `enter: open` and the detail's `b: back` do this.
+- `inputs` are drawn under the Buttons where the surface has `Input` (`size.hasInput`). A focused Input takes every key, also the hotkeys, so a view offers a Button that focuses it (`s: search`, `m: message`) instead of focusing it itself.
+- `rows` maps grid rows to actions. The terminal cannot press a Raster cell; the text fallback draws such a row as a Button keyed `key` (`row:<item id>`, `group-<id>`).
+- `Action` is what pressing does: `tab`, `select`, `open`, `fold`, `query`, `focus`, `stop`, `delete`, `copy` and `message`. `pane.tsx` runs it.
+
+A new view is a file in `hooks/ui/views/` that exports a `View`. A new tab adds its view and label to `TABS` in `views/pane.ts` and its name to `RabeTab`. A new detail adds a case to `bodyLines` in `views/detail.ts`. Neither touches the renderer or `pane.tsx` unless it needs a new `Action`.
+
+### The renderer
+
+`render(ui, surface, drawn, act)` in `ui/render.tsx` is the one place that turns a `Drawn` into elements:
+
+- On the terminal: a `Raster` keyed `cells` (the band's is keyed `band`) with the grid's size and `encode(grid)`, then a row of Buttons, then the Inputs.
+- On every other surface: one `Text` per grid row (trailing spaces cut), or a plain `Button` for a row in `rows`, then the same Buttons and Inputs. The desktop draws an empty Box for a Raster though `$.ui.resolve` hands one out, so the choice is `surface === 'terminal'`, not whether `Raster` exists.
+
+The renderer redraws the whole Raster on each draw. `$.ui.blit` repaints only changed cells, but it is refused after a size change, so it is not used yet.
+
+### Sizing
+
+`paneView` gives the tab's view `scroll.bodyRows` less the tab row and its rule (2), the hint (1) and the rows its Buttons and Inputs take (`controlRows`: Buttons as `[ label ]` with a gap, wrapped at `bodyColumns`, plus one row per Input). It calls the view twice: once to learn its controls, once with the rows left. So the grid and the controls fill the body without scrolling.
+
+The Items tab splits into list and detail side by side only on the terminal and when `bodyColumns` is at least 90 (`SPLIT_COLUMNS`). A docked pane asked for 100 columns gets about 72 at a 200-column terminal, and an inline one at 100 terminal columns gets 96. Below 90, and on other surfaces, the list shows one summary line of the selected item, and Enter opens the full detail in place; `b` goes back.
 
 ### The band
 
-A `ui.render` hook on `AbovePrompt`. With no running item, or while a survey holds the band, it calls `next(e)` and draws nothing. Otherwise it draws one row per kind that has something to show: `claude`, `codex`, `workflow` (phase and agent count), `shells` (with port), `failed` (ended in the last 10 minutes), `watch` (monitors) and `cron` (countdown to the next run), then a `$ cost` row when any tokens are known. Each row lists names until the width is used and ends with `+N`. When the rows do not fit in `maxRows`, the band draws one line instead: `◐ 3 agents (2 claude, 1 codex) · ▶ 2 shells · ✗ 1 failed · …`. The engine owns collapsing (ctrl+x ctrl+a); the hook gets no collapsed flag.
+A `ui.render` hook on `AbovePrompt`. With no running item, or while a survey holds the band, it calls `next(e)` and draws nothing. Otherwise `bandView` draws one row per kind that has something to show: failed (ended in the last 10 minutes) first, then `claude`, `codex`, `workflow` (phase and agent count), `shells` (with port), `watch` (monitors) and `cron` (countdown to the next run), then a `$ cost` row when any tokens are known. Each row starts with a colored chip (`◐ claude 2`) and lists names until the width is used, ending with `+N`. When the rows do not fit in `maxRows`, the band draws one line instead: `◐ 3 agents (2 claude, 1 codex) · ▶ 2 shells · ✗ 1 failed · …`.
+
+The grid is `bodyColumns` wide and exactly as tall as its lines. The band before drew padded `Text` labels in a row; beside an open pane the band is narrow, a label wrapped its trailing spaces, and the band drew an empty line. The engine owns collapsing (ctrl+x ctrl+a); the hook gets no collapsed flag.
 
 ### The pane
 
-`/rabe` opens the pane `rabe` with `closeOnEscape`, so Esc closes it; without it Esc only hands the keys back and the pane stays. The command cannot focus it (see feasibility), so `pane.tsx` opens it again with `focus: true` from `$.clock.after(1500)`. Until the pane holds the keys, the last line says "tab to select · esc close".
+`/rabe` opens the pane `rabe` with `closeOnEscape`, so Esc closes it; without it Esc only hands the keys back and the pane stays. The command cannot focus it (see feasibility), so `pane.tsx` opens it again with `focus: true` from `$.clock.after(1500)`. Until the pane holds the keys, the hint says "tab to select · esc close".
 
-The tab Buttons have the hotkeys `1` to `4`. The selected tab is `rabe.tab`. Each other value the pane keeps is a `$.state` key too, so a hot reload keeps it:
+`paneView` draws the tab row (`Items 7   Cost   Effects   Timeline`, the active one orange with a `━` line under it) and adds the tab Buttons `1` to `4` (`1 Items` and so on off the terminal). Each value the pane keeps is a `$.state` key, so a hot reload keeps it:
 
 | Key | What it holds |
 |---|---|
-| `rabe.filter` | `all`, `agents`, `shells`, `monitors`, `cron` or `failed` |
+| `rabe.tab` | The selected tab |
 | `rabe.query` | The search text; matches title, kind, command, prompt, description and agent type |
-| `rabe.page` | The page of a filtered list |
-| `rabe.folded` | The groups folded in the All view |
-| `rabe.selected` | The item under the focus (set from `ui.focus`) or last opened |
+| `rabe.folded` | The groups folded in the list (folded from a group row off the terminal) |
+| `rabe.selected` | The item under the cursor: set by `j`/`k`, by focus on a row Button, or by opening |
 | `rabe.open` | The item whose full detail shows; `''` shows the list |
 
-Keys follow the feasibility key model: every row is a focusable `Button` (`row:<item id>`), Tab and Down move, Enter opens. Hotkeys are lowercase letters: `s` search (moves the focus to the search `Input`), `x` stop, `g` stop group or stop run, `f` follow (scroll to the end), `m` message agent, `c` copy command or prompt, `d` delete a cron job, `b` back to the list. Mobile has no `Input`, so the search and the message field are left out there.
+Keys: the Buttons under the grid hold them. On the list: `j` down, `k` up, Enter opens (the `enter: open` Button has the focus), `x` stop, `g` stop the group, `s` search. In a detail: `b` back, `c` copy the command or prompt, `d` delete a cron job, `m` message an agent, `x` stop, `g` stop a workflow run. A letter no Button binds moves the focus to the prompt, and the next keys type into the composer; no hook can keep them (see feasibility).
 
-**Items tab.** A filter row (All, Agents, Shells, Monitors, Cron, Failed when any) and the search field. The All view groups items: failed first, then agents (Claude, Codex, workflows), shells, monitors and cron. Inside a group, running items come first, then the newest. A group header folds the group. Each row reads status word, kind, name, time. A docked pane 100 or more columns wide shows the selected item beside the list; a narrow or inline pane shows one summary line under the list. Enter opens the full detail in the same pane.
+**Items tab.** Groups: failed first, then agents (Claude, Codex, workflows), shells, monitors and cron; inside a group running items first, then the newest. A row reads glyph, name, and the time, or the status word and age once it ended. The window follows the selected row.
 
-**Detail per kind.** Every detail shows the item's facts, then:
+**Detail per kind.** Every detail shows the item's title, status word and facts, then the newest lines that fit:
 
-- Agent: brief, older turns folded into one line with tool counts, the last turns with their tools (`⎿ Edit path`, running or error marks), from the transcript at `transcriptPath`.
-- Codex: prompt, turns (`◆`) with the reasoning summary before them (`thinking: …`, when Codex writes one), their commands, exit codes and line counts, the result when done, from the session file at `sessionPath`.
-- Workflow: the phases as `✓ Review → ◐ Verify → · Report`, and the agents of each phase as rows.
-- Shell and monitor: the last lines of the output file.
+- Agent: its turns from `rabe.turns` (`1 ● text`, then `⎿ Tool summary`). An agent that ran before Rabe loaded has none.
+- Codex: the prompt, then `detail.steps`: `◆` messages, `thinking:` reasoning summaries, and commands with `✓ exit 0 · N lines`, `✗ exit N` or `◐ running`.
+- Workflow: the phases as `✓ Review → ◐ Verify → · Report`, and the agents of each phase.
+- Shell and monitor: the lines in `rabe.lines` (monitors with the time each was received).
 - Cron: the next five runs, computed from the schedule. Delete shows for cron jobs only: a `/loop` wakeup has no id `CronDelete` knows.
 
-A file that cannot be read shows a line starting with `Error`, also when `tail` fails or a record cannot be parsed; a file over 4 MiB is read with `tail -n 400` through `$.process.run` and shows a `Warning`. The parsers skip records that are not objects and content of the wrong shape. Missing fields show `n/a`, and an item without `startedAt` says "started before Rabe loaded".
+**Cost tab.** Session total, tokens, Claude and Codex totals, the number of items without tokens, and agents and Codex jobs sorted by tokens. A dollar total with no known amount shows `cost n/a`, never `$0.00`; the band does the same. **Effects tab.** Worktrees from agent details, the agents known to share the main tree, the agents whose tree is `n/a`, and ports of running shells with the `ssh -L` command; a Button per port copies it (`c` for the first). **Timeline tab.** One bar per item over the session, and the tree of who started what, from `parentId`.
 
-**Cost tab.** Session total, tokens, Claude and Codex totals, the number of items without tokens, and agents and Codex jobs sorted by tokens. A dollar total with no known amount shows `cost n/a`, never `$0.00`; the band does the same. **Effects tab.** Worktrees from agent details, the agents known to share the main tree, the agents whose tree is `n/a`, and ports of running shells with the `ssh -L` command; Enter copies it. **Timeline tab.** One bar per item over the session, and the tree of who started what, from `parentId`.
+**Live updates.** `session.start` starts `$.clock.every(1000)`, which calls `$.ui.invalidate('ui.render')` while any item runs.
 
-**Long lists.** The pane draws only what fits in `scroll.bodyRows`: each group in the All view shows a share of the rows and ends with "… N more", which opens that group's filter; a filtered list is paged ("… N more · page 1 of 3"). Turn views keep the last turns and fold the rest; Cost and Timeline end with "… N more".
+**Actions.** Stop calls `TaskStop` with the task id (shells, monitors, workflows) or the agent id. Delete calls `CronDelete`. Message calls `$.session.send` to the agent. Copy calls `$.ui.copy` on the surface that was pressed. Each answers with a toast: "Stopping …", "Stop refused: …", "Stopped 7 of 9; 2 had already finished", "Message sent to …".
 
-**Live updates.** `session.start` starts `$.clock.every(1000)`, which calls `$.ui.invalidate('ui.render')` while any item runs. The pane re-reads the open item's file on each draw.
+### Hiding Claude Code's own count
 
-**Actions.** Stop calls `TaskStop` with the task id (shells, monitors, workflows) or the agent id. Delete calls `CronDelete` (cron jobs only, not `/loop` wakeups). Message calls `$.session.send` to the agent. Copy calls `$.ui.copy`. Each answers with a toast: "Stopping …", "Stop refused: …", "Stopped 7 of 9; 2 had already finished", "Message sent to …".
+Claude Code shows background work itself: a pill in the hint under the prompt (`2 shells, 1 monitor · ↓ to manage`) and a part of the line that ends a turn (`· 2 shells, 1 monitor still running`). Rabe's band shows the same, so `ui/builtin.tsx` hides both. It is on by default; the `userConfig` option `hideBuiltinTasks` in `.claude-plugin/plugin.json` turns it off, and `register` then does not call `builtin(on)`.
 
-Both views are tested on the `terminal` and `desktop` surfaces. Tests feed items with a test hook on `state.get` that answers `rabe.items`, files with hooks on `fs.stat` and `fs.read`, and fix the time with `mock.clock`.
+- `PromptHint`: `stripTasks(hint)` splits the hint at ` · ` and drops the parts that only count work (`2 shells, 1 monitor`, `1 background agent`) and `↓ to manage`. The hook passes the rest on with `next({ ...e, props: { ...e.props, hint } })`, so the PR number, `esc to interrupt` and the other parts stay. Rewriting the whole hint would drop them. The mode label (`⏵⏵ auto mode on`) is not part of `hint` and stays. ↓ still opens Claude Code's background manager.
+- `TurnDuration`: the "still running" part is not a prop, so the hook draws the line itself (`✻ Brewed for 5s`, dim, one empty line above) while Rabe knows of a running shell or monitor and of no running agent or workflow. While an agent or workflow runs, the engine draws "Waiting for …" without that part, so the hook passes. The own line leaves out what has no prop: `done 1:16`, a token budget and "messages hidden".
+- The agent list under the prompt stays: no component and no setting hides it (see feasibility).
+
+Both views are tested on the `terminal` and `desktop` surfaces. Tests feed the session values with test hooks on `state.get`, fix the time with `mock.clock`, and read a drawing with `screen(ui)` from `fixtures.ts`: the decoded Raster on the terminal, the Text and Button texts elsewhere. The views can also be called directly with a model, since they are plain functions.
