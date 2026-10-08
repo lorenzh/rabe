@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { ago, clockTime, countdown, duration, fit, short, tokens, usd } from './format'
+import { ago, clockTime, countdown, duration, short, tokens, usd } from './format'
 
 test('duration reads seconds, minutes and hours', () => {
   expect(duration(52_000)).toBe('52s')
@@ -37,10 +37,4 @@ test('tokens and dollars read short', () => {
 
 test('clock time pads hours, minutes and seconds', () => {
   expect(clockTime(new Date(2026, 9, 8, 9, 5, 7).getTime())).toBe('09:05:07')
-})
-
-test('fit cuts and pads to a width', () => {
-  expect(fit('abc', 5)).toBe('abc  ')
-  expect(fit('abcdef', 4)).toBe('abc…')
-  expect(fit('abc', 0)).toBe('')
 })

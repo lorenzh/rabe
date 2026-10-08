@@ -1,75 +1,15 @@
-import type { EngineInterface, On } from 'claude-code'
+import type { EngineInterface, On, RenderSurface } from 'claude-code'
 
-import type { RabeTab } from '../../types'
-import type { RabeItem } from '../model'
-import {
-  detailView,
-  filterRow,
-  listActions,
-  listView,
-  searchField,
-  summaryLine,
-  summaryView,
-} from './items'
 import { KIND_LABEL } from './lists'
-import { parseCodex } from './rollout'
-import { costTab, effectsTab, timelineTab } from './tabs'
-import { parseClaude } from './transcript'
-import { type Action, type Loaded, type Notice, taskIdOf, type Ui, type View } from './view'
+import { render } from './render'
+import { type Action, taskIdOf } from './view'
+import { paneView } from './views/pane'
 
 const PANE = 'rabe'
-const MAX_READ = 4 * 1024 * 1024
-const TAIL_LINES = 400
-
-const TABS: { tab: RabeTab; label: string; hotkey: string }[] = [
-  { tab: 'items', label: 'Items', hotkey: '1' },
-  { tab: 'cost', label: 'Cost', hotkey: '2' },
-  { tab: 'effects', label: 'Effects', hotkey: '3' },
-  { tab: 'timeline', label: 'Timeline', hotkey: '4' },
-]
 
 async function tick($: EngineInterface): Promise<void> {
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   if (items.some(item => item.status === 'running')) $.ui.invalidate('ui.render')
-}
-
-async function readText(
-  $: EngineInterface,
-  path: string,
-): Promise<{ text?: string; notice?: Notice }> {
-  try {
-    const stat = await $.fs.stat(path)
-    if (stat.size <= MAX_READ) return { text: await $.fs.read(path) }
-    const run = await $.process.run(['tail', '-n', String(TAIL_LINES), path])
-    if (run.exitCode !== 0) throw new Error(run.stderr.trim() || `tail exit ${run.exitCode}`)
-    return {
-      text: run.stdout,
-      notice: {
-        level: 'Warning',
-        text: `The file is over 4 MiB. Showing the last ${TAIL_LINES} lines only.`,
-      },
-    }
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error)
-    return { notice: { level: 'Error', text: `Could not read ${path}: ${reason}` } }
-  }
-}
-
-async function load($: EngineInterface, item: RabeItem): Promise<Loaded> {
-  const d = item.detail as Record<string, unknown>
-  const path = [d.transcriptPath, d.sessionPath, d.outputPath].find(p => typeof p === 'string')
-  if (typeof path !== 'string') return {}
-  const { text, notice } = await readText($, path)
-  if (text === undefined) return { notice }
-  try {
-    if (item.kind === 'agent') return { claude: parseClaude(text), notice }
-    if (item.kind === 'codex') return { codex: parseCodex(text), notice }
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error)
-    return { notice: { level: 'Error', text: `Could not parse ${path}: ${reason}` } }
-  }
-
-  return { output: text.split('\n').filter(line => line.trim() !== ''), notice }
 }
 
 async function stop($: EngineInterface, ids: string[]): Promise<void> {
@@ -104,17 +44,13 @@ async function stop($: EngineInterface, ids: string[]): Promise<void> {
   }
 }
 
-async function act($: EngineInterface, action: Action): Promise<void> {
+async function act($: EngineInterface, action: Action, surface: RenderSurface): Promise<void> {
   switch (action.type) {
     case 'tab':
       await $.state.set({ plugin: 'rabe', key: 'tab' }, action.tab)
       return
-    case 'filter':
-      await $.state.set({ plugin: 'rabe', key: 'filter' }, action.filter)
-      await $.state.set({ plugin: 'rabe', key: 'page' }, 0)
-      return
-    case 'page':
-      await $.state.set({ plugin: 'rabe', key: 'page' }, action.page)
+    case 'select':
+      await $.state.set({ plugin: 'rabe', key: 'selected' }, action.id)
       return
     case 'fold': {
       const { value: folded = [] } = await $.state.get({ plugin: 'rabe', key: 'folded' })
@@ -133,13 +69,9 @@ async function act($: EngineInterface, action: Action): Promise<void> {
       return
     case 'query':
       await $.state.set({ plugin: 'rabe', key: 'query' }, action.text)
-      await $.state.set({ plugin: 'rabe', key: 'page' }, 0)
       return
     case 'focus':
       await $.ui.focus({ requestId: PANE, key: action.key })
-      return
-    case 'follow':
-      await $.ui.scroll({ in: PANE, to: 'end' })
       return
     case 'stop':
       await stop($, action.ids)
@@ -154,7 +86,7 @@ async function act($: EngineInterface, action: Action): Promise<void> {
       return
     }
     case 'copy': {
-      const result = await $.ui.copy({ text: action.text, surface: action.surface })
+      const result = await $.ui.copy({ text: action.text, surface })
       $.ui.toast(result.isCopied ? `Copied: ${action.text}` : `Copy failed: ${result.reason}`)
       return
     }
@@ -204,82 +136,26 @@ export function pane(on: On): void {
   }).catch((_$, e, next) => next(e))
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const ui: Ui = $.ui.resolve(e)
-    const { Box, Button, Text } = ui
+    const ui = $.ui.resolve(e)
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const { value: turns = {} } = await $.state.get({ plugin: 'rabe', key: 'turns' })
+    const { value: lines = {} } = await $.state.get({ plugin: 'rabe', key: 'lines' })
     const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
-    const { value: filter = 'all' } = await $.state.get({ plugin: 'rabe', key: 'filter' })
     const { value: query = '' } = await $.state.get({ plugin: 'rabe', key: 'query' })
-    const { value: page = 0 } = await $.state.get({ plugin: 'rabe', key: 'page' })
     const { value: folded = [] } = await $.state.get({ plugin: 'rabe', key: 'folded' })
     const { value: selected = '' } = await $.state.get({ plugin: 'rabe', key: 'selected' })
     const { value: open = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
-    const width = e.props.bodyColumns
-    const v: View = {
-      ui,
-      act: action => void act($, action),
-      items,
-      now: await $.clock.now(),
-      width,
+    const model = { items, turns, lines, now: await $.clock.now() }
+    const size = {
+      columns: e.props.bodyColumns,
       rows: e.props.scroll?.bodyRows || 24,
-      isWide: e.props.placement === 'dock' && width >= 100,
-      isFocused: e.props.isFocused,
+      surface: e.surface,
+      hasInput: 'Input' in ui,
     }
-    const openItem = tab === 'items' ? items.find(item => item.id === open) : undefined
-    const selectedItem = items.find(item => item.id === selected)
-    const shown = openItem ?? (v.isWide && tab === 'items' ? selectedItem : undefined)
-    const loaded = shown ? await load($, shown) : {}
-    const st = { filter, query, page, folded, selected: selectedItem }
-    const listWidth = v.isWide ? Math.min(72, Math.floor(width * 0.5)) : width
-    const hint = !v.isFocused
-      ? 'tab to select · esc close'
-      : openItem
-        ? 'tab move · enter open · b back · esc close'
-        : 'tab move · enter open · esc close'
+    const selection = { tab, query, folded, selected, open, isFocused: e.props.isFocused }
 
-    let body: ReturnType<typeof Box>
-    if (items.length === 0) body = <Text dimColor>Nothing runs in the background.</Text>
-    else if (tab === 'cost') body = costTab(v)
-    else if (tab === 'effects') body = effectsTab(v)
-    else if (tab === 'timeline') body = timelineTab(v)
-    else if (openItem) body = detailView(v, openItem, loaded)
-    else {
-      const list = (
-        <Box flexDirection="column" width={v.isWide ? listWidth : undefined} flexShrink={0}>
-          {filterRow(v, st)}
-          {searchField(v, st)}
-          {listView(v, st, listWidth)}
-          {!v.isWide && selectedItem && summaryLine(v, selectedItem)}
-          {listActions(v, st)}
-        </Box>
-      )
-      body =
-        v.isWide && selectedItem ? (
-          <Box flexDirection="row" columnGap={2}>
-            {list}
-            {summaryView(v, selectedItem, loaded)}
-          </Box>
-        ) : (
-          list
-        )
-    }
-
-    return (
-      <Box flexDirection="column">
-        <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
-          {TABS.map(one => (
-            <Button
-              key={`tab-${one.tab}`}
-              hotkey={one.hotkey}
-              label={one.tab === 'items' ? `${one.label} ${items.length}` : one.label}
-              variant={one.tab === tab ? 'primary' : 'secondary'}
-              onPress={() => v.act({ type: 'tab', tab: one.tab })}
-            />
-          ))}
-        </Box>
-        {body}
-        <Text dimColor>{hint}</Text>
-      </Box>
-    )
+    return render(ui, e.surface, paneView(model, size, selection), (action, surface) => {
+      void act($, action, surface)
+    })
   })
 }

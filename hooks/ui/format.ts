@@ -48,10 +48,3 @@ export function tokens(n: number): string {
 export function usd(n: number): string {
   return `$${n.toFixed(2)}`
 }
-
-export function fit(text: string, width: number): string {
-  if (width <= 0) return ''
-  if (text.length > width) return `${text.slice(0, width - 1)}…`
-
-  return text.padEnd(width)
-}

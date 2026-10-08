@@ -1,9 +1,8 @@
-import type { RabeFilter } from '../../types'
 import type { RabeItem, RabeItemKind } from '../model'
 import { nextRuns } from '../schedule'
 import { ago, countdown, duration, short, tokens, usd } from './format'
 
-export type Group = Exclude<RabeFilter, 'all'>
+export type Group = 'failed' | 'agents' | 'shells' | 'monitors' | 'cron'
 
 export const GROUPS: { id: Group; label: string }[] = [
   { id: 'failed', label: 'Failed' },
@@ -31,29 +30,12 @@ const RUNNING_GLYPH: Record<RabeItemKind, string> = {
   cron: '⟳',
 }
 
-const RUNNING_TONE: Record<RabeItemKind, string> = {
-  agent: 'warning',
-  codex: 'warning',
-  workflow: 'success',
-  shell: 'warning',
-  monitor: 'suggestion',
-  cron: 'merged',
-}
-
 export function glyph(item: RabeItem): string {
   if (item.status === 'failed') return '✗'
   if (item.status === 'done') return '✓'
   if (item.status === 'stopped') return '■'
 
   return RUNNING_GLYPH[item.kind]
-}
-
-export function tone(item: RabeItem): string {
-  if (item.status === 'failed') return 'error'
-  if (item.status === 'done') return 'success'
-  if (item.status === 'stopped') return 'subtle'
-
-  return RUNNING_TONE[item.kind]
 }
 
 export function nextRun(item: RabeItem, now: number): number | undefined {
@@ -230,7 +212,12 @@ export function costLine(items: RabeItem[]): string | undefined {
   return `${tokens(sum.tokens)} tok${dollars}${topText}`
 }
 
-export type BandRow = { glyph: string; tone: string; label: string; names: string[] }
+export type BandRow = {
+  glyph: string
+  kind: RabeItemKind | 'failed'
+  label: string
+  names: string[]
+}
 
 const isRunning = (kind: RabeItemKind) => (item: RabeItem) =>
   item.kind === kind && item.status === 'running'
@@ -242,21 +229,22 @@ export function bandRows(items: RabeItem[], now: number): BandRow[] {
     item => item.status === 'failed' && now - (item.endedAt ?? item.seenAt) < 10 * 60_000,
   )
   const rows: BandRow[] = [
+    { glyph: '✗', kind: 'failed', label: 'failed', names: failed.map(name) },
     {
       glyph: '◐',
-      tone: 'warning',
+      kind: 'agent',
       label: 'claude',
       names: items.filter(isRunning('agent')).map(item => `${item.title}${run(item)}`),
     },
     {
       glyph: '◐',
-      tone: 'warning',
+      kind: 'codex',
       label: 'codex',
       names: items.filter(isRunning('codex')).map(item => `${item.title}${run(item)}`),
     },
     {
       glyph: '⧉',
-      tone: 'success',
+      kind: 'workflow',
       label: 'workflow',
       names: items
         .filter(isRunning('workflow'))
@@ -267,20 +255,19 @@ export function bandRows(items: RabeItem[], now: number): BandRow[] {
     },
     {
       glyph: '▶',
-      tone: 'warning',
+      kind: 'shell',
       label: 'shells',
       names: items.filter(isRunning('shell')).map(name),
     },
-    { glyph: '✗', tone: 'error', label: 'failed', names: failed.map(name) },
     {
       glyph: '◉',
-      tone: 'suggestion',
+      kind: 'monitor',
       label: 'watch',
       names: items.filter(isRunning('monitor')).map(name),
     },
     {
       glyph: '⟳',
-      tone: 'merged',
+      kind: 'cron',
       label: 'cron',
       names: items.filter(isRunning('cron')).map(item => `${item.title} ${timeLabel(item, now)}`),
     },

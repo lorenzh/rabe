@@ -13,7 +13,9 @@ import {
   lines,
   paste,
   safe,
+  spans,
   vline,
+  wrap,
   write,
 } from './grid'
 import { DEFAULT } from './palette'
@@ -98,4 +100,25 @@ test('encode gives little-endian u32 triplets in padded base64', () => {
   write(two, 1, 0, 'B', { fg: 3, bg: 4 })
   expect(encode(two)).toBe('QQAAAAEAAAACAAAAQgAAAAMAAAAEAAAA')
   expect(decode(2, 1, encode(two))).toEqual(two)
+})
+
+test('spans write runs of styled text and cut the last with an ellipsis', () => {
+  const g = grid(8, 1)
+  expect(
+    spans(g, 0, 0, [
+      ['ab', { fg: 1 }],
+      [' cdefgh', { fg: 2 }],
+    ]),
+  ).toBe(8)
+  expect(lines(g)).toEqual(['ab cdef…'])
+  expect(cell(g, 0, 0)[1]).toBe(1)
+  expect(cell(g, 3, 0)[1]).toBe(2)
+  expect(spans(grid(4, 1), 0, 0, [['ab']], 10)).toBe(2)
+})
+
+test('wrap splits at spaces, breaks long words and keeps line breaks', () => {
+  expect(wrap('the quick brown fox', 9)).toEqual(['the quick', 'brown fox'])
+  expect(wrap('abcdefghij', 4)).toEqual(['abcd', 'efgh', 'ij'])
+  expect(wrap('one\ntwo', 10)).toEqual(['one', 'two'])
+  expect(wrap('x', 0)).toEqual([])
 })

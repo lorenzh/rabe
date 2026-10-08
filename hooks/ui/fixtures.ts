@@ -1,4 +1,5 @@
 import type { RabeItem } from '../model'
+import { decode, lines } from './cells/grid'
 
 export const NOW = new Date(2026, 9, 8, 10, 52, 0).getTime()
 
@@ -49,6 +50,11 @@ export const review: RabeItem = {
     effort: 'high',
     prompt: 'Review middleware/auth.ts for token-expiry bugs.',
     sessionPath: '/c/rollout-1.jsonl',
+    steps: [
+      { kind: 'reasoning', text: 'Diff first.' },
+      { kind: 'message', text: 'Reading the diff.' },
+      { kind: 'command', text: 'git diff', exitCode: 0, lines: 1 },
+    ],
   },
 }
 
@@ -148,3 +154,24 @@ export const ALL: RabeItem[] = [
   verify,
   reviewed,
 ]
+
+type Found = { type: string; props: Record<string, unknown>; text: string }
+type Finder = { findAll: (query: { type: string }) => Promise<Found[]> }
+
+// What a drawing shows, line by line: the Raster's cells decoded on the
+// terminal, else the text of each Text and Button.
+export async function screen(ui: Finder): Promise<string[]> {
+  const [raster] = await ui.findAll({ type: 'Raster' })
+  if (raster) {
+    const { columns, rows, cells } = raster.props as {
+      columns: number
+      rows: number
+      cells: string
+    }
+    return lines(decode(columns, rows, cells))
+  }
+  const texts = await ui.findAll({ type: 'Text' })
+  const buttons = await ui.findAll({ type: 'Button' })
+
+  return [...texts, ...buttons].map(one => one.text)
+}

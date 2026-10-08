@@ -65,19 +65,19 @@ test('search matches title, kind and command', () => {
   expect(matches(ci, 'nope')).toBe(false)
 })
 
-test('the band has one row per kind with running names', () => {
+test('the band has one row per kind with running names, failed first', () => {
   const rows = bandRows(ALL, NOW)
   expect(rows.map(row => row.label)).toEqual([
+    'failed',
     'claude',
     'codex',
     'workflow',
     'shells',
-    'failed',
     'watch',
     'cron',
   ])
-  expect(rows[0]?.names).toEqual(['Explore verifyToken 1m', 'verify:db.ts 40s'])
-  expect(rows[2]?.names).toEqual(['review-changes · Verify 2/3 · 2 agents'])
+  expect(rows[1]?.names).toEqual(['Explore verifyToken 1m', 'verify:db.ts 40s'])
+  expect(rows[3]?.names).toEqual(['review-changes · Verify 2/3 · 2 agents'])
   expect(bandRows([{ ...lint, endedAt: NOW - 11 * 60_000 }], NOW)).toEqual([])
 })
 

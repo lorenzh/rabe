@@ -266,3 +266,41 @@ export function decode(columns: number, rows: number, base64: string): Grid {
 
   return { columns, rows, cells }
 }
+
+// A run of text in one style; a row is a list of spans.
+export type Span = [text: string, style?: Style]
+
+// Writes spans from (x, y), cut at `width` cells with an ellipsis. Returns the
+// column after the last cell written.
+export function spans(g: Grid, x: number, y: number, list: Span[], width = g.columns - x): number {
+  let at = x
+  const end = x + width
+  for (const [text, style] of list) {
+    const room = end - at
+    if (room <= 0) break
+    const chars = [...safe(text)]
+    const shown = chars.length > room ? `${chars.slice(0, room - 1).join('')}…` : chars.join('')
+    at = write(g, at, y, shown, style)
+  }
+
+  return at
+}
+
+// Splits text into lines of at most `width` cells, at spaces where it can.
+// After `safe` each character is one UTF-16 unit, so string indexes are cells.
+export function wrap(text: string, width: number): string[] {
+  if (width <= 0) return []
+  const out: string[] = []
+  for (const para of text.split('\n')) {
+    let rest = safe(para).trimEnd()
+    while (rest.length > width) {
+      const cut = rest.slice(0, width + 1).lastIndexOf(' ')
+      const at = cut > 0 ? cut : width
+      out.push(rest.slice(0, at).trimEnd())
+      rest = rest.slice(at).trimStart()
+    }
+    out.push(rest)
+  }
+
+  return out
+}
