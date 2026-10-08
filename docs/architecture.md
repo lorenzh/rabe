@@ -173,7 +173,7 @@ One `agent` item per subagent, id `agent:<agentId>`. It covers agents the model 
 | Hook | What it does |
 |---|---|
 | `agent.spawn` | After `next(e)` gives the `agentId`, adds a running item: title from the description (else the type), type, model, `startedAt`. A workflow agent gets `parentId` `workflow:<runId>` and `workflowIndex`; an agent started by another agent gets `agent:<parentAgentId>`. A refused spawn adds nothing. |
-| `classic.SubagentStart` | Sets `transcriptPath` (`<session>/subagents/agent-<id>.jsonl`, built from the hook's `transcript_path`) and, when the hook's `cwd` is not the session's, `worktreePath`. |
+| `classic.SubagentStart` | Fires inside the spawn, before `agent.spawn` adds the item, so it adds a running item (title the agent type) when none exists; the spawn then merges its fields in. Sets `transcriptPath` (`<session>/subagents/agent-<id>.jsonl`, built from the hook's `transcript_path`) and, when the hook's `cwd` is not the session's, `worktreePath`. |
 | `turn.step` with `agentId` | After the response, adds its tokens (`input` is uncached plus cache writes, `cached` is cache reads), sets `model`, `toolCount`, `lastTool` and `lastToolAt`, puts the item back to running, and adds a turn to `rabe.turns`. Steps of loops Rabe has no item for (forks for compaction or memory) are ignored. |
 | `turn.complete` with `agentId` | Ends the item: `answer` is done, `aborted` is stopped, `refusal` and `error` are failed. Reads the meta file once more. |
 | `session.start` | Runs the poll once, then every 3 seconds with `$.clock.every`. |

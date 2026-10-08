@@ -255,10 +255,21 @@ export function agents(on: On): void {
     const cwd = await $.session.cwd().catch(() => e.cwd)
     const transcriptPath = agentTranscript(e.transcript_path, e.agent_id)
     const detail = {
+      agentId: e.agent_id,
       ...(transcriptPath && { transcriptPath }),
       ...(e.cwd && e.cwd !== cwd && { worktreePath: e.cwd }),
     }
-    await write($, items => updateItem(items, itemId('agent', e.agent_id), { detail }))
+    const id = itemId('agent', e.agent_id)
+    const now = await $.clock.now()
+    await write($, items =>
+      items.some(item => item.id === id)
+        ? updateItem(items, id, { detail })
+        : addItem(
+            items,
+            { id, kind: 'agent', title: e.agent_type, status: 'running', startedAt: now, detail },
+            now,
+          ),
+    )
 
     return next(e)
   }).catch((_$, e, next) => next(e))

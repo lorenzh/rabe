@@ -160,6 +160,29 @@ test('subagent start sets the transcript and a worktree outside the session fold
   })
 })
 
+test('SubagentStart during the spawn keeps the transcript once the spawn adds the item', async ($, on) => {
+  const held = watch(on)
+  mock.clock(on, { now: 5000 })
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('classic.SubagentStart', async () => ({}))
+  on('agent.spawn', async () => {
+    await $.classic.SubagentStart({
+      agent_id: 'a1',
+      agent_type: 'general-purpose',
+      cwd: '/repo',
+      transcript_path: '/p/s1.jsonl',
+    })
+
+    return { model: 'claude-opus-5-5', agentId: 'a1' }
+  })
+  await $.agent.spawn(SPAWN)
+  expect(held.items).toHaveLength(1)
+  expect(held.items?.[0]).toMatchObject({
+    title: 'verify:db.ts',
+    detail: { agentId: 'a1', transcriptPath: '/p/s1/subagents/agent-a1.jsonl' },
+  })
+})
+
 test('a step adds tokens, tools and a turn; the end of the run ends the agent', async ($, on) => {
   const held = engine(on, 'a1')
   // biome-ignore lint/correctness/useYield: the engine's stand-in answers without chunks
