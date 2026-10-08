@@ -84,8 +84,19 @@ export type RabeItem = { [K in RabeItemKind]: RabeItemOf<K> }[RabeItemKind]
 
 export type RabeTab = 'items' | 'cost' | 'effects' | 'timeline'
 
+export type RabeFilter = 'all' | 'agents' | 'shells' | 'monitors' | 'cron' | 'failed'
+
 declare module 'claude-code' {
   interface PluginState {
-    rabe: { items: RabeItem[]; tab: RabeTab }
+    rabe: {
+      items: RabeItem[]
+      tab: RabeTab
+      filter: RabeFilter
+      query: string
+      page: number
+      folded: string[]
+      selected: string
+      open: string
+    }
   }
 }
