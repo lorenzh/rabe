@@ -23,8 +23,9 @@
 - Logic that needs no `$` (parsers, formatting, the next cron run) lives in plain functions with their own tests.
 
 ## Code Layout
-- `hooks/register.tsx`: entry point; registers hooks and delegates to modules.
-- `hooks/sources/<kind>.ts`: one module per source (agents, codex, shells, monitors, crons, workflows) that turns events and files into items.
+- `hooks/register.tsx`: entry point; calls `sources(on)`, `band(on)` and `pane(on)`, nothing else.
+- `hooks/model.ts`: the item types and pure item helpers. `hooks/registry.ts`: pure changes to the item list.
+- `hooks/sources/<kind>.ts`: one module per source (agents, codex, shells, monitors, crons, workflows) that turns events and files into items; `hooks/sources/index.ts` calls each one.
 - `hooks/ui/`: band and pane drawing.
 - `$.state` keys: declare each in `types/index.d.ts` and name that file as `"types"` in `.claude-plugin/plugin.json`.
 - `types/claude-code.d.ts`: API types written by Claude Code. Do not edit; replace it when the pinned Claude Code version changes.
@@ -32,7 +33,8 @@
 ## Key Conventions
 - Get data from the mod API first, then from files on disk, then from the Claude Code or Codex source. Record each new source in `docs/feasibility.md`.
 - Hooks pass on with `next(e)` unless they answer on purpose.
-- Helpers that take `$` are top-level function declarations; `claude plugin validate` refuses closures inside `register` that receive `$`.
+- Helpers that take `$` are top-level function declarations in the same file as the hook; `claude plugin validate` refuses closures inside `register` that receive `$`, and the scan never follows `$` across an import. Shared code is pure; see `docs/architecture.md`.
+- A `$.state` reference or atom is written in the file that uses it, with literal `plugin` and `key`.
 - Files on disk are undocumented: a missing file or field shows `n/a`. Never throw from a hook.
 - Take file paths from tool results; build a path only when no result carries it.
 - `$.fs` rejects reads over 4 MiB: read large files with `tail` or `jq` through `$.process.run`.

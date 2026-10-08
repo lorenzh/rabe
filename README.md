@@ -9,7 +9,7 @@
 
 Rabe (German for raven) is a Claude Code mod. It shows your subagents, Codex jobs, background shells, monitors, cron jobs and workflows in one place: a short band above the prompt, and a full view with `/rabe`.
 
-Status: early development. Nothing works yet beyond an empty `/rabe` pane. [What Rabe can see](docs/feasibility.md) lists where each piece of data comes from.
+Status: early development. No source feeds Rabe yet, so the band stays empty and `/rabe` shows its tabs (Items, Cost, Effects, Timeline) and "Nothing runs in the background." [What Rabe can see](docs/feasibility.md) lists where each piece of data comes from; [How Rabe is built](docs/architecture.md) describes the code.
 
 ## Install
 
