@@ -32,6 +32,7 @@
 ## Key Conventions
 - Get data from the mod API first, then from files on disk, then from the Claude Code or Codex source. Record each new source in `docs/feasibility.md`.
 - Hooks pass on with `next(e)` unless they answer on purpose.
+- Helpers that take `$` are top-level function declarations; `claude plugin validate` refuses closures inside `register` that receive `$`.
 - Files on disk are undocumented: a missing file or field shows `n/a`. Never throw from a hook.
 - Take file paths from tool results; build a path only when no result carries it.
 - `$.fs` rejects reads over 4 MiB: read large files with `tail` or `jq` through `$.process.run`.
