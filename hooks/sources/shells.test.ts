@@ -206,3 +206,44 @@ test('at Stop a monitor, which Claude Code lists as a shell, is not added as a s
   })
   expect(state['rabe.items']?.value).toEqual([monitor])
 })
+
+test('the poll keeps the output lines in rabe.lines for the pane', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const held: Record<string, string> = {}
+  files(on, held)
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'bun run dev', run_in_background: true })
+  held[`${DIR}/b1.output`] = 'ready\n'
+  await clock.advance(2000)
+  held[`${DIR}/b1.output`] += 'boom\n\n[exited with code 1]\n'
+  await clock.advance(2000)
+  expect(state['rabe.lines']?.value).toEqual({
+    'shell:b1': {
+      seen: 2,
+      lines: [
+        { at: 3000, text: 'ready' },
+        { at: 5000, text: 'boom' },
+      ],
+    },
+  })
+})
+
+test('a task notification keeps the last lines of a shell the poll did not read', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  files(on, { [`${DIR}/b1.output`]: 'done fast\n\n[exited with code 0]\n' })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: 'bun run dev', run_in_background: true })
+  await $.prompt.submit({
+    text: `<task-notification><task-id>b1</task-id><output-file>${DIR}/b1.output</output-file><status>completed</status></task-notification>`,
+    origin: { kind: 'task-notification' },
+    wait: false,
+  })
+  expect(state['rabe.lines']?.value).toEqual({
+    'shell:b1': { seen: 1, lines: [{ at: 1000, text: 'done fast' }] },
+  })
+})

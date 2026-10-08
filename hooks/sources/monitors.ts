@@ -77,9 +77,10 @@ async function poll($: EngineInterface): Promise<void> {
 }
 
 async function onNotifications($: EngineInterface, text: string): Promise<void> {
+  const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   for (const one of parseNotifications(text)) {
-    if (!one.status) continue
     const id = itemId('monitor', one.taskId)
+    if (!one.status || !items.some(item => item.id === id)) continue
     if (one.outputFile) await follow($, id, one.outputFile)
     const now = await $.clock.now()
     await write($, held =>

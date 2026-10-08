@@ -3,6 +3,7 @@ import type { EngineInterface, On } from 'claude-code'
 import { itemId, type RabeItem } from '../model'
 import { addItem, type Change, commit, endItem, updateItem } from '../registry'
 import {
+  appendLines,
   endStatus,
   guessPort,
   outputPathOf,
@@ -34,14 +35,39 @@ async function write($: Pick<EngineInterface, 'state'>, change: Change): Promise
 }
 
 async function readOutput($: EngineInterface, path: string): Promise<string | undefined> {
+  return (await readWhole($, path)).text
+}
+
+// `isWhole` is false when only the file's tail was read.
+async function readWhole(
+  $: EngineInterface,
+  path: string,
+): Promise<{ text?: string; isWhole: boolean }> {
   try {
     const { size } = await $.fs.stat(path)
-    if (size <= MAX_READ) return String(await $.fs.read(path))
+    if (size <= MAX_READ) return { text: String(await $.fs.read(path)), isWhole: true }
     const { stdout } = await $.process.run(['tail', '-c', TAIL_BYTES, path])
 
-    return stdout
+    return { text: stdout, isWhole: false }
   } catch {
-    return undefined
+    return { isWhole: false }
+  }
+}
+
+// ponytail: lines are counted from the file's start, so a shell whose output
+// passed 4 MiB keeps the lines it had; the pane shows those.
+async function keepLines($: EngineInterface, id: string, lines: string[]): Promise<void> {
+  const now = await $.clock.now()
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
+    const next = appendLines(value[id], lines, now)
+    if (!next) return
+    const { isSet } = await $.state.set(
+      { plugin: 'rabe', key: 'lines' },
+      { ...value, [id]: next },
+      { ifVersion: version },
+    )
+    if (isSet) return
   }
 }
 
@@ -53,9 +79,12 @@ async function poll($: EngineInterface): Promise<void> {
   try {
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     for (const item of runningShells(items)) {
-      const text = item.detail.outputPath && (await readOutput($, item.detail.outputPath))
+      const { text, isWhole } = item.detail.outputPath
+        ? await readWhole($, item.detail.outputPath)
+        : { isWhole: false }
       if (!text) continue
-      const { exitCode, ended } = parseOutput(text)
+      const { exitCode, ended, lines } = parseOutput(text)
+      if (isWhole) await keepLines($, item.id, lines)
       const port = item.detail.port ?? guessPort(text)
       const now = await $.clock.now()
       await write($, held => {
@@ -70,10 +99,18 @@ async function poll($: EngineInterface): Promise<void> {
 }
 
 async function onNotifications($: EngineInterface, text: string): Promise<void> {
+  const notes = parseNotifications(text).filter(one => one.status)
+  const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+  for (const one of notes) {
+    const id = itemId('shell', one.taskId)
+    const item = items.find(held => held.id === id)
+    const path = one.outputFile ?? (item?.kind === 'shell' ? item.detail.outputPath : undefined)
+    const read = item && path ? await readWhole($, path) : undefined
+    if (read?.text && read.isWhole) await keepLines($, id, parseOutput(read.text).lines)
+  }
   const now = await $.clock.now()
   await write($, held =>
-    parseNotifications(text).reduce((items, one) => {
-      if (!one.status) return items
+    notes.reduce((items, one) => {
       const id = itemId('shell', one.taskId)
       const next = updateItem(items, id, {
         detail: {
