@@ -21,17 +21,17 @@ Type this at a Claude Code prompt:
 
 ## Develop
 
-Run Claude Code with the mod loaded from this folder. It reloads when you save a file.
+Install the development tools with [Bun](https://bun.sh) 1.4, then run Claude Code with the mod loaded from this folder. It reloads when you save a file.
 
 ```sh
+bun install
 claude --plugin-dir .
 ```
 
-Check the mod and run its tests:
+Run all checks (lint, type check, manifest validation and tests), as CI does:
 
 ```sh
-claude plugin validate .
-claude plugin test .
+bun run check
 ```
 
-After the first load, Claude Code writes the API types to `.claude-plugin/types/`. Then `tsc -p .` type-checks the mod.
+Contributor and agent rules are in [AGENTS.md](AGENTS.md).

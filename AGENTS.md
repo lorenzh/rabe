@@ -1,0 +1,66 @@
+# Agent Instructions
+
+## Package Manager
+- Use **Bun 1.4** for development tools: `bun install`. Never npm, pnpm or yarn.
+- The mod runs inside Claude Code's sandbox: no Node, no Bun, no npm packages at run time. Import only from `claude-code` and from files in this repo.
+- Claude Code is pinned as a dev dependency; `bun run` scripts use that version.
+
+## Commands
+| Task | Command |
+|------|---------|
+| All checks (CI runs these) | `bun run check` |
+| Tests | `bun run test` |
+| Typecheck | `bun run typecheck` |
+| Lint / fix | `bun run lint` / `bunx biome check --write .` |
+| Validate manifest and module | `bun run validate` |
+| Run the mod in a session | `claude --plugin-dir .` |
+
+## TDD
+- Write the failing test first, then the code.
+- Tests live next to the module as `*.test.ts` or `*.test.tsx` and import from `claude-code/testing`.
+- `bun run test` runs every test; there is no single-file filter, and the suite takes under a second.
+- UI tests mount on `terminal` and `desktop` and find elements by type and text; `Text` keeps no `key`.
+- Logic that needs no `$` (parsers, formatting, the next cron run) lives in plain functions with their own tests.
+
+## Code Layout
+- `hooks/register.tsx`: entry point; registers hooks and delegates to modules.
+- `hooks/sources/<kind>.ts`: one module per source (agents, codex, shells, monitors, crons, workflows) that turns events and files into items.
+- `hooks/ui/`: band and pane drawing.
+- `$.state` keys: declare each in `types/index.d.ts` and name that file as `"types"` in `.claude-plugin/plugin.json`.
+- `types/claude-code.d.ts`: API types written by Claude Code. Do not edit; replace it when the pinned Claude Code version changes.
+
+## Key Conventions
+- Get data from the mod API first, then from files on disk, then from the Claude Code or Codex source. Record each new source in `docs/feasibility.md`.
+- Hooks pass on with `next(e)` unless they answer on purpose.
+- Files on disk are undocumented: a missing file or field shows `n/a`. Never throw from a hook.
+- Take file paths from tool results; build a path only when no result carries it.
+- `$.fs` rejects reads over 4 MiB: read large files with `tail` or `jq` through `$.process.run`.
+- Module variables reset on every reload. Keep session values in `$.state` and values across sessions in `$.store`.
+- Poll with `$.clock.every`, and write state only when a value changed.
+- Keys: focusable Buttons and lowercase letter hotkeys only. `X`, `/`, space and `←→` cannot be bindings.
+- UI text: sentence case, plain words, no emoji. Status always has a word, never only a colour.
+- Workflows: pin actions to full SHAs, least-privilege `permissions`.
+
+## Documentation
+- Read the docs before the code: start with the table under External References.
+- Every change updates the docs in the same pull request: behaviour, data sources, hooks, modules, commands and settings.
+- The first code that adds a module also creates `docs/architecture.md`; each later module adds its section there.
+- A new or changed data source updates `docs/feasibility.md`.
+- User-visible changes also update `README.md`.
+- Each file in `docs/` starts with frontmatter: `title`, `description`, `tags`, `keywords`.
+- Docs say what a part does and why; code comments do not repeat them.
+- CI fails a pull request that changes code under `hooks/` but not `docs/` or `README.md`. A pure refactor gets the `no-docs` label.
+
+## Commits and PRs
+- Conventional Commits, imperative, lower case, no period.
+- Commit email: `5694425+lorenzh@users.noreply.github.com`.
+- No AI attribution, generated-by lines or `Co-Authored-By` trailers.
+- Changes reach `main` through pull requests.
+
+## External References
+| Need | File |
+|------|------|
+| How Rabe is built (once code exists) | `docs/architecture.md` |
+| What data exists and where it comes from | `docs/feasibility.md` |
+| Mod API (grep a name, read its doc comment) | `types/claude-code.d.ts` |
+| UI mockups (private) | https://claude.ai/artifact/1Fb364t1W9Fa1Gbi2KXvMq |

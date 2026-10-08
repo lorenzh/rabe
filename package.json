@@ -1,0 +1,17 @@
+{
+  "name": "rabe",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "claude plugin test .",
+    "validate": "claude plugin validate --strict .",
+    "typecheck": "tsc -p .",
+    "lint": "biome check .",
+    "check": "bun run lint && bun run typecheck && bun run validate && bun run test"
+  },
+  "devDependencies": {
+    "@anthropic-ai/claude-code": "2.1.295",
+    "@biomejs/biome": "2.2.4",
+    "typescript": "5.9.3"
+  }
+}

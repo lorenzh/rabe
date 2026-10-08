@@ -6,7 +6,8 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'rabe',
-      description: 'Show background work: agents, Codex jobs, shells, monitors, cron jobs and workflows',
+      description:
+        'Show background work: agents, Codex jobs, shells, monitors, cron jobs and workflows',
     })
 
     return next(e)

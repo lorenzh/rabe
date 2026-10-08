@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: '1.4.0'
+      - run: bun install --frozen-lockfile
+      - run: bun run lint
+      - run: bun run typecheck
+      - run: bun run validate
+      - run: bun run test
+      - name: Docs change with code
+        if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'no-docs')
+        run: |
+          changed=$(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD")
+          code=$(printf '%s\n' "$changed" | grep '^hooks/' | grep -v -E '\.test\.tsx?$' || true)
+          docs=$(printf '%s\n' "$changed" | grep -E '^(docs/|README\.md$)' || true)
+          if [ -n "$code" ] && [ -z "$docs" ]; then
+            echo "::error::Code under hooks/ changed without a change in docs/ or README.md. Update the docs, or add the no-docs label for a pure refactor."
+            exit 1
+          fi
