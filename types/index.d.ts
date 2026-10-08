@@ -109,8 +109,17 @@ export type RabeTurn = { index: number; at: number; text: string; tools: RabeToo
 
 export type RabeTab = 'items' | 'cost' | 'effects' | 'timeline'
 
+export type RabeLine = { at: number; text: string }
+
+export type RabeLines = { seen: number; lines: RabeLine[] }
+
 declare module 'claude-code' {
   interface PluginState {
-    rabe: { items: RabeItem[]; tab: RabeTab; turns: Record<string, RabeTurn[]> }
+    rabe: {
+      items: RabeItem[]
+      tab: RabeTab
+      turns: Record<string, RabeTurn[]>
+      lines: Record<string, RabeLines>
+    }
   }
 }

@@ -2,7 +2,7 @@
 title: How Rabe is built
 description: The item model, the registry in session state, the source contract and the split between band and pane, so that each source and view can be built on its own.
 tags: [architecture, item-model, registry, sources, ui, state]
-keywords: [RabeTurn, rabe.turns, agents, workflows, agent.spawn, turn.step, turn.complete, SubagentStart, meta.json, task-notification, matcher, codex source, rabe-stop, parseRollout, codexItem, RabeCodexStep, RabeItem, RabeItemKind, RabeItemStatus, NewItem, ItemPatch, itemId, addItem, updateItem, endItem, capEnded, commit, MAX_ENDED, write loop, Source, sources, register.tsx, band, pane, AbovePrompt, Pane, tab, $.state, ifVersion, scanner]
+keywords: [RabeTurn, rabe.turns, agents, workflows, agent.spawn, turn.step, turn.complete, SubagentStart, meta.json, task-notification, matcher, codex source, rabe-stop, parseRollout, codexItem, RabeCodexStep, RabeItem, RabeItemKind, RabeItemStatus, NewItem, ItemPatch, itemId, addItem, updateItem, endItem, capEnded, commit, MAX_ENDED, write loop, Source, sources, register.tsx, band, pane, AbovePrompt, Pane, tab, $.state, ifVersion, scanner, shells, monitors, crons, tasks.ts, schedule.ts, nextRun, nextRuns, parseNotifications, parseOutput, guessPort, rabe.lines, RabeLines, memoryState]
 ---
 
 # How Rabe is built
@@ -18,6 +18,12 @@ hooks/
   sources/agents.ts   Claude subagents: items, live tokens and turns
   sources/workflows.ts  workflow runs: items, phases and their end
   sources/codex.ts    Codex plugin jobs: items, steps and /rabe-stop
+  sources/shells.ts   background shells: items, exit code, port
+  sources/monitors.ts monitors: items and their output lines
+  sources/crons.ts    cron jobs and /loop wakeups
+  tasks.ts            pure: task notifications, task output files, port guess
+  schedule.ts         pure: next runs of a cron expression
+  testing.ts          test helpers: state in memory, files, core stubs
   ui/band.tsx         the band above the prompt
   ui/pane.tsx         the /rabe command and its pane
 types/index.d.ts      the state contract: item types and the $.state keys
@@ -33,7 +39,7 @@ This sets the shape of Rabe:
 - Each file that writes items has its own small write loop (below).
 - `sources(on)` calls each source by name. A loop over an array of sources is refused.
 - A source gets `on` only. It imports the pure registry functions it needs.
-- An event may have only one hook without a matcher in the whole module. A second one stops the module from loading. Sources therefore give each hook a matcher, also when it has to match every event (`{ cwd: /^/ }` on `session.start`, `{ agentId: /^/ }` on `turn.step`). Hooks with matchers, also equal ones, may repeat.
+- An event may have only one hook without a matcher in the whole module. A second one stops the module from loading. Sources therefore give each hook a matcher, also when it has to match every event (`{ cwd: /^/ }` or `{ isInteractive: [true, false] }` on `session.start`, `{ agentId: /^/ }` on `turn.step`, `{ stop_hook_active: [true, false] }` on `classic.Stop`). Hooks with matchers, also equal ones, may repeat. `prompt.submit` takes a real matcher, such as `{ origin: { kind: 'task-notification' } }`.
 
 ## The item model
 
@@ -197,6 +203,40 @@ Tracks the jobs that the Codex plugin (`codex@openai-codex`) starts for this ses
 - **Stop.** `/rabe-stop codex:<job id>` runs `node <plugin root>/scripts/codex-companion.mjs cancel <job id> --json --cwd <workspaceRoot>` with `CLAUDE_PLUGIN_DATA` set to the plugin's data folder. The plugin root is the `installPath` in `plugins/installed_plugins.json`. On success the item ends as `stopped`.
 
 The codex detail fields are listed in the table above. `steps` holds `RabeCodexStep` values: `{ kind: 'message' | 'reasoning' | 'command', text, exitCode?, lines?, isRunning? }`.
+
+The next three sources follow the work Claude Code runs as background tasks. Each writes items of its own kind only. The pure parsing lives in `hooks/tasks.ts` and `hooks/schedule.ts`, so views can use it too.
+
+### Shells: `hooks/sources/shells.ts`
+
+| Hook | What it does |
+|---|---|
+| `tool.call` `{ tool: 'Bash' }` | After `next(e)`: a result with `backgroundTaskId` adds `shell:<taskId>`, title the command. `outputPath` comes from the result text (`Output is being written to: …`). This covers `run_in_background`, Ctrl+B and a timed-out command. In a subagent, `parentId` is `agent:<agentId>`. |
+| `prompt.submit` `{ origin: { kind: 'task-notification' } }` | Each `<task-notification>` with a `<status>` ends its shell: `completed` is done, `failed` failed, `killed` stopped. The exit code comes from the summary (`failed with exit code 3`). |
+| `session.start` | Starts a poll every 2 s. It reads the output file of each running shell, guesses a port (`localhost:5173`, `port 4000`), and ends the shell at the last line `[exited with code N]` or `[killed]`. |
+| `classic.Stop` | A running shell missing from `background_tasks` ends by its exit line, else as stopped. A shell in `background_tasks` that Rabe never saw is added, without `startedAt`. |
+
+### Monitors: `hooks/sources/monitors.ts`
+
+The same four hooks for the Monitor tool. The Monitor result has no file path, so `outputPath` is the sibling of a task output file Rabe already knows (`taskOutput`), or the `<output-file>` of the end notification.
+
+Monitor lines are kept apart from the item, in the `$.state` key `rabe.lines`: `Record<itemId, { seen, lines: { at, text }[] }>`. `seen` counts the lines read from the file; `lines` holds the newest 200, each with the time the poll first read it ("received"). The poll and the end notification both read the file, so the last lines are kept even when the notification comes first. Notification `<event>` lines are not used: they come late and in batches.
+
+### Cron jobs and loops: `hooks/sources/crons.ts`
+
+| Hook | What it does |
+|---|---|
+| `tool.call` `{ tool: 'CronCreate' }` | Adds `cron:<id>` with `schedule`, `humanSchedule` and `prompt`. |
+| `tool.call` `{ tool: 'CronDelete' }` | Ends the job as stopped. |
+| `tool.call` `{ tool: 'ScheduleWakeup' }` | Ends the running wakeup as done and adds `cron:wakeup-<scheduledFor>` with `scheduledFor` and no schedule. `stop: true` ends running wakeups as stopped. The `<<autonomous-loop-dynamic>>` prompt shows as "autonomous loop". |
+| `prompt.submit` `{ origin: { kind: 'scheduled-trigger' } }` | Ends the wakeups due by now (plus 90 s of jitter) as done. |
+| `session.start` | Calls `CronList` and adds the jobs made before Rabe loaded. |
+| `classic.Stop` | Syncs with `session_crons`: a job gone from the list ends as done (a one-time job fired, a job expired); a new one is added. Wakeups are not ended here, and a listed job whose prompt matches a running wakeup is not added twice. |
+
+`schedule.ts` has `nextRun(expr, from)` and `nextRuns(expr, from, count)`: the next times a 5-field cron expression matches in local time, after `from`. It reads `*`, numbers, ranges, lists and steps; day of month and day of week match either one when both are set, as in cron. A broken or impossible expression gives `undefined` (an empty list). Claude Code adds up to 10 % jitter to recurring jobs, which this does not show.
+
+## Testing sources
+
+The test's `$` has no `state` noun. `memoryState(on)` from `hooks/testing.ts` answers `state.get` and `state.set` from memory, with versions, and returns the record to read (`state['rabe.items'].value`). `files(on, held)` answers `fs.stat` and `fs.read` from a record. `core(on)` answers the events the tests raise that nothing beneath the plugins answers: `prompt.submit`, `session.start`, `command.register` and `classic.Stop`. Tool results come from a test hook on `tool.call`, and `mock.clock` drives the poll.
 
 ## The views
 
