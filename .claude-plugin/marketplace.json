@@ -1,0 +1,13 @@
+{
+  "name": "rabe",
+  "owner": {
+    "name": "Lorenz Hilpert"
+  },
+  "plugins": [
+    {
+      "name": "rabe",
+      "source": "./"
+    }
+  ],
+  "description": "Rabe, a Claude Code mod that shows background work."
+}

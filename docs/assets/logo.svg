@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="title">
+  <title id="title">rabe</title>
+  <rect width="64" height="64" rx="14" fill="#C29BD3"/>
+    <g shape-rendering="crispEdges">
+      <path fill="#120C17" d="M30 10h12v4h-12zM26 14h20v4h-20zM26 18h4v4h-4zM34 18h12v4h-12zM22 22h28v4h-28zM18 26h28v4h-28zM14 30h32v4h-32zM10 34h32v4h-32zM6 38h12v4h-12zM22 38h20v4h-20zM6 42h4v4h-4zM26 42h4v4h-4zM34 42h4v4h-4zM26 46h4v4h-4zM34 46h4v4h-4zM46 14h8v4h-8zM46 18h12v4h-12z"/>
+      <path fill="#271B32" d="M6 50h52v4H6z"/>
+    </g>
+</svg>
