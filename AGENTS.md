@@ -57,6 +57,7 @@
 - Commit email: `5694425+lorenzh@users.noreply.github.com`.
 - No AI attribution, generated-by lines or `Co-Authored-By` trailers.
 - Changes reach `main` through pull requests.
+- Create git worktrees only under `.worktrees/<name>` in the repo: `git worktree add .worktrees/<name> -b <branch>`. Run `bun install` inside it, and remove it with `git worktree remove .worktrees/<name>` after its branch is merged.
 
 ## External References
 | Need | File |
