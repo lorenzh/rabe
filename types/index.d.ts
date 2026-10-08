@@ -113,6 +113,8 @@ export type RabeLine = { at: number; text: string }
 
 export type RabeLines = { seen: number; lines: RabeLine[] }
 
+export type RabeFilter = 'all' | 'agents' | 'shells' | 'monitors' | 'cron' | 'failed'
+
 declare module 'claude-code' {
   interface PluginState {
     rabe: {
@@ -120,6 +122,12 @@ declare module 'claude-code' {
       tab: RabeTab
       turns: Record<string, RabeTurn[]>
       lines: Record<string, RabeLines>
+      filter: RabeFilter
+      query: string
+      page: number
+      folded: string[]
+      selected: string
+      open: string
     }
   }
 }
