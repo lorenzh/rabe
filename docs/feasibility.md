@@ -34,11 +34,13 @@ Rabe keeps its own list. It adds an item when a hook reports a start (`tool.call
 | id, type, description, name, status, parent | `$.agent.list()` (d.ts:3159, d.ts:122). Status values at d.ts:544. Workflow agents are not in this list (d.ts:3157). |
 | Start time | Rabe's own clock at `agent.spawn` (d.ts:4063). |
 | Tool calls, recent tools | `tool.call` carries `agentId` (d.ts:12589). |
-| Tokens, live | `turn.step` carries `agentId` and `usage` per request (d.ts:13316, d.ts:13413). `turn.complete` has the total (d.ts:13201). |
+| Tokens, live | `turn.step` carries `agentId` and `usage` per request (d.ts:13316, d.ts:13413). `turn.complete` has the total (d.ts:13201). Rabe adds up the steps, so an agent that runs again after a message keeps counting. |
+| Tool calls per response | The `turn.step` result lists `toolUses` with name and input. Rabe uses it for the tool count and the turns, so it needs no `tool.call` hook per agent. |
+| End | `turn.complete` with `agentId` and `reason` (`answer`, `aborted`, `refusal`, `error`). Also `$.agent.list()` status for agents in the list. |
 | Cost | Rabe's price table times tokens. An estimate. |
-| Turns | Text and tool calls from the hooks, or the transcript `~/.claude/projects/<project>/<session>/subagents/agent-<id>.jsonl`. |
+| Turns | Text and tool calls from the `turn.step` result (Rabe uses this). The transcript `~/.claude/projects/<project>/<session>/subagents/agent-<id>.jsonl` has them too, for agents that ran before Rabe loaded. |
 | Worktree at start | `classic.SubagentStart` gives the worktree as `cwd`, with `agent_id` and `transcript_path`. `agent.spawn` has no cwd. The Agent `tool.call` input shows `isolation: 'worktree'`. Tested. |
-| Worktree, branch, phase, parent | `subagents/agent-<id>.meta.json`, written about 1.5 s after the agent starts and rewritten later, so read it after a short delay and again on change. Fields: `worktreePath`, `worktreeBranch`, `cwd`, `parentAgentId`, `workflowPhase`, `description`, `name`, `toolUseId`, `requestShape`. The API has the worktree only in the result of a finished foreground agent (d.ts:16722). |
+| Worktree, branch, phase, parent | `subagents/agent-<id>.meta.json`, written about 1.5 s after the agent starts and rewritten later, so read it after a short delay and again on change. Fields: `worktreePath`, `worktreeBranch`, `cwd`, `parentAgentId`, `workflowPhase`, `description`, `name`, `toolUseId`, `requestShape`. Seen on disk as well: `agentType`, `spawnDepth`, `isFork`, `model`, `requestNonInteractive`. Each field is optional. The API has the worktree only in the result of a finished foreground agent (d.ts:16722). |
 | Message an agent | `$.session.send({ to: { agentId } })` (d.ts:2849). It also resumes a finished agent. Not for workflow agents. |
 | Stop | `$.tool.call({ tool: 'TaskStop' })` (d.ts:16568). Tested: core allows `TaskStop` and `CronList` without a prompt in manual mode, so no `tool.check` hook is needed. Rabe's own calls carry `origin.plugin === 'rabe'`. Not tested in auto mode. |
 
@@ -49,7 +51,9 @@ Rabe keeps its own list. It adds an item when a hook reports a start (`tool.call
 | Run id, name, script path, transcript folder | Workflow tool result (d.ts:21251). |
 | Agents of a run | `agent.spawn` with `workflow: { runId, agentIndex }` (d.ts:357). |
 | Phase of each agent | `workflowPhase` in the agent's meta file. |
-| Phase names | The `meta.phases` block of the script. |
+| Phase names | The `meta.phases` block of the script at `scriptPath`. Each phase is a string or `{ title, detail }`. |
+| Agent files | Workflow agents write their transcript and meta file to `transcriptDir`, which is `<session>/subagents/workflows/<runId>/`. The same folder has `journal.jsonl` (one record per agent start and result, with phase). `<session>/workflows/<runId>.json` has the run's status, phases and totals, but is written when the run ends. |
+| End | The task notification: a `prompt.submit` with origin `task-notification` whose text holds `<task-id>` (the run's `taskId`) and `<status>` (`completed`, `failed`, `killed`). The text format is not documented. |
 | Retries | Not reported: a retried agent does not raise `agent.spawn` again (d.ts:345). |
 | Stop | The whole run with `TaskStop` on its task id. A single workflow agent cannot be stopped. |
 
