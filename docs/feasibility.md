@@ -2,7 +2,7 @@
 title: What Rabe can see
 description: Where Rabe gets each piece of data about background work (mod API, files on disk, source code), what is not available, the pane key model, and what still needs a runtime test.
 tags: [feasibility, data-sources, mod-api, claude-code, codex, runtime-tests]
-keywords: [subagent, workflow, workflowPhase, meta.json, worktree, codex, rollout, threadId, token_count, model_reasoning_summary, shell, task output, monitor, cron, CronList, TaskStop, tool.check, hotkey, Button, focus, band, pane, 4 MiB, n/a]
+keywords: [task-notification, output-file, exited with code, killed, backgroundTaskId, background_tasks, session_crons, ScheduleWakeup, scheduledFor, scheduled-trigger, subagent, workflow, workflowPhase, meta.json, worktree, codex, rollout, threadId, token_count, model_reasoning_summary, shell, task output, monitor, cron, CronList, TaskStop, tool.check, hotkey, Button, focus, band, pane, 4 MiB, n/a]
 ---
 
 # What Rabe can see
@@ -70,21 +70,35 @@ Limits: Codex deletes old session files, so older jobs show `n/a` for tokens and
 
 | Data | Source |
 |---|---|
-| Command, task id | Bash `tool.call` input and result `backgroundTaskId` (d.ts:16032, d.ts:20215). |
-| Output, exit code | `/tmp/claude-<uid>/<project>/<session>/tasks/<taskId>.output`. Live output, and a last line `[exited with code N]`. Take the path from the tool result, do not build it. |
-| End, duration | Task notification `props.task` with `status` and `durationMs` (d.ts:14467). |
-| Port | Not reported. Guess from the output (`localhost:5173`) or from `ss -ltnp`. |
+| Command, task id | Bash `tool.call` input and result `backgroundTaskId` (d.ts:16032, d.ts:20215). Set for `run_in_background`, Ctrl+B (`backgroundedByUser`) and a timed-out command (`timedOutAfterMs`). |
+| Output file path | The result `text`: `Command running in background with ID: <id>. Output is being written to: <path>.` Tested. |
+| Output, exit code | `/tmp/claude-<uid>/<project>/<session>/tasks/<taskId>.output`. Live output, then an empty line and `[exited with code N]`, or `[killed]` for a stopped task. Tested. Read with `$.fs` up to 4 MiB, beyond that with `tail -c` through `$.process.run`. |
+| End | `prompt.submit` with `origin.kind` `task-notification`. Its text holds `<task-notification>` blocks with `<task-id>`, `<tool-use-id>`, `<output-file>`, `<status>` (`completed`, `failed`, `killed`) and `<summary>` (`… failed with exit code 3`). Tested. The `UserMessage` row's `task` (d.ts:14467) has the same fields and `durationMs`, but only while the row is drawn. |
+| Still running | `classic.Stop` `background_tasks` lists running work (`type` `shell` with `command`, `monitor`, `subagent`, `workflow`); a finished task is not in it. |
+| Port | Not reported. Guessed from the output (`localhost:5173`, `127.0.0.1:8080`, `port 4000`). `ss -ltnp` is not used. |
 | Stop | `TaskStop`. |
 
 ## Monitors
 
 Command, description, timeout and `persistent` come from the Monitor tool input and result (d.ts:16231, d.ts:20620). A monitor has no interval: it is one command that streams lines.
 
+The result text (`Monitor started (task <id>, expires in …)`) has no file path. The output file sits beside the shells' files (`tasks/<taskId>.output`) and ends with the same exit line. Tested. Rabe takes the folder from a path it already knows; the end notification also carries `<output-file>`.
+
+Notifications: each batch of lines arrives as a `<task-notification>` with `<summary>Monitor event: "…"</summary>` and `<event>` lines and no `<status>`; the end has `<status>completed</status>` and `Monitor "…" stream ended`. Tested.
+
 Line times: task notifications are delayed and often carry several lines, so their time is not when the line was written. Follow the monitor's output file instead, and label the times "received".
 
 ## Cron jobs and loops
 
-`CronList` gives id, schedule, `humanSchedule` and prompt (d.ts:20300). Rabe computes the next run from the schedule. A one-time wakeup has `scheduledFor` (d.ts:20956). Runs show up as prompts with origin `scheduled-trigger` (d.ts:8840); whether a run failed is a guess.
+| Data | Source |
+|---|---|
+| New job | CronCreate input (`cron`, `prompt`, `recurring`) and result (`id`, `humanSchedule`) (d.ts:16050, d.ts:20291). |
+| Jobs made before Rabe loaded | `CronList`: id, `cron`, `humanSchedule`, prompt (d.ts:20300). Runs without a prompt (tested). |
+| Current list | `classic.Stop` `session_crons`: id, `schedule`, `recurring`, prompt; no `humanSchedule`. It also holds wakeups. |
+| Next run | Computed from the schedule in local time (`hooks/schedule.ts`). Claude Code adds up to 10 % jitter to recurring jobs (at most 15 min), and fires one-time jobs at :00 or :30 up to 90 s early. |
+| Loop wakeup | ScheduleWakeup result `scheduledFor` (d.ts:20956); `stop: true` ends the loop. No job id. |
+| Runs | Prompts with origin `scheduled-trigger` (d.ts:8840). The prompt text tells which job; whether a run failed is a guess. |
+| End | CronDelete; a one-time job deletes itself after it fires; a recurring job expires after 7 days. Rabe sees the last two only as a job gone from `session_crons` or `CronList`. |
 
 ## User interface
 
@@ -100,6 +114,10 @@ Line times: task notifications are delayed and often carry several lines, so the
 Tested: `$.fs.stat` and `$.fs.read` read files under `~/.codex/sessions` and `/tmp/claude-<uid>/…/tasks/` without a prompt or a denial.
 
 ## Still to test at runtime
+
+- Does `CronList` also list `ScheduleWakeup` wakeups, and with which id?
+- Is a `prompt.submit` raised for a task notification delivered into a running turn, as for one dequeued when idle?
+- What does the output file of a monitor that hit its timeout end with?
 
 - Do `TaskStop` and `CronList` run without a prompt in auto mode too?
 - How much does a band redraw every second cost while the user types?
