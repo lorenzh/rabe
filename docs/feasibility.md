@@ -2,7 +2,7 @@
 title: What Rabe can see
 description: Where Rabe gets each piece of data about background work (mod API, files on disk, source code), what is not available, the pane key model, and what still needs a runtime test.
 tags: [feasibility, data-sources, mod-api, claude-code, codex, runtime-tests]
-keywords: [subagent, workflow, workflowPhase, meta.json, worktree, codex, rollout, threadId, token_count, model_reasoning_summary, shell, task output, monitor, cron, CronList, TaskStop, tool.check, hotkey, Button, focus, band, pane, 4 MiB, n/a]
+keywords: [installed_plugins.json, CLAUDE_PLUGIN_DATA, CODEX_HOME, sessionId, custom_tool_call, CommandExecution, subagent, workflow, workflowPhase, meta.json, worktree, codex, rollout, threadId, token_count, model_reasoning_summary, shell, task output, monitor, cron, CronList, TaskStop, tool.check, hotkey, Button, focus, band, pane, 4 MiB, n/a]
 ---
 
 # What Rabe can see
@@ -61,14 +61,17 @@ Rabe keeps its own list. It adds an item when a hook reports a start (`tool.call
 
 | Data | Source |
 |---|---|
-| Jobs, status, title, prompt | The Codex plugin's job files: `~/.claude/plugins/data/codex-openai-codex/state/<workspace>/jobs/<id>.json` and `.log`. Poll every 1 to 2 seconds. Only background jobs keep `request.model` and `request.effort`. |
-| Model, effort, tokens per request | Codex's own session file `~/.codex/sessions/YYYY/MM/DD/rollout-*-<threadId>.jsonl`. The job file has the `threadId`. Records: `turn_context` (model, effort), `token_count` (`last_token_usage`, `total_token_usage`). Tested: the file grows during the run, one `token_count` per step, so tokens update live. |
-| Progress text | `response_item` records of type `message` from the assistant. Plain text. |
-| Commands | `custom_tool_call` is written when a command starts; `item_completed` of type `CommandExecution` (command, cwd, status, output, exit code) about when it ends, then `custom_tool_call_output` and `token_count`. `task_complete` comes last. There are no `exec_command_end` records. |
-| Reasoning summaries | Only when `model_reasoning_summary` is set in the Codex config (for example `concise`). Without it, reasoning is encrypted. We tested both. |
-| Cancel | `node <plugin>/scripts/codex-companion.mjs cancel <id> --json` through `$.process.run` (d.ts:3472). |
+| Jobs, status, title, prompt | The Codex plugin's files under `<claude dir>/plugins/data/codex-openai-codex/state/<slug>-<hash>/`: `state.json` (the last 50 jobs of the workspace, short entries) and `jobs/<id>.json` and `.log` (one job, full). `<slug>` is the base name of the workspace's git root and `<hash>` the first 16 hex digits of the SHA-256 of its real path, so Rabe lists the folders instead of computing the name. Poll every 1 to 2 seconds. |
+| Which session | `sessionId` in the job is the Claude Code session id (the plugin's `SessionStart` hook puts it in `CODEX_COMPANION_SESSION_ID`); compare with `$.session.id()`. `state.json` can hold a bare status patch without `sessionId`; the job file has it. `$.session.usage().startedAt` skips the folders whose `state.json` did not change during this session. |
+| Status | `queued`, `running`, `completed`, `failed`, `cancelled`. `completedAt` and `startedAt` are ISO times. `summary` in the job file is the prompt's start; in `state.json` it is the result's first line once the job ended. `kindLabel` is `rescue`, `review` or `adversarial-review`. Only background jobs keep `request.model`, `request.effort` and `request.prompt`. |
+| Model, effort, tokens per request | Codex's own session file `<codex home>/sessions/YYYY/MM/DD/rollout-<local time>-<threadId>.jsonl` (`CODEX_HOME`, default `~/.codex`; the folder date is local time). The job file has the `threadId`. Records: `turn_context` (`model`, `effort`, `sandbox_policy.type`), `token_count` (`info.last_token_usage`, `info.total_token_usage` with `input_tokens`, `cached_input_tokens`, `output_tokens`). Tested: the file grows during the run, one `token_count` per step, so tokens update live. |
+| Prompt | The first `event_msg` `item_completed` of type `UserMessage`. Also for foreground jobs, whose job file has no `request`. |
+| Progress text | `response_item` records of type `message` with role `assistant`, text in `content[].output_text`. |
+| Commands | `custom_tool_call` is written when a command starts; its `input` is a small script such as `text(await tools.exec_command({cmd:"git status"}))`, so the command is taken from `cmd`. `item_completed` of type `CommandExecution` (`command` as argv, `cwd`, `status`, `aggregated_output`, `exit_code`) comes about when it ends, then `custom_tool_call_output` with the same `call_id`, then `token_count`. `task_complete` comes last. There are no `exec_command_end` records. |
+| Reasoning summaries | `response_item` of type `reasoning`, `summary[].text`, only when `model_reasoning_summary` is set in the Codex config (for example `concise`). Without it `summary` is empty and the reasoning is encrypted. We tested both. |
+| Cancel | `node <plugin root>/scripts/codex-companion.mjs cancel <id> --json --cwd <workspaceRoot>` through `$.process.run` (d.ts:3472). Set `CLAUDE_PLUGIN_DATA` to the plugin's data folder: without it the script looks in `$TMPDIR/codex-companion` and finds no job. The plugin root is `installPath` of `codex@openai-codex` in `<claude dir>/plugins/installed_plugins.json`. |
 
-Limits: Codex deletes old session files, so older jobs show `n/a` for tokens and model. `$.fs` rejects reads over 4 MiB (d.ts:3200), and some session files are larger: read those with `tail` or `jq` through `$.process.run`.
+Limits: Codex deletes old session files, so older jobs show `n/a` for tokens and model. `$.fs` rejects reads over 4 MiB (d.ts:3200), and some session files are larger (seen: 4.9 MB): Rabe reads those with `grep -m 2` for the turn context and prompt and `tail -n 200` for the rest, through `$.process.run`, so the step list and command count cover the last 200 lines only.
 
 ## Background shells
 

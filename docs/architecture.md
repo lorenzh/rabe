@@ -2,7 +2,7 @@
 title: How Rabe is built
 description: The item model, the registry in session state, the source contract and the split between band and pane, so that each source and view can be built on its own.
 tags: [architecture, item-model, registry, sources, ui, state]
-keywords: [RabeTurn, rabe.turns, agents, workflows, agent.spawn, turn.step, turn.complete, SubagentStart, meta.json, task-notification, matcher, RabeItem, RabeItemKind, RabeItemStatus, NewItem, ItemPatch, itemId, addItem, updateItem, endItem, capEnded, commit, MAX_ENDED, write loop, Source, sources, register.tsx, band, pane, AbovePrompt, Pane, tab, $.state, ifVersion, scanner]
+keywords: [RabeTurn, rabe.turns, agents, workflows, agent.spawn, turn.step, turn.complete, SubagentStart, meta.json, task-notification, matcher, codex source, rabe-stop, parseRollout, codexItem, RabeCodexStep, RabeItem, RabeItemKind, RabeItemStatus, NewItem, ItemPatch, itemId, addItem, updateItem, endItem, capEnded, commit, MAX_ENDED, write loop, Source, sources, register.tsx, band, pane, AbovePrompt, Pane, tab, $.state, ifVersion, scanner]
 ---
 
 # How Rabe is built
@@ -17,6 +17,7 @@ hooks/
   sources/index.ts    Source type and sources(on), which calls each source
   sources/agents.ts   Claude subagents: items, live tokens and turns
   sources/workflows.ts  workflow runs: items, phases and their end
+  sources/codex.ts    Codex plugin jobs: items, steps and /rabe-stop
   ui/band.tsx         the band above the prompt
   ui/pane.tsx         the /rabe command and its pane
 types/index.d.ts      the state contract: item types and the $.state keys
@@ -66,7 +67,7 @@ type RabeItem = { [K in RabeItemKind]: RabeItemOf<K> }[RabeItemKind]
 |---|---|
 | `agent` | `agentId`, `type?`, `model?`, `description?`, `transcriptPath?`, `worktreePath?`, `worktreeBranch?`, `workflowPhase?`, `workflowIndex?`, `toolCount?`, `lastTool?`, `lastToolAt?` |
 | `workflow` | `runId`, `taskId?`, `scriptPath?`, `transcriptDir?`, `phases?` |
-| `codex` | `jobId`, `threadId?`, `model?`, `effort?`, `prompt?`, `sessionPath?` |
+| `codex` | `jobId`, `jobKind?`, `threadId?`, `model?`, `effort?`, `sandbox?`, `prompt?`, `workspaceRoot?`, `logPath?`, `sessionPath?`, `sessionUpdatedAt?`, `isSessionMissing?`, `isSessionPartial?`, `commandCount?`, `steps?` |
 | `shell` | `command`, `taskId?`, `outputPath?`, `exitCode?`, `port?` |
 | `monitor` | `command`, `description?`, `taskId?`, `outputPath?`, `timeoutMs?`, `isPersistent?` |
 | `cron` | `jobId`, `prompt`, `schedule?`, `humanSchedule?`, `scheduledFor?` |
@@ -148,6 +149,14 @@ export function sources(on: On): void {
 
 A source owns the items of its kind. It uses `itemId(kind, nativeId)` for ids, so another source can set `parentId` without asking it. Test a source through the engine: raise its events in a test, and watch `rabe.items` with a test hook on `state.set`.
 
+### Starting work: `session.start` with a matcher
+
+`pane.tsx` owns the plain `session.start` hook. Each source gives its own start hook a matcher (see the rule above): the agents source uses `{ cwd: /^/ }`, and the Codex source uses `{ isInteractive: true }`, since only a person at the prompt sees the band and the pane.
+
+### Stopping an item: `/rabe-stop <item id>`
+
+A view cannot pass `$` to a source, so stopping goes through a command. `/rabe-stop <item id>` is registered by the Codex source (with `immediate: true`, so it also runs during a turn). Each source that can stop its items answers it with a matcher on the id prefix, for example `{ command: 'rabe-stop', args: /^\s*codex:/ }`, and returns `{ text }` that says what happened. A view calls `$.command.run({ command: 'rabe-stop', args: item.id })` and shows the text as a toast. When a second source adds stopping, move the registration to `pane.tsx`.
+
 ## The sources
 
 ### Claude subagents: `hooks/sources/agents.ts`
@@ -176,6 +185,18 @@ One `workflow` item per run, id `workflow:<runId>`.
 | `prompt.submit` with origin `task-notification` | Reads `<task-id>` and `<status>` from the notification text. When the task id is a run's `taskId`, it ends the run: `completed` is done, `failed` is failed, `killed` is stopped. |
 
 The run's agents come from `agents.ts`; they point to the run with `parentId` and carry their phase in `workflowPhase`. A view gets a run's tokens by adding up its agents.
+
+### Codex jobs: `hooks/sources/codex.ts`
+
+Tracks the jobs that the Codex plugin (`codex@openai-codex`) starts for this session. Data sources and their limits are in [What Rabe can see](feasibility.md#codex-jobs).
+
+- **Poll.** `session.start` (interactive only) starts `$.clock.every(2000)`. Each poll lists the plugin's state folders, skips each whose `state.json` was not changed since the session started (`$.session.usage().startedAt`), and reads the rest. It keeps the jobs whose `sessionId` is this session's (`$.session.id()`), and checks that again in the job file, because `state.json` can hold a bare status patch without it. A job whose item already ended is not read again.
+- **Item.** `codexItem(job, session)` builds the item. Title: the first line of the job's `summary` (the prompt's start). Status: `queued` and `running` are running; `completed`, `failed` and `cancelled` end the item as `done`, `failed` and `stopped`, with `endedAt` from `completedAt`. Undefined fields are left out, so a merge never erases a known value.
+- **Session file.** The rollout file is found once by `threadId` in `sessions/YYYY/MM/DD` of the start day and the day before and after (the folder date is local time), then kept in `detail.sessionPath`. It is parsed again only when its `mtimeMs` differs from `detail.sessionUpdatedAt`, so an idle job causes no write. Files up to 4 MiB are read with `$.fs.read`; larger ones with `grep -m 2` (turn context and prompt) and `tail -n 200` through `$.process.run`, and the item gets `isSessionPartial`. A finished job without a session file gets `isSessionMissing`; its model and effort then come from the job's `request`, when the job was a background job.
+- **`parseRollout(text)`.** Pure. Reads model, effort and sandbox (`turn_context`), the prompt (first `UserMessage`), tokens (last `token_count` total), and the steps: assistant messages, reasoning summaries when present, finished commands (`CommandExecution`, with exit code and output line count), and a running command (a `custom_tool_call` that has no output yet). Steps keep the last 50, each text cut at 300 characters. Lines that do not parse (a line still being written) are skipped.
+- **Stop.** `/rabe-stop codex:<job id>` runs `node <plugin root>/scripts/codex-companion.mjs cancel <job id> --json --cwd <workspaceRoot>` with `CLAUDE_PLUGIN_DATA` set to the plugin's data folder. The plugin root is the `installPath` in `plugins/installed_plugins.json`. On success the item ends as `stopped`.
+
+The codex detail fields are listed in the table above. `steps` holds `RabeCodexStep` values: `{ kind: 'message' | 'reasoning' | 'command', text, exitCode?, lines?, isRunning? }`.
 
 ## The views
 

@@ -27,13 +27,30 @@ export type RabeWorkflowDetail = {
   phases?: string[]
 }
 
+export type RabeCodexStep = {
+  kind: 'message' | 'reasoning' | 'command'
+  text: string
+  exitCode?: number
+  lines?: number
+  isRunning?: boolean
+}
+
 export type RabeCodexDetail = {
   jobId: string
+  jobKind?: string
   threadId?: string
   model?: string
   effort?: string
+  sandbox?: string
   prompt?: string
+  workspaceRoot?: string
+  logPath?: string
   sessionPath?: string
+  sessionUpdatedAt?: number
+  isSessionMissing?: boolean
+  isSessionPartial?: boolean
+  commandCount?: number
+  steps?: RabeCodexStep[]
 }
 
 export type RabeShellDetail = {

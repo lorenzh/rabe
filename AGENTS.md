@@ -34,7 +34,7 @@
 ## Key Conventions
 - Get data from the mod API first, then from files on disk, then from the Claude Code or Codex source. Record each new source in `docs/feasibility.md`.
 - Hooks pass on with `next(e)` unless they answer on purpose.
-- Give each hook in a source a matcher: an event may have only one hook without a matcher in the whole module, or the module does not load.
+- Give each hook in a source a matcher: an event may have only one hook without a matcher in the whole module, or the module does not load. `pane.tsx` owns the plain `session.start` (see `docs/architecture.md`).
 - Helpers that take `$` are top-level function declarations in the same file as the hook; `claude plugin validate` refuses closures inside `register` that receive `$`, and the scan never follows `$` across an import. Shared code is pure; see `docs/architecture.md`.
 - A `$.state` reference or atom is written in the file that uses it, with literal `plugin` and `key`.
 - Files on disk are undocumented: a missing file or field shows `n/a`. Never throw from a hook.
