@@ -13,6 +13,10 @@ export type RabeAgentDetail = {
   worktreePath?: string
   worktreeBranch?: string
   workflowPhase?: string
+  workflowIndex?: number
+  toolCount?: number
+  lastTool?: string
+  lastToolAt?: number
 }
 
 export type RabeWorkflowDetail = {
@@ -82,10 +86,14 @@ export type RabeItemOf<K extends RabeItemKind> = {
 
 export type RabeItem = { [K in RabeItemKind]: RabeItemOf<K> }[RabeItemKind]
 
+export type RabeToolUse = { name: string; summary?: string }
+
+export type RabeTurn = { index: number; at: number; text: string; tools: RabeToolUse[] }
+
 export type RabeTab = 'items' | 'cost' | 'effects' | 'timeline'
 
 declare module 'claude-code' {
   interface PluginState {
-    rabe: { items: RabeItem[]; tab: RabeTab }
+    rabe: { items: RabeItem[]; tab: RabeTab; turns: Record<string, RabeTurn[]> }
   }
 }

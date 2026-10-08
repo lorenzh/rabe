@@ -7,6 +7,8 @@ export type {
   RabeItemOf,
   RabeItemStatus,
   RabeTokens,
+  RabeToolUse,
+  RabeTurn,
 } from '../types'
 
 export type NewItem = { [K in RabeItemKind]: Omit<RabeItemOf<K>, 'seenAt'> }[RabeItemKind]
