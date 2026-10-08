@@ -1,0 +1,21 @@
+name: Feedback
+description: An idea, a wish, or something that could work better.
+labels: [feedback]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for your feedback. In Claude Code, `/rabe:feedback` fills this in for you.
+        This issue is public: leave out anything private.
+  - type: textarea
+    id: feedback
+    attributes:
+      label: Your feedback
+      description: What you would like, and why it would help you.
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Example
+      description: A situation where this would have helped, if you have one.

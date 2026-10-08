@@ -1,0 +1,57 @@
+name: Bug report
+description: Rabe shows something wrong, misses work, or breaks Claude Code.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. In Claude Code, `/rabe:report-bug` fills this in for you.
+        This issue is public: leave out paths, prompts and anything private.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What Rabe showed or did.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start a background shell with ...
+        2. Open /rabe
+        3. ...
+    validations:
+      required: true
+  - type: input
+    id: rabe-version
+    attributes:
+      label: Rabe version
+      description: The `version` in Rabe's `.claude-plugin/plugin.json`.
+    validations:
+      required: true
+  - type: input
+    id: claude-code-version
+    attributes:
+      label: Claude Code version
+      description: Output of `claude --version`.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Ubuntu 24.04, macOS 26, Windows 11 (WSL) ...
+  - type: textarea
+    id: errors
+    attributes:
+      label: Error lines
+      description: Error lines from the /rabe pane or from `claude --debug`, if any.
+      render: text
