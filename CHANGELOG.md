@@ -8,6 +8,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 - The Effects tab shows the files Codex jobs changed (added, updated or deleted) and the files the main session changed, with who changed each file and how. ([#16](https://github.com/lorenzh/rabe/pull/16))
 
+### Changed
+
+- The band above the prompt is always one line of counts and the cost, with an empty row above it so the status line does not touch it; the empty row goes when the band has only one row. ([#17](https://github.com/lorenzh/rabe/pull/17))
+
 ### Fixed
 
 - The Effects tab shows files that agents write through shell commands (`cat > file <<'EOF'`, `>>`, `tee`, `sed -i`, `cp`, `mv`, `touch`), marked `via shell`. Rabe takes the files named on the command line and checks each on disk: it lists a file only when it appeared, went away, or changed size or modification time while the command ran, so `touch -c`, `rm -f` of a missing file and failed copies show nothing, and `cp src dir` shows `dir/src`. Before, it showed only `Edit` and `Write` calls, so a subagent that wrote its files through Bash left it empty. ([#16](https://github.com/lorenzh/rabe/pull/16), fixes [#9](https://github.com/lorenzh/rabe/issues/9))
