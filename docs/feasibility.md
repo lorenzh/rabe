@@ -59,7 +59,7 @@ Rabe keeps its own list. It adds an item when a hook reports a start (`tool.call
 | Agent files | Workflow agents write their transcript and meta file to `transcriptDir`, which is `<session>/subagents/workflows/<runId>/`. The same folder has `journal.jsonl` (one record per agent start and result, with phase). `<session>/workflows/<runId>.json` has the run's status, phases and totals, but is written when the run ends. |
 | End | The task notification: a `prompt.submit` with origin `task-notification` whose text holds `<task-id>` (the run's `taskId`) and `<status>` (`completed`, `failed`, `killed`). The text format is not documented. |
 | Retries | Not reported: a retried agent does not raise `agent.spawn` again (d.ts:345). |
-| Stop | The whole run with `TaskStop` on its task id. A single workflow agent cannot be stopped. |
+| Stop | The whole run with `TaskStop` on its task id. A single workflow agent cannot be stopped: `TaskStop` takes background tasks, teammates and named background agents only (d.ts:16568), so Rabe offers only `g: stop run` on a workflow agent. |
 
 ## Codex jobs
 

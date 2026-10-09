@@ -119,9 +119,21 @@ export function controlRows(drawn: Omit<Drawn, 'grid'>, size: Size): number {
   return rows + (size.hasInput ? (drawn.inputs?.length ?? 0) : 0)
 }
 
+// An agent a workflow script started. Claude Code can stop only the whole run, and cannot message it.
+export function isWorkflowAgent(item: RabeItem): boolean {
+  if (item.kind !== 'agent') return false
+
+  return (
+    item.parentId?.startsWith('workflow:') === true ||
+    item.detail.workflowIndex !== undefined ||
+    item.detail.workflowPhase !== undefined
+  )
+}
+
 export function canStop(item: RabeItem): boolean {
   if (item.status !== 'running') return false
-  if (item.kind === 'agent' || item.kind === 'codex') return true
+  if (item.kind === 'agent') return !isWorkflowAgent(item)
+  if (item.kind === 'codex') return true
   if (item.kind === 'shell' || item.kind === 'monitor' || item.kind === 'workflow') {
     return item.detail.taskId !== undefined
   }
