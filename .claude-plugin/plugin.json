@@ -1,6 +1,6 @@
 {
   "name": "rabe",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Watch Claude Code's background work: subagents, Codex jobs, shells, monitors, cron jobs and workflows.",
   "author": {
     "name": "Lorenz Hilpert"
@@ -12,7 +12,7 @@
       "type": "boolean",
       "title": "Hide Claude Code's own background count",
       "default": true,
-      "description": "Removes the shells and monitors count and its '↓ to manage' from the hint under the prompt, and the 'still running' part from the line that ends a turn, since Rabe's band shows them. The agent list under the prompt cannot be hidden."
+      "description": "Removes the shells and monitors count and its '\u2193 to manage' from the hint under the prompt, and the 'still running' part from the line that ends a turn, since Rabe's band shows them. The agent list under the prompt cannot be hidden."
     }
   }
 }

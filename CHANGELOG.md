@@ -4,6 +4,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-09
+
 ### Added
 
 - The arrow keys and the mouse work in the pane. ↑ and ↓ move from row to row and Enter opens a row. Click another row to select it; click the selected or focused row to open it. A click does not move the focus, so Enter still opens the row that has the focus. Rows, tabs and controls are buttons. The mouse needs Claude Code's fullscreen layout (`/tui fullscreen`). ([#11](https://github.com/lorenzh/rabe/pull/11))
@@ -16,6 +18,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - Colors come from the xterm 256-color palette and go to the terminal as exact palette entries, so the band, the panel and the selected row keep distinct colors under tmux, which reduced the old hex colors to the same grey. ([#11](https://github.com/lorenzh/rabe/pull/11))
 - A cron job's next run shows as its clock time (`next 15:00`) instead of a countdown that read like one; a wakeup that waits for the session shows `due`. ([#11](https://github.com/lorenzh/rabe/pull/11))
 - While the pane is open, rows keep their places: items that start later go to a NEW group at the end, and a row that is gone stays as a dim `gone` slot. `/rabe` sorts the lists again. ([#11](https://github.com/lorenzh/rabe/pull/11))
+- In the Items list, a workflow run is stopped with `g` (stop run) instead of `x`; with one of its agents selected, `g` also stops that run. ([#11](https://github.com/lorenzh/rabe/pull/11))
+- `g` (stop group) stops only the rows the search shows, not hidden rows of the same kind. ([#11](https://github.com/lorenzh/rabe/pull/11))
 - Stop and delete stay dim until Rabe knows where the focus is. On the list, `x` and `g` work only after you move onto a row yourself, with an arrow, Tab or a click. ([#11](https://github.com/lorenzh/rabe/pull/11))
 
 ### Fixed
@@ -44,5 +48,6 @@ The first public version.
 
 - Workflow agents no longer offer stop and message, which Claude Code does not support for a single workflow agent; their detail offers stopping the run. ([#8](https://github.com/lorenzh/rabe/pull/8))
 
-[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/lorenzh/rabe/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/lorenzh/rabe/releases/tag/v0.1.0
