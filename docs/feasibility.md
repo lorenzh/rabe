@@ -165,4 +165,5 @@ Tested: `$.fs.stat` and `$.fs.read` read files under `~/.codex/sessions` and `/t
 - What does the output file of a monitor that hit its timeout end with?
 
 - Do `TaskStop` and `CronList` run without a prompt in auto mode too?
+- Does the pane's `x: stop` on a Codex job act during a turn? It runs `/rabe-stop` through `$.command.run`, which the API says is "queued and run once the session is idle" (d.ts `command.run`); the command is registered with `immediate: true`, which may or may not apply to a plugin's call.
 - How much does a band redraw every second cost while the user types?

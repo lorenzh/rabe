@@ -2,7 +2,7 @@
 title: How Rabe is built
 description: The item model, the registry in session state, the source contract, the cell engine and the view contract behind the band and the pane, and how Rabe hides Claude Code's own count of background work, so that each source and view can be built on its own.
 tags: [architecture, item-model, registry, sources, ui, state, raster]
-keywords: [Raster, cells, grid, palette, DEFAULT, View, Drawn, ViewButton, ViewInput, Selection, render, paneView, bandView, itemsView, detailView, TABS, controlRows, SPLIT_COLUMNS, bodyColumns, closeOnEscape, PromptHint, TurnDuration, hideBuiltinTasks, stripTasks, RabeTurn, rabe.turns, agents, workflows, agent.spawn, turn.step, turn.complete, SubagentStart, meta.json, task-notification, matcher, codex source, rabe-stop, parseRollout, codexItem, RabeCodexStep, RabeItem, RabeItemKind, RabeItemStatus, NewItem, ItemPatch, itemId, addItem, updateItem, endItem, capEnded, commit, MAX_ENDED, write loop, Source, sources, register.tsx, band, pane, AbovePrompt, Pane, tab, $.state, ifVersion, scanner, shells, monitors, crons, tasks.ts, schedule.ts, nextRun, nextRuns, parseNotifications, parseOutput, guessPort, rabe.lines, RabeLines, memoryState, act, rabe.selected, rabe.open, bandRows, nameSpans, joinFit, chip, summary line, desktop fallback]
+keywords: [Raster, cells, grid, palette, DEFAULT, View, Drawn, ViewButton, ViewInput, Selection, render, paneView, bandView, itemsView, detailView, TABS, controlRows, SPLIT_COLUMNS, bodyColumns, closeOnEscape, PromptHint, TurnDuration, hideBuiltinTasks, stripTasks, RabeTurn, rabe.turns, agents, workflows, agent.spawn, turn.step, turn.complete, SubagentStart, meta.json, task-notification, matcher, codex source, rabe-stop, detailLines, costBox, $.command.run, parseRollout, codexItem, RabeCodexStep, RabeItem, RabeItemKind, RabeItemStatus, NewItem, ItemPatch, itemId, addItem, updateItem, endItem, capEnded, commit, MAX_ENDED, write loop, Source, sources, register.tsx, band, pane, AbovePrompt, Pane, tab, $.state, ifVersion, scanner, shells, monitors, crons, tasks.ts, schedule.ts, nextRun, nextRuns, parseNotifications, parseOutput, guessPort, rabe.lines, RabeLines, memoryState, act, rabe.selected, rabe.open, bandRows, nameSpans, joinFit, chip, summary line, desktop fallback]
 ---
 
 # How Rabe is built
@@ -167,7 +167,7 @@ A source owns the items of its kind. It uses `itemId(kind, nativeId)` for ids, s
 
 ### Stopping an item
 
-The pane stops agents, shells, monitors and workflows itself: it calls `TaskStop` through `$.tool.call` (see Actions under The pane). A Codex job has no task id, so it stops through a command instead. `/rabe-stop <item id>` is registered by the Codex source (with `immediate: true`, so it also runs during a turn). It answers with a matcher on the id prefix, `{ command: 'rabe-stop', args: /^\s*codex:/ }`, and returns `{ text }` that says what happened. The person types `/rabe-stop codex:<job id>`; the pane has no stop action for Codex jobs yet.
+The pane stops agents, shells, monitors and workflows itself: it calls `TaskStop` through `$.tool.call` (see Actions under The pane). A Codex job has no task id, so it stops through a command instead. `/rabe-stop <item id>` is registered by the Codex source (with `immediate: true`, so it also runs during a turn). It answers with a matcher on the id prefix, `{ command: 'rabe-stop', args: /^\s*codex:/ }`, and returns `{ text }` that says what happened. The person can type `/rabe-stop codex:<job id>`. The pane's `x: stop` on a Codex job runs the same command with `$.command.run({ command: 'rabe-stop', args: <item id> })` and shows its answer as a toast, so the cancel stays in the Codex source.
 
 ## The sources
 
@@ -259,7 +259,7 @@ The band and the pane read the sources' session values and draw. Neither writes 
 | `ui/views/band.ts` | `bandView`: the band's rows |
 | `ui/views/pane.ts` | `paneView` and `TABS`: the tab row, the tab's view or the open item, the hint |
 | `ui/views/items.ts` | `itemsView`: grouped list, split or one-line summary, list Buttons, search |
-| `ui/views/detail.ts` | `detailView` and `bodyLines`: one item in full, per kind |
+| `ui/views/detail.ts` | `detailView`, `detailLines` and `bodyLines`: one item in full, per kind |
 | `ui/views/cost.ts`, `effects.ts`, `timeline.ts` | The other tabs |
 | `ui/views/lines.ts` | `Line`, `draw`, `text`, `itemLine`, `headLines`: shared row drawing |
 | `ui/lists.ts` | Pure grouping, sorting, labels, band rows, totals, phases, tree, bars |
@@ -360,19 +360,22 @@ Keys: the Buttons under the grid hold them. On the list: `j` down, `k` up, Enter
 
 **Desktop.** Off the terminal the list is text the renderer turns into Buttons: group rows read `Agents 2` (`Shells 1 · folded` when folded) and fold on press; item rows read `▶ python3 -u -m http.server · :4173 · 47s` and open on press. The grid ends with the list, the list has no `j`, `k` or `open` Buttons (a press or Enter on a row opens it, and focus on a row selects it), and there is no summary line.
 
-**Detail per kind.** Every detail shows the item's title, status word and facts, then the newest lines that fit:
+**Detail per kind.** `detailLines(model, item, rows, width)` in `views/detail.ts` builds one item's detail; the full detail (`detailView`) and the right side of the split (`summary` in `views/items.ts`) both use it. It has three parts. The head (`headLines`) is the glyph, the title, the status word on the right, and the fact lines in dim. The top stays while the body scrolls: a cost panel and the brief or prompt, or the label of the body (`▸ output`, `▸ next runs`). The body (`bodyLines`) is cut from the start, so the newest lines show:
 
-- Agent: its turns from `rabe.turns` (`1 ● text`, then `⎿ Tool summary`). An agent that ran before Rabe loaded has none.
-- Codex: the prompt, then `detail.steps`: `◆` messages, `thinking:` reasoning summaries, and commands with `✓ exit 0 · N lines`, `✗ exit N` or `◐ running`.
-- Workflow: the phases as `✓ Review → ◐ Verify → · Report`, and the agents of each phase.
-- Shell and monitor: the lines in `rabe.lines` (monitors with the time each was received).
-- Cron: the next five runs, computed from the schedule. Delete shows for cron jobs only: a `/loop` wakeup has no id `CronDelete` knows.
+- Agent: a cost panel (background `C.panel`): `≈ $0.16   in 36k  out 5k  cached 12k`, then `45% of session` and, while it runs, `active 3s ago` from `lastToolAt`. Then `▸ brief` with the description (at most three lines, cut with `…`), then the turns from `rabe.turns`: `1  ● text` (index dim, `●` orange), then `⎿ Tool summary` per tool. The last turn of a running agent has the raised background `C.raised`. An agent that ran before Rabe loaded has no turns and says so.
+- Codex: the facts say model, effort and sandbox, the job id and whether the session file was read, is partial (a file over 4 MiB, the last 200 lines) or is gone. The cost panel adds the command count and takes `active` from `sessionUpdatedAt`. Then `▸ prompt`, then `detail.steps`: `●` (cyan) messages, `thinking:` reasoning summaries, and `$ command` with `✓ exit 0 · N lines`, `✗ exit N` or `◐ running` on the right; the running command is raised. `x: stop` cancels the job through `/rabe-stop` (see Stopping an item).
+- Workflow: the cost panel sums the run's agents and counts them. Then the phases as `✓ Review → ◐ Verify → · Report`, and per phase its agents with their tokens and time (`22k · 40s`); on the desktop each agent row is a Button that opens it.
+- Shell: `▸ output · newest last · N lines` (N is `seen`, all lines read), the lines in `rabe.lines`, and at the end `✓ exit 0` in green or `✗ exit N` in red once the exit code is known.
+- Monitor: `▸ lines received · newest last`, each line after the time the poll first read it.
+- Cron: `▸ next runs`, the next five times from the schedule with a countdown (`10:55  in 3:00`); a `/loop` wakeup shows `▸ fires` and its one time. Delete shows for cron jobs only: a wakeup has no id `CronDelete` knows.
+
+Cost, tokens and the share of the session left the fact lines for the panel; the spend there is the same sum the Cost tab uses. Cron runs seen this session and the per-tool exit codes of agents are not shown: no source records them.
 
 **Cost tab.** Session total, tokens, Claude and Codex totals, the number of items without tokens, and agents and Codex jobs sorted by tokens. A dollar total with no known amount shows `cost n/a`, never `$0.00`; the band does the same. **Effects tab.** Worktrees from agent details, the agents known to share the main tree, the agents whose tree is `n/a`, and ports of running shells with the `ssh -L` command; a Button per port copies it (`c` for the first). **Timeline tab.** One bar per item over the session, and the tree of who started what, from `parentId`.
 
 **Live updates.** `session.start` starts `$.clock.every(1000)`, which calls `$.ui.invalidate('ui.render')` while any item runs.
 
-**Actions.** Stop calls `TaskStop` with the task id (shells, monitors, workflows) or the agent id. Delete calls `CronDelete`. Message calls `$.session.send` to the agent. Copy calls `$.ui.copy` on the surface that was pressed. Each answers with a toast: "Stopping …", "Stop refused: …", "Stopped 7 of 9; 2 had already finished", "Message sent to …".
+**Actions.** Stop calls `TaskStop` with the task id (shells, monitors, workflows) or the agent id, and runs `/rabe-stop <item id>` for a Codex job. Delete calls `CronDelete`. Message calls `$.session.send` to the agent. Copy calls `$.ui.copy` on the surface that was pressed. Each answers with a toast: "Stopping …", "Stop refused: …", "Stopped 7 of 9; 2 had already finished", "Message sent to …".
 
 ### Hiding Claude Code's own count
 

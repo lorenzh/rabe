@@ -14,8 +14,8 @@ import {
   type ViewButton,
   type ViewInput,
 } from '../view'
-import { bodyLines } from './detail'
-import { draw, headLines, itemLine, type Line } from './lines'
+import { detailLines } from './detail'
+import { draw, itemLine, type Line } from './lines'
 
 const GROUP_COLOR: Record<Group, number> = {
   failed: C.red,
@@ -101,11 +101,7 @@ function windowed(lines: Line[], rows: number): Line[] {
   return lines.slice(start, start + rows)
 }
 
-export function summary(model: Model, item: RabeItem, rows: number, width: number): Line[] {
-  const head = headLines(model, item)
-
-  return [...head, ...bodyLines(model, item, width).slice(-Math.max(0, rows - head.length))]
-}
+export const summary = detailLines
 
 // The selected item in one line under a list too narrow for the split.
 function summaryLine(model: Model, item: RabeItem): Line {

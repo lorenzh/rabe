@@ -21,6 +21,14 @@ async function stop($: EngineInterface, ids: string[]): Promise<void> {
   let ended = 0
   let refused: string | undefined
   for (const item of targets) {
+    if (item.kind === 'codex' && item.status === 'running') {
+      const { text = 'n/a' } = await $.command
+        .run({ command: 'rabe-stop', args: item.id })
+        .catch((error: unknown) => ({ text: `Stop refused: ${String(error)}` }))
+      if (text.startsWith('Stopped')) stopped += 1
+      else refused = text.replace(/^Stop refused: /, '')
+      continue
+    }
     const task = taskIdOf(item)
     if (item.status !== 'running' || !task) {
       ended += 1
