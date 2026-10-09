@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { ago, clockTime, countdown, duration, short, tokens, usd } from './format'
+import { ago, clockTime, countdown, day, duration, short, tokens, usd } from './format'
 
 test('duration reads seconds, minutes and hours', () => {
   expect(duration(52_000)).toBe('52s')
@@ -37,4 +37,11 @@ test('tokens and dollars read short', () => {
 
 test('clock time pads hours, minutes and seconds', () => {
   expect(clockTime(new Date(2026, 9, 8, 9, 5, 7).getTime())).toBe('09:05:07')
+})
+
+test('day names today, yesterday or the date, with the time', () => {
+  const now = new Date(2026, 9, 8, 10, 0).getTime()
+  expect(day(new Date(2026, 9, 8, 9, 5).getTime(), now)).toBe('today 09:05')
+  expect(day(new Date(2026, 9, 7, 17, 40).getTime(), now)).toBe('yesterday 17:40')
+  expect(day(new Date(2026, 9, 1, 8, 0).getTime(), now)).toBe('2026-10-01 08:00')
 })

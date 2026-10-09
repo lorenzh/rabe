@@ -30,6 +30,7 @@ import {
   nameSpans,
   phaseProgress,
   phases,
+  previousOf,
   share,
   timeLabel,
   totals,
@@ -132,6 +133,18 @@ test('a bar marks the part of the window an item ran', () => {
 
 test('worktrees list each folder with its agents', () => {
   expect(worktrees(ALL)).toEqual([
-    { name: 'pkg-db', branch: 'worktree-agent-a1', items: [explore] },
+    { name: '.claude/worktrees/pkg-db', branch: 'worktree-agent-a1', items: [explore] },
   ])
+})
+
+test('previousOf sums a session up: counts per kind, tokens, cost, failed titles', () => {
+  const summary = previousOf(ALL, NOW, { startedAt: NOW - 3_600_000, usd: 0.32 })
+  expect(summary).toEqual({
+    endedAt: NOW,
+    startedAt: NOW - 3_600_000,
+    counts: { agent: 4, codex: 1, shell: 2, monitor: 1, cron: 1, workflow: 1 },
+    tokens: 91_000,
+    usd: 0.32,
+    failed: ['bun run lint'],
+  })
 })

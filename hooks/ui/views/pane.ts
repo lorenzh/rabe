@@ -26,7 +26,7 @@ export const TABS: { tab: RabeTab; label: string; hotkey: string; view: View }[]
 const HEAD = 2
 const HINT = 1
 
-// The list's hint names the keys its Buttons bind.
+// The hint names the keys the tab's Buttons bind.
 const WORDS: Record<string, string> = {
   down: 'j/k move',
   open: 'enter open',
@@ -37,8 +37,6 @@ const WORDS: Record<string, string> = {
 function hint(sel: Selection, isOpen: boolean, buttons: ViewButton[]): string {
   if (!sel.isFocused) return 'tab to select · esc close'
   if (isOpen) return 'b back · esc close'
-  if (sel.tab !== 'items') return '1-4 switch · esc close'
-
   return [...buttons.flatMap(one => WORDS[one.key] ?? []), 'esc close'].join(' · ')
 }
 

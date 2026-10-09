@@ -48,3 +48,15 @@ export function tokens(n: number): string {
 export function usd(n: number): string {
   return `$${n.toFixed(2)}`
 }
+
+export function day(ms: number, now: number): string {
+  const d = new Date(ms)
+  const today = new Date(now)
+  const midnight = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime()
+  const before = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1).getTime()
+  const time = clockTime(ms).slice(0, 5)
+  if (ms >= midnight) return `today ${time}`
+  if (ms >= before) return `yesterday ${time}`
+
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`
+}

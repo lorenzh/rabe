@@ -1,6 +1,7 @@
 import type { EngineInterface, On, RenderSurface } from 'claude-code'
 
-import { KIND_LABEL } from './lists'
+import type { RabePrevious } from '../../types'
+import { KIND_LABEL, previousOf } from './lists'
 import { render } from './render'
 import { type Action, taskIdOf } from './view'
 import { paneView } from './views/pane'
@@ -10,6 +11,31 @@ const PANE = 'rabe'
 async function tick($: EngineInterface): Promise<void> {
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   if (items.some(item => item.status === 'running')) $.ui.invalidate('ui.render')
+}
+
+// The store is the plugin's own JSON; an older Rabe may have written another shape.
+function asPrevious(value: unknown): RabePrevious | undefined {
+  const prev = value as RabePrevious | undefined
+  return typeof prev?.endedAt === 'number' && Array.isArray(prev.failed) && prev.counts
+    ? prev
+    : undefined
+}
+
+async function previous($: EngineInterface): Promise<RabePrevious | undefined> {
+  return asPrevious(await $.store.get(`previous:${await $.session.cwd()}`))
+}
+
+// Keeps this session's summary for the next one in this project; a session
+// with no background work leaves the last summary in place.
+async function remember($: EngineInterface): Promise<void> {
+  const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+  if (items.length === 0) return
+  const usage = await $.session.usage()
+  const summary = previousOf(items, await $.clock.now(), {
+    startedAt: usage.startedAt,
+    usd: usage.cost?.usd,
+  })
+  await $.store.set(`previous:${await $.session.cwd()}`, summary)
 }
 
 async function stop($: EngineInterface, ids: string[]): Promise<void> {
@@ -135,6 +161,12 @@ export function pane(on: On): void {
     return { text: 'Rabe opened.' }
   })
 
+  on('session.end', { reason: /^/ }, async ($, e, next) => {
+    await remember($)
+
+    return next(e)
+  }).catch((_$, e, next) => next(e))
+
   on('ui.focus', { requestId: PANE }, async ($, e, next) => {
     if (e.element?.startsWith('row:')) {
       await $.state.set({ plugin: 'rabe', key: 'selected' }, e.element.slice(4))
@@ -153,7 +185,15 @@ export function pane(on: On): void {
     const { value: folded = [] } = await $.state.get({ plugin: 'rabe', key: 'folded' })
     const { value: selected = '' } = await $.state.get({ plugin: 'rabe', key: 'selected' })
     const { value: open = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
-    const model = { items, turns, lines, now: await $.clock.now() }
+    const usage = await $.session.usage().catch(() => undefined)
+    const model = {
+      items,
+      turns,
+      lines,
+      now: await $.clock.now(),
+      usd: usage?.cost?.usd,
+      previous: await previous($).catch(() => undefined),
+    }
     const size = {
       columns: e.props.bodyColumns,
       rows: e.props.scroll?.bodyRows || 24,

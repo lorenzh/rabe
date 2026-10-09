@@ -114,6 +114,15 @@ export type RabeLine = { at: number; text: string }
 
 export type RabeLines = { seen: number; lines: RabeLine[] }
 
+export type RabePrevious = {
+  endedAt: number
+  startedAt?: number
+  counts: Partial<Record<RabeItemKind, number>>
+  tokens: number
+  usd?: number
+  failed: string[]
+}
+
 declare module 'claude-code' {
   interface PluginState {
     rabe: {

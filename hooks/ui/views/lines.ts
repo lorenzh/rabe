@@ -3,7 +3,7 @@ import { type Grid, type Span, spans, wrap } from '../cells/grid'
 import { C, type Style, tone } from '../cells/palette'
 import { facts } from '../facts'
 import { glyph, nameSpans, timeLabel } from '../lists'
-import type { Action, Model } from '../view'
+import type { Action, Model, ViewButton } from '../view'
 
 export type Line = {
   spans: Span[]
@@ -62,4 +62,25 @@ export function headLines(model: Model, item: RabeItem): Line[] {
     ...f.lines.map(line => ({ spans: [[line, { fg: C.dim }]] as Span[] })),
     { spans: [] },
   ]
+}
+
+// j, k and Enter over a list the view draws: Enter (focused) opens the
+// selected item in the Items tab. j and k stay bound at the ends of the list,
+// so the keys never fall through to the prompt.
+export function moveButtons(order: RabeItem[], selected: RabeItem | undefined): ViewButton[] {
+  if (!selected) return []
+  const at = order.indexOf(selected)
+  const next = order[Math.min(at + 1, order.length - 1)] ?? selected
+  const prev = order[Math.max(at - 1, 0)] ?? selected
+
+  return [
+    { key: 'down', label: 'j: down', hotkey: 'j', action: { type: 'select', id: next.id } },
+    { key: 'up', label: 'k: up', hotkey: 'k', action: { type: 'select', id: prev.id } },
+    { key: 'open', label: 'open', autoFocus: true, action: { type: 'open', id: selected.id } },
+  ]
+}
+
+// The first index of a window of `rows` that keeps index `at` in view.
+export function windowStart(length: number, at: number, rows: number): number {
+  return Math.max(0, Math.min(at - rows + 2, length - rows))
 }

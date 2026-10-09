@@ -1,3 +1,4 @@
+import type { RabePrevious } from '../../types'
 import type { RabeItem, RabeItemKind } from '../model'
 import { nextRuns } from '../schedule'
 import type { Span } from './cells/grid'
@@ -338,7 +339,9 @@ export function worktrees(
     if (item.kind !== 'agent' || !item.detail.worktreePath) continue
     const path = item.detail.worktreePath
     const entry = out.get(path) ?? {
-      name: path.split('/').filter(Boolean).at(-1) ?? path,
+      name: path.includes('/.claude/')
+        ? path.slice(path.indexOf('.claude/'))
+        : (path.split('/').filter(Boolean).at(-1) ?? path),
       branch: item.detail.worktreeBranch ?? 'n/a',
       items: [],
     }
@@ -347,4 +350,23 @@ export function worktrees(
   }
 
   return [...out.values()]
+}
+
+// What the next session in this project shows of this one.
+export function previousOf(
+  items: RabeItem[],
+  endedAt: number,
+  usage: { startedAt?: number; usd?: number },
+): RabePrevious {
+  const counts: RabePrevious['counts'] = {}
+  for (const item of items) counts[item.kind] = (counts[item.kind] ?? 0) + 1
+
+  return {
+    endedAt,
+    startedAt: usage.startedAt,
+    counts,
+    tokens: totals(items).tokens,
+    usd: usage.usd,
+    failed: items.filter(item => item.status === 'failed').map(item => item.title),
+  }
 }
