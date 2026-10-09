@@ -262,7 +262,7 @@ Monitor lines are kept apart from the item, in the `$.state` key `rabe.lines`: `
 | `session.start` | Calls `CronList` and adds the jobs made before Rabe loaded. |
 | `classic.Stop` | Syncs with `session_crons`: a job gone from the list ends as done (a one-time job fired, a job expired); a new one is added. Wakeups are not ended here, and a listed job whose prompt matches a running wakeup is not added twice. |
 
-`schedule.ts` has `nextRun(expr, from)` and `nextRuns(expr, from, count)`: the next times a 5-field cron expression matches in local time, after `from`. It reads `*`, numbers, ranges, lists and steps; day of month and day of week match either one when both are set, as in cron. Minutes advance in real time, so a next run is never earlier than `from`, also in the hour that repeats when summer time ends (a job in that hour can show twice). A broken or impossible expression gives `undefined` (an empty list). Claude Code adds up to 10 % jitter to recurring jobs, which this does not show. The band countdown and the cron detail use `nextRuns` too.
+`schedule.ts` has `nextRun(expr, from)` and `nextRuns(expr, from, count)`: the next times a 5-field cron expression matches in local time, after `from`. It reads `*`, numbers, ranges, lists and steps; day of month and day of week match either one when both are set, as in cron. Minutes advance in real time, so a next run is never earlier than `from`, also in the hour that repeats when summer time ends (a job in that hour can show twice). A broken or impossible expression gives `undefined` (an empty list). Claude Code adds up to 10 % jitter to recurring jobs, which this does not show. The band's next run (`nextAt` in `lists.ts`) and the cron detail use `nextRuns` too.
 
 ## Testing sources
 
@@ -388,7 +388,7 @@ The grid is `bodyColumns` wide and exactly as tall as its lines. The band before
 | `rabe.tab` | The selected tab |
 | `rabe.query` | The search text; matches title, kind, command, prompt, description and agent type |
 | `rabe.folded` | The groups folded in the list |
-| `rabe.selected` | The id of the row that holds the focus: set by a `ui.focus` that lands on a row, and by opening. An item id, or on the Effects tab `file:<path>` or `ssh:<port>`, which the other tabs do not find and so focus their first row |
+| `rabe.selected` | The id of the row that holds the focus: set by a `ui.focus` that lands on a row, by a press that selects a row (a click, `selectsOnPress`), and by opening. An item id, or on the Effects tab `file:<path>` or `ssh:<port>`, which the other tabs do not find and so focus their first row |
 | `rabe.open` | The item whose full detail shows; `''` shows the list |
 | `rabe.order` | The list order taken when the pane opened (`RabeOrder`, see The held order) |
 

@@ -6,25 +6,26 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Added
 
-- The arrow keys and the mouse work in the pane: ↑ and ↓ move from row to row, Enter opens a row, a click on a list row selects it and a second click opens it, and the tabs and controls are buttons. (#TBD)
+- The arrow keys and the mouse work in the pane. ↑ and ↓ move from row to row and Enter opens a row. A click on a list row selects it and a second click opens it; a click does not move the focus, so Enter still opens the row that has the focus. Rows, tabs and controls are buttons. The mouse needs Claude Code's fullscreen layout (`/tui fullscreen`). (#TBD)
 - The detail beside the list follows the focus, without Enter. (#TBD)
 - Shells and monitors an agent started show under that agent in the Items tab and in the band. (#TBD)
-- Workflow agents can be walked and opened from the run's detail, and Effects files and `ssh -L` lines are rows you can press. (#TBD)
+- In a workflow run's detail you can move through its agents and open one. On the Effects tab, Enter or a click on a file opens the agent that edited it last, and on an `ssh -L` line copies the line. (#TBD)
 
 ### Changed
 
-- `j` and `k` no longer move in the pane; use ↑ and ↓. (#TBD)
 - A cron job's next run shows as its clock time (`next 15:00`) instead of a countdown that read like one; a wakeup that waits for the session shows `due`. (#TBD)
+- While the pane is open, rows keep their places: items that start later go to a NEW group at the end, and a row that is gone stays as a dim `gone` slot. `/rabe` sorts the lists again. (#TBD)
+- Stop and delete stay dim until Rabe knows where the focus is. On the list, `x` and `g` work only after you move onto a row yourself, with an arrow, Tab or a click. (#TBD)
 
 ### Fixed
 
 - Shells and monitors a subagent started end when their output file says so. (#TBD)
-- After a change of the tab, the search, a fold or the open item, the focus moves to a safe place, so Enter never presses a button that came to the old place. Rows found while the pane is open go to the end. (#TBD)
-- Stop and delete stay dim until Rabe knows where the focus is. On the list, `x` and `g` act only after you move the focus onto a row that is still there; a `gone` row or a group heading does not count, nor a move another plugin sends to another row. (#TBD)
+- After you change the tab, the search, a fold or the open item, the focus moves to a safe place, so Enter never presses a button that moved into the old place. (#TBD)
 - The Timeline axis names each clock time once. (#TBD)
-- With the mouse you can stop things: a click on a row arms `x` and `g` for that row, and the stop in an item you opened is no longer dim after the open. (#TBD)
-- A focus move that another plugin swallows (it answers without passing the move on) no longer selects the row or arms `x` and `g`: the pane keeps its selection and disarms. (#TBD)
-- Enter opens the row that has the focus, also after a click selected another row. A press and a search edit at the same time each do their own action. (#TBD)
+
+### Removed
+
+- `j` and `k` in the pane; use ↑ and ↓. (#TBD)
 
 ## [0.1.0] - 2026-10-09
 

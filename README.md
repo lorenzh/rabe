@@ -9,7 +9,7 @@
 
 Rabe (German for raven) is a Claude Code mod. It shows your subagents, Codex jobs, background shells, monitors, cron jobs and workflows in one place. A short band above the prompt shows what runs now. The `/rabe` command opens a pane with the full detail.
 
-![Rabe in a Claude Code session: the band above the prompt lists two agents, three shells (one of them started by an agent), a monitor, a cron job and the cost; /rabe opens the pane, the arrow keys move through the list and the detail beside it follows, a click on the agent's shell opens it, then the Cost and Timeline tabs show, and Esc closes the pane](docs/assets/demo.gif)
+![Rabe in a Claude Code session: the band above the prompt lists two agents, three shells (one of them started by an agent), a monitor, a cron job and the cost; /rabe opens the pane, the arrow keys move through the list and the detail beside it follows, a click selects the agent's shell and a second click opens it, b goes back, then the Cost and Timeline tabs show, and Esc closes the pane](docs/assets/demo.gif)
 
 Status: early development. Version 0.1.0.
 
@@ -42,6 +42,8 @@ Type this at a Claude Code prompt:
 /plugin install rabe --marketplace lorenzh/rabe
 ```
 
+Then run `/reload-plugins` or start a new session: a plugin you install does not load in the running session. The Claude desktop app needs this too.
+
 ## Usage
 
 The band shows by itself while background work runs. Type `/rabe` to open the pane. In the terminal the pane docks beside the transcript. Drag its left edge to make it wider.
@@ -65,9 +67,11 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 
 The buttons under the tabs show the keys of the current tab. A key that cannot act now is dim, and pressing it does nothing. A letter with no button goes to the prompt.
 
-With the mouse, click a row in the Items list to select it, and click it again to open it. A click does not move the focus: after you click a row, Enter still opens the row that has the focus. Then click `x: stop` or `g: stop group` to stop what you selected, or the stop button in the open item. Click a row on the other tabs to open it, a tab to switch to it, or a group name to fold the group. The wheel scrolls the pane. A click does not give the pane the keys. While the pane does not have them, a stop stays dim after you switch the tab or open an item: give the pane the keys with `ctrl+x tab` and move the focus with Tab or an arrow. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
+With the mouse, click a row once to select it and again to open it. Click a tab to switch to it, a group name to fold the group, a button to press it, or a row on the other tabs to open it. The wheel scrolls the pane. A click does not move the focus, so Enter still opens the row that has the focus. A click also does not give the pane the keys: `ctrl+x tab` does. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
 
-While the pane is open, the tabs, buttons and rows keep their places, so Enter acts on the row or button that has the focus. New rows go to the end: items that start after you open the pane go to a NEW group, and on the Effects tab files and ports found later go to a NEW section, in the order Rabe found them. A row or button that is gone stays as a dim slot (`gone` before the name of a row) until you change the tab, the search or the folded groups, or open an item. Such a change puts the focus on the tab, then on the group you folded, the `b: back` of the item you opened or the row you went back to, so Enter never acts on a button that came to the old place. In an item's detail, a button that stops or deletes belongs to that item. On the list, `x` and `g` act on the row you selected, and only after you move the focus onto a row with Tab or an arrow, or click the row. Stop and delete wait until Rabe knows where the focus is: when you open the pane, change the view, or the open or selected item is gone or what `x` or `g` would stop changes without you, they are dim until the focus lands on a safe place or you move it with Tab or an arrow; on the list, until you move it onto a row that is still there. A `gone` row or a group heading does not count. If a resize moves the pane between the side and the bottom of the screen while it has the keys, Rabe gives the keys back to it. Type `/rabe` again to sort the lists.
+On the list, the stop keys `x` and `g` work only after you move onto a row yourself, with an arrow, Tab or a click. Until then, and after the view or the selected row changes without you, they are dim, so a key press never stops something you did not pick.
+
+While the pane is open, rows and buttons keep their places, so Enter acts on what you see under the focus. Items that start after you open the pane go to a NEW group at the end (on the Effects tab, to a NEW section). A row that is gone stays as a dim `gone` slot. Type `/rabe` again to sort the lists.
 
 Commands:
 
@@ -111,7 +115,7 @@ Rabe keeps its items in the session state of Claude Code. When a session ends, R
 ## Requirements
 
 - Claude Code 2.1.295. We build and test Rabe with this version. Other versions can show `n/a` where a file changed.
-- A terminal for the colored band and pane. The Claude desktop app shows the same content as text and buttons.
+- A terminal for the colored band and pane. The Claude desktop app draws the same pane with plain text and buttons (tested by the maintainer on Windows with Rabe 0.1.0).
 - Optional: the Codex plugin (`codex@openai-codex`) for Codex jobs, and the `gh` CLI for the report commands.
 
 ## Development
