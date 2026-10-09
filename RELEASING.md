@@ -10,7 +10,7 @@ Rabe is installed from this repository as a marketplace:
 /plugin install rabe --marketplace lorenzh/rabe
 ```
 
-Claude Code keeps the copy it made at install time. A person gets a new version with `claude plugin update rabe` and then `/reload-plugins`, or the next session. Claude Code picks up a new commit even when the version stays the same, but people and tools read the version, so every release raises it.
+Claude Code keeps the copy it made at install time. A person gets a new version with `claude plugin update rabe` and then `/reload-plugins`, or the next session. Because `plugin.json` declares a `version`, **a new commit alone does not reach people: every release must raise the version** ([Claude Code docs: release a new version](https://code.claude.com/docs/en/plugins/host-marketplace#release-a-new-version)).
 
 A folder loaded with `claude --plugin-dir .` (development) reloads on every save and needs none of this.
 
@@ -45,9 +45,9 @@ All of these must be true. Tick them in the release pull request.
 - [ ] Options in `userConfig` (`plugin.json`): renamed, removed or a changed default.
 - [ ] Slash commands: renamed or removed (`/rabe`, `/rabe-stop`, `/rabe:report-bug`, `/rabe:feedback`).
 - [ ] Keys: a key that did something before does something else now.
-- [ ] The lowest Claude Code version Rabe needs (see `types/claude-code.d.ts`, first line, and `README.md` requirements).
+- [ ] The lowest Claude Code version Rabe needs: the version the live check ran on, the pinned `@anthropic-ai/claude-code` in `package.json`, and `README.md` requirements must agree. (The first line of `types/claude-code.d.ts` names the version that wrote the types, not a minimum.)
 
-Session state (`$.state`) starts empty in each session, so its changes need no migration.
+- [ ] Session state (`$.state` keys and item formats in `types/index.d.ts`). It starts empty in a new session, but it **survives a plugin reload**, and an update is applied with `/reload-plugins`. So the new code must read the old format, convert it, or ignore it safely; otherwise the release notes tell people to start a new session after the update.
 
 ## Changelog
 
@@ -55,7 +55,8 @@ Session state (`$.state`) starts empty in each session, so its changes need no m
 
 ## Steps
 
-1. Create a release branch in a worktree: `git worktree add .worktrees/release -b release/vX.Y.Z main`.
+0. Before you publish anything, set up the upgrade test: in a clean Claude Code config (`CLAUDE_CONFIG_DIR=$(mktemp -d)`), install the **current** published version from the marketplace and run `/rabe` once, so it has saved options and a previous-session summary.
+1. Create a release branch in a worktree and work there: `git worktree add .worktrees/release -b release/vX.Y.Z main`, `cd .worktrees/release`, `bun install`.
 2. Set `version` in `.claude-plugin/plugin.json` to `X.Y.Z`.
 3. Move the changes from "Unreleased" in `CHANGELOG.md` to a new `## [X.Y.Z] - YYYY-MM-DD` section and add the compare link at the end of the file.
 4. Run `bun run check`.
@@ -70,5 +71,5 @@ Session state (`$.state`) starts empty in each session, so its changes need no m
    ```sh
    gh release create vX.Y.Z --title "Rabe vX.Y.Z" --notes-file <notes.md>
    ```
-9. Check the update path in a clean Claude Code config: install from the marketplace, run `/rabe`, then `claude plugin update rabe` from the previous version shows the new one.
+9. In the config from step 0, run `claude plugin update rabe` and `/reload-plugins`. Check that `claude plugin list` shows `X.Y.Z`, `/rabe` works, the options kept their values and the previous-session summary still shows. Then start a fresh session and check `/rabe` again.
 10. Remove the release worktree.
