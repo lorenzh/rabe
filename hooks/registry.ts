@@ -37,11 +37,13 @@ export function endItem(items: RabeItem[], id: string, status: EndStatus, now: n
   return updateItem(items, id, { status, endedAt: now })
 }
 
+// Of two items that ended at once, the one Rabe saw later goes first.
 export function capEnded(items: RabeItem[], max = MAX_ENDED): RabeItem[] {
   const ended = items.filter(item => item.status !== 'running')
   if (ended.length <= max) return items
   const dropped = new Set(
     ended
+      .toReversed()
       .toSorted((a, b) => (a.endedAt ?? a.seenAt) - (b.endedAt ?? b.seenAt))
       .slice(0, ended.length - max),
   )
@@ -49,40 +51,42 @@ export function capEnded(items: RabeItem[], max = MAX_ENDED): RabeItem[] {
   return items.filter(item => !dropped.has(item))
 }
 
-// The changed list, or `undefined` when the capped list is the held one. The
-// cleanup hook applies the cap as the list is written, so it sees what the cap drops.
-export function commit(held: RabeItem[] | undefined, change: Change): RabeItem[] | undefined {
+// The end time of an ended item Rabe did not watch end: the oldest end held,
+// so it never pushes out one Rabe watched. `undefined` once the cap is full,
+// since the cap would drop it.
+export function pastEnd(items: RabeItem[], now: number, max = MAX_ENDED): number | undefined {
+  const ends = items.flatMap(item =>
+    item.status === 'running' ? [] : [item.endedAt ?? item.seenAt],
+  )
+
+  return ends.length >= max ? undefined : Math.min(now, ...ends)
+}
+
+// The capped list and the ids the write drops (also one it added), or
+// `undefined` when the capped list is the held one.
+export function commit(
+  held: RabeItem[] | undefined,
+  change: Change,
+): { items: RabeItem[]; dropped: string[] } | undefined {
   const items = held ?? []
   const changed = change(items)
   const next = capEnded(changed)
+  if (next.length === items.length && next.every((item, i) => item === items[i])) return undefined
+  const kept = new Set(next.map(item => item.id))
+  const dropped = new Set([...items, ...changed].map(item => item.id).filter(id => !kept.has(id)))
 
-  const same = next.length === items.length && next.every((item, i) => item === items[i])
-
-  return same ? undefined : changed
+  return { items: next, dropped: [...dropped] }
 }
 
-export const MAX_EVICTED = 1000
+// `record` without the entries of `dropped` ids that are not back in `items`;
+// the same record when none goes.
+export function prune<T>(
+  record: Record<string, T>,
+  dropped: string[],
+  items: RabeItem[],
+): Record<string, T> {
+  const gone = dropped.filter(id => id in record && !items.some(item => item.id === id))
+  if (gone.length === 0) return record
 
-// The entries of a per-item record whose key is still an item id; the same
-// record when it holds none of another id.
-export function keepItems<T>(record: Record<string, T>, items: RabeItem[]): Record<string, T> {
-  const ids = new Set(items.map(item => item.id))
-  if (Object.keys(record).every(id => ids.has(id))) return record
-
-  return Object.fromEntries(Object.entries(record).filter(([id]) => ids.has(id)))
-}
-
-// The ids of `seen` missing from `kept`, appended to the newest `max` evicted
-// ids; the same list when none is missing.
-export function evict(
-  evicted: string[],
-  seen: RabeItem[],
-  kept: RabeItem[],
-  max = MAX_EVICTED,
-): string[] {
-  const ids = new Set(kept.map(item => item.id))
-  const dropped = [...new Set(seen.map(item => item.id))].filter(id => !ids.has(id))
-  if (dropped.length === 0) return evicted
-
-  return [...evicted.filter(id => !dropped.includes(id)), ...dropped].slice(-max)
+  return Object.fromEntries(Object.entries(record).filter(([id]) => !gone.includes(id)))
 }

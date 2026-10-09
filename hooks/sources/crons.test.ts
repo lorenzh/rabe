@@ -1,6 +1,8 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
+import type { RabeItem } from '../model'
+import { MAX_ENDED } from '../registry'
 import { core, memoryState } from '../testing'
 
 const JOB = {
@@ -220,4 +222,122 @@ test('at Stop a job gone from the session crons ends, a new one is added', async
     ['cron:wakeup-61000', 'running'],
     ['cron:c2', 'running'],
   ])
+})
+
+const lines = { seen: 1, lines: [{ at: 1, text: 'ready' }] }
+const turns = [{ index: 1, at: 1, text: 'done', tools: [] }]
+
+// The oldest ended item is the agent, then shell s1; the cap holds exactly MAX_ENDED.
+function full(): RabeItem[] {
+  const ended: RabeItem[] = Array.from({ length: MAX_ENDED }, (_, n) =>
+    n === 0
+      ? {
+          id: 'agent:a0',
+          kind: 'agent',
+          title: 'a0',
+          status: 'done',
+          seenAt: 1,
+          endedAt: 1,
+          detail: { agentId: 'a0' },
+        }
+      : {
+          id: `shell:s${n}`,
+          kind: 'shell',
+          title: `s${n}`,
+          status: 'done',
+          seenAt: 1,
+          endedAt: n + 1,
+          detail: { command: `s${n}` },
+        },
+  )
+  const cron = (id: string): RabeItem => ({
+    id: `cron:${id}`,
+    kind: 'cron',
+    title: id,
+    status: 'running',
+    seenAt: 1,
+    detail: { jobId: id, prompt: id, schedule: '* * * * *' },
+  })
+
+  return [...ended, cron('c1'), cron('c2')]
+}
+
+test('an item a hook write pushes out loses its lines and turns, though its output never changed', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const state = memoryState(on)
+  state['rabe.items'] = { value: full(), version: 1 }
+  state['rabe.lines'] = { value: { 'shell:s1': lines, 'shell:s5': lines }, version: 1 }
+  state['rabe.turns'] = { value: { 'agent:a0': turns }, version: 1 }
+  tools(on)
+
+  // A cron job ending pushes the oldest ended item, an agent, out of the list.
+  await $.tool.call({ tool: 'CronDelete', id: 'c1' })
+  expect(state['rabe.turns']?.value).toEqual({})
+  expect(state['rabe.lines']?.value).toEqual({ 'shell:s1': lines, 'shell:s5': lines })
+
+  // The next one pushes out shell s1: its lines go, those of s5 stay.
+  await $.tool.call({ tool: 'CronDelete', id: 'c2' })
+  expect(state['rabe.lines']?.value).toEqual({ 'shell:s5': lines })
+})
+
+test('a write that drops nothing leaves lines and turns alone', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const state = memoryState(on)
+  state['rabe.items'] = { value: full().slice(1), version: 1 }
+  state['rabe.lines'] = { value: { 'shell:s1': lines }, version: 1 }
+  state['rabe.turns'] = { value: {}, version: 1 }
+  tools(on)
+  await $.tool.call({ tool: 'CronDelete', id: 'c1' })
+  expect(state['rabe.lines']).toEqual({ value: { 'shell:s1': lines }, version: 1 })
+  expect(state['rabe.turns']).toEqual({ value: {}, version: 1 })
+})
+
+test('pruning after a write keeps the output of an item a later write added', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  let release = () => {}
+  let reached = () => {}
+  const paused = new Promise<void>(resolve => {
+    reached = resolve
+  })
+  let gated = false
+  on('state.get', { plugin: 'rabe', key: 'lines' }, async (_$, e, next) => {
+    if (gated) return next(e)
+    gated = true
+    reached()
+    await new Promise<void>(resolve => {
+      release = resolve
+    })
+    return next(e)
+  })
+  const state = memoryState(on)
+  state['rabe.items'] = { value: full(), version: 1 }
+  state['rabe.lines'] = { value: { 'shell:s1': lines }, version: 1 }
+  state['rabe.turns'] = { value: { 'agent:a0': turns }, version: 1 }
+  tools(on)
+
+  // The write that ends c1 lands and drops agent a0. Before it prunes, another
+  // task is added and stores its output, and a0 runs again under the same id.
+  const ending = $.tool.call({ tool: 'CronDelete', id: 'c1' })
+  await paused
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items.some(item => item.id === 'agent:a0')).toBe(false)
+  const added = { ...items[1], id: 'shell:new' } as RabeItem
+  const back = { ...full()[0], status: 'running' } as RabeItem
+  state['rabe.items'] = { value: [...items, added, back], version: 9 }
+  state['rabe.lines'] = { value: { 'shell:s1': lines, 'shell:new': lines }, version: 9 }
+  state['rabe.turns'] = { value: { 'agent:a0': turns, 'shell:new': turns }, version: 9 }
+  release()
+  await ending
+  expect(state['rabe.lines']?.value).toEqual({ 'shell:s1': lines, 'shell:new': lines })
+  expect(state['rabe.turns']?.value).toEqual({ 'agent:a0': turns, 'shell:new': turns })
+})
+
+test('pruning after a write still drops the entries of the item it dropped', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const state = memoryState(on)
+  state['rabe.items'] = { value: full(), version: 1 }
+  state['rabe.turns'] = { value: { 'agent:a0': turns, 'shell:new': turns }, version: 1 }
+  tools(on)
+  await $.tool.call({ tool: 'CronDelete', id: 'c1' })
+  expect(state['rabe.turns']?.value).toEqual({ 'shell:new': turns })
 })

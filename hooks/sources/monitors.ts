@@ -1,7 +1,7 @@
 import type { EngineInterface, On } from 'claude-code'
 
 import { type EndStatus, itemId, type RabeItem } from '../model'
-import { addItem, type Change, commit, endItem, updateItem } from '../registry'
+import { addItem, type Change, commit, endItem, prune, updateItem } from '../registry'
 import { appendLines, endStatus, parseNotifications, parseOutput, taskOutput } from '../tasks'
 
 const POLL_MS = 2000
@@ -18,10 +18,31 @@ async function write($: Pick<EngineInterface, 'state'>, change: Change): Promise
     const { value, version } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const next = commit(value, change)
     if (next === undefined) return
-    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'items' }, next, {
+    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'items' }, next.items, {
       ifVersion: version,
     })
-    if (isSet) return
+    if (isSet) return forget($, next.dropped)
+  }
+}
+
+// Drops the lines and turns of the items a write dropped.
+async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Promise<void> {
+  if (dropped.length === 0) return
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, dropped, items)
+    if (next === value) break
+    const lines = await $.state.set({ plugin: 'rabe', key: 'lines' }, next, { ifVersion: version })
+    if (lines.isSet) break
+  }
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'turns' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, dropped, items)
+    if (next === value) return
+    const turns = await $.state.set({ plugin: 'rabe', key: 'turns' }, next, { ifVersion: version })
+    if (turns.isSet) return
   }
 }
 

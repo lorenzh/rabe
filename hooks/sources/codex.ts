@@ -9,7 +9,7 @@ import {
   type RabeItem,
   type RabeItemOf,
 } from '../model'
-import { addItem, type Change, commit, endItem } from '../registry'
+import { addItem, type Change, commit, endItem, prune } from '../registry'
 
 const POLL_MS = 2000
 const CODEX_DATA = 'plugins/data/codex-openai-codex'
@@ -213,10 +213,31 @@ async function write($: Pick<EngineInterface, 'state'>, change: Change): Promise
     const { value, version } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const next = commit(value, change)
     if (next === undefined) return
-    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'items' }, next, {
+    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'items' }, next.items, {
       ifVersion: version,
     })
-    if (isSet) return
+    if (isSet) return forget($, next.dropped)
+  }
+}
+
+// Drops the lines and turns of the items a write dropped.
+async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Promise<void> {
+  if (dropped.length === 0) return
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, dropped, items)
+    if (next === value) break
+    const lines = await $.state.set({ plugin: 'rabe', key: 'lines' }, next, { ifVersion: version })
+    if (lines.isSet) break
+  }
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'turns' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, dropped, items)
+    if (next === value) return
+    const turns = await $.state.set({ plugin: 'rabe', key: 'turns' }, next, { ifVersion: version })
+    if (turns.isSet) return
   }
 }
 
@@ -287,21 +308,24 @@ async function refresh(
   codexHome: string,
   jobPath: string,
   entry: CodexJob,
-  held: RabeItemOf<'codex'> | undefined,
+  items: RabeItem[],
 ): Promise<void> {
   const file = parseJson(String(await $.fs.read(jobPath).catch(() => '')))
   const job: CodexJob = { ...entry, ...file, id: entry.id }
   if (job.sessionId !== sessionId) return
-  const session = await readSession($, codexHome, job, held)
-  const item = codexItem(job, session)
   const end = jobEnd(job.status)
   const now = await $.clock.now()
   const endedAt = Date.parse(str(job.completedAt) ?? '') || now
-  await write($, items => {
-    const added = addItem(items, item, now)
+  const change = (item: NewItem) => (list: RabeItem[]) => {
+    const added = addItem(list, item, now)
 
     return end ? endItem(added, item.id, end, endedAt) : added
-  })
+  }
+  const held = items.find((one): one is RabeItemOf<'codex'> => one.id === itemId('codex', job.id))
+  // a finished job the cap would drop again: its session file is not read
+  if (!held && commit(items, change(codexItem(job, undefined))) === undefined) return
+  const session = await readSession($, codexHome, job, held)
+  await write($, change(codexItem(job, session)))
 }
 
 async function poll($: EngineInterface): Promise<void> {
@@ -310,7 +334,6 @@ async function poll($: EngineInterface): Promise<void> {
   const sessionId = await $.session.id()
   const { startedAt: since } = await $.session.usage()
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
-  const { value: evicted = [] } = await $.state.get({ plugin: 'rabe', key: 'evicted' })
   // ponytail: one stat per workspace folder per poll; keep a folder list in $.state if there are hundreds
   for (const dir of await $.fs.list(stateRoot).catch(() => [])) {
     if (dir.kind !== 'dir') continue
@@ -324,15 +347,13 @@ async function poll($: EngineInterface): Promise<void> {
       if (!id || (entry.sessionId !== undefined && entry.sessionId !== sessionId)) continue
       const held = items.find((one): one is RabeItemOf<'codex'> => one.id === itemId('codex', id))
       if (held && held.status !== 'running') continue
-      // an ended job the cap dropped is not read or added again
-      if (!held && evicted.includes(itemId('codex', id)) && jobEnd(entry.status)) continue
       await refresh(
         $,
         sessionId,
         codex,
         `${stateRoot}/${dir.name}/jobs/${id}.json`,
         { ...entry, id },
-        held,
+        items,
       ).catch(() => undefined)
     }
   }

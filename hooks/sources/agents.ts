@@ -18,7 +18,7 @@ import {
   type RabeItemStatus,
   type RabeTokens,
 } from '../model'
-import { addItem, type Change, commit, endItem, updateItem } from '../registry'
+import { addItem, type Change, commit, endItem, pastEnd, prune, updateItem } from '../registry'
 
 type Turns = Record<string, RabeTurn[]>
 type AgentItem = RabeItemOf<'agent'>
@@ -132,12 +132,23 @@ function asAgent(items: RabeItem[], id: string): AgentItem | undefined {
   return item?.kind === 'agent' ? item : undefined
 }
 
-// An ended agent the cap dropped (`evicted`) is not added back.
-function listed(items: RabeItem[], info: AgentInfo, now: number, evicted: string[]): RabeItem[] {
+// Statuses of a turn in flight: an ended agent in one was resumed. `idle` is
+// not one: a teammate is idle after each turn, which already ended its item.
+const RESUMED: AgentStatus[] = ['pending', 'running', 'waiting']
+
+// An ended agent Rabe holds no item for takes `end` (see `pastEnd`), and none
+// is added when `end` is undefined, so a poll never gives one a new recency.
+function listed(
+  items: RabeItem[],
+  info: AgentInfo,
+  now: number,
+  end: number | undefined,
+): RabeItem[] {
   const id = itemId('agent', info.id)
   const status = LISTED[info.status] ?? 'running'
-  if (!asAgent(items, id)) {
-    if (status !== 'running' && evicted.includes(id)) return items
+  const held = asAgent(items, id)
+  if (!held) {
+    if (status !== 'running' && end === undefined) return items
     return addItem(
       items,
       {
@@ -145,11 +156,15 @@ function listed(items: RabeItem[], info: AgentInfo, now: number, evicted: string
         kind: 'agent',
         title: info.description || info.type,
         status,
+        ...(status !== 'running' && { endedAt: end }),
         parentId: info.parentId ? itemId('agent', info.parentId) : undefined,
         detail: { agentId: info.id, type: info.type, description: info.description },
       },
       now,
     )
+  }
+  if (held.status !== 'running' && RESUMED.includes(info.status)) {
+    return updateItem(items, id, { status: 'running', endedAt: undefined })
   }
 
   return status === 'running' ? items : endItem(items, id, status, now)
@@ -184,10 +199,31 @@ async function write($: Pick<EngineInterface, 'state'>, change: Change): Promise
     const { value, version } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const next = commit(value, change)
     if (next === undefined) return
-    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'items' }, next, {
+    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'items' }, next.items, {
       ifVersion: version,
     })
-    if (isSet) return
+    if (isSet) return forget($, next.dropped)
+  }
+}
+
+// Drops the lines and turns of the items a write dropped.
+async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Promise<void> {
+  if (dropped.length === 0) return
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, dropped, items)
+    if (next === value) break
+    const lines = await $.state.set({ plugin: 'rabe', key: 'lines' }, next, { ifVersion: version })
+    if (lines.isSet) break
+  }
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'turns' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, dropped, items)
+    if (next === value) return
+    const turns = await $.state.set({ plugin: 'rabe', key: 'turns' }, next, { ifVersion: version })
+    if (turns.isSet) return
   }
 }
 
@@ -217,8 +253,11 @@ async function readMeta($: EngineInterface, id: string): Promise<void> {
 async function refresh($: EngineInterface): Promise<void> {
   const agents = await $.agent.list().catch(() => [])
   const now = await $.clock.now()
-  const { value: evicted = [] } = await $.state.get({ plugin: 'rabe', key: 'evicted' })
-  await write($, items => agents.reduce((list, info) => listed(list, info, now, evicted), items))
+  await write($, items => {
+    const end = pastEnd(items, now)
+
+    return agents.reduce((list, info) => listed(list, info, now, end), items)
+  })
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   for (const item of items) {
     if (item.kind === 'agent' && item.status === 'running') await readMeta($, item.id)

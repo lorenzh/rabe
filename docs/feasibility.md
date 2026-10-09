@@ -2,7 +2,7 @@
 title: What Rabe can see
 description: Where Rabe gets each piece of data about background work (mod API, files on disk, source code), what is not available, the pane key model, what a Raster can draw, what of Claude Code's own display a mod can hide, and what still needs a runtime test.
 tags: [feasibility, data-sources, mod-api, claude-code, codex, runtime-tests]
-keywords: [staged, rabe.evicted, Raster, ui.panes, combining mark, Hangul Jamo, autonomous-loop, Edit, Write, session.usage, cost.usd, $.store, session.end, previous session, files touched, cells, bodyColumns, blit, autoFocus, closeOnEscape, PromptHint, TurnDuration, disableAgentView, agent list, local_bash, installed_plugins.json, CLAUDE_PLUGIN_DATA, CODEX_HOME, sessionId, custom_tool_call, CommandExecution, subagent, workflow, workflowPhase, meta.json, worktree, codex, rollout, threadId, token_count, model_reasoning_summary, shell, task output, monitor, cron, CronList, TaskStop, tool.check, hotkey, Button, focus, band, pane, 4 MiB, n/a, task-notification, output-file, exited with code, killed, backgroundTaskId, background_tasks, session_crons, ScheduleWakeup, scheduledFor, scheduled-trigger, transcript, tool_use, tool_result, item_completed, task_complete]
+keywords: [staged, resume, timer writes, Raster, ui.panes, combining mark, Hangul Jamo, autonomous-loop, Edit, Write, session.usage, cost.usd, $.store, session.end, previous session, files touched, cells, bodyColumns, blit, autoFocus, closeOnEscape, PromptHint, TurnDuration, disableAgentView, agent list, local_bash, installed_plugins.json, CLAUDE_PLUGIN_DATA, CODEX_HOME, sessionId, custom_tool_call, CommandExecution, subagent, workflow, workflowPhase, meta.json, worktree, codex, rollout, threadId, token_count, model_reasoning_summary, shell, task output, monitor, cron, CronList, TaskStop, tool.check, hotkey, Button, focus, band, pane, 4 MiB, n/a, task-notification, output-file, exited with code, killed, backgroundTaskId, background_tasks, session_crons, ScheduleWakeup, scheduledFor, scheduled-trigger, transcript, tool_use, tool_result, item_completed, task_complete]
 ---
 
 # What Rabe can see
@@ -21,6 +21,8 @@ Rabe uses three sources, in this order:
 
 Everything from source 2 must be read defensively: a missing file or field shows as `n/a`, never as an error.
 
+The types say a `$` call passes every hook but the one that made it. The live engine (2.1.295) does less: a `$.state.set` made in a `$.clock.every` or `$.clock.after` callback does not pass the plugin's own `state.set` hooks, while one made in a hook or a command does. So Rabe does nothing in a hook on its own writes; the write loop does it (see architecture).
+
 ## No list of running work
 
 The mod API has no call that lists the running background tasks. `background_tasks` and `session_crons` arrive only on the classic `Stop` and `SubagentStop` events (d.ts:12056, d.ts:12186).
@@ -38,7 +40,7 @@ Rabe keeps its own list. It adds an item when a hook reports a start (`tool.call
 | Tokens, live | `turn.step` carries `agentId` and `usage` per request (d.ts:13316, d.ts:13413). `turn.complete` has the total (d.ts:13201). Rabe adds up the steps, so an agent that runs again after a message keeps counting. |
 | Tool calls per response | The `turn.step` result lists `toolUses` with name and input: the calls the model asks for, which may still be refused or fail (d.ts:13391). Rabe uses it for the tool count and the turns. |
 | Edits that changed a file | A `tool.call` hook on `Edit` and `Write`: after `next(e)`, a result without `isError` means the engine ran it; a refusal answers `deny` and no result (d.ts:12631). A result with `staged: true` was held for the machine owner to review and left the file unchanged (d.ts:20404, 21302); it is the only such flag in the two result types. The result's `filePath` names the file. `e.agentId` names the subagent. |
-| End | `turn.complete` with `agentId` and `reason` (`answer`, `aborted`, `refusal`, `error`). Also `$.agent.list()` status for agents in the list. |
+| End | `turn.complete` with `agentId` and `reason` (`answer`, `aborted`, `refusal`, `error`). Also `$.agent.list()` status for agents in the list. An ended agent can resume under the same id (d.ts:531); the list then shows it `pending`, `running` or `waiting` again. A teammate is `idle` after each turn. |
 | Cost | `$.session.usage().cost.usd` gives the whole session's dollars as `/cost` totals them; Rabe shows it as the session cost. No source gives dollars per agent. A price table in Rabe times tokens would give an estimate; it does not exist yet, so the cost per agent shows `n/a`. Claude's `input` counts cache reads, as Codex's `input_tokens` counts `cached_input_tokens`, so the two compare. |
 | Turns | Text and tool calls from the `turn.step` result (Rabe uses this). The transcript `~/.claude/projects/<project>/<session>/subagents/agent-<id>.jsonl` has them too, for agents that ran before Rabe loaded. |
 | Worktree at start | `classic.SubagentStart` gives the worktree as `cwd`, with `agent_id` and `transcript_path`. `agent.spawn` has no cwd. The Agent `tool.call` input shows `isolation: 'worktree'`. `transcript_path` is the session's transcript, not the agent's. The hook runs inside the spawn, before `agent.spawn` returns the `agentId`. Tested. |

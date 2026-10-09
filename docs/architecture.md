@@ -2,7 +2,7 @@
 title: How Rabe is built
 description: The item model, the registry in session state, the source contract, the cell engine and the view contract behind the band and the pane, and how Rabe hides Claude Code's own count of background work, so that each source and view can be built on its own.
 tags: [architecture, item-model, registry, sources, ui, state, raster]
-keywords: [allow list, GLYPHS, changedFile, staged, cleanup, rabe.evicted, keepItems, evict, MAX_EVICTED, Raster, clip, clamp, bounded, edits, Hangul Jamo, ui.panes, combining mark, detail.prompt, costView, effectsView, timelineView, touched, previousOf, RabePrevious, $.store, session.end, session.usage, conflict, files touched, load, long tool, stuck, moveButtons, windowStart, cells, grid, palette, DEFAULT, View, Drawn, ViewButton, ViewInput, Selection, render, paneView, bandView, itemsView, detailView, TABS, controlRows, SPLIT_COLUMNS, bodyColumns, closeOnEscape, PromptHint, TurnDuration, hideBuiltinTasks, stripTasks, RabeTurn, rabe.turns, agents, workflows, agent.spawn, turn.step, turn.complete, SubagentStart, meta.json, task-notification, matcher, codex source, rabe-stop, detailLines, costBox, $.command.run, parseRollout, codexItem, RabeCodexStep, RabeItem, RabeItemKind, RabeItemStatus, NewItem, ItemPatch, itemId, addItem, updateItem, endItem, capEnded, commit, MAX_ENDED, write loop, Source, sources, register.tsx, band, pane, AbovePrompt, Pane, tab, $.state, ifVersion, scanner, shells, monitors, crons, tasks.ts, schedule.ts, nextRun, nextRuns, parseNotifications, parseOutput, guessPort, rabe.lines, RabeLines, memoryState, act, rabe.selected, rabe.open, bandRows, nameSpans, joinFit, chip, summary line, desktop fallback]
+keywords: [allow list, GLYPHS, changedFile, staged, cleanup, forget, prune, pastEnd, resume, timer writes, Raster, clip, clamp, bounded, edits, Hangul Jamo, ui.panes, combining mark, detail.prompt, costView, effectsView, timelineView, touched, previousOf, RabePrevious, $.store, session.end, session.usage, conflict, files touched, load, long tool, stuck, moveButtons, windowStart, cells, grid, palette, DEFAULT, View, Drawn, ViewButton, ViewInput, Selection, render, paneView, bandView, itemsView, detailView, TABS, controlRows, SPLIT_COLUMNS, bodyColumns, closeOnEscape, PromptHint, TurnDuration, hideBuiltinTasks, stripTasks, RabeTurn, rabe.turns, agents, workflows, agent.spawn, turn.step, turn.complete, SubagentStart, meta.json, task-notification, matcher, codex source, rabe-stop, detailLines, costBox, $.command.run, parseRollout, codexItem, RabeCodexStep, RabeItem, RabeItemKind, RabeItemStatus, NewItem, ItemPatch, itemId, addItem, updateItem, endItem, capEnded, commit, MAX_ENDED, write loop, Source, sources, register.tsx, band, pane, AbovePrompt, Pane, tab, $.state, ifVersion, scanner, shells, monitors, crons, tasks.ts, schedule.ts, nextRun, nextRuns, parseNotifications, parseOutput, guessPort, rabe.lines, RabeLines, memoryState, act, rabe.selected, rabe.open, bandRows, nameSpans, joinFit, chip, summary line, desktop fallback]
 ---
 
 # How Rabe is built
@@ -13,7 +13,7 @@ Rabe has four parts. Sources watch hooks and files and turn them into items. The
 hooks/
   register.tsx        calls sources(on), band(on), pane(on)
   model.ts            item types (re-exported from the contract), itemId, mergeItem
-  registry.ts         pure list changes: addItem, updateItem, endItem, capEnded, commit
+  registry.ts         pure list changes: addItem, updateItem, endItem, capEnded, commit, pastEnd, prune
   sources/index.ts    Source type and sources(on), which calls each source
   sources/agents.ts   Claude subagents: items, live tokens and turns
   sources/workflows.ts  workflow runs: items, phases and their end
@@ -21,7 +21,6 @@ hooks/
   sources/shells.ts   background shells: items, exit code, port
   sources/monitors.ts monitors: items and their output lines
   sources/crons.ts    cron jobs and /loop wakeups
-  sources/cleanup.ts  after each write of the items: evicted ids, lines and turns of dropped items
   tasks.ts            pure: task notifications, task output files, port guess
   schedule.ts         pure: next runs of a cron expression
   testing.ts          test helpers: state in memory, files, core stubs
@@ -103,31 +102,44 @@ The items live in one session value, `$.state` key `rabe.items`, an array in the
 | `addItem(items, item, now)` | Appends a new item with `seenAt: now`. For a known id it merges the fields and keeps `seenAt`. |
 | `updateItem(items, id, patch)` | Merges a patch into one item. Unknown id: no change. |
 | `endItem(items, id, status, now)` | Sets `status` and `endedAt` on a running item. An item that already ended keeps its end. |
-| `capEnded(items, max = MAX_ENDED)` | Keeps every running item and the newest 200 ended ones. The cleanup hook applies it to every write (see Cleanup after a write). |
-| `commit(held, change)` | Applies a change. Answers `undefined` when the capped result is the held list: nothing changed, or the cap drops what the change added (an old ended item a poll finds again), so a poll then writes no state. Else it answers the changed list, uncapped: the cleanup hook applies the cap as the list is written. |
-| `keepItems(record, items)` | The entries of a per-item record (`rabe.lines`, `rabe.turns`) whose key is still an item id; the same record when nothing goes. |
-| `evict(evicted, before, after)` | Appends the ids a write dropped to the newest 1000 evicted ids (`MAX_EVICTED`); the same list when it dropped none. |
+| `capEnded(items, max = MAX_ENDED)` | Keeps every running item and the newest 200 ended ones, newest by `endedAt`, else `seenAt`. Of two that ended at the same time, the one Rabe saw later goes first. `commit` applies it, so every write loop does. |
+| `commit(held, change)` | Applies a change and the cap. Answers `{ items, dropped }`: the capped list to write and the ids the write drops, also one the change added and the cap dropped at once. Answers `undefined` when the capped list is the held list: nothing changed, or the cap drops what the change added (an old ended item a poll finds again), so a poll then writes no state. |
+| `pastEnd(items, now)` | The end time an ended item takes when Rabe did not watch it end (a poll finds it): the oldest end of the ended items held, or `now` when there are none. `undefined` once 200 ended items are held, since the cap would drop it. So such an item never pushes out one Rabe watched. |
+| `prune(record, dropped, items)` | A per-item record (`rabe.lines`, `rabe.turns`) without the entries of the `dropped` ids that are not back in `items`; the same record when nothing goes. Only those ids go: an entry a later write added stays. |
 
 To list items, read the value: `const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })`. A read while drawing subscribes the drawing, so a write draws it again.
 
 ### The write loop
 
-Every file that writes items declares this function at its top level. It writes only when the list changed, and tries again when another hook wrote first:
+Every file that writes items declares `write` and `forget` at its top level (the scanner does not follow `$` across an import). `write` writes only when the list changed, and tries again when another hook wrote first. `commit` applies the cap, so any write can drop items; `forget` then drops the per-item state of exactly those items:
 
 ```ts
 import type { EngineInterface } from 'claude-code'
-import { type Change, commit } from '../registry'
+import { type Change, commit, prune } from '../registry'
 
 async function write($: Pick<EngineInterface, 'state'>, change: Change): Promise<void> {
   for (;;) {
     const { value, version } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const next = commit(value, change)
     if (next === undefined) return
-    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'items' }, next, {
+    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'items' }, next.items, {
       ifVersion: version,
     })
-    if (isSet) return
+    if (isSet) return forget($, next.dropped)
   }
+}
+
+async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Promise<void> {
+  if (dropped.length === 0) return
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, dropped, items)
+    if (next === value) break
+    const lines = await $.state.set({ plugin: 'rabe', key: 'lines' }, next, { ifVersion: version })
+    if (lines.isSet) break
+  }
+  // the same loop for { plugin: 'rabe', key: 'turns' }
 }
 
 // in a hook:
@@ -137,14 +149,9 @@ await write($, items => addItem(items, item, now))
 
 The library's `update($, atom, fn)` is not used: it writes even when `fn` returns the same value.
 
-### Cleanup after a write: `hooks/sources/cleanup.ts`
+Per-item state outside `rabe.items` (`rabe.lines`, `rabe.turns`) must leave with its item, whether or not its output changed. That is done in the write itself, not in a hook on `state.set`: the live engine does not run the plugin's own `state.set` hooks for a write made in a `$.clock.every` or `$.clock.after` callback, so such a hook does not see the polls' writes. A write from a hook or a command does pass it.
 
-Per-item state outside `rabe.items` must leave with its item. Any write loop can drop items, since `commit` applies the cap, so the cleanup does not live in the write loops. `cleanup(on)` hooks `state.set` with the matcher `{ plugin: 'rabe', key: 'items' }`, which every write of the list passes, whichever file made it. It applies the cap (`capEnded`) and passes the capped list on with `next({ ...e, value })`, so it knows each id the cap drops, also one the same write added. After the write lands it:
-
-- appends the ids the write dropped (in `e.previous` or the written list, not in the capped list) to `rabe.evicted`, the newest 1000;
-- drops the entries of `rabe.lines` and `rabe.turns` whose id is no longer in the list.
-
-Each of the three writes only when its value changed. So the output buffers and the turns follow the cap whether or not the dropped item's output changed. The writers of `rabe.lines` and `rabe.turns` only set their own entry. Polls read `rabe.evicted` so that they do not add an ended item the cap dropped (see the agents and Codex sources).
+`forget` removes only the ids its own write dropped, never every id missing from a list it read earlier: between the write and the pruning another write can add an item and store its output. It reads the list again right before each pruning and keeps an id that is back in it (an agent that resumed). Each pruning writes only when its value changed. The writers of `rabe.lines` and `rabe.turns` only set their own entry.
 
 ### Turns
 
@@ -155,7 +162,7 @@ type RabeToolUse = { name: string; summary?: string }   // 'Read', 'src/db.ts'
 type RabeTurn = { index: number; at: number; text: string; tools: RabeToolUse[] }
 ```
 
-`index` counts from 1 and keeps counting when old turns are dropped. `text` is the visible answer, cut to 300 characters with `…` at the end (`clip` in `model.ts`). `summary` is the first of the tool's `file_path`, `command`, `pattern`, `path`, `url`, `query` or `description`, on one line of at most 80 characters; a `file_path` is kept whole, since the Effects tab tells files apart by it. Each item keeps its newest 30 turns. The turns of an item dropped from `rabe.items` go with it (see Cleanup after a write).
+`index` counts from 1 and keeps counting when old turns are dropped. `text` is the visible answer, cut to 300 characters with `…` at the end (`clip` in `model.ts`). `summary` is the first of the tool's `file_path`, `command`, `pattern`, `path`, `url`, `query` or `description`, on one line of at most 80 characters; a `file_path` is kept whole, since the Effects tab tells files apart by it. Each item keeps its newest 30 turns. The turns of an item dropped from `rabe.items` go with it (see The write loop).
 
 ## The source contract
 
@@ -196,7 +203,7 @@ One `agent` item per subagent, id `agent:<agentId>`. It covers agents the model 
 | `turn.complete` with `agentId` | Ends the item: `answer` is done, `aborted` is stopped, `refusal` and `error` are failed. Reads the meta file once more. |
 | `session.start` | Runs the poll once, then every 3 seconds with `$.clock.every`. |
 
-The poll reads `$.agent.list()`. It adds agents Rabe has no item for (started before Rabe loaded), except an ended agent whose id is in `rabe.evicted`: the cap dropped it, and adding it back with a new `seenAt` would drop another ended item on each poll. An evicted agent the list shows running again (a message resumed it) is added back. The poll also ends items the list reports as `completed`, `failed` or `killed`. Then it reads the meta file of each running agent and copies `cwd`, `worktreePath`, `worktreeBranch` and `workflowPhase`. An agent with neither `cwd` nor `worktreePath` shows its tree as `n/a`, not as the main tree. The meta file sits next to the transcript (`agent-<id>.meta.json`); for a workflow agent without a transcript path it is in the run's `transcriptDir`. The file appears about 1.5 seconds after the start and changes later, so the poll reads it each time.
+The poll reads `$.agent.list()`. It adds agents Rabe has no item for (started before Rabe loaded, or dropped by the cap). An ended one never gets a new recency: it takes `pastEnd`, the oldest end held, and is not added at all once 200 ended items are held, since the cap would drop it. So an unchanged list causes no write, however many ended agents it holds, and agents Rabe did not watch never push out the ones it did. The poll also ends items the list reports as `completed`, `failed` or `killed`. An agent can resume under the same id: when the list shows an ended item's agent as `pending`, `running` or `waiting`, the poll sets it running again and clears `endedAt`, and one the cap dropped is added back as running. `idle` does not count: a teammate is idle after each turn, which already ended its item. Then it reads the meta file of each running agent and copies `cwd`, `worktreePath`, `worktreeBranch` and `workflowPhase`. An agent with neither `cwd` nor `worktreePath` shows its tree as `n/a`, not as the main tree. The meta file sits next to the transcript (`agent-<id>.meta.json`); for a workflow agent without a transcript path it is in the run's `transcriptDir`. The file appears about 1.5 seconds after the start and changes later, so the poll reads it each time.
 
 Workflow agents are not in `$.agent.list()`: only `turn.complete` ends them.
 
@@ -215,7 +222,7 @@ The run's agents come from `agents.ts`; they point to the run with `parentId` an
 
 Tracks the jobs that the Codex plugin (`codex@openai-codex`) starts for this session. Data sources and their limits are in [What Rabe can see](feasibility.md#codex-jobs).
 
-- **Poll.** `session.start` (interactive only) starts `$.clock.every(2000)`. Each poll lists the plugin's state folders, skips each whose `state.json` was not changed since the session started (`$.session.usage().startedAt`), and reads the rest. It keeps the jobs whose `sessionId` is this session's (`$.session.id()`), and checks that again in the job file, because `state.json` can hold a bare status patch without it. A job whose item already ended is not read again, nor an ended job whose id is in `rabe.evicted` (the cap dropped it). The other polls add only work in flight (`background_tasks`, `session_crons`), which the cap never drops.
+- **Poll.** `session.start` (interactive only) starts `$.clock.every(2000)`. Each poll lists the plugin's state folders, skips each whose `state.json` was not changed since the session started (`$.session.usage().startedAt`), and reads the rest. It keeps the jobs whose `sessionId` is this session's (`$.session.id()`), and checks that again in the job file, because `state.json` can hold a bare status patch without it. A job whose item already ended is not read again. For a finished job Rabe holds no item for, the poll first asks `commit` whether the item would change the list; when the cap would drop it again (it ended before every ended item held, so the cap dropped it before), its session file is not read and nothing is written. The other polls add only work in flight (`background_tasks`, `session_crons`), which the cap never drops.
 - **Item.** `codexItem(job, session)` builds the item. Title: the first line of the job's `summary` (the prompt's start). Status: `queued` and `running` are running; `completed`, `failed` and `cancelled` end the item as `done`, `failed` and `stopped`, with `endedAt` from `completedAt`. Undefined fields are left out, so a merge never erases a known value.
 - **Session file.** The rollout file is found once by `threadId` in `sessions/YYYY/MM/DD` of the start day and the day before and after (the folder date is local time), then kept in `detail.sessionPath`. It is parsed again only when its `mtimeMs` differs from `detail.sessionUpdatedAt`, so an idle job causes no write. Files up to 4 MiB are read with `$.fs.read`; larger ones with `grep -m 2` (turn context and prompt) and `tail -n 200` through `$.process.run`, and the item gets `isSessionPartial`. A finished job without a session file gets `isSessionMissing`; its model and effort then come from the job's `request`, when the job was a background job. An unchanged file gives no new fields, so the item keeps the model and effort the file gave. A file that cannot be read gives no `sessionUpdatedAt`, so the next poll tries again; the job still ends. A failure in one job never stops the poll for the others.
 - **`parseRollout(text)`.** Pure. Reads model, effort and sandbox (`turn_context`), the prompt (first `UserMessage`), tokens (last `token_count` total), and the steps: assistant messages, reasoning summaries when present, finished commands (`CommandExecution`, with exit code and output line count), and a running command (a `custom_tool_call` that has no output yet). Steps keep the last 50, each text cut at 300 characters. Lines that do not parse (a line still being written) are skipped.
@@ -240,7 +247,7 @@ The same four hooks for the Monitor tool. The Monitor result has no file path, s
 
 The end notification is handled only for task ids Rabe has as `monitor:<id>`: a shell's notification also carries an `<output-file>`, and reading it would file shell lines under a monitor id.
 
-Monitor lines are kept apart from the item, in the `$.state` key `rabe.lines`: `Record<itemId, { seen, lines: { at, text }[] }>`. `seen` counts the lines read from the file; `lines` holds the newest 200, each with the time the poll first read it ("received"). A last line read while it was still being written (`hel`, then `hello`) is updated in place and keeps its time. The poll and the end notification both read the file, so the last lines are kept even when the notification comes first. Notification `<event>` lines are not used: they come late and in batches. The lines of an item dropped from `rabe.items` go with it, in the write that drops it (see Cleanup after a write), as its turns do.
+Monitor lines are kept apart from the item, in the `$.state` key `rabe.lines`: `Record<itemId, { seen, lines: { at, text }[] }>`. `seen` counts the lines read from the file; `lines` holds the newest 200, each with the time the poll first read it ("received"). A last line read while it was still being written (`hel`, then `hello`) is updated in place and keeps its time. The poll and the end notification both read the file, so the last lines are kept even when the notification comes first. Notification `<event>` lines are not used: they come late and in batches. The lines of an item dropped from `rabe.items` go with it, in the write that drops it (see The write loop), as its turns do.
 
 ### Cron jobs and loops: `hooks/sources/crons.ts`
 

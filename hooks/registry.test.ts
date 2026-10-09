@@ -1,7 +1,16 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { NewItem } from './model'
-import { addItem, capEnded, commit, endItem, MAX_ENDED, updateItem } from './registry'
+import {
+  addItem,
+  capEnded,
+  commit,
+  endItem,
+  MAX_ENDED,
+  pastEnd,
+  prune,
+  updateItem,
+} from './registry'
 
 const shell: NewItem = {
   id: 'shell:bg_1',
@@ -63,17 +72,64 @@ test('cap drops the oldest ended items and keeps every running one', () => {
   expect(capEnded(items, 3)).toBe(items)
 })
 
-test('commit answers undefined when nothing changed, else the changed list for the hook to cap', () => {
+test('commit answers undefined when nothing changed, else the capped list and the ids it drops', () => {
   const items = [{ ...shell, seenAt: 500 }]
   expect(commit(items, held => updateItem(held, shell.id, { title: shell.title }))).toBeUndefined()
-  expect(commit(undefined, held => addItem(held, shell, 500))).toEqual(items)
+  expect(commit(undefined, held => addItem(held, shell, 500))).toEqual({ items, dropped: [] })
   const many = Array.from({ length: MAX_ENDED + 1 }, (_, n) => ({
     ...shell,
     id: `shell:${n}`,
     seenAt: n,
     status: 'done' as const,
   }))
-  expect(commit(many, held => held.slice())).toHaveLength(MAX_ENDED + 1)
+  const next = commit(many, held => held.slice())
+  expect(next?.items).toHaveLength(MAX_ENDED)
+  expect(next?.dropped).toEqual(['shell:0'])
+})
+
+test('commit names an item the change added and the cap dropped at once', () => {
+  const ended = Array.from({ length: MAX_ENDED }, (_, n) => ({
+    ...shell,
+    id: `shell:${n}`,
+    seenAt: 10 + n,
+    endedAt: 10 + n,
+    status: 'done' as const,
+  }))
+  const old: NewItem = { ...shell, id: 'shell:old', status: 'done', endedAt: 1 }
+  const running = [...ended, { ...shell, id: 'shell:x', seenAt: 5 }]
+  const ending = commit(running, held => addItem(endItem(held, 'shell:x', 'done', 3000), old, 3000))
+  expect(ending?.dropped).toEqual(['shell:0', 'shell:old'])
+})
+
+test('cap drops, of two items that ended at once, the one Rabe saw later', () => {
+  const items = [1, 2, 3].map(n => ({
+    ...shell,
+    id: `shell:${n}`,
+    seenAt: n,
+    status: 'done' as const,
+    endedAt: 7,
+  }))
+  expect(capEnded(items, 2).map(item => item.id)).toEqual(['shell:1', 'shell:2'])
+})
+
+test('an ended item Rabe did not watch takes the oldest end held, none once the cap is full', () => {
+  const ended = (n: number) => ({ ...shell, id: `shell:${n}`, seenAt: n, status: 'done' as const })
+  expect(pastEnd([], 900)).toBe(900)
+  expect(pastEnd([{ ...shell, seenAt: 1 }], 900)).toBe(900)
+  expect(pastEnd([ended(40), { ...ended(30), endedAt: 50 }], 900)).toBe(40)
+  expect(pastEnd([ended(40), ended(30)], 900, 2)).toBeUndefined()
+})
+
+test('prune drops only the entries of the ids a write dropped, not one a later write added', () => {
+  const record = { 'shell:old': 1, 'shell:new': 2 }
+  // The list read before pruning may not hold `shell:new` yet; it stays all the same.
+  expect(prune(record, ['shell:old'], [])).toEqual({ 'shell:new': 2 })
+  expect(prune(record, ['shell:gone'], [])).toBe(record)
+})
+
+test('prune keeps the entry of a dropped id that is back in the list', () => {
+  const record = { 'shell:old': 1 }
+  expect(prune(record, ['shell:old'], [{ ...shell, id: 'shell:old', seenAt: 1 }])).toBe(record)
 })
 
 test('commit answers undefined when the cap drops what the change added', () => {

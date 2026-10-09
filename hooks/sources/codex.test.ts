@@ -2,6 +2,7 @@ import type { On } from 'claude-code'
 import { type Engine, expect, type MockClock, mock, test } from 'claude-code/testing'
 
 import type { RabeItem } from '../model'
+import { MAX_ENDED } from '../registry'
 import { memoryState } from '../testing'
 import { codexItem, jobEnd, parseRollout } from './codex'
 
@@ -349,22 +350,50 @@ test('a session file that cannot be read still lets the job end', async ($, on) 
   expect(writes.at(-1)?.[0]).toMatchObject({ status: 'done', endedAt: 9000 })
 })
 
-test('a finished job the cap dropped is not read or added again', async ($, on) => {
+function endedShells(at: number): RabeItem[] {
+  return Array.from({ length: MAX_ENDED }, (_, n) => ({
+    id: `shell:s${n}`,
+    kind: 'shell',
+    title: `s${n}`,
+    status: 'done',
+    seenAt: at + n,
+    endedAt: at + n,
+    detail: { command: `s${n}` },
+  }))
+}
+
+async function pollEnded($: Engine, on: On, heldAt: number) {
   const state = memoryState(on)
-  state['rabe.evicted'] = { value: ['codex:task-1'], version: 1 }
-  const reads: string[] = []
-  on('fs.read', { path: /\/jobs\// }, async (_$, e, next) => {
-    reads.push(e.path)
+  state['rabe.items'] = { value: endedShells(heldAt), version: 1 }
+  const looked: string[] = []
+  on('fs.list', { path: /\/sessions\// }, async (_$, e, next) => {
+    looked.push(e.path)
     return next(e)
   })
   const w = world(on, {
-    [`${WS}/state.json`]: { jobs: [{ id: 'task-1', status: 'completed' }, job({ id: 'task-2' })] },
-    [`${WS}/jobs/task-1.json`]: job({ status: 'completed' }),
-    [`${WS}/jobs/task-2.json`]: job({ id: 'task-2' }),
+    [`${WS}/state.json`]: { jobs: [{ id: 'task-1', status: 'completed' }] },
+    [`${WS}/jobs/task-1.json`]: job({
+      status: 'completed',
+      completedAt: '1970-01-01T00:00:09.000Z',
+    }),
     [ROLLOUT_PATH]: ROLLOUT,
   })
   await startAndTick($, w)
+  await w.clock.advance(2000)
+
+  return { state, looked }
+}
+
+test('a finished job older than all history held is not added back, nor its session read', async ($, on) => {
+  const { state, looked } = await pollEnded($, on, 9500)
+  expect(state['rabe.items']?.version).toBe(1)
+  expect(looked).toEqual([])
+})
+
+test('a finished job newer than the oldest history held is added and pushes it out', async ($, on) => {
+  const { state } = await pollEnded($, on, 100)
   const items = state['rabe.items']?.value as RabeItem[]
-  expect(items.map(item => item.id)).toEqual(['codex:task-2'])
-  expect(reads).toEqual([`${WS}/jobs/task-2.json`])
+  expect(items).toHaveLength(MAX_ENDED)
+  expect(items.at(-1)).toMatchObject({ id: 'codex:task-1', status: 'done', endedAt: 9000 })
+  expect(items.some(item => item.id === 'shell:s0')).toBe(false)
 })

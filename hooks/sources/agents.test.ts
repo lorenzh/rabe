@@ -1,4 +1,4 @@
-import type { AgentSpawnInput, On } from 'claude-code'
+import type { AgentSpawnInput, AgentStatus, On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
 import type { RabeItem, RabeItemOf, RabeTurn } from '../model'
@@ -403,31 +403,117 @@ test('the poll adds listed agents and reads the meta file of running ones', asyn
   expect(list[0]?.detail).toMatchObject({ worktreePath: '/wt/a1', worktreeBranch: 'wt-a1' })
 })
 
-test('a poll never adds back an ended agent the cap dropped; one running again comes back', async ($, on) => {
-  const clock = mock.clock(on, { now: 1000 })
-  const state = memoryState(on)
-  core(on)
-  const done = Array.from({ length: MAX_ENDED + 1 }, (_, n) => ({
+function completed(count: number) {
+  return Array.from({ length: count }, (_, n) => ({
     id: `a${n}`,
     description: `a${n}`,
     type: 'Explore',
     status: 'completed' as const,
   }))
-  let listed = done
-  on('agent.list', async () => ({ value: listed }))
-  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
-  const first = state['rabe.items']
-  expect(first?.value).toHaveLength(MAX_ENDED)
-  expect(state['rabe.evicted']?.value).toEqual(['agent:a0'])
+}
 
-  // The next polls list the same agents: nothing is added back, nothing written.
-  await clock.advance(3000)
+function ended(count: number, from = 0): RabeItem[] {
+  return Array.from({ length: count }, (_, n) => ({
+    id: `agent:w${n + from}`,
+    kind: 'agent',
+    title: `w${n + from}`,
+    status: 'done',
+    seenAt: 10 + n,
+    endedAt: 10 + n,
+    detail: { agentId: `w${n + from}` },
+  }))
+}
+
+for (const count of [MAX_ENDED + 1, 1201, 5000]) {
+  test(`an unchanged poll of ${count} completed agents writes nothing after the first`, async ($, on) => {
+    const clock = mock.clock(on, { now: 1000 })
+    const state = memoryState(on)
+    core(on)
+    on('agent.list', async () => ({ value: completed(count) }))
+    await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+    const first = state['rabe.items']
+    expect(first?.version).toBe(1)
+    expect(first?.value).toHaveLength(MAX_ENDED)
+
+    await clock.advance(3000)
+    await clock.advance(3000)
+    expect(state['rabe.items']).toBe(first)
+  })
+}
+
+test('listed agents Rabe did not watch never push out the history it watched', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  state['rabe.items'] = { value: ended(MAX_ENDED - 50), version: 1 }
+  core(on)
+  on('agent.list', async () => ({ value: completed(1201) }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items.slice(0, MAX_ENDED - 50)).toEqual(ended(MAX_ENDED - 50))
+  expect(items.slice(MAX_ENDED - 50).map(item => item.id)).toEqual(
+    completed(50).map(one => `agent:${one.id}`),
+  )
+  const first = state['rabe.items']
   await clock.advance(3000)
   expect(state['rabe.items']).toBe(first)
+})
 
-  // A dropped agent that runs again (a message resumed it) is added back.
-  listed = [{ ...done[0], status: 'running' } as never]
+test('a poll that ends an agent drops the turns and lines of what the cap pushes out', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const running: RabeItem = { ...agent, id: 'agent:r', detail: { agentId: 'r' } }
+  state['rabe.items'] = { value: [...ended(MAX_ENDED), running], version: 1 }
+  const lines = { seen: 1, lines: [{ at: 1, text: 'ready' }] }
+  state['rabe.lines'] = { value: { 'agent:w0': lines, 'agent:w1': lines }, version: 1 }
+  state['rabe.turns'] = { value: { 'agent:w0': [turn(1)], 'agent:w1': [turn(1)] }, version: 1 }
+  core(on)
+  let listed: { id: string; description: string; type: string; status: AgentStatus }[] = []
+  on('agent.list', async () => ({ value: listed }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+
+  // The timer's poll ends agent r: the oldest ended agent, w0, leaves with its state.
+  listed = [{ id: 'r', description: 'r', type: 'Explore', status: 'completed' }]
   await clock.advance(3000)
   const items = state['rabe.items']?.value as RabeItem[]
-  expect(items.find(item => item.id === 'agent:a0')?.status).toBe('running')
+  expect(items.some(item => item.id === 'agent:w0')).toBe(false)
+  expect(state['rabe.turns']?.value).toEqual({ 'agent:w1': [turn(1)] })
+  expect(state['rabe.lines']?.value).toEqual({ 'agent:w1': lines })
+})
+
+test('a poll that lists an ended agent as running again puts it back to running', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const done: RabeItem = { ...agent, status: 'done', endedAt: 900 }
+  state['rabe.items'] = { value: [done], version: 1 }
+  core(on)
+  let status: AgentStatus = 'idle'
+  on('agent.list', async () => ({
+    value: [{ id: 'a1', description: 'verify:db.ts', type: 'Explore', status }],
+  }))
+  // A teammate is idle after each turn, which already ended its item.
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  expect(state['rabe.items']?.value).toEqual([done])
+
+  status = 'running'
+  await clock.advance(3000)
+  expect(state['rabe.items']?.value).toEqual([{ ...agent, status: 'running' }])
+})
+
+test('an agent the cap dropped comes back when the list shows it running', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  core(on)
+  let listed: { id: string; description: string; type: string; status: AgentStatus }[] =
+    completed(5000)
+  on('agent.list', async () => ({ value: listed }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  expect((state['rabe.items']?.value as RabeItem[]).some(item => item.id === 'agent:a4000')).toBe(
+    false,
+  )
+
+  listed = listed.map(one => (one.id === 'a4000' ? { ...one, status: 'running' } : one))
+  await clock.advance(3000)
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items.find(item => item.id === 'agent:a4000')?.status).toBe('running')
+  expect(items).toHaveLength(MAX_ENDED + 1)
 })

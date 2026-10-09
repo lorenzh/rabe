@@ -1,6 +1,7 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
+import { MAX_ENDED } from '../registry'
 import { core, files, memoryState } from '../testing'
 
 const DIR = '/tmp/claude-1000/-home-me-app/5f1c/tasks'
@@ -207,12 +208,21 @@ test('at Stop a monitor, which Claude Code lists as a shell, is not added as a s
   expect(state['rabe.items']?.value).toEqual([monitor])
 })
 
-test('the poll keeps the output lines in rabe.lines and drops those of items gone', async ($, on) => {
+test('the poll keeps the output lines in rabe.lines; an end that pushes a shell out drops its lines', async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const held: Record<string, string> = {}
   files(on, held)
   const state = memoryState(on)
-  state['rabe.lines'] = { value: { 'shell:gone': { seen: 1, lines: [] } }, version: 1 }
+  const old = Array.from({ length: MAX_ENDED }, (_, n) => ({
+    ...running,
+    id: `shell:old${n}`,
+    status: 'done',
+    seenAt: 10 + n,
+    endedAt: 10 + n,
+  }))
+  state['rabe.items'] = { value: old, version: 1 }
+  const gone = { seen: 1, lines: [] }
+  state['rabe.lines'] = { value: { 'shell:old0': gone, 'shell:old1': gone }, version: 1 }
   bash(on)
   core(on)
   await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
@@ -220,8 +230,10 @@ test('the poll keeps the output lines in rabe.lines and drops those of items gon
   held[`${DIR}/b1.output`] = 'ready\n'
   await clock.advance(2000)
   held[`${DIR}/b1.output`] += 'boom\n\n[exited with code 1]\n'
+  // The poll's timer ends b1, so the cap pushes out the oldest ended shell.
   await clock.advance(2000)
   expect(state['rabe.lines']?.value).toEqual({
+    'shell:old1': gone,
     'shell:b1': {
       seen: 2,
       lines: [
