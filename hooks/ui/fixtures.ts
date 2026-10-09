@@ -1,5 +1,7 @@
 import type { RabeItem } from '../model'
-import { decode, lines } from './cells/grid'
+import { decode, type Grid, grid, lines, paste, type Span, spans } from './cells/grid'
+import { C } from './cells/palette'
+import { type Drawn, isPress, type Press } from './view'
 
 export const NOW = new Date(2026, 9, 8, 10, 52, 0).getTime()
 
@@ -155,23 +157,94 @@ export const ALL: RabeItem[] = [
   reviewed,
 ]
 
-type Found = { type: string; props: Record<string, unknown>; text: string }
-type Finder = { findAll: (query: { type: string }) => Promise<Found[]> }
+type Drawing = { type: string; props?: Record<string, unknown>; children?: unknown[] }
+type Mount = { drawn: () => Promise<unknown> }
 
-// What a drawing shows, line by line: the Raster's cells decoded on the
-// terminal, else the text of each Text and Button.
-export async function screen(ui: Finder): Promise<string[]> {
-  const [raster] = await ui.findAll({ type: 'Raster' })
-  if (raster) {
-    const { columns, rows, cells } = raster.props as {
-      columns: number
-      rows: number
-      cells: string
-    }
-    return lines(decode(columns, rows, cells))
-  }
-  const texts = await ui.findAll({ type: 'Text' })
-  const buttons = await ui.findAll({ type: 'Button' })
+const isDrawing = (one: unknown): one is Drawing =>
+  typeof one === 'object' && one !== null && 'type' in one
 
-  return [...texts, ...buttons].map(one => one.text)
+// The text an element shows on one line.
+function inline(one: unknown): string {
+  if (typeof one === 'string') return one
+  if (!isDrawing(one)) return ''
+  if (one.type === 'Button') return String(one.props?.label ?? '')
+
+  return (one.children ?? []).map(inline).join('')
 }
+
+function walk(one: unknown, out: string[]): void {
+  if (!isDrawing(one)) return
+  const { type, props = {}, children = [] } = one
+  if (type === 'Raster') {
+    const { columns, rows, cells } = props as { columns: number; rows: number; cells: string }
+    out.push(...lines(decode(columns, rows, cells)))
+  } else if (
+    type === 'Box' &&
+    props.flexDirection === 'row' &&
+    !String(props.key).startsWith('controls')
+  ) {
+    out.push(inline(one).trimEnd())
+  } else if (type === 'Box') {
+    for (const child of children) walk(child, out)
+  } else if (type !== 'Input') {
+    out.push(inline(one).trimEnd())
+  }
+}
+
+// What a drawing shows, line by line: each row Box as one line (its Texts and
+// Button labels), a Raster's cells decoded, and each control Button alone.
+export async function screen(ui: Mount): Promise<string[]> {
+  const out: string[] = []
+  walk(await ui.drawn(), out)
+
+  return out
+}
+
+// A plain Button's label as the terminal draws it: `c: label` with a hotkey.
+const drawnLabel = (part: Press) => (part.hotkey ? `${part.hotkey}: ${part.label}` : part.label)
+
+const widthOf = (drawn: Drawn) =>
+  Math.max(
+    1,
+    ...drawn.nodes.map(node =>
+      'chart' in node
+        ? node.chart.columns
+        : node.spans.reduce(
+            (n, part) => n + [...(isPress(part) ? drawnLabel(part) : part[0])].length,
+            0,
+          ),
+    ),
+  )
+
+// A view's body as one grid, the way the terminal lays it out (as wide as its
+// widest line): for the view tests, which read text and colors at positions.
+// A dim Button reads C.dim.
+export function raster(drawn: Drawn, columns = widthOf(drawn)): Grid {
+  const rows = drawn.nodes.reduce((n, node) => n + ('chart' in node ? node.chart.rows : 1), 0)
+  const g = grid(columns, rows)
+  let y = 0
+  for (const node of drawn.nodes) {
+    if ('chart' in node) {
+      paste(g, node.chart, 0, y)
+      y += node.chart.rows
+      continue
+    }
+    if (node.bg !== undefined) spans(g, 0, y, [[' '.repeat(columns), { bg: node.bg }]])
+    const list = node.spans.map(
+      (part): Span =>
+        isPress(part)
+          ? [
+              drawnLabel(part),
+              { ...(part.dim && { fg: C.dim }), ...(part.bg !== undefined && { bg: part.bg }) },
+            ]
+          : part,
+    )
+    spans(g, 0, y, list)
+    y += 1
+  }
+
+  return g
+}
+
+// A view's output with its body as a grid, for the view tests.
+export const gridOf = (drawn: Drawn) => ({ ...drawn, grid: raster(drawn) })

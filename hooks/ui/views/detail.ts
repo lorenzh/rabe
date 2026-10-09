@@ -1,19 +1,23 @@
 import type { RabeItem } from '../../model'
 import { nextRuns } from '../../schedule'
-import { grid, type Span, wrap } from '../cells/grid'
+import { type Span, wrap } from '../cells/grid'
 import { C, type Style } from '../cells/palette'
 import { ago, clockTime, countdown, tokens, usd } from '../format'
-import { children, phases, share, sortItems, timeLabel, tokenSum } from '../lists'
+import { byStart, children, phases, share, stable, timeLabel, tokenSum } from '../lists'
 import {
+  type Action,
   canStop,
   type Drawn,
   isWorkflowAgent,
+  type Line,
   type Model,
+  NONE,
+  type Selection,
   type View,
   type ViewButton,
   type ViewInput,
 } from '../view'
-import { draw, headLines, itemLine, type Line, text } from './lines'
+import { fitLine, headLines, itemLine, text } from './lines'
 
 const dim = { fg: C.dim }
 const BRIEF_ROWS = 3
@@ -179,7 +183,7 @@ function codexLines(item: RabeItem, columns: number): Line[] {
   )
 }
 
-function workflowLines(model: Model, item: RabeItem, columns: number): Line[] {
+function workflowLines(model: Model, item: RabeItem, columns: number, sel?: Selection): Line[] {
   const list = phases(model.items, item)
   const mark = { done: '✓', running: '◐', failed: '✗', waiting: '·' } as const
   const out: Line[] = text(
@@ -198,10 +202,10 @@ function workflowLines(model: Model, item: RabeItem, columns: number): Line[] {
         [` ${note || 'not started'}`, dim],
       ],
     })
-    for (const agent of sortItems(p.agents)) {
+    for (const agent of stable(p.agents, sel?.order?.timeline, byStart)) {
       const tok = tokenSum(agent)
       out.push({
-        ...itemLine(agent, model.now),
+        ...itemLine(agent, model.now, agent.id === sel?.selected),
         right: [[`${tok < 0 ? 'n/a' : tokens(tok)} · ${timeLabel(agent, model.now)} `, dim]],
       })
     }
@@ -244,14 +248,14 @@ function cronLines(model: Model, item: RabeItem): Line[] {
 }
 
 // The body of one item's detail, newest last; callers keep the tail that fits.
-export function bodyLines(model: Model, item: RabeItem, columns: number): Line[] {
+export function bodyLines(model: Model, item: RabeItem, columns: number, sel?: Selection): Line[] {
   switch (item.kind) {
     case 'agent':
       return agentLines(model, item, columns)
     case 'codex':
       return codexLines(item, columns)
     case 'workflow':
-      return workflowLines(model, item, columns)
+      return workflowLines(model, item, columns, sel)
     case 'cron':
       return cronLines(model, item)
     default:
@@ -260,10 +264,16 @@ export function bodyLines(model: Model, item: RabeItem, columns: number): Line[]
 }
 
 // One item in `rows` lines: head, the fixed top, then the newest body lines.
-export function detailLines(model: Model, item: RabeItem, rows: number, columns: number): Line[] {
+export function detailLines(
+  model: Model,
+  item: RabeItem,
+  rows: number,
+  columns: number,
+  sel?: Selection,
+): Line[] {
   const top = [...headLines(model, item), ...topLines(model, item, columns)]
   const room = rows - top.length
-  const body = room > 0 ? bodyLines(model, item, columns).slice(-room) : []
+  const body = room > 0 ? bodyLines(model, item, columns, sel).slice(-room) : []
 
   return [...top, ...body].slice(0, rows)
 }
@@ -291,43 +301,58 @@ function detailButtons(
         : undefined
   if (copy !== undefined) {
     const label = item.kind === 'cron' ? 'c: copy prompt' : 'c: copy command'
-    buttons.push({ key: 'copy', label, hotkey: 'c', action: { type: 'copy', text: copy } })
+    buttons.push({
+      key: `copy:${item.id}`,
+      label,
+      hotkey: 'c',
+      action: { type: 'copy', text: copy },
+    })
   }
   if (item.kind === 'cron' && item.detail.scheduledFor === undefined) {
     buttons.push({
-      key: 'delete',
+      key: `delete:${item.id}`,
       label: 'd: delete job',
       hotkey: 'd',
       action: { type: 'delete', id: item.id },
     })
   }
-  if (item.kind === 'agent' && item.status === 'running' && hasInput && !isWorkflowAgent(item)) {
-    buttons.push({
-      key: 'message-agent',
-      label: 'm: message',
-      hotkey: 'm',
-      action: { type: 'focus', key: 'message' },
-    })
+  // Message and stop keep their slots once the item ended: dim, no hotkey.
+  // Each key names the item it acts on (see `listButtons` in items.ts).
+  const slot = (key: string, label: string, action: Action | undefined): ViewButton =>
+    action
+      ? { key, label, hotkey: label.slice(0, 1), action }
+      : { key, label, action: NONE, dim: true }
+  if (item.kind === 'agent' && hasInput && !isWorkflowAgent(item)) {
+    const isOn = item.status === 'running'
+    buttons.push(
+      slot(
+        `message-agent:${item.id}`,
+        'm: message',
+        isOn ? { type: 'focus', key: `message:${item.id}` } : undefined,
+      ),
+    )
   }
   const run = isWorkflowAgent(item)
     ? items.find(one => one.id === item.parentId && one.kind === 'workflow')
-    : undefined
-  if (run && canStop(run)) {
-    buttons.push({
-      key: 'stop',
-      label: 'g: stop run',
-      hotkey: 'g',
-      action: { type: 'stop', ids: [run.id] },
-    })
-  }
-  if (canStop(item)) {
-    const isRun = item.kind === 'workflow'
-    buttons.push({
-      key: 'stop',
-      label: isRun ? 'g: stop run' : 'x: stop',
-      hotkey: isRun ? 'g' : 'x',
-      action: { type: 'stop', ids: [item.id] },
-    })
+    : item.kind === 'workflow'
+      ? item
+      : undefined
+  if (run) {
+    buttons.push(
+      slot(
+        `stop-run:${run.id}`,
+        'g: stop run',
+        canStop(run) ? { type: 'stop', ids: [run.id] } : undefined,
+      ),
+    )
+  } else if (item.kind !== 'cron' && !isWorkflowAgent(item)) {
+    buttons.push(
+      slot(
+        `stop:${item.id}`,
+        'x: stop',
+        canStop(item) ? { type: 'stop', ids: [item.id] } : undefined,
+      ),
+    )
   }
 
   return buttons
@@ -335,16 +360,21 @@ function detailButtons(
 
 // One item in full, in place of the list: facts, then the newest body lines.
 export const detailView: View = (model, size, sel): Drawn => {
-  const g = grid(size.columns, size.rows)
   const item = model.items.find(one => one.id === sel.open)
-  if (!item) return { grid: g, buttons: [] }
-  const shown = detailLines(model, item, size.rows, size.columns)
-  draw(g, 0, 0, size.columns, shown)
+  if (!item) return { nodes: [], buttons: [] }
+  const shown =
+    item.kind === 'workflow'
+      ? [
+          ...headLines(model, item),
+          ...topLines(model, item, size.columns),
+          ...workflowLines(model, item, size.columns, sel),
+        ]
+      : detailLines(model, item, size.rows, size.columns)
   const inputs: ViewInput[] =
     item.kind === 'agent' && item.status === 'running' && size.hasInput && !isWorkflowAgent(item)
       ? [
           {
-            key: 'message',
+            key: `message:${item.id}`,
             label: 'message',
             placeholder: 'text for the agent',
             submitLabel: 'send',
@@ -352,10 +382,10 @@ export const detailView: View = (model, size, sel): Drawn => {
           },
         ]
       : []
-  const rows: Drawn['rows'] = {}
-  shown.forEach((line, y) => {
-    if (line.action) rows[y] = line.action
-  })
 
-  return { grid: g, buttons: detailButtons(item, size.hasInput, model.items), inputs, rows }
+  return {
+    nodes: shown.map(line => fitLine(line, size.columns)),
+    buttons: detailButtons(item, size.hasInput, model.items),
+    inputs,
+  }
 }

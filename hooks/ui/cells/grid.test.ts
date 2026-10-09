@@ -2,20 +2,16 @@ import { expect, test } from 'claude-code/testing'
 
 import {
   bar,
-  box,
   cell,
   clamp,
   decode,
   encode,
-  fill,
   fit,
   grid,
-  hline,
   lines,
   paste,
   safe,
   spans,
-  vline,
   wrap,
   write,
 } from './grid'
@@ -69,23 +65,6 @@ test('fit pads short text and cuts long text with an ellipsis', () => {
   expect(fit('abcdef', 4)).toBe('abc…')
   expect(fit('abc', 0)).toBe('')
   expect(fit('🚀ab', 3)).toBe('?ab')
-})
-
-test('fill colors a rectangle and stays inside the grid', () => {
-  const g = grid(4, 3)
-  fill(g, 2, 1, 5, 5, { bg: 0x010203 }, '.')
-  expect(lines(g)).toEqual(['', '  ..', '  ..'])
-  expect(cell(g, 3, 2)).toEqual([46, DEFAULT, 0x010203])
-})
-
-test('box, hline and vline draw box lines', () => {
-  const g = grid(5, 4)
-  box(g, 0, 0, 5, 4)
-  expect(lines(g)).toEqual(['┌───┐', '│   │', '│   │', '└───┘'])
-  const h = grid(4, 3)
-  hline(h, 0, 1, 4)
-  vline(h, 1, 0, 3)
-  expect(lines(h)).toEqual([' │', '─│──', ' │'])
 })
 
 test('bar fills a width in eighths of a block', () => {

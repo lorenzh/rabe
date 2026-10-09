@@ -1,14 +1,13 @@
 import type { RabeItem } from '../../model'
 import { nextRun } from '../../schedule'
-import { fit, grid, spans } from '../cells/grid'
+import { fit } from '../cells/grid'
 import { C, CHIP, type Style, tone } from '../cells/palette'
 import { clockTime, day, duration, tokens, usd } from '../format'
-import { bar, glyph, KIND_LABEL, nameSpans, tree } from '../lists'
-import type { Drawn, Model, View } from '../view'
-import { draw, type Line, moveButtons, text, windowStart } from './lines'
+import { bar, byStart, glyph, KIND_LABEL, nameSpans, stable, tree } from '../lists'
+import type { Drawn, Line, Model, View } from '../view'
+import { beside, fitLine, focusOn, text } from './lines'
 
 const dim = { fg: C.dim }
-const HEAD = 4
 const BOX = 40
 const SIDE_COLUMNS = 90
 
@@ -129,44 +128,79 @@ function previousLines(model: Model, width: number): Line[] {
   return out.map(line => ({ ...line, bg: C.raised }))
 }
 
+const MIN = 60_000
+const STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 180, 360, 720, 1440].map(one => one * MIN)
+
+// The time axis: round clock times, at most four, spaced for the window, then
+// `now`. A label that would repeat the one before it, run into it or into
+// `now` is left out.
+function axis(start: number, span: number, labelWidth: number, columns: number): string {
+  const barWidth = columns - labelWidth
+  const cells = Array<string>(columns).fill(' ')
+  const put = (x: number, value: string) => {
+    ;[...value].forEach((ch, i) => {
+      if (x + i >= 0 && x + i < columns) cells[x + i] = ch
+    })
+  }
+  const step = STEPS.find(one => span / one <= 4) ?? (STEPS.at(-1) as number)
+  // Round in local time: the zone's offset from UTC at the start.
+  const offset = new Date(start).getTimezoneOffset() * MIN
+  let last = ''
+  let end = labelWidth
+  for (let at = Math.ceil((start - offset) / step) * step + offset; at < start + span; at += step) {
+    const label = clockTime(at).slice(0, 5)
+    const x = labelWidth + Math.round((barWidth * (at - start)) / span) - 2
+    if (label === last || x < end || x + label.length > columns - 4) continue
+    put(x, label)
+    last = label
+    end = x + label.length + 1
+  }
+  put(columns - 3, 'now')
+
+  return cells.join('')
+}
+
 // The Timeline tab: a bar per item over the session with a legend and a time
 // axis, then the tree of who started what beside (or above) the previous
-// session in this project.
+// session in this project. The rows keep the order the pane opened with.
 export const timelineView: View = (model, size, sel): Drawn => {
-  const g = grid(size.columns, size.rows)
-  const list = model.items.toSorted((a, b) => (a.startedAt ?? a.seenAt) - (b.startedAt ?? b.seenAt))
+  const list = stable(model.items, sel.order?.timeline, byStart)
   const selected = list.find(item => item.id === sel.selected) ?? list[0]
   const start = Math.min(model.now - 60_000, ...list.map(item => item.startedAt ?? item.seenAt))
   const span = model.now - start
   const labelWidth = Math.min(24, Math.floor(size.columns / 3))
   const barWidth = size.columns - labelWidth
   const isSide = size.columns >= SIDE_COLUMNS
+  const bars: Line[] = list.length
+    ? list.map(item => {
+        const name = fit(
+          nameSpans(item)
+            .map(([one]) => one)
+            .join(''),
+          labelWidth - 2,
+        ).trimEnd()
+        return {
+          spans: [
+            [item === selected ? '▌' : ' ', { fg: C.orange }],
+            {
+              key: `row:${item.id}`,
+              label: name,
+              action: { type: 'open', id: item.id },
+              ...(item !== selected && { dim: true }),
+            },
+            [' '.repeat(labelWidth - 2 - [...name].length + 1)],
+            [track(item, start, model.now, barWidth), { fg: color(item) }],
+          ],
+          ...(item === selected && { bg: C.selected }),
+        }
+      })
+    : [{ spans: [[' Nothing ran yet.', dim]] }]
   const who = treeLines(model)
   const prev = previousLines(model, isSide ? BOX : size.columns)
-  const below = isSide ? Math.max(who.length, prev.length) : who.length + 1 + prev.length
-  const room = Math.max(3, size.rows - HEAD - 1 - below)
-  const first = windowStart(list.length, selected ? list.indexOf(selected) : 0, room)
-  const bars: Line[] = list.length
-    ? list.slice(first, first + room).map(item => ({
-        spans: [
-          [item === selected ? '▌' : ' ', { fg: C.orange }],
-          [
-            fit(
-              nameSpans(item)
-                .map(([text]) => text)
-                .join(''),
-              labelWidth - 2,
-            ),
-          ],
-          [' '],
-          [track(item, start, model.now, barWidth), { fg: color(item) }],
-        ],
-        ...(item === selected && { bg: C.selected }),
-        action: { key: `row:${item.id}`, action: { type: 'open', id: item.id } },
-      }))
-    : [{ spans: [[' Nothing ran yet.', dim]] }]
-
-  draw(g, 0, 0, size.columns, [
+  const below = isSide
+    ? beside(who, size.columns - BOX - 2, [['  ']], prev, BOX)
+    : [...who, { spans: [] }, ...prev].map(line => fitLine(line, size.columns))
+  const lines: Line[] = [
     {
       spans: [
         ['WHEN DID THINGS RUN?', { fg: C.bright }],
@@ -174,24 +208,11 @@ export const timelineView: View = (model, size, sel): Drawn => {
       ],
     },
     { spans: LEGEND.flatMap(([label, chip]) => [[` ${label} `, chip], [' ']]) },
-  ])
-  for (const quarter of [1, 2, 3]) {
-    const x = labelWidth + Math.round((barWidth * quarter) / 4) - 2
-    spans(g, x, 3, [[clockTime(start + (span * quarter) / 4).slice(0, 5), dim]])
-  }
-  spans(g, size.columns - 3, 3, [['now', dim]])
-  draw(g, 0, HEAD, size.columns, bars)
-  const y = HEAD + bars.length + 1
-  if (isSide) {
-    draw(g, 0, y, size.columns - BOX - 2, who)
-    draw(g, size.columns - BOX, y, BOX, prev)
-  } else {
-    draw(g, 0, y, size.columns, [...who, { spans: [] }, ...prev])
-  }
-  const rows: Drawn['rows'] = {}
-  bars.forEach((line, i) => {
-    if (line.action) rows[HEAD + i] = line.action
-  })
+    { spans: [] },
+    { spans: [[axis(start, span, labelWidth, size.columns), dim]] },
+    ...focusOn(bars, selected?.id ?? ''),
+    { spans: [] },
+  ]
 
-  return { grid: g, buttons: moveButtons(list, selected), rows }
+  return { nodes: [...lines.map(line => fitLine(line, size.columns)), ...below], buttons: [] }
 }

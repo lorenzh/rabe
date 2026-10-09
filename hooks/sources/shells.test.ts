@@ -101,7 +101,7 @@ test('the same text typed by the user ends nothing', async ($, on) => {
   expect(state['rabe.items']?.value).toEqual([running])
 })
 
-test('the poll reads the port and the exit line from the output file', async ($, on) => {
+test('the poll reads the port, when it found it, and the exit line from the output file', async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const held: Record<string, string> = {}
   files(on, held)
@@ -113,7 +113,7 @@ test('the poll reads the port and the exit line from the output file', async ($,
   held[`${DIR}/b1.output`] = '  ➜  Local:   http://localhost:5173/\n'
   await clock.advance(2000)
   expect(state['rabe.items']?.value).toEqual([
-    { ...running, detail: { ...running.detail, port: 5173 } },
+    { ...running, detail: { ...running.detail, port: 5173, portAt: 3000 } },
   ])
   held[`${DIR}/b1.output`] += '\n[exited with code 0]\n'
   await clock.advance(2000)
@@ -122,7 +122,7 @@ test('the poll reads the port and the exit line from the output file', async ($,
       ...running,
       status: 'done',
       endedAt: 5000,
-      detail: { ...running.detail, port: 5173, exitCode: 0 },
+      detail: { ...running.detail, port: 5173, portAt: 3000, exitCode: 0 },
     },
   ])
 })
@@ -150,6 +150,37 @@ test('at Stop a shell no longer in flight ends by its exit line, else as stopped
   expect(ended.map(one => [one.status, one.detail.exitCode])).toEqual([
     ['failed', 1],
     ['stopped', undefined],
+  ])
+})
+
+// The end notification of a subagent's shell reaches only the subagent.
+test('a subagent shell ends from the exit line of its output file; the main Stop leaves it running', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const held: Record<string, string> = { [`${DIR}/b1.output`]: 'ready\n' }
+  files(on, held)
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  await $.tool.call({
+    tool: 'Bash',
+    command: 'bun run dev',
+    run_in_background: true,
+    agentId: 'a1',
+  } as never)
+  await $.classic.Stop({ stop_hook_active: false, background_tasks: [] })
+  await clock.advance(2000)
+  expect(state['rabe.items']?.value).toEqual([{ ...running, parentId: 'agent:a1' }])
+  held[`${DIR}/b1.output`] += '\n[exited with code 0]\n'
+  await clock.advance(2000)
+  expect(state['rabe.items']?.value).toEqual([
+    {
+      ...running,
+      parentId: 'agent:a1',
+      status: 'done',
+      endedAt: 5000,
+      detail: { ...running.detail, exitCode: 0 },
+    },
   ])
 })
 

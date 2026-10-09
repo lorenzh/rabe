@@ -1,11 +1,11 @@
-import type { RabePrevious } from '../../types'
-import type { RabeItem, RabeItemKind } from '../model'
+import type { RabeOrder, RabePrevious } from '../../types'
+import type { RabeItem, RabeItemKind, RabeItemOf } from '../model'
 import { nextRuns } from '../schedule'
 import type { Span } from './cells/grid'
 import { C, type Style } from './cells/palette'
-import { ago, countdown, duration, short, tokens, usd } from './format'
+import { ago, clockTime, duration, short, tokens, usd } from './format'
 
-export type Group = 'failed' | 'agents' | 'shells' | 'monitors' | 'cron'
+export type Group = 'failed' | 'agents' | 'shells' | 'monitors' | 'cron' | 'new'
 
 export const GROUPS: { id: Group; label: string }[] = [
   { id: 'failed', label: 'Failed' },
@@ -13,6 +13,7 @@ export const GROUPS: { id: Group; label: string }[] = [
   { id: 'shells', label: 'Shells' },
   { id: 'monitors', label: 'Monitors' },
   { id: 'cron', label: 'Cron' },
+  { id: 'new', label: 'New' },
 ]
 
 export const KIND_LABEL: Record<RabeItemKind, string> = {
@@ -48,6 +49,15 @@ export function nextRun(item: RabeItem, now: number): number | undefined {
   return item.detail.schedule ? nextRuns(item.detail.schedule, now, 1)[0] : undefined
 }
 
+// The next run as its clock time: a countdown in m:ss (`15:44`) reads like
+// one. A wakeup past its time waits for the session to go idle: `due`.
+export function nextAt(item: RabeItem, now: number): string {
+  const next = nextRun(item, now)
+  if (next === undefined) return 'n/a'
+
+  return next > now ? clockTime(next).slice(0, 5) : 'due'
+}
+
 // A shell's port (blue) and a failed shell's exit code (red) follow its title.
 export function nameSpans(item: RabeItem, style: Style = {}): Span[] {
   const out: Span[] = [[item.title, style]]
@@ -63,8 +73,8 @@ export function nameSpans(item: RabeItem, style: Style = {}): Span[] {
 export function timeLabel(item: RabeItem, now: number): string {
   if (item.status !== 'running') return item.endedAt === undefined ? 'n/a' : ago(now - item.endedAt)
   if (item.kind === 'cron') {
-    const next = nextRun(item, now)
-    return next === undefined ? 'n/a' : `next ${countdown(next - now)}`
+    const at = nextAt(item, now)
+    return at === 'n/a' || at === 'due' ? at : `next ${at}`
   }
   if (item.startedAt === undefined) return `≥ ${short(now - item.seenAt)}`
 
@@ -98,11 +108,157 @@ export function sortItems(items: RabeItem[]): RabeItem[] {
   )
 }
 
-export function grouped(items: RabeItem[]): { id: Group; label: string; items: RabeItem[] }[] {
+// A list that does not reorder under the focus. Without `held` (nobody has
+// seen the list yet) it is `sort(list)`; with it, the held ids come first in
+// held order, then the others in the order of `list`, which is the order Rabe
+// saw them: new items append, and a status change moves nothing.
+export function stable<T extends { id: string }>(
+  list: T[],
+  held: readonly string[] | undefined,
+  sort: (list: T[]) => T[],
+): T[] {
+  if (!held) return sort(list)
+  const at = new Map(held.map((id, i) => [id, i]))
+
+  return list.toSorted((a, b) => (at.get(a.id) ?? held.length) - (at.get(b.id) ?? held.length))
+}
+
+// The Items tab's groups, failed first. Without `order` each group sorts
+// running first, then the newest; with it, a held item stays in the group and
+// place `orderOf` gave it, and items Rabe saw since go to NEW, the last group,
+// in the order Rabe saw them: a row never appears above another.
+export function grouped(
+  items: RabeItem[],
+  order?: RabeOrder,
+): { id: Group; label: string; items: RabeItem[] }[] {
+  const of = (item: RabeItem): Group =>
+    order ? (GROUPS.find(group => order[group.id]?.includes(item.id))?.id ?? 'new') : groupOf(item)
+
   return GROUPS.map(group => ({
     ...group,
-    items: sortItems(items.filter(item => groupOf(item) === group.id)),
+    items: stable(
+      items.filter(item => of(item) === group.id),
+      order && (order[group.id] ?? []),
+      sortItems,
+    ),
   })).filter(group => group.items.length > 0)
+}
+
+const start = (item: RabeItem) => item.startedAt ?? item.seenAt
+
+export function byStart(items: RabeItem[]): RabeItem[] {
+  return items.toSorted((a, b) => start(a) - start(b))
+}
+
+type Agent = RabeItemOf<'agent'>
+export type Touched = {
+  id: string
+  path: string
+  rel: string
+  by: Agent[]
+  last: Agent
+  edits: number
+  at: number
+  first: number
+}
+
+function relative(path: string, agent: Agent): string {
+  const root = agent.detail.worktreePath ?? agent.detail.cwd
+
+  return root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
+}
+
+// The files agents edited, from the Edit and Write calls the engine ran for
+// them (a turn's tool calls are only asked for and may be refused), in the
+// order they were first edited. `by` lists the editors in the order they
+// first edited, `last` the latest one, `first` and `at` the first and the
+// latest edit times.
+export function touched(items: RabeItem[]): Touched[] {
+  const edits = items
+    .flatMap(item => (item.kind === 'agent' ? [item] : []))
+    .flatMap(agent => (agent.detail.edits ?? []).map(edit => ({ agent, ...edit })))
+    .toSorted((a, b) => a.at - b.at)
+  const files = new Map<string, Touched>()
+  for (const { agent, path, at } of edits) {
+    const file = files.get(path) ?? {
+      id: `file:${path}`,
+      path,
+      rel: relative(path, agent),
+      by: [],
+      last: agent,
+      edits: 0,
+      at,
+      first: at,
+    }
+    if (!file.by.includes(agent)) file.by.push(agent)
+    file.last = agent
+    file.edits += 1
+    file.at = at
+    files.set(path, file)
+  }
+
+  return [...files.values()]
+}
+
+// Conflicts (two editors) first, then the latest edit first.
+export function byConflict(files: Touched[]): Touched[] {
+  return files.toSorted((a, b) => Number(b.by.length > 1) - Number(a.by.length > 1) || b.at - a.at)
+}
+
+// Shells and monitors an agent started sit under that agent (see `byParent`).
+export const FAMILIES: Group[] = ['shells', 'monitors']
+
+// The order the pane shows when it opens: each group sorted (shells and
+// monitors in their families), the Cost tab by tokens, the Timeline by start,
+// the Effects files by `byConflict` and its ports (the shells that run with
+// one). Held in `rabe.order` until the next open.
+export function orderOf(items: RabeItem[]): RabeOrder {
+  const ids = (list: RabeItem[]) => list.map(item => item.id)
+
+  return {
+    ports: ids(
+      items.filter(
+        item =>
+          item.kind === 'shell' && item.detail.port !== undefined && item.status === 'running',
+      ),
+    ),
+    ...Object.fromEntries(
+      grouped(items).map(group => [
+        group.id,
+        ids(
+          FAMILIES.includes(group.id)
+            ? byParent(group.items, items).flatMap(family => family.items)
+            : group.items,
+        ),
+      ]),
+    ),
+    cost: ids(byTokens(items)),
+    timeline: ids(byStart(items)),
+    files: byConflict(touched(items)).map(file => file.id),
+  }
+}
+
+export type Family = { id: string; parent?: RabeItem; title: string; items: RabeItem[] }
+
+// Shells and monitors by who started them: the main session's first (title
+// ''), then one block per agent in the order of `list`. A workflow agent reads
+// "run › agent"; an agent Rabe no longer holds "agent n/a".
+export function byParent(list: RabeItem[], items: RabeItem[]): Family[] {
+  const blocks: Family[] = [{ id: '', title: '', items: [] }]
+  for (const item of list) {
+    const id = item.parentId ?? ''
+    let block = blocks.find(one => one.id === id)
+    if (!block) {
+      const parent = items.find(one => one.id === id)
+      const run = parent && items.find(one => one.id === parent.parentId && one.kind === 'workflow')
+      const title = !parent ? 'agent n/a' : run ? `${run.title} › ${parent.title}` : parent.title
+      block = { id, ...(parent && { parent }), title, items: [] }
+      blocks.push(block)
+    }
+    block.items.push(item)
+  }
+
+  return blocks.filter(block => block.items.length > 0)
 }
 
 export function groupNote(id: Group, items: RabeItem[]): string {
@@ -229,6 +385,18 @@ export type BandRow = {
 const isRunning = (kind: RabeItemKind) => (item: RabeItem) =>
   item.kind === kind && item.status === 'running'
 
+// Running shells or monitors as the Items tab groups them: the main
+// session's first, then each agent's after its dim name.
+function familyNames(items: RabeItem[], kind: 'shell' | 'monitor'): Span[][] {
+  return byParent(items.filter(isRunning(kind)), items).flatMap(family =>
+    family.items.map((item): Span[] =>
+      family.id === ''
+        ? nameSpans(item)
+        : [[`${family.title} › `, { fg: C.dim }], ...nameSpans(item)],
+    ),
+  )
+}
+
 export function bandRows(items: RabeItem[], now: number): BandRow[] {
   const dim = { fg: C.dim }
   const run = (item: RabeItem): Span[] => [
@@ -262,26 +430,21 @@ export function bandRows(items: RabeItem[], now: number): BandRow[] {
       glyph: '▶',
       kind: 'shell',
       label: 'shells',
-      names: items.filter(isRunning('shell')).map(item => nameSpans(item)),
+      names: familyNames(items, 'shell'),
     },
     {
       glyph: '◉',
       kind: 'monitor',
       label: 'watch',
-      names: items.filter(isRunning('monitor')).map(item => nameSpans(item)),
+      names: familyNames(items, 'monitor'),
     },
     {
       glyph: '⟳',
       kind: 'cron',
       label: 'cron',
-      names: items.filter(isRunning('cron')).map(item => {
-        const next = nextRun(item, now)
-        return [
-          [item.title],
-          [' · next ', dim],
-          [next === undefined ? 'n/a' : countdown(next - now), { fg: C.bright }],
-        ]
-      }),
+      names: items
+        .filter(isRunning('cron'))
+        .map(item => [[item.title], [' · next ', dim], [nextAt(item, now), { fg: C.bright }]]),
     },
   ]
 

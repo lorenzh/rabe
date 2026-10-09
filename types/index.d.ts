@@ -64,6 +64,8 @@ export type RabeShellDetail = {
   outputPath?: string
   exitCode?: number
   port?: number
+  // When Rabe found the port; orders the Effects tab's NEW rows.
+  portAt?: number
 }
 
 export type RabeMonitorDetail = {
@@ -118,6 +120,10 @@ export type RabeLine = { at: number; text: string }
 
 export type RabeLines = { seen: number; lines: RabeLine[] }
 
+// Item ids per list (a group of the Items tab, `cost`, `timeline`) in the
+// order the pane showed them when it opened.
+export type RabeOrder = Record<string, string[]>
+
 export type RabePrevious = {
   endedAt: number
   startedAt?: number
@@ -138,6 +144,7 @@ declare module 'claude-code' {
       folded: string[]
       selected: string
       open: string
+      order: RabeOrder
     }
   }
 }

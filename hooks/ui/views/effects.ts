@@ -1,43 +1,13 @@
+import type { RabeOrder } from '../../../types'
 import type { RabeItemOf } from '../../model'
-import { fit, grid, type Span } from '../cells/grid'
+import { fit, type Span } from '../cells/grid'
 import { C, CHIP } from '../cells/palette'
-import { worktrees } from '../lists'
-import type { Drawn, Model, View, ViewButton } from '../view'
-import { draw, type Line } from './lines'
+import { byConflict, stable, type Touched, touched, worktrees } from '../lists'
+import type { Drawn, Line, Model, View } from '../view'
+import { fitLine, focusOn } from './lines'
 
 const dim = { fg: C.dim }
 const CHANGE = 8
-
-type Agent = RabeItemOf<'agent'>
-type Touched = { path: string; rel: string; by: Agent[]; edits: number; at: number }
-
-function relative(path: string, agent: Agent): string {
-  const root = agent.detail.worktreePath ?? agent.detail.cwd
-
-  return root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
-}
-
-// The files agents edited, from the Edit and Write calls the engine ran for
-// them (a turn's tool calls are only asked for and may be refused).
-// Editors are listed in the order they first edited; conflicts come first.
-export function touched(model: Model): Touched[] {
-  const edits = model.items
-    .flatMap(item => (item.kind === 'agent' ? [item] : []))
-    .flatMap(agent => (agent.detail.edits ?? []).map(edit => ({ agent, ...edit })))
-    .toSorted((a, b) => a.at - b.at)
-  const files = new Map<string, Touched>()
-  for (const { agent, path, at } of edits) {
-    const file = files.get(path) ?? { path, rel: relative(path, agent), by: [], edits: 0, at }
-    if (!file.by.includes(agent)) file.by.push(agent)
-    file.edits += 1
-    file.at = at
-    files.set(path, file)
-  }
-
-  return [...files.values()].toSorted(
-    (a, b) => Number(b.by.length > 1) - Number(a.by.length > 1) || b.at - a.at,
-  )
-}
 
 const and = (names: string[]) =>
   names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : (names[0] ?? '')
@@ -65,7 +35,40 @@ function conflictLines(files: Touched[]): Line[] {
   ]
 }
 
-function fileLines(files: Touched[], width: number, room: number): Line[] {
+// A selectable row's start: the orange marker when selected, else a space.
+const mark = (isSelected: boolean): Span => [isSelected ? '▌' : ' ', { fg: C.orange }]
+
+type Widths = { file: number; by: number }
+
+function widths(columns: number): Widths {
+  const inner = Math.max(2, columns - 2 - CHANGE - 2)
+  const file = Math.ceil(inner / 2)
+
+  return { file, by: inner - file }
+}
+
+function fileRow(file: Touched, w: Widths, selected: string): Line {
+  const isSelected = file.id === selected
+  const name = fit(file.rel, w.file).trimEnd()
+  return {
+    spans: [
+      mark(isSelected),
+      [' '],
+      {
+        key: `row:${file.id}`,
+        label: name,
+        action: { type: 'open', id: file.last.id },
+        ...(!isSelected && { dim: true }),
+      },
+      [' '.repeat(w.file - [...name].length)],
+      [` ${fit(file.by.map(agent => agent.title).join(', '), w.by)} `, dim],
+      [`${file.edits} edit${file.edits === 1 ? '' : 's'}`],
+    ],
+    ...(isSelected && { bg: C.selected }),
+  }
+}
+
+function fileLines(files: Touched[], w: Widths, selected: string): Line[] {
   const head: Line = {
     spans: [
       [`FILES TOUCHED ${files.length}`, { fg: C.orange }],
@@ -73,25 +76,11 @@ function fileLines(files: Touched[], width: number, room: number): Line[] {
     ],
   }
   if (files.length === 0) return [head, { spans: [['  No agent edited a file yet.', dim]] }]
-  const inner = Math.max(2, width - 2 - CHANGE - 2)
-  const fileWidth = Math.ceil(inner / 2)
-  const byWidth = inner - fileWidth
-  const shown = files.length > room ? files.slice(0, Math.max(0, room - 1)) : files
-  const rows: Line[] = shown.map(file => ({
-    spans: [
-      ['  '],
-      [fit(file.rel, fileWidth), file.by.length > 1 ? { fg: C.yellow } : {}],
-      [` ${fit(file.by.map(agent => agent.title).join(', '), byWidth)} `, dim],
-      [`${file.edits} edit${file.edits === 1 ? '' : 's'}`],
-    ],
-  }))
-  const rest = files.length - shown.length
 
   return [
     head,
-    { spans: [[`  ${fit('FILE', fileWidth)} ${fit('BY', byWidth)} CHANGE`, dim]] },
-    ...rows,
-    ...(rest ? [{ spans: [[`  … ${rest} more`, dim]] } as Line] : []),
+    { spans: [[`  ${fit('FILE', w.file)} ${fit('BY', w.by)} CHANGE`, dim]] },
+    ...files.map(file => fileRow(file, w, selected)),
   ]
 }
 
@@ -124,44 +113,130 @@ function treeLines(model: Model): Line[] {
 
 const sshLine = (port: number) => `ssh -L ${port}:localhost:${port} <your-host>`
 
-// The Effects tab: a conflict when two agents edit one file in one tree, the
-// files agents touched, the worktrees, and the ports of running shells with
-// the ssh command to reach them; a Button copies each command.
-export const effectsView: View = (model, size): Drawn => {
-  const g = grid(size.columns, size.rows)
-  const files = touched(model)
-  const ports = model.items.flatMap(item =>
-    item.kind === 'shell' && item.status === 'running' && item.detail.port !== undefined
-      ? [{ item, port: item.detail.port }]
+type Port = { item: RabeItemOf<'shell'>; port: number; at: number }
+
+// The ports of the running shells, one per port. With an order, `held` are
+// the ports of the shells that ran with one at the open, in that order, and
+// `fresh` the others, each with the time it was found. A port whose shell
+// ended leaves; the renderer keeps its row's place (see `hold`).
+function portsOf(model: Model, order?: RabeOrder): { held: Port[]; fresh: Port[] } {
+  const shown = model.items.flatMap(item =>
+    item.kind === 'shell' && item.detail.port !== undefined && item.status === 'running'
+      ? [item]
       : [],
   )
+  const byPort = (list: typeof shown): Port[] =>
+    [...new Set(list.map(item => item.detail.port as number))].map(port => {
+      const same = shown.filter(one => one.detail.port === port)
+      const at = Math.min(...same.map(one => one.detail.portAt ?? one.startedAt ?? one.seenAt))
+      return { item: same[0] as (typeof same)[0], port, at }
+    })
+  if (!order) return { held: byPort(shown), fresh: [] }
+  const held = byPort(
+    stable(
+      shown.filter(item => order.ports?.includes(item.id)),
+      order.ports,
+      list => list,
+    ),
+  )
+
+  return {
+    held,
+    fresh: byPort(shown.filter(item => !held.some(one => one.port === item.detail.port))),
+  }
+}
+
+function portRows({ item, port }: Port, hasHotkey: boolean, selected: string): Line[] {
+  const isSelected = selected === `ssh:${port}`
+  return [
+    {
+      spans: [['  '], [`:${port}`, { fg: C.blue }], [`  ${item.detail.command}`]],
+    },
+    {
+      spans: [
+        mark(isSelected),
+        // The engine draws a plain Button's hotkey as `c: ` before its label.
+        [hasHotkey ? '  ' : '     '],
+        {
+          key: `row:ssh:${port}`,
+          label: sshLine(port),
+          action: { type: 'copy', text: sshLine(port) },
+          ...(hasHotkey && { hotkey: 'c' }),
+          ...(!isSelected && { dim: true }),
+        },
+      ],
+      ...((isSelected || hasHotkey) && { bg: isSelected ? C.selected : CHIP.monitor.bg }),
+    },
+  ]
+}
+
+type Found = { at: number } & ({ file: Touched } | { port: Port })
+
+// The Effects tab: a conflict when two agents edit one file in one tree, the
+// files agents touched (each a row that opens the agent that edited it last),
+// the worktrees, and the ports of shells, each with its ssh command as a row
+// that copies it (`c` the first). While the pane is open the files and ports
+// of the open hold their order (`stable`) and the rows found since go to NEW,
+// the end, in the order they were found: no row above another comes or goes.
+export const effectsView: View = (model, size, sel): Drawn => {
+  const { order } = sel
+  const all = touched(model.items)
+  const files = stable(
+    order ? all.filter(file => order.files?.includes(file.id)) : all,
+    order?.files,
+    byConflict,
+  )
+  const ports = portsOf(model, order)
+  const found: Found[] = [
+    ...all.filter(file => order && !files.includes(file)).map(file => ({ at: file.first, file })),
+    ...ports.fresh.map(port => ({ at: port.at, port })),
+  ].toSorted((a, b) => a.at - b.at)
+  const ids = [
+    ...files.map(file => file.id),
+    ...ports.held.map(({ port }) => `ssh:${port}`),
+    ...found.map(one => ('file' in one ? one.file.id : `ssh:${one.port.port}`)),
+  ]
+  const selected = ids.includes(sel.selected) ? sel.selected : (ids[0] ?? '')
+  const hotkey = ports.held[0]?.port ?? ports.fresh[0]?.port
+  const w = widths(size.columns)
   const portLines: Line[] = [
     {
       spans: [
-        [`PORTS ${ports.length}`, { fg: C.blue }],
+        [`PORTS ${ports.held.length}`, { fg: C.blue }],
         ['  found in shell output, may miss some', dim],
       ],
     },
-    ...ports.flatMap(({ item, port }, i): Line[] => [
-      { spans: [['  '], [`:${port}`, { fg: C.blue }], [`  ${item.detail.command}`]] },
-      {
-        spans: [[`      ${sshLine(port)}`]],
-        ...(i === 0 && { bg: CHIP.monitor.bg, right: [['c copies ', dim]] as Span[] }),
-      },
-    ]),
-    ...(ports.length ? [] : [{ spans: [['  No open port found.', dim]] as Span[] }]),
+    ...ports.held.flatMap(port => portRows(port, port.port === hotkey, selected)),
+    ...(ports.held.length ? [] : [{ spans: [['  No open port found.', dim]] as Span[] }]),
   ]
-  const top = conflictLines(files)
-  const bottom = [{ spans: [] }, ...treeLines(model), { spans: [] }, ...portLines]
-  const room = Math.max(1, size.rows - top.length - bottom.length - 2)
-  const lines = [...top, ...fileLines(files, size.columns, room), ...bottom]
-  draw(g, 0, 0, size.columns, lines.slice(0, size.rows))
-  const buttons: ViewButton[] = ports.map(({ port }, i) => ({
-    key: `port-${port}`,
-    label: i === 0 ? `c: copy ssh :${port}` : `copy ssh :${port}`,
-    ...(i === 0 && { hotkey: 'c' }),
-    action: { type: 'copy', text: sshLine(port) },
-  }))
+  const newLines: Line[] = found.length
+    ? [
+        { spans: [] },
+        {
+          spans: [
+            [`NEW ${found.length}`, { fg: C.bright }],
+            ['  found since Rabe opened', dim],
+          ],
+        },
+        ...found.flatMap(one =>
+          'file' in one
+            ? [fileRow(one.file, w, selected)]
+            : portRows(one.port, one.port.port === hotkey, selected),
+        ),
+      ]
+    : []
+  const lines = focusOn(
+    [
+      ...conflictLines(byConflict(all)),
+      ...fileLines(files, w, selected),
+      { spans: [] },
+      ...treeLines(model),
+      { spans: [] },
+      ...portLines,
+      ...newLines,
+    ],
+    selected,
+  )
 
-  return { grid: g, buttons }
+  return { nodes: lines.map(line => fitLine(line, size.columns)), buttons: [] }
 }

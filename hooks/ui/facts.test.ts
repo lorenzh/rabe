@@ -33,6 +33,6 @@ test('shell, monitor and cron facts', () => {
   expect(facts(lint, NOW, ALL).lines).toContain('exit code 2')
   expect(facts(ci, NOW, ALL).status).toBe('◉ watching')
   expect(facts(ci, NOW, ALL).lines).toContain('timeout 30m00s · 22m00s left')
-  expect(facts(babysit, NOW, ALL).status).toBe('⟳ next in 3:00')
+  expect(facts(babysit, NOW, ALL).status).toBe('⟳ next 10:55')
   expect(facts(babysit, NOW, ALL).lines[0]).toBe('schedule */5 * * * * · every 5 minutes')
 })

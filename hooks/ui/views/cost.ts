@@ -1,10 +1,10 @@
 import type { RabeItem } from '../../model'
-import { bar, fit, grid } from '../cells/grid'
+import { bar, fit } from '../cells/grid'
 import { C, CHIP, type Style, tone } from '../cells/palette'
 import { duration, short, tokens, usd } from '../format'
-import { byTokens, cost, glyph, tokenSum, totals } from '../lists'
-import type { Drawn, Model, View } from '../view'
-import { draw, type Line, moveButtons, windowStart } from './lines'
+import { byTokens, cost, glyph, stable, tokenSum, totals } from '../lists'
+import type { Drawn, Line, Model, View } from '../view'
+import { fitLine, focusOn } from './lines'
 
 const dim = { fg: C.dim }
 const LONG_TOOL = 2 * 60_000
@@ -31,19 +31,26 @@ function workerLine(
   const tok = tokenSum(item)
   const time = item.startedAt === undefined ? 'n/a' : short((item.endedAt ?? now) - item.startedAt)
   const blocks = tok < 0 ? '▏'.padEnd(barWidth) : bar(tok, max, barWidth)
+  const name = fit(item.title, nameWidth - 3).trimEnd()
 
   return {
     spans: [
       [isSelected ? '▌' : ' ', { fg: C.orange }],
       [glyph(item), { fg: tone(item) }],
-      [` ${fit(item.title, nameWidth - 3)}`],
+      [' '],
+      {
+        key: `row:${item.id}`,
+        label: name,
+        action: { type: 'open', id: item.id },
+        ...(!isSelected && { dim: true }),
+      },
+      [' '.repeat(nameWidth - 3 - [...name].length)],
       [barWidth ? ` ${blocks}` : '', tok < 0 ? dim : barStyle(item)],
       [(tok < 0 ? 'n/a' : tokens(tok)).padStart(8), tok < 0 ? dim : {}],
       [cost(item.costUsd).padStart(9), item.costUsd === undefined ? dim : {}],
       [time.padStart(7)],
     ],
     ...(isSelected && { bg: C.selected }),
-    action: { key: `row:${item.id}`, action: { type: 'open', id: item.id } },
   }
 }
 
@@ -72,12 +79,13 @@ function loadLines(model: Model): Line[] {
 }
 
 // The Cost tab: the session's cost and totals, the workers by tokens with a
-// bar each, and the agents that look slow.
+// bar each, and the agents that look slow. While the pane is open the order
+// is held (`stable`), so a row does not move as its tokens grow.
 export const costView: View = (model, size, sel): Drawn => {
-  const g = grid(size.columns, size.rows)
   const sum = totals(model.items)
   const running = model.items.filter(item => item.status === 'running').length
-  const list = byTokens(model.items)
+  const workers = model.items.filter(item => item.kind === 'agent' || item.kind === 'codex')
+  const list = stable(workers, sel.order?.cost, byTokens)
   const selected = list.find(item => item.id === sel.selected) ?? list[0]
   const nameWidth = Math.max(12, Math.min(24, size.columns - RIGHT - 12))
   const room = size.columns - nameWidth - RIGHT - 1
@@ -120,22 +128,18 @@ export const costView: View = (model, size, sel): Drawn => {
     { spans: [['LOAD', { fg: C.bright }]] },
     ...loadLines(model),
   ]
-  const rowsLeft = Math.max(1, size.rows - head.length - after.length - 1)
-  const start = windowStart(list.length, selected ? list.indexOf(selected) : 0, rowsLeft)
-  const workers: Line[] = list.length
-    ? list
-        .slice(start, start + rowsLeft)
-        .map(item => workerLine(item, max, model.now, nameWidth, barWidth, item === selected))
+  const rows: Line[] = list.length
+    ? list.map(item => workerLine(item, max, model.now, nameWidth, barWidth, item === selected))
     : [{ spans: [[' No agent or Codex job yet.', dim]] }]
-  const shown = [...head, ...workers, ...after]
-  draw(g, 0, 0, size.columns, shown)
   const isGone = model.items.some(item => item.kind === 'codex' && item.detail.isSessionMissing)
   const foot = ['session cost as /cost totals it', isGone && 'n/a: a Codex session file is gone']
-  draw(g, 0, g.rows - 1, size.columns, [{ spans: [[foot.filter(Boolean).join(' · '), dim]] }])
-  const rows: Drawn['rows'] = {}
-  shown.forEach((line, y) => {
-    if (line.action && y < g.rows - 1) rows[y] = line.action
-  })
+  const lines = [
+    ...head,
+    ...focusOn(rows, selected?.id ?? ''),
+    ...after,
+    { spans: [] },
+    { spans: [[foot.filter(Boolean).join(' · '), dim]] } as Line,
+  ]
 
-  return { grid: g, buttons: moveButtons(list, selected), rows }
+  return { nodes: lines.map(line => fitLine(line, size.columns)), buttons: [] }
 }

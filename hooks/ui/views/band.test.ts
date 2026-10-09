@@ -1,8 +1,9 @@
 import { expect, test } from 'claude-code/testing'
 
+import type { RabeItem } from '../../model'
 import { cell, lines } from '../cells/grid'
 import { C, CHIP, DEFAULT } from '../cells/palette'
-import { ALL, babysit, dev, explore, NOW } from '../fixtures'
+import { ALL, babysit, ci, dev, explore, flow, gridOf, NOW, verify } from '../fixtures'
 import { NO_SELECTION, type Size } from '../view'
 import { bandView } from './band'
 
@@ -13,7 +14,7 @@ const model = (items = ALL) => ({ items, turns: {}, lines: {}, now: NOW })
 const at = (shown: string[], y: number, text: string) => shown[y]?.indexOf(text) ?? -1
 
 test('each band row starts with a chip in its kind colors, padded to the longest label', () => {
-  const { grid } = bandView(model(), SIZE, NO_SELECTION)
+  const { grid } = gridOf(bandView(model(), SIZE, NO_SELECTION))
   const shown = lines(grid)
   expect(grid.columns).toBe(100)
   expect(grid.rows).toBe(8)
@@ -26,19 +27,19 @@ test('each band row starts with a chip in its kind colors, padded to the longest
 })
 
 test('names are plain, times dim, ports blue and the next cron run bright', () => {
-  const { grid } = bandView(model([explore, dev, babysit]), SIZE, NO_SELECTION)
+  const { grid } = gridOf(bandView(model([explore, dev, babysit]), SIZE, NO_SELECTION))
   const shown = lines(grid)
   expect(shown[0]).toBe(' ◐ claude 1  Explore verifyToken 1m')
   expect(cell(grid, at(shown, 0, 'Explore'), 0)[1]).toBe(DEFAULT)
   expect(cell(grid, at(shown, 0, '1m'), 0)[1]).toBe(C.dim)
   expect(cell(grid, at(shown, 1, ':5173'), 1)[1]).toBe(C.blue)
-  expect(shown[2]).toBe(' ⟳ cron 1    /babysit-prs · next 3:00')
+  expect(shown[2]).toBe(' ⟳ cron 1    /babysit-prs · next 10:55')
   expect(cell(grid, at(shown, 2, 'next'), 2)[1]).toBe(C.dim)
-  expect(cell(grid, at(shown, 2, '3:00'), 2)[1]).toBe(C.bright)
+  expect(cell(grid, at(shown, 2, '10:55'), 2)[1]).toBe(C.bright)
 })
 
 test('the cost row puts the dollar amount first and bright, the rest dim', () => {
-  const { grid } = bandView(model(), SIZE, NO_SELECTION)
+  const { grid } = gridOf(bandView(model(), SIZE, NO_SELECTION))
   const shown = lines(grid)
   expect(shown[7]).toBe(' $ cost        ≈ $0.25 · 91k tok · top: Explore verifyToken 41k')
   expect(cell(grid, at(shown, 7, '≈'), 7)[1]).toBe(C.bright)
@@ -46,12 +47,12 @@ test('the cost row puts the dollar amount first and bright, the rest dim', () =>
 })
 
 test('the cost row shows the session cost when Rabe knows it', () => {
-  const shown = lines(bandView({ ...model(), usd: 0.41 }, SIZE, NO_SELECTION).grid)
+  const shown = lines(gridOf(bandView({ ...model(), usd: 0.41 }, SIZE, NO_SELECTION)).grid)
   expect(shown[7]).toBe(' $ cost        ≈ $0.41 · 91k tok · top: Explore verifyToken 41k')
 })
 
 test('a band taller than maxRows becomes one line of count chips, failed first', () => {
-  const { grid } = bandView(model(), { ...SIZE, columns: 120, rows: 3 }, NO_SELECTION)
+  const { grid } = gridOf(bandView(model(), { ...SIZE, columns: 120, rows: 3 }, NO_SELECTION))
   const shown = lines(grid)
   expect(grid.rows).toBe(1)
   expect(shown[0]).toBe(
@@ -59,4 +60,27 @@ test('a band taller than maxRows becomes one line of count chips, failed first',
   )
   expect(cell(grid, at(shown, 0, '▶'), 0).slice(1)).toEqual([CHIP.shell.fg, CHIP.shell.bg])
   expect(cell(grid, at(shown, 0, '≈'), 0)[1]).toBe(C.bright)
+})
+
+test('shells and monitors an agent started follow the main session ones, after a dim agent name, and count in both forms', () => {
+  const mine = {
+    ...dev,
+    id: 'shell:m',
+    title: 'bun test',
+    parentId: explore.id,
+    detail: { command: 'bun test' },
+  } as RabeItem
+  const theirs = { ...ci, id: 'monitor:w', title: 'tail build.log', parentId: verify.id }
+  const items = [mine, dev, theirs, ci, explore, verify, flow]
+  const { grid } = gridOf(bandView(model(items), SIZE, NO_SELECTION))
+  const shown = lines(grid)
+  expect(shown).toContain(' ▶ shells 2    bun run dev :5173 · Explore verifyToken › bun test')
+  expect(shown).toContain(
+    ' ◉ watch 2     CI run #482 · review-changes › verify:db.ts › tail build.log',
+  )
+  const y = shown.findIndex(line => line.startsWith(' ▶ shells'))
+  expect(cell(grid, at(shown, y, 'Explore'), y)[1]).toBe(C.dim)
+  expect(cell(grid, at(shown, y, 'bun test'), y)[1]).toBe(DEFAULT)
+  const one = lines(gridOf(bandView(model(items), { ...SIZE, rows: 2 }, NO_SELECTION)).grid)
+  expect(one[0]).toContain('▶ 2 shells   ◉ 2 monitors')
 })

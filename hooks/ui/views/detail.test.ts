@@ -3,8 +3,20 @@ import { expect, test } from 'claude-code/testing'
 import type { RabeItem } from '../../model'
 import { cell, type Grid, lines } from '../cells/grid'
 import { C } from '../cells/palette'
-import { ALL, babysit, ci, dev, explore, flow, lint, NOW, review, verify } from '../fixtures'
-import { type Model, NO_SELECTION, type Size } from '../view'
+import {
+  ALL,
+  babysit,
+  ci,
+  dev,
+  explore,
+  flow,
+  gridOf,
+  lint,
+  NOW,
+  review,
+  verify,
+} from '../fixtures'
+import { isPress, type Model, NO_SELECTION, rowKeys, type Size } from '../view'
 import { detailView } from './detail'
 import { itemsView } from './items'
 
@@ -15,7 +27,7 @@ function model(items: RabeItem[] = ALL, extra: Partial<Model> = {}): Model {
 }
 
 function open(m: Model, id: string, size: Size = TERMINAL) {
-  return detailView(m, size, { ...NO_SELECTION, open: id })
+  return gridOf(detailView(m, size, { ...NO_SELECTION, open: id }))
 }
 
 // The row and column where `text` starts.
@@ -69,7 +81,7 @@ test('an agent shows a cost box, its brief and its turns from rabe.turns', () =>
   expect(bg(g, [0, first[1]])).not.toBe(C.raised)
   expect(bg(g, [0, find(g, '2  ● Reading verify.ts.')[1]])).toBe(C.raised)
   expect(bg(g, [0, find(g, '⎿ Read verify.ts')[1]])).toBe(C.raised)
-  expect(buttons.find(b => b.key === 'stop')?.label).toBe('x: stop')
+  expect(buttons.find(b => b.key === `stop:${explore.id}`)?.label).toBe('x: stop')
 })
 
 test('the brief of an agent is the prompt it was given when Rabe saw the spawn', () => {
@@ -129,7 +141,7 @@ test('a codex job shows its steps with the running command raised and an x: stop
   const running = find(g, '◐ running')
   expect(fg(g, running)).toBe(C.yellow)
   expect(bg(g, [0, running[1]])).toBe(C.raised)
-  expect(buttons.find(b => b.key === 'stop')).toMatchObject({
+  expect(buttons.find(b => b.key === `stop:${job.id}`)).toMatchObject({
     label: 'x: stop',
     hotkey: 'x',
     action: { type: 'stop', ids: [job.id] },
@@ -144,19 +156,23 @@ test('a codex job whose session file is gone says so', () => {
   } as RabeItem
   const { grid: g, buttons } = open(model([job]), job.id)
   expect(lines(g)).toContain('job task-9 · session file gone')
-  expect(buttons.find(b => b.key === 'stop')).toBeUndefined()
+  expect(buttons.find(b => b.key === `stop:${job.id}`)).toMatchObject({
+    dim: true,
+    action: { type: 'none' },
+  })
 })
 
 test('a workflow shows its phases and each agent with tokens and time', () => {
-  const { grid: g, buttons, rows } = open(model(), flow.id)
+  const drawn = open(model(), flow.id)
+  const { grid: g, buttons } = drawn
   const shown = lines(g)
   expect(shown).toContain('✓ Review → ◐ Verify → · Report')
   expect(shown).toContain(' 2 agents')
   expect(fg(g, find(g, 'VERIFY'))).toBe(C.green)
   expect(shown.some(line => /◐ verify:db\.ts +22k · 40s$/.test(line))).toBe(true)
   expect(shown.some(line => /✓ review:bugs +n\/a · 3m ago$/.test(line))).toBe(true)
-  expect(Object.values(rows ?? {}).map(row => row.key)).toContain(`row:${verify.id}`)
-  expect(buttons.find(b => b.key === 'stop')?.label).toBe('g: stop run')
+  expect(rowKeys(drawn)).toContain(`row:${verify.id}`)
+  expect(buttons.find(b => b.key === `stop-run:${flow.id}`)?.label).toBe('g: stop run')
 })
 
 test('a shell shows its output tail and its exit code in color', () => {
@@ -235,10 +251,8 @@ test('a short detail keeps the head and the newest body lines', () => {
 })
 
 test('the split shows the same detail beside the list', () => {
-  const { grid: g } = itemsView(
-    model(),
-    { ...TERMINAL, columns: 120 },
-    { ...NO_SELECTION, selected: review.id },
+  const { grid: g } = gridOf(
+    itemsView(model(), { ...TERMINAL, columns: 120 }, { ...NO_SELECTION, selected: review.id }),
   )
   expect(lines(g).some(line => line.endsWith('● Reading the diff.'))).toBe(true)
   expect(lines(g).some(line => line.includes('│ ▸ prompt'))).toBe(true)
@@ -254,17 +268,101 @@ test('a codex job without a command count says n/a', () => {
 test('a workflow agent offers no own stop or message, only stopping its run', () => {
   const size: Size = { ...TERMINAL, hasInput: true }
   const { buttons } = open(model(), verify.id, size)
-  expect(buttons.find(b => b.key === 'message-agent')).toBeUndefined()
+  expect(buttons.find(b => b.key.startsWith('message'))).toBeUndefined()
   expect(open(model(), verify.id, size).inputs ?? []).toHaveLength(0)
-  expect(buttons.find(b => b.key === 'stop')).toMatchObject({
+  expect(buttons.find(b => b.key === `stop-run:${flow.id}`)).toMatchObject({
     label: 'g: stop run',
     hotkey: 'g',
     action: { type: 'stop', ids: [flow.id] },
   })
 })
 
-test('a workflow agent whose run cannot be stopped offers no stop', () => {
+test('a workflow agent whose run cannot be stopped keeps a dim stop that does nothing', () => {
   const run = { ...flow, detail: { runId: 'wf1', phases: [] } } as RabeItem
   const { buttons } = open(model([run, verify]), verify.id)
-  expect(buttons.find(b => b.key === 'stop')).toBeUndefined()
+  expect(buttons.find(b => b.key === `stop-run:${run.id}`)).toEqual({
+    key: `stop-run:${run.id}`,
+    label: 'g: stop run',
+    action: { type: 'none' },
+    dim: true,
+  })
+})
+
+const older = {
+  ...verify,
+  id: 'agent:w2',
+  title: 'verify:auth.ts',
+  status: 'done',
+  startedAt: NOW - 90_000,
+  endedAt: NOW - 50_000,
+  detail: { agentId: 'w2', workflowPhase: 'Verify' },
+} as RabeItem
+
+test('a workflow lists the agents of a phase in start order, whatever their status', () => {
+  const keys = rowKeys(
+    detailView(model([flow, verify, older]), TERMINAL, { ...NO_SELECTION, open: flow.id }),
+  )
+  expect(keys).toEqual([`row:${older.id}`, `row:${verify.id}`])
+})
+
+test('a workflow keeps the held order, so a row never moves under the focus', () => {
+  const sel = { ...NO_SELECTION, open: flow.id, order: { timeline: [verify.id, older.id] } }
+  const late = { ...older, id: 'agent:w3', startedAt: NOW - 200_000 } as RabeItem
+  const keys = rowKeys(detailView(model([flow, verify, older, late]), TERMINAL, sel))
+  expect(keys).toEqual([`row:${verify.id}`, `row:${older.id}`, `row:${late.id}`])
+})
+
+test('the workflow agent row that holds the focus is marked; the others are dim', () => {
+  const sel = { ...NO_SELECTION, open: flow.id, selected: verify.id }
+  const drawn = detailView(model([flow, verify, older]), TERMINAL, sel)
+  const { grid: g } = gridOf(drawn)
+  const y = find(g, '▌◐ verify:db.ts')[1]
+  expect(cell(g, 0, y)).toEqual(['▌'.codePointAt(0), C.orange, C.selected])
+  const other = find(g, ' ✓ verify:auth.ts')[1]
+  expect(bg(g, [0, other])).not.toBe(C.selected)
+  expect(fg(g, [3, other])).toBe(C.dim)
+  // b: back keeps the one autoFocus of the drawing.
+  const presses = drawn.nodes.flatMap(node => ('spans' in node ? node.spans.filter(isPress) : []))
+  expect(presses.some(p => p.autoFocus)).toBe(false)
+})
+
+test('a workflow draws every agent row, also past the rows of the pane', () => {
+  const many = Array.from(
+    { length: 30 },
+    (_, i) => ({ ...older, id: `agent:m${i}`, startedAt: NOW - 100_000 + i }) as RabeItem,
+  )
+  const drawn = detailView(
+    model([flow, ...many]),
+    { ...TERMINAL, rows: 12 },
+    {
+      ...NO_SELECTION,
+      open: flow.id,
+    },
+  )
+  expect(rowKeys(drawn)).toHaveLength(30)
+  expect(lines(gridOf(drawn).grid)[0]).toMatch(/^⧉ workflow · review-changes/)
+})
+
+// A control that acts on an item carries that item in its key, so a new
+// target is a new key, which the held focus order puts at the end.
+test('every control of a detail that acts on an item names it in its key', () => {
+  const size: Size = { ...TERMINAL, hasInput: true }
+  const keysOf = (id: string) => {
+    const drawn = detailView(model(), size, { ...NO_SELECTION, open: id })
+    return [...drawn.buttons, ...(drawn.inputs ?? [])].map(one => one.key)
+  }
+  expect(keysOf(explore.id)).toEqual([
+    'back',
+    `message-agent:${explore.id}`,
+    `stop:${explore.id}`,
+    `message:${explore.id}`,
+  ])
+  expect(keysOf(dev.id)).toEqual(['back', `copy:${dev.id}`, `stop:${dev.id}`])
+  expect(keysOf(babysit.id)).toEqual(['back', `copy:${babysit.id}`, `delete:${babysit.id}`])
+  expect(keysOf(verify.id)).toEqual(['back', `stop-run:${flow.id}`])
+  const drawn = detailView(model(), size, { ...NO_SELECTION, open: explore.id })
+  expect(drawn.buttons.find(one => one.hotkey === 'm')?.action).toEqual({
+    type: 'focus',
+    key: `message:${explore.id}`,
+  })
 })

@@ -9,7 +9,7 @@
 
 Rabe (German for raven) is a Claude Code mod. It shows your subagents, Codex jobs, background shells, monitors, cron jobs and workflows in one place. A short band above the prompt shows what runs now. The `/rabe` command opens a pane with the full detail.
 
-![Rabe in a Claude Code session: the band above the prompt lists two agents, two shells, a monitor, a cron job and the cost; /rabe opens the pane with the list beside the selected agent, j and k move, Enter opens the agent's detail, then the Cost and Timeline tabs show, and Esc closes the pane](docs/assets/demo.gif)
+![Rabe in a Claude Code session: the band above the prompt lists two agents, three shells (one of them started by an agent), a monitor, a cron job and the cost; /rabe opens the pane, the arrow keys move through the list and the detail beside it follows, a click selects the agent's shell and a second click opens it, b goes back, then the Cost and Timeline tabs show, and Esc closes the pane](docs/assets/demo.gif)
 
 Status: early development. Version 0.1.0.
 
@@ -18,20 +18,20 @@ Status: early development. Version 0.1.0.
 | Kind | In the band | In the pane |
 |---|---|---|
 | Claude subagents | Name and run time | Tokens, share of the session, the prompt it got, each turn with its tool calls |
-| Workflows | Current phase and agent count | Phases in order, the agents of each phase with tokens and time |
+| Workflows | Current phase and agent count | Phases in order, the agents of each phase in start order with tokens and time; select an agent to open it |
 | Codex jobs (from the Codex plugin) | Name and run time | Model, effort and sandbox, tokens, the prompt, each message and command with its exit code |
 | Background shells | Command and the port it serves | Output lines, exit code, the guessed port |
 | Monitors | Name | Each line with the time Rabe received it |
-| Cron jobs and `/loop` wakeups | Prompt and countdown to the next run | The next five runs |
+| Cron jobs and `/loop` wakeups | Prompt and the time of the next run (`due` for a wakeup that waits) | The next five runs |
 | Cost | Session cost and tokens of the background work | Cost tab: tokens per worker, workers that look stuck |
 
-The band puts failures from the last 10 minutes first. When nothing runs, it draws nothing. When its rows do not fit, it draws one line of counts.
+The band puts failures from the last 10 minutes first. Shells and monitors that an agent started come after the others, with the name of that agent. When nothing runs, it draws nothing. When its rows do not fit, it draws one line of counts.
 
 The pane has four tabs:
 
-- **Items**: all items grouped by kind, with a search field. If the pane is 90 columns or wider, the selected item shows beside the list.
+- **Items**: all items grouped by kind, with a search field. Shells and monitors that an agent started show under the name of that agent. If the pane is 90 columns or wider, the selected item shows beside the list.
 - **Cost**: the session cost as `/cost` totals it, and a bar of tokens per agent and Codex job. Agents that look slow or stuck show under "Load".
-- **Effects**: files that agents edited, a warning when two agents edit the same file, worktrees, and open ports with the `ssh -L` command to reach them.
+- **Effects**: files that agents edited, a warning when two agents edit the same file, worktrees, and open ports with the `ssh -L` command to reach them. Enter or a click on a file opens the agent that edited it last; on an `ssh -L` line it copies the line (`c` copies the first).
 - **Timeline**: a bar per item over the session, who started what, and a summary of the previous session in this project.
 
 ## Install
@@ -42,25 +42,36 @@ Type this at a Claude Code prompt:
 /plugin install rabe --marketplace lorenzh/rabe
 ```
 
+Then run `/reload-plugins` or start a new session: a plugin you install does not load in the running session. The Claude desktop app needs this too.
+
 ## Usage
 
 The band shows by itself while background work runs. Type `/rabe` to open the pane. In the terminal the pane docks beside the transcript. Drag its left edge to make it wider.
 
 | Key | What it does |
 |---|---|
-| `j` / `k` | Move down / up |
-| Enter | Open the selected item |
+| ↑ / ↓ | Move to the previous / next row; the detail beside the list follows |
+| Enter | Open the row that has the focus, also after a click selected another row |
+| Click on a row | Select the row; click it again to open it. A click on the row that has the focus opens it at once |
+| Tab / Shift+Tab | Move the focus through rows, tabs and buttons |
 | `b` | Go back to the list |
 | `1` to `4` | Switch tab |
 | `s` | Search |
 | `x` | Stop the selected item |
-| `g` | Stop the whole group, or a workflow run |
+| `g` | Stop the group the selected row is in (the rows the search shows), or the workflow run of the selected run or workflow agent |
 | `m` | Send a message to an agent |
 | `c` | Copy the command, the prompt or the `ssh -L` line |
 | `d` | Delete a cron job |
+| Mouse wheel | Scroll the pane |
 | Esc | Close the pane |
 
-The buttons under the pane show the keys that work on the current tab. A letter with no button goes to the prompt.
+The buttons under the tabs show the keys of the current tab. A key that cannot act now is dim, and pressing it does nothing. A letter with no button goes to the prompt.
+
+With the mouse, click a row once to select it and again to open it. Click a tab to switch to it, a group name to fold the group, a button to press it, or a row on the other tabs to open it. The wheel scrolls the pane. A click does not move the focus, so Enter still opens the row that has the focus. A click also does not give the pane the keys: `ctrl+x tab` does. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
+
+On the list, the stop keys `x` and `g` work only after you move onto a row yourself, with an arrow, Tab or a click. Until then, and after the view or the selected row changes without you, they are dim, so a key press never stops something you did not pick. If they stay dim after a click, the pane does not have the keys yet: press `ctrl+x tab`, then move onto the row with Tab or an arrow.
+
+While the pane is open, rows and buttons keep their places, so Enter acts on what you see under the focus. Items that start after you open the pane go to a NEW group at the end (on the Effects tab, to a NEW section). A row that is gone stays as a dim `gone` slot. Type `/rabe` again to sort the lists.
 
 Commands:
 
@@ -104,7 +115,7 @@ Rabe keeps its items in the session state of Claude Code. When a session ends, R
 ## Requirements
 
 - Claude Code 2.1.295. We build and test Rabe with this version. Other versions can show `n/a` where a file changed.
-- A terminal for the colored band and pane. The Claude desktop app shows the same content as text and buttons.
+- A terminal for the colored band and pane. The Claude desktop app draws the same pane with plain text and buttons (tested by the maintainer on Windows with Rabe 0.1.0).
 - Optional: the Codex plugin (`codex@openai-codex`) for Codex jobs, and the `gh` CLI for the report commands.
 
 ## Development

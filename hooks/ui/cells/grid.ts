@@ -110,48 +110,6 @@ export function write(g: Grid, x: number, y: number, text: string, style: Style 
   return at
 }
 
-export function fill(
-  g: Grid,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  style: Style = {},
-  ch = ' ',
-): void {
-  const code = safe(ch).codePointAt(0) ?? SPACE
-  for (let row = y; row < y + height; row++) {
-    for (let col = x; col < x + width; col++) put(g, col, row, code, style)
-  }
-}
-
-export function hline(g: Grid, x: number, y: number, width: number, style: Style = {}, ch = '─') {
-  fill(g, x, y, width, 1, style, ch)
-}
-
-export function vline(g: Grid, x: number, y: number, height: number, style: Style = {}, ch = '│') {
-  fill(g, x, y, 1, height, style, ch)
-}
-
-export function box(
-  g: Grid,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  style: Style = {},
-) {
-  if (width < 2 || height < 2) return
-  hline(g, x + 1, y, width - 2, style)
-  hline(g, x + 1, y + height - 1, width - 2, style)
-  vline(g, x, y + 1, height - 2, style)
-  vline(g, x + width - 1, y + 1, height - 2, style)
-  write(g, x, y, '┌', style)
-  write(g, x + width - 1, y, '┐', style)
-  write(g, x, y + height - 1, '└', style)
-  write(g, x + width - 1, y + height - 1, '┘', style)
-}
-
 const EIGHTHS = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉']
 
 // A bar of `value / max` over `width` cells, in eighths of a block, padded.

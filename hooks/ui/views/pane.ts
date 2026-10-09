@@ -1,9 +1,15 @@
 import type { RabeTab } from '../../../types'
-import { grid, hline, paste, spans } from '../cells/grid'
 import { C } from '../cells/palette'
 import {
   controlRows,
   type Drawn,
+  isPress,
+  LIST_KEYS,
+  type Line,
+  type Model,
+  NONE,
+  type Node,
+  type Press,
   type Selection,
   type Size,
   type View,
@@ -12,7 +18,8 @@ import {
 import { costView } from './cost'
 import { detailView } from './detail'
 import { effectsView } from './effects'
-import { isSplit, itemsView } from './items'
+import { isSplit, itemsView, listOrder, selectedItem } from './items'
+import { fitLine } from './lines'
 import { timelineView } from './timeline'
 
 // Each tab's view. A new tab adds its view here and its name to RabeTab.
@@ -23,64 +30,169 @@ export const TABS: { tab: RabeTab; label: string; hotkey: string; view: View }[]
   { tab: 'timeline', label: 'Timeline', hotkey: '4', view: timelineView },
 ]
 
-const HEAD = 2
 const HINT = 1
 
-// The hint names the keys the tab's Buttons bind.
-const WORDS: Record<string, string> = {
-  down: 'j/k move',
-  open: 'enter open',
-  stop: 'x stop',
-  'stop-group': 'g stop group',
-}
+const hasRows = (nodes: Node[]) =>
+  nodes.some(
+    node => 'spans' in node && node.spans.some(p => isPress(p) && p.key.startsWith('row:')),
+  )
 
-function hint(sel: Selection, isOpen: boolean, buttons: ViewButton[]): string {
+// The hint names the keys the tab binds: the arrows and Enter over its rows,
+// and x and g of its controls while they act.
+function hint(sel: Selection, isOpen: boolean, inner: Drawn): string {
   if (!sel.isFocused) return 'tab to select · esc close'
   if (isOpen) return 'b back · esc close'
-  return [...buttons.flatMap(one => WORDS[one.key] ?? []), 'esc close'].join(' · ')
+  const move = hasRows(inner.nodes) ? ['↑↓ move', 'enter open'] : []
+  const keys = inner.buttons.flatMap(one =>
+    one.hotkey === 'x' || one.hotkey === 'g' ? [one.label.replace(': ', ' ')] : [],
+  )
+
+  return [...move, ...keys, 'esc close'].join(' · ')
 }
 
-// The whole pane: the tab row and its rule, the tab's view (or the open item's
-// detail), and the hint, sized so the grid and the controls under it fill
-// `size.rows` without scrolling. Off the terminal the tab Buttons are the tab
-// row, so the grid starts with the tab's view.
+const rowsOf = (nodes: Node[]) =>
+  nodes.reduce((n, node) => n + ('chart' in node ? node.chart.rows : 1), 0)
+
+// A plain Button with a hotkey is drawn `1: label`.
+const PREFIX = 3
+
+// The tab row: every tab a plain Button, never cut. Where the full labels do
+// not fit, the other tabs keep their first letter; where those do not fit
+// either, the tabs wrap. Under the row a rule marks the active tab, on one
+// row only (the active tab is also drawn full, the others dim).
+function tabLines(model: Model, size: Size, sel: Selection): Line[] {
+  const press = (one: (typeof TABS)[number], isShort: boolean): Press => ({
+    key: `tab-${one.tab}`,
+    label:
+      one.tab === sel.tab || !isShort
+        ? one.tab === 'items'
+          ? `${one.label} ${model.items.length}`
+          : one.label
+        : one.label.slice(0, 1),
+    hotkey: one.hotkey,
+    action: { type: 'tab', tab: one.tab },
+    ...(one.tab !== sel.tab && { dim: true }),
+  })
+  const span = (one: Press) => one.label.length + PREFIX
+  const tries = [
+    { gap: isSplit(size) ? 4 : 2, isShort: false },
+    { gap: 1, isShort: false },
+    { gap: 1, isShort: true },
+  ]
+  const fits = (list: Press[], gap: number) =>
+    list.reduce((n, one) => n + span(one), 1 + gap * (list.length - 1)) <= size.columns
+  const pick =
+    tries.find(one =>
+      fits(
+        TABS.map(tab => press(tab, one.isShort)),
+        one.gap,
+      ),
+    ) ?? (tries.at(-1) as (typeof tries)[number])
+  const tabs = TABS.map(one => press(one, pick.isShort))
+  const rows: Press[][] = []
+  for (const one of tabs) {
+    const last = rows.at(-1)
+    if (last && fits([...last, one], pick.gap)) last.push(one)
+    else rows.push([one])
+  }
+  const keys = '1-4 switch'
+  const lines: Line[] = rows.map(row => {
+    const width = row.reduce((n, one) => n + span(one), 1 + pick.gap * (row.length - 1))
+    return fitLine(
+      {
+        spans: row.flatMap((one, i) => (i ? [[' '.repeat(pick.gap)], one] : [[' '], one])),
+        ...(rows.length === 1 &&
+          pick.gap > 2 &&
+          width + keys.length < size.columns && { right: [[keys, { fg: C.dim }]] }),
+      },
+      size.columns,
+    )
+  })
+  const at = tabs.findIndex(one => one.key === `tab-${sel.tab}`)
+  const from =
+    rows.length === 1 ? tabs.slice(0, at).reduce((n, one) => n + span(one) + pick.gap, 1) : 0
+  const under = rows.length === 1 && at >= 0 ? span(tabs[at] as Press) : 0
+  const rule: Line = {
+    spans: [
+      ['─'.repeat(from), { fg: C.rule }],
+      ['━'.repeat(under), { fg: C.orange }],
+      ['─'.repeat(Math.max(0, size.columns - from - under)), { fg: C.rule }],
+    ],
+  }
+
+  return [...lines, fitLine(rule, size.columns)]
+}
+
+// The whole pane: the tab row and its rule, the toolbar (the tab's controls
+// and Inputs), the tab's view (or the open item's detail), and the hint at the
+// bottom. The toolbar comes before the body, so rows found later go at the end
+// of the focus order (see `hold` in render.tsx). The view gets the rows the
+// rest leaves; a list longer than that makes the pane scroll, and the focus
+// carries the window along.
+// What the drawing could not show as the person left it: the open item, or
+// the selected row of the Items list, gone (pruned, filtered or folded away).
+// The view then falls back to the list, or to its first row.
+export function fallbackOf(model: Model, sel: Selection): string {
+  if (sel.tab !== 'items') return ''
+  const isOpenGone = sel.open !== '' && !model.items.some(item => item.id === sel.open)
+  if (sel.open && !isOpenGone) return ''
+  const isSelectedGone = sel.selected !== '' && !isLiveRow(model, sel, `row:${sel.selected}`)
+
+  return [isOpenGone && `open:${sel.open}`, isSelectedGone && `selected:${sel.selected}`]
+    .filter(Boolean)
+    .join(' ')
+}
+
+// Whether `key` is a row the Items list draws, not a gone slot of one.
+export const isLiveRow = (model: Model, sel: Selection, key: string): boolean =>
+  key.startsWith('row:') && listOrder(model, sel).some(item => `row:${item.id}` === key)
+
+// Whether a press on the row of item `id` selects it instead of opening it:
+// a live row of the Items list that is neither the selected one nor the one
+// that holds the focus ring (`ring`, its key). Enter presses the ring's row
+// and opens it; only a pointer presses a row away from the ring.
+export function selectsOnPress(model: Model, sel: Selection, id: string, ring?: string): boolean {
+  if (sel.tab !== 'items' || model.items.some(item => item.id === sel.open)) return false
+  if (ring === `row:${id}`) return false
+  const order = listOrder(model, sel)
+
+  return order.some(item => item.id === id) && selectedItem(order, sel)?.id !== id
+}
+
+// Stop and delete drawn while the pane is disarmed: dim, no action, no hotkey.
+const disarmed = (one: ViewButton): ViewButton => {
+  if (one.action.type !== 'stop' && one.action.type !== 'delete') return one
+  const { hotkey: _, ...rest } = one
+
+  return { ...rest, action: NONE, dim: true }
+}
+
 export const paneView: View = (model, size, sel): Drawn => {
   const isOpen = sel.tab === 'items' && model.items.some(item => item.id === sel.open)
   const body = isOpen ? detailView : (TABS.find(one => one.tab === sel.tab)?.view ?? itemsView)
-  const isTerminal = size.surface === 'terminal'
-  const head = isTerminal ? HEAD : 0
-  const tabLabel = (one: (typeof TABS)[number]) =>
-    one.tab === 'items' ? `${one.label} ${model.items.length}` : one.label
-  const tabButtons: ViewButton[] = TABS.map(one => ({
-    key: `tab-${one.tab}`,
-    label: isTerminal ? one.hotkey : tabLabel(one),
-    hotkey: one.hotkey,
-    action: { type: 'tab', tab: one.tab },
-  }))
-  const room = (rows: number): Size => ({ ...size, rows: Math.max(1, rows) })
-  const first = body(model, room(size.rows - head - HINT), sel)
-  const reserve = controlRows({ ...first, buttons: [...first.buttons, ...tabButtons] }, size)
-  const inner = body(model, room(size.rows - head - HINT - reserve), sel)
-
-  const g = grid(size.columns, inner.grid.rows + head + HINT)
-  if (isTerminal) {
-    const isWide = isSplit(size)
-    hline(g, 0, 1, size.columns, { fg: C.rule })
-    let x = 1
-    for (const one of TABS) {
-      const isActive = one.tab === sel.tab
-      const end = spans(g, x, 0, [[tabLabel(one), { fg: isActive ? C.orange : C.dim }]])
-      if (isActive) hline(g, x, 1, end - x, { fg: C.orange }, '━')
-      x = end + (isWide ? 4 : 2)
-    }
-    const keys = '1-4 switch'
-    if (isWide && x + keys.length < size.columns)
-      spans(g, size.columns - keys.length, 0, [[keys, { fg: C.dim }]])
+  const head = tabLines(model, size, sel)
+  const room = (rows: number, above: number): Size => ({
+    ...size,
+    rows: Math.max(1, rows),
+    ...(size.window && { window: { ...size.window, top: size.window.top - above } }),
+  })
+  const first = body(model, room(size.rows - head.length - HINT, head.length), sel)
+  const tools = controlRows(first, size)
+  const rows = size.rows - head.length - tools - HINT
+  const drawn = body(model, room(rows, head.length + tools), sel)
+  const isInert = (one: ViewButton) =>
+    !sel.isArmed || (!sel.isListArmed && LIST_KEYS.includes(one.key))
+  const inner = {
+    ...drawn,
+    buttons: drawn.buttons.map(one => (isInert(one) ? disarmed(one) : one)),
   }
-  paste(g, inner.grid, 0, head)
-  spans(g, 1, g.rows - 1, [[hint(sel, isOpen, inner.buttons), { fg: C.dim }]])
-  const rows: Drawn['rows'] = {}
-  for (const [y, row] of Object.entries(inner.rows ?? {})) rows[Number(y) + head] = row
+  const pad = Math.max(0, rows - rowsOf(inner.nodes))
+  const nodes: Node[] = [
+    ...head,
+    ...inner.nodes,
+    ...Array.from({ length: pad }, (): Line => ({ spans: [] })),
+    fitLine({ spans: [[` ${hint(sel, isOpen, inner)}`, { fg: C.dim }]] }, size.columns),
+  ]
 
-  return { grid: g, buttons: [...inner.buttons, ...tabButtons], inputs: inner.inputs, rows }
+  return { nodes, buttons: inner.buttons, inputs: inner.inputs, toolbar: head.length }
 }
