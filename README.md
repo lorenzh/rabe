@@ -11,7 +11,7 @@ Rabe (German for raven) is a Claude Code mod. It shows your subagents, Codex job
 
 ![Rabe in a Claude Code session: the band above the prompt lists two agents, three shells (one of them started by an agent), a monitor, a cron job and the cost; /rabe opens the pane, the arrow keys move through the list and the detail beside it follows, a click selects the agent's shell and a second click opens it, b goes back, then the Cost and Timeline tabs show, and Esc closes the pane](docs/assets/demo.gif)
 
-Status: early development. Version 0.1.0.
+Status: early development. See [releases](https://github.com/lorenzh/rabe/releases) and the [changelog](CHANGELOG.md) for the current version.
 
 ## What Rabe shows
 
