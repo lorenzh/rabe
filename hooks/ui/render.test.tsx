@@ -9,9 +9,11 @@ import {
   type Action,
   type Drawn,
   isPress,
+  landing,
   layout,
   type Model,
   NO_SELECTION,
+  type Piece,
   type Selection,
   type Size,
 } from './view'
@@ -91,14 +93,43 @@ function elements(one: unknown): Element[] {
 const SIZE: Size = { columns: 80, rows: 30, surface: 'terminal', hasInput: true }
 const OPEN: Selection = { ...NO_SELECTION, isFocused: true }
 
-type Step = { keys: string[]; held: Held[]; tree: Element[]; acts: Action[] }
+type Step = { keys: string[]; held: Held[]; tree: Element[]; acts: Action[]; list: Piece[] }
 
 function draw(model: Model, size: Size, sel: Selection, before?: Held[]): Step {
   const acts: Action[] = []
   const { list, held } = hold(layout(paneView(model, size, sel)), before)
   const tree = elements(render(UI, size.surface, list, action => acts.push(action)))
 
-  return { keys: tree.map(one => String(one.props.key)), held, tree, acts }
+  return { keys: tree.map(one => String(one.props.key)), held, tree, acts, list }
+}
+
+// What a press on each focusable element drawn does; an Input's with `text`.
+const actionsOf = (list: Piece[], text = ''): [string, Action][] =>
+  list.flatMap((piece): [string, Action][] =>
+    'spans' in piece
+      ? piece.spans.filter(isPress).map(one => [one.key, one.action])
+      : 'button' in piece
+        ? [[piece.button.key, piece.button.action]]
+        : 'input' in piece
+          ? [[piece.input.key, piece.input.action(text)]]
+          : [],
+  )
+
+// The person's own change of the view, as `act` in pane.tsx writes it.
+function apply(sel: Selection, action: Action): void {
+  if (action.type === 'tab') sel.tab = action.tab
+  if (action.type === 'query') sel.query = action.text
+  if (action.type === 'fold') {
+    const { group } = action
+    sel.folded = sel.folded.includes(group)
+      ? sel.folded.filter(one => one !== group)
+      : [...sel.folded, group]
+  }
+  if (action.type === 'open') {
+    const id = action.id || sel.open
+    if (id) Object.assign(sel, { selected: id, tab: 'items' })
+    sel.open = action.id
+  }
 }
 
 const model = (items: RabeItem[]): Model => ({ items, turns: {}, lines: {}, now: NOW })
@@ -167,6 +198,22 @@ test('an edit pruned from the history leaves its held Effects row as an inert sl
   expect(slot?.props).toMatchObject({ label: 'a.ts', dimColor: true })
   ;(slot?.props.onPress as (e: unknown) => void)({ surface: 'terminal' })
   expect(later.acts).toEqual([])
+})
+
+test('a gone slot follows the element before it and reads gone first, never under the next heading', () => {
+  const items = [shell('p1', 5173), shell('p2', 3000), shell('p3', 4000)]
+  const sel = { ...OPEN, tab: 'effects' as const, selected: 'ssh:5173', order: orderOf(items) }
+  const first = draw(model(items), SIZE, sel)
+  const later = draw(model([items[0], items[2]] as RabeItem[]), SIZE, sel, first.held)
+  expect(later.keys).toEqual(first.keys)
+  const text = (piece: Piece | undefined) =>
+    piece && 'spans' in piece
+      ? piece.spans.map(one => (isPress(one) ? one.label : one[0])).join('')
+      : ''
+  const at = later.list.findIndex(piece => text(piece).includes('ssh -L 3000'))
+  expect(text(later.list[at - 1])).toContain('ssh -L 5173')
+  expect(text(later.list[at])).toBe(' gone ssh -L 3000:localhost:3000 <your-host>')
+  expect(text(later.list[at + 1])).toContain(':4000')
 })
 
 test('all four tabs stay at every width, the underline under the active one', () => {
@@ -252,6 +299,22 @@ const SCOPES: Partial<Selection>[] = [
   { open: review.id },
 ]
 
+// Defense in depth for the ring that keeps its index: the element after the
+// tabs (the first row, `b: back` or the search) is never a stop in any view.
+test('the first element after the tabs never stops or deletes', () => {
+  const items = ALL.map(item => ({ ...item, status: 'running' as const }))
+  for (const scope of SCOPES) {
+    const sel = { ...OPEN, selected: dev.id, order: orderOf(items), ...scope }
+    const { list } = draw(model(items), SIZE, sel)
+    const [key, action] = actionsOf(list)[4] ?? []
+    expect([
+      JSON.stringify(scope),
+      key,
+      action?.type === 'stop' || action?.type === 'delete',
+    ]).toEqual([JSON.stringify(scope), key, false])
+  }
+})
+
 test('whatever changes while the pane is open, the focusable keys only grow at the end', () => {
   const start = ALL.map(item =>
     item.id === explore.id ? agentOf('a1', { edits: [{ path: PATHS[0] ?? '', at: NOW }] }) : item,
@@ -264,7 +327,28 @@ test('whatever changes while the pane is open, the focusable keys only grow at t
       let size: Size = { ...SIZE, surface }
       let last = draw(model(items), size, sel)
       for (let n = 0; n < 80; n++) {
-        const what = pick(4)
+        const what = pick(5)
+        if (what === 4) {
+          // The view changes: its hold starts anew, and the ring, which keeps
+          // its index, is moved; where it lands must not stop or delete.
+          const text = ['', 'serve', 'agent', 'zz'][pick(4)] ?? ''
+          const switches = actionsOf(last.list, text).filter(([, action]) =>
+            ['tab', 'open', 'fold', 'query'].includes(action.type),
+          )
+          const [, action] = switches[pick(switches.length)] ?? []
+          if (!action) continue
+          const was = sel.open
+          apply(sel, action)
+          last = draw(model(items), size, sel)
+          const actions = new Map(actionsOf(last.list))
+          const keys = landing(action, was)
+          const landed = keys.filter(key => actions.has(key)).at(-1)
+          const shown = `${surface} ${JSON.stringify(scope)} step ${n} ${JSON.stringify(action)}`
+          expect([shown, keys[0] && actions.has(keys[0])]).toEqual([shown, true])
+          const type = actions.get(landed ?? '')?.type ?? 'none'
+          expect([shown, type === 'stop' || type === 'delete']).toEqual([shown, false])
+          continue
+        }
         if (what === 0) size = { ...size, columns: WIDTHS[pick(WIDTHS.length)] ?? 80 }
         else if (what === 1) {
           const rows = last.keys.filter(key => key.startsWith('row:'))

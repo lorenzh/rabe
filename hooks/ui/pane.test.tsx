@@ -126,7 +126,7 @@ test('a row gone while the pane is open keeps its slot until /rabe opens it anew
   await draw()
   items.pop()
   const gone = await draw()
-  expect(gone.shown).toContain(' other · gone')
+  expect(gone.shown).toContain(' gone other')
   expect(gone.slot?.props).toMatchObject({ label: 'other', dimColor: true })
   await $.command.run({ command: 'rabe', args: '' } as never)
   expect((await draw()).slot).toBeUndefined()
@@ -316,7 +316,7 @@ test('a narrow pane puts a one-line summary under the list and short key labels'
   const shown = await screen(ui)
   expect(shown).toContain('◐ review auth.ts · gpt-6.1-sol · ≈ $0.09 · 25k in · running')
   const buttons = (await ui.findAll({ type: 'Button' })).filter(one => !one.props.plain)
-  expect(buttons.map(one => one.props.label)).toEqual(['x: stop', 'g: stop group', 's'])
+  expect(buttons.map(one => one.props.label)).toEqual(['s', 'x: stop', 'g: stop group'])
   await ui.unmount()
 })
 
@@ -696,4 +696,26 @@ test('the focus on a workflow agent row marks it, and b goes back to the run', a
     expect(state).toMatchObject({ open: '', selected: flow.id })
     await ui.unmount()
   }
+})
+
+// Moving the pane between dock and inline (a resize across 110 columns)
+// takes the keys from it; the person did not give them back to the prompt.
+test('a pane the terminal moved takes the keys back only if it held them', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const opens = opening(on, true)
+  const seat = (placement: 'dock' | 'inline', isFocused: boolean) => ({
+    ...WIDE.props,
+    placement,
+    isFocused,
+  })
+  const ui = await $.ui.mount({ surface: 'terminal', ...WIDE } as never)
+  await ui.redraw(seat('inline', false) as never)
+  await clock.advance(2000)
+  expect(opens).toEqual([expect.objectContaining({ id: 'rabe', focus: true, closeOnEscape: true })])
+  await ui.redraw(seat('dock', false) as never)
+  await ui.redraw(seat('dock', true) as never)
+  await ui.redraw(seat('dock', false) as never)
+  await clock.advance(2000)
+  expect(opens).toHaveLength(1)
+  await ui.unmount()
 })

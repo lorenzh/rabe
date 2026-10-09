@@ -46,16 +46,12 @@ const keysOf = (piece: Piece): Held[] =>
         : []
 
 // What stands in for an element that is gone: its key and old label, dim,
-// and a press does nothing.
+// and a press does nothing. A row says `gone` first, which a cut keeps.
 function slot(one: Held): Piece {
   if (one.isControl) return { button: { key: one.key, label: one.label, action: NONE, dim: true } }
 
   return {
-    spans: [
-      [' '],
-      { key: one.key, label: one.label, action: NONE, dim: true },
-      [' · gone', { fg: C.dim }],
-    ],
+    spans: [[' gone ', { fg: C.dim }], { key: one.key, label: one.label, action: NONE, dim: true }],
   }
 }
 
@@ -64,8 +60,10 @@ function slot(one: Held): Piece {
 // their order, each in place or as a `slot` where it is gone, then the keys
 // that are new, in document order. A piece moves only when it must: a held
 // one comes forward to its turn, and a new one drawn above a held one goes
-// right after the last held one. A line with several Buttons (the tab row)
-// moves as one. Returns the pieces to draw and the keys to hold next.
+// right after the last held one. A slot follows the element held before it,
+// so it never stands under the heading of the next. A line with several
+// Buttons (the tab row) moves as one. Returns the pieces to draw and the
+// keys to hold next.
 export function hold(list: Piece[], before?: readonly Held[]): { list: Piece[]; held: Held[] } {
   const drawn = list.flatMap(keysOf)
   if (!before) return { list, held: drawn }
@@ -78,9 +76,10 @@ export function hold(list: Piece[], before?: readonly Held[]): { list: Piece[]; 
   let next = 0
   let isClosed = false
   const upTo = (end: number) => {
-    for (; next < end; next++) {
+    for (; next < before.length; next++) {
       const one = before[next] as Held
       const at = where.get(one.key)
+      if (next >= end && at !== undefined && !done.has(at)) break
       if (at === undefined) out.push(slot(one))
       else if (!done.has(at)) {
         done.add(at)

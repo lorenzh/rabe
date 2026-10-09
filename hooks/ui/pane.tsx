@@ -6,6 +6,7 @@ import { type Held, hold, render } from './render'
 import {
   type Action,
   bounded,
+  landing,
   layout,
   type Model,
   rowKeys,
@@ -19,7 +20,8 @@ const PANE = 'rabe'
 
 // Esc may have closed the pane before the delayed focus call.
 async function refocus($: EngineInterface): Promise<void> {
-  if (!(await $.ui.panes()).some(one => one.id === PANE)) return
+  const pane = (await $.ui.panes()).find(one => one.id === PANE)
+  if (!pane || pane.isFocused) return
   await $.ui.open({ id: PANE, title: 'Rabe', focus: true, closeOnEscape: true })
 }
 
@@ -93,18 +95,25 @@ async function stop($: EngineInterface, ids: string[]): Promise<void> {
   }
 }
 
+// A new view starts its hold anew, but the ring keeps its index, where the new
+// view may draw a stop; so the ring moves (`landing`). Refused while the pane
+// does not hold the keys: Enter then goes to the prompt.
+async function land($: EngineInterface, keys: string[]): Promise<void> {
+  for (const key of keys) await $.ui.focus({ requestId: PANE, key }).catch(() => undefined)
+}
+
 async function act($: EngineInterface, action: Action, surface: RenderSurface): Promise<void> {
   switch (action.type) {
     case 'tab':
       await $.state.set({ plugin: 'rabe', key: 'tab' }, action.tab)
-      return
+      return land($, landing(action, ''))
     case 'fold': {
       const { value: folded = [] } = await $.state.get({ plugin: 'rabe', key: 'folded' })
       const next = folded.includes(action.group)
         ? folded.filter(group => group !== action.group)
         : [...folded, action.group]
       await $.state.set({ plugin: 'rabe', key: 'folded' }, next)
-      return
+      return land($, landing(action, ''))
     }
     case 'open': {
       // Back selects the item that was open: the focus may have moved onto a
@@ -116,15 +125,11 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
         await $.state.set({ plugin: 'rabe', key: 'tab' }, 'items')
       }
       await $.state.set({ plugin: 'rabe', key: 'open' }, action.id)
-      // Back on the list the ring would stay where b was; put it on the row.
-      if (!action.id && id) {
-        await $.ui.focus({ requestId: PANE, key: `row:${id}` }).catch(() => undefined)
-      }
-      return
+      return land($, landing(action, was))
     }
     case 'query':
       await $.state.set({ plugin: 'rabe', key: 'query' }, action.text)
-      return
+      return land($, landing(action, ''))
     case 'focus':
       await $.ui.focus({ requestId: PANE, key: action.key })
       return
@@ -199,6 +204,10 @@ const scopeOf = (sel: Selection) => JSON.stringify([sel.tab, sel.open, sel.query
 // is a module value: a reload starts the hold anew, as a new drawing would.
 const holds = new Map<string, { scope: string; keys: Held[] }>()
 
+// Per surface, where the pane sat and whether it held the keys at the last
+// drawing. A move between dock and inline takes the keys from the pane.
+const seats = new Map<string, { placement: string; isFocused: boolean }>()
+
 const heldOf = (surface: RenderSurface, sel: Selection): Held[] | undefined => {
   const mine = holds.get(surface)
   return mine?.scope === scopeOf(sel) ? mine.keys : undefined
@@ -268,6 +277,11 @@ export function pane(on: On): void {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const ui = $.ui.resolve(e)
+    const seat = seats.get(e.surface)
+    seats.set(e.surface, { placement: e.props.placement, isFocused: e.props.isFocused })
+    if (seat?.isFocused && seat.placement !== e.props.placement) {
+      $.clock.after(500, () => void refocus($).catch(() => undefined))
+    }
     const { model, selection } = await look($, e.props.isFocused)
     const size = bounded({
       columns: e.props.bodyColumns,

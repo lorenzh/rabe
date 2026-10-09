@@ -66,7 +66,7 @@ The buttons under the tabs show the keys of the current tab. A key that cannot a
 
 With the mouse, click a row to open it, a tab to switch to it, or a group name to fold the group. The wheel scrolls the pane. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
 
-While the pane is open, the tabs, buttons and rows keep their places, so Enter acts on the row or button that has the focus. New rows go to the end: items that start after you open the pane go to a NEW group, and on the Effects tab files and ports found later go to a NEW section, in the order Rabe found them. A row or button that is gone stays as a dim slot (`· gone` on a row) until you change the tab, the search or the folded groups, or open an item. Type `/rabe` again to sort the lists.
+While the pane is open, the tabs, buttons and rows keep their places, so Enter acts on the row or button that has the focus. New rows go to the end: items that start after you open the pane go to a NEW group, and on the Effects tab files and ports found later go to a NEW section, in the order Rabe found them. A row or button that is gone stays as a dim slot (`gone` before the name of a row) until you change the tab, the search or the folded groups, or open an item. Such a change puts the focus on the tab, then on the group you folded, the `b: back` of the item you opened or the row you went back to, so Enter never acts on a button that came to the old place. If a resize moves the pane between the side and the bottom of the screen while it has the keys, Rabe gives the keys back to it. Type `/rabe` again to sort the lists.
 
 Commands:
 

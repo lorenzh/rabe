@@ -175,7 +175,19 @@ function listButtons(
     ids
       ? { key, label, hotkey: label.slice(0, 1), action: { type: 'stop', ids } }
       : { key, label, action: NONE, dim: true }
-  const buttons: ViewButton[] = [
+  // Search first: a ring the engine left at the index after the tabs (the
+  // first row or b of another view) never lands on a stop.
+  const buttons: ViewButton[] = size.hasInput
+    ? [
+        {
+          key: 'find',
+          label: isSplit(size) ? 's: search' : 's',
+          hotkey: 's',
+          action: { type: 'focus', key: 'search' },
+        },
+      ]
+    : []
+  buttons.push(
     slot(
       'stop',
       'x: stop',
@@ -184,15 +196,7 @@ function listButtons(
     run
       ? slot('stop-group', 'g: stop run', canStop(run) ? [run.id] : undefined)
       : slot('stop-group', 'g: stop group', group.length > 1 ? group : undefined),
-  ]
-  if (size.hasInput) {
-    buttons.push({
-      key: 'find',
-      label: isSplit(size) ? 's: search' : 's',
-      hotkey: 's',
-      action: { type: 'focus', key: 'search' },
-    })
-  }
+  )
 
   return buttons
 }

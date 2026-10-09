@@ -179,6 +179,26 @@ export function stepRow(keys: string[], selected: string, by: number): string | 
   return keys[at + by]
 }
 
+// Where the focus ring goes, key by key, after `action` changed the view
+// (the item `open` was open): the active tab's Button, then the element the
+// change leads to. The search keeps the ring in its Input, which never moves.
+export function landing(action: Action, open: string): string[] {
+  switch (action.type) {
+    case 'tab':
+      return [`tab-${action.tab}`]
+    case 'open': {
+      const next = action.id ? 'back' : open && `row:${open}`
+      return ['tab-items', ...(next ? [next] : [])]
+    }
+    case 'fold':
+      return ['tab-items', `group-${action.group}`]
+    case 'query':
+      return ['search']
+    default:
+      return []
+  }
+}
+
 // Rows the toolbar takes: wrapped Buttons ("[ label ]" and a
 // gap) and one row per Input.
 export function controlRows(drawn: Omit<Drawn, 'nodes'>, size: Size): number {

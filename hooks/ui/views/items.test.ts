@@ -55,8 +55,8 @@ test('each row is a plain Button keyed by its item that opens it; the selected o
   expect(own?.dim).toBeUndefined()
   expect(rows.filter(one => one.autoFocus)).toHaveLength(1)
   expect(rows.find(one => one.key === `row:${dev.id}`)?.dim).toBe(true)
-  expect(keys(drawn.buttons)).toEqual(['x: stop', 'g: stop group', 's: search'])
-  expect(drawn.buttons.map(one => one.hotkey)).toEqual(['x', 'g', 's'])
+  expect(keys(drawn.buttons)).toEqual(['s: search', 'x: stop', 'g: stop group'])
+  expect(drawn.buttons.map(one => one.hotkey)).toEqual(['s', 'x', 'g'])
 })
 
 test('a group header is a Button that folds it; with nothing selected the first row has the focus', () => {
@@ -86,7 +86,7 @@ test('below 90 columns the list fills the width, drops the gaps and ends with on
   expect(cell(grid, 0, end).slice(1)).toEqual([C.yellow, C.panel])
   expect(cell(grid, 79, end)[2]).toBe(C.panel)
   expect(cell(grid, at(shown, end, '≈'), end)[1]).toBe(C.bright)
-  expect(keys(buttons)).toEqual(['x: stop', 'g: stop group', 's'])
+  expect(keys(buttons)).toEqual(['s', 'x: stop', 'g: stop group'])
 })
 
 test('below 90 columns a list that fits keeps the gaps between groups', () => {
