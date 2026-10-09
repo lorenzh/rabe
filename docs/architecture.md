@@ -22,7 +22,7 @@ hooks/
   sources/monitors.ts monitors: items and their output lines
   sources/crons.ts    cron jobs and /loop wakeups
   tasks.ts            pure: task notifications, task output files, port guess
-  writes.ts           pure: the files a shell command line writes (a guess)
+  writes.ts           pure: the files a shell command line surely writes
   schedule.ts         pure: next runs of a cron expression
   testing.ts          test helpers: state in memory, files, core stubs
   ui/band.tsx         the band above the prompt
@@ -267,6 +267,8 @@ Monitor lines are kept apart from the item, in the `$.state` key `rabe.lines`: `
 | `classic.Stop` | Syncs with `session_crons`: a job gone from the list ends as done (a one-time job fired, a job expired); a new one is added. Wakeups are not ended here, and a listed job whose prompt matches a running wakeup is not added twice. |
 
 `schedule.ts` has `nextRun(expr, from)` and `nextRuns(expr, from, count)`: the next times a 5-field cron expression matches in local time, after `from`. It reads `*`, numbers, ranges, lists and steps; day of month and day of week match either one when both are set, as in cron. Minutes advance in real time, so a next run is never earlier than `from`, also in the hour that repeats when summer time ends (a job in that hour can show twice). A broken or impossible expression gives `undefined` (an empty list). Claude Code adds up to 10 % jitter to recurring jobs, which this does not show. The band's next run (`nextAt` in `lists.ts`) and the cron detail use `nextRuns` too.
+
+`writes.ts` has `shellWrites(command, cwd, home)`: the files a shell command line surely writes, each `{ path, isDeleted? }`, the last change to a path winning. It never throws and runs in linear time. `lex` reads the words with bash quoting and drops comments and here-doc bodies; a word keeps whether it has an expansion, whether it can become more or fewer words, and whether its first character is literal, which decides if it can turn into an option. Command substitutions are skipped as a whole with their own quotes and nesting (64 levels at most), so nothing in them counts. `simple` takes the redirections out of a command and unwraps the known prefixes; a keyword, `[`, `test`, `exit` or a group ends the walk. `targets` reads the operands of the table commands (`SPECS`: each command's short and long options); an option the table lacks, or a word that could expand into one, gives none. `shellWrites` walks the list: `&&` keeps going, `;` and a newline also commit, `||` commits and ends, and a list sent to the background with `&` is dropped. The rules and what is skipped are in `docs/feasibility.md`.
 
 ## Testing sources
 
