@@ -85,12 +85,22 @@ const isSame = (a: Price, b: Price) =>
   a.provider === b.provider && names(a).some(name => names(b).includes(name))
 
 // A user's row replaces each built-in row it names by ID or alias, and takes
-// that row's other names, so an override of a model also prices its aliases.
+// that row's other names, so an override of a model also prices its aliases;
+// a name another user row of the provider names itself stays with that row.
 export function withOverride(base: Prices, over: Prices): Prices {
+  const isOwn = (name: string, one: Price) =>
+    over.some(row => row !== one && row.provider === one.provider && names(row).includes(name))
+
   return [
     ...over.map(one => ({
       ...one,
-      aliases: [...one.aliases, ...base.filter(row => isSame(one, row)).flatMap(names)],
+      aliases: [
+        ...one.aliases,
+        ...base
+          .filter(row => isSame(one, row))
+          .flatMap(names)
+          .filter(name => !isOwn(name, one)),
+      ],
     })),
     ...base.filter(row => !over.some(one => isSame(one, row))),
   ]

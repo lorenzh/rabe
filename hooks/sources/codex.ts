@@ -11,7 +11,7 @@ import {
   type RabeItemOf,
 } from '../model'
 import { type CodexRequest, codexUsd, type Prices, parsePrices, withOverride } from '../prices'
-import { addItem, type Change, commit, endItem, prune } from '../registry'
+import { addItem, type Change, commit, endItem, prune, updateItem } from '../registry'
 import { shellWrites } from '../writes'
 
 const POLL_MS = 2000
@@ -191,10 +191,10 @@ export function parseRollout(text: string, home?: string): Rollout {
       }
       // a record without counts (rate limits only) or that repeats the total adds no request
       const key = JSON.stringify(usage)
-      if (Object.keys(info).length && key !== total) {
-        out.requests.push(request(info.last_token_usage, out.model))
+      if (Object.keys(info).length) {
+        if (key !== total) out.requests.push(request(info.last_token_usage, out.model))
+        total = key
       }
-      total = key
     } else if (record.type === 'event_msg' && payload.type === 'item_completed') {
       const item = rec(payload.item)
       const at = num(payload.completed_at_ms) ?? (Date.parse(str(record.timestamp) ?? '') || 0)
@@ -551,7 +551,15 @@ async function cancel($: EngineInterface, id: string): Promise<{ text: string }>
     return { text: `Stop refused: ${firstLine(result.stderr) || `exit ${result.exitCode}`}` }
   }
   const now = await $.clock.now()
-  await write($, held => endItem(held, id, 'stopped', now))
+  // later polls skip the stopped job: its cost stays only while the session
+  // file is the one it was priced from
+  const { sessionPath, sessionUpdatedAt } = item.detail
+  const stat = sessionPath ? await $.fs.stat(sessionPath).catch(() => undefined) : undefined
+  const isPriced = stat !== undefined && stat.mtimeMs === sessionUpdatedAt
+  await write($, held => {
+    const ended = endItem(held, id, 'stopped', now)
+    return isPriced ? ended : updateItem(ended, id, { costUsd: undefined })
+  })
 
   return { text: `Stopped codex ${item.title}` }
 }

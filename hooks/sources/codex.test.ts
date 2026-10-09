@@ -235,6 +235,18 @@ test('each new total is one request, with the model in use then', () => {
   ])
 })
 
+test('a rate-limit record between two equal totals adds no request', () => {
+  const { requests } = parseRollout(
+    [
+      line('turn_context', { model: 'gpt-6.1-sol' }),
+      tokenCount(10, usage(10)),
+      line('event_msg', { type: 'token_count', info: null }),
+      tokenCount(10, usage(10)),
+    ].join('\n'),
+  )
+  expect(requests).toHaveLength(1)
+})
+
 test('an empty or broken rollout gives no fields', () => {
   expect(parseRollout('not json\n')).toEqual({ requests: [], steps: [], commandCount: 0 })
 })
@@ -563,6 +575,38 @@ test('/rabe-stop cancels the job through the companion script', async ($, on) =>
     },
   ])
   expect(answer).toEqual({ text: 'Stopped codex Review pkg/auth after the logger migration.' })
+})
+
+// A stop ends the item at once, and later polls skip it: its cost stays only
+// when the session file is the one it was priced from.
+test('/rabe-stop keeps the cost of an unchanged session file and drops it otherwise', async ($, on) => {
+  const writes = watchItems(on)
+  prices(on)
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job(), job({ id: 'task-2', threadId: 'th-1' })] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [`${WS}/jobs/task-2.json`]: job({ id: 'task-2', threadId: 'th-1' }),
+    [ROLLOUT_PATH]: ROLLOUT,
+    [`${HOME}/.claude/plugins/installed_plugins.json`]: {
+      plugins: { 'codex@openai-codex': [{ installPath: PLUGIN }] },
+    },
+  })
+  on('process.run', async (_$, e, next) =>
+    e.argv[0] === 'git' ? next(e) : ({ value: { exitCode: 0, stdout: '{}', stderr: '' } } as never),
+  )
+  await startAndTick($, w)
+  const priced = writes.at(-1)?.find(item => item.id === 'codex:task-1')?.costUsd
+  expect(priced).toBeDefined()
+  await $.command.run({ command: 'rabe-stop', args: 'codex:task-1' } as never)
+  expect(writes.at(-1)?.find(item => item.id === 'codex:task-1')).toMatchObject({
+    status: 'stopped',
+    costUsd: priced,
+  })
+  w.files.set(ROLLOUT_PATH, { text: ROLLOUT, mtimeMs: 6000 })
+  await $.command.run({ command: 'rabe-stop', args: 'codex:task-2' } as never)
+  const stopped = writes.at(-1)?.find(item => item.id === 'codex:task-2')
+  expect(stopped?.status).toBe('stopped')
+  expect(stopped?.costUsd).toBeUndefined()
 })
 
 test('an unchanged session file keeps the model and effort it gave', () => {

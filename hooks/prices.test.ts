@@ -85,6 +85,13 @@ test('an override of a model also prices the built-in aliases of that model', ()
   // an override by the alias also prices the built-in model ID
   const byAlias = withOverride(prices, parsePrices(`${HEAD}\nclaude,claude-opus-4-5,,1,1\n`))
   expect(claudeUsd(byAlias, claude(M, 0, 0, 0), 'claude-opus-4-5-20251101')).toBe(1)
+  // a name another override row names itself keeps that row's price
+  const two = parsePrices(
+    `${HEAD}\nclaude,claude-opus-4-5-20251101,,1,1\nclaude,claude-opus-4-5,,2,2\n`,
+  )
+  const each = withOverride(prices, two)
+  expect(claudeUsd(each, claude(M, 0, 0, 0), 'claude-opus-4-5')).toBe(2)
+  expect(claudeUsd(each, claude(M, 0, 0, 0), 'claude-opus-4-5-20251101')).toBe(1)
   // within its provider only
   const other = withOverride(prices, parsePrices(`${HEAD}\nopenai,claude-opus-4-5,,1,1\n`))
   expect(claudeUsd(other, claude(M, 0, 0, 0), 'claude-opus-4-5-20251101')).toBe(5)
