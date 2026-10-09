@@ -16,7 +16,6 @@ import {
 import {
   canStop,
   type Drawn,
-  hash,
   isPress,
   isWorkflowAgent,
   type Line,
@@ -103,7 +102,7 @@ function listLines(
   model: Model,
   sel: Selection,
   rows: number,
-): { lines: Line[]; order: RabeItem[]; shown: { id: Group; items: RabeItem[] }[] } {
+): { lines: Line[]; order: RabeItem[]; shown: RabeItem[][] } {
   const groups = groupsOf(model, sel)
   const order = orderIn(groups, sel)
   const selected = selectedItem(order, sel)
@@ -137,7 +136,7 @@ function listLines(
   return {
     lines: focusOn(lines, selected?.id ?? ''),
     order,
-    shown: groups.map(group => ({ id: group.id, items: group.items })),
+    shown: groups.map(group => group.items),
   }
 }
 
@@ -169,13 +168,14 @@ function summaryLine(model: Model, item: RabeItem): Line {
 // g stops the run of a workflow or its agent, else the rows of the group the
 // selected row is shown in (`shown`). Below the split, s keeps only its letter.
 // x and g keep their slots while they cannot act: dim, without a hotkey.
-// Each key names its target (`stop:<id>`, `stop-group:<group>:<hash of ids>`,
-// `stop-run:<id>`), so a new target is a new key and never takes a held slot.
+// Each keeps one key (`stop`, `stop-group`) and acts on the selection, so the
+// person walks the list without leaving slots; a target that changes without
+// the person disarms them (see arming in docs/architecture.md).
 function listButtons(
   model: Model,
   size: Size,
   selected: RabeItem | undefined,
-  shown: { id: Group; items: RabeItem[] }[],
+  shown: RabeItem[][],
 ) {
   const run =
     selected?.kind === 'workflow'
@@ -183,8 +183,9 @@ function listButtons(
       : selected && isWorkflowAgent(selected)
         ? model.items.find(one => one.id === selected.parentId && one.kind === 'workflow')
         : undefined
-  const home = shown.find(one => selected && one.items.includes(selected))
-  const group = (home?.items ?? []).filter(canStop).map(one => one.id)
+  const group = (shown.find(list => selected && list.includes(selected)) ?? [])
+    .filter(canStop)
+    .map(one => one.id)
   const slot = (key: string, label: string, ids: string[] | undefined): ViewButton =>
     ids
       ? { key, label, hotkey: label.slice(0, 1), action: { type: 'stop', ids } }
@@ -203,17 +204,13 @@ function listButtons(
     : []
   buttons.push(
     slot(
-      `stop:${selected?.id ?? ''}`,
+      'stop',
       'x: stop',
       selected && selected !== run && canStop(selected) ? [selected.id] : undefined,
     ),
     run
-      ? slot(`stop-run:${run.id}`, 'g: stop run', canStop(run) ? [run.id] : undefined)
-      : slot(
-          `stop-group:${home?.id ?? ''}:${group.length > 1 ? hash(group) : ''}`,
-          'g: stop group',
-          group.length > 1 ? group : undefined,
-        ),
+      ? slot('stop-group', 'g: stop run', canStop(run) ? [run.id] : undefined)
+      : slot('stop-group', 'g: stop group', group.length > 1 ? group : undefined),
   )
 
   return buttons

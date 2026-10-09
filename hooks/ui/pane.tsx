@@ -16,6 +16,7 @@ import {
   rowKeys,
   type Selection,
   stepRow,
+  targetsOf,
   taskIdOf,
 } from './view'
 import { fallbackOf, paneView } from './views/pane'
@@ -324,8 +325,6 @@ export function pane(on: On): void {
       $.clock.after(500, () => void refocus($).catch(() => undefined))
     }
     const { model, selection: seen } = await look($, e.props.isFocused)
-    feed($, { type: 'drawn', fallback: fallbackOf(model, seen) })
-    const selection = { ...seen, isArmed: arming.isArmed }
     const size = bounded({
       columns: e.props.bodyColumns,
       rows: e.props.scroll?.bodyRows || 24,
@@ -336,7 +335,18 @@ export function pane(on: On): void {
       }),
     })
 
-    const out = hold(layout(paneView(model, size, selection)), heldOf(e.surface, selection))
+    // What x and g would act on decides whether they may.
+    const armed = paneView(model, size, { ...seen, isArmed: true })
+    const { selected } = seen
+    feed($, {
+      type: 'drawn',
+      fallback: fallbackOf(model, seen),
+      targets: targetsOf(armed),
+      selected,
+    })
+    const selection = { ...seen, isArmed: arming.isArmed }
+    const drawn = arming.isArmed ? armed : paneView(model, size, selection)
+    const out = hold(layout(drawn), heldOf(e.surface, selection))
     holds.set(e.surface, { scope: scopeOf(selection), keys: out.held })
 
     return render(ui, e.surface, out.list, (action, surface) => {

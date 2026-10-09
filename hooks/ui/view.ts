@@ -204,9 +204,18 @@ export function landing(action: Action, open: string): string[] {
 
 // Whether the focus ring is known to sit on a safe element, so that stop and
 // delete may act. The engine keeps the ring on an index the pane cannot read;
-// `fallback` is the last fallback a drawing showed (`undefined`: take the next
-// one as it is). See arming in docs/architecture.md.
-export type Arming = { isArmed: boolean; fallback?: string }
+// `shown` is what the last drawing showed (`undefined`: take the next one as
+// it is). See arming in docs/architecture.md.
+export type Shown = {
+  // The open item or selected row the drawing could not show, or ''.
+  fallback: string
+  // What the list's `stop` and `stop-group` act on (`targetsOf`).
+  targets: string[]
+  // The stored selection: only the person changes it.
+  selected: string
+}
+
+export type Arming = { isArmed: boolean; shown?: Shown }
 
 export const DISARMED: Arming = { isArmed: false }
 
@@ -218,10 +227,10 @@ export type ArmEvent =
   // A `ui.focus` on the pane that no hook refused: by the person, or by Rabe
   // (a landing, `autoFocus`) onto element `key`.
   | { type: 'focus'; byPerson: boolean; key: string }
-  // A drawing; `fallback` names the open or selected item it could not show.
-  | { type: 'drawn'; fallback: string }
+  // A drawing.
+  | ({ type: 'drawn' } & Shown)
 
-const DESTRUCTIVE = /^(stop|stop-group|stop-run|delete):/
+const DESTRUCTIVE = /^(stop|stop-group|stop-run|delete)(:|$)/
 
 export const isDestructive = (key: string): boolean => DESTRUCTIVE.test(key)
 
@@ -234,22 +243,31 @@ export function arm(state: Arming, event: ArmEvent): Arming {
     case 'focus':
       return event.byPerson || !isDestructive(event.key) ? { ...state, isArmed: true } : state
     case 'drawn': {
-      const isNew = state.fallback !== undefined && event.fallback !== state.fallback
-      return {
-        isArmed: state.isArmed && !(isNew && event.fallback !== ''),
-        fallback: event.fallback,
-      }
+      const { fallback, targets, selected } = event
+      const was = state.shown
+      const isAuto =
+        was !== undefined &&
+        ((fallback !== '' && fallback !== was.fallback) ||
+          (selected === was.selected && targets.some(one => !was.targets.includes(one))))
+      return { isArmed: state.isArmed && !isAuto, shown: { fallback, targets, selected } }
     }
   }
 }
 
-// A short name for a list of ids, for a key: the same list, the same name.
-export function hash(ids: readonly string[]): string {
-  let h = 5381
-  for (const ch of ids.join('\n')) h = (Math.imul(h, 33) ^ (ch.codePointAt(0) ?? 0)) >>> 0
+// The list's x and g keep one key each and act on the selection.
+export const LIST_KEYS = ['stop', 'stop-group']
 
-  return h.toString(36)
-}
+// What the list's x and g act on in a drawing: one entry per control and item.
+// Fewer entries (a row of the group ended) stop less than the person saw;
+// a new entry is a target they did not choose.
+export const targetsOf = (drawn: Drawn): string[] =>
+  drawn.buttons
+    .filter(one => LIST_KEYS.includes(one.key))
+    .flatMap(({ key, label, action }) =>
+      action.type === 'stop'
+        ? action.ids.map(id => JSON.stringify([key, label, id]))
+        : [JSON.stringify([key, label, action.type])],
+    )
 
 // Rows the toolbar takes: wrapped Buttons ("[ label ]" and a
 // gap) and one row per Input.

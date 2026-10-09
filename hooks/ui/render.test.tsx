@@ -7,8 +7,11 @@ import { orderOf } from './lists'
 import { type Held, hold, render, type Ui } from './render'
 import {
   type Action,
+  arm,
+  DISARMED,
   type Drawn,
   isPress,
+  LIST_KEYS,
   landing,
   layout,
   type Model,
@@ -16,8 +19,9 @@ import {
   type Piece,
   type Selection,
   type Size,
+  targetsOf,
 } from './view'
-import { paneView } from './views/pane'
+import { fallbackOf, paneView } from './views/pane'
 
 const PROBE = {
   surface: 'terminal',
@@ -156,8 +160,8 @@ test('rows found after the open do not move the controls', () => {
   const first = draw(model(items), SIZE, sel)
   const later = draw(model([...items, shell('b')]), SIZE, sel, first.held)
   expect(later.keys.slice(0, first.keys.length)).toEqual(first.keys)
-  expect(later.keys.indexOf('stop:shell:a')).toBe(first.keys.indexOf('stop:shell:a'))
-  expect(later.keys.indexOf('stop:shell:a')).toBeLessThan(later.keys.indexOf('row:shell:a'))
+  expect(later.keys.indexOf('stop')).toBe(first.keys.indexOf('stop'))
+  expect(later.keys.indexOf('stop')).toBeLessThan(later.keys.indexOf('row:shell:a'))
   const open = { ...sel, open: flow.id, order: orderOf([flow]) }
   const run = draw(model([flow]), SIZE, open)
   const more = draw(model([flow, agentOf('w9', { workflowPhase: 'Review' })]), SIZE, open, run.held)
@@ -307,11 +311,29 @@ function targetOf(action: Action): string | undefined {
 }
 
 // A key never changes what it acts on, and a focusable index of the hold
-// never acts on another target than it did before (`seen`, by index).
-function checkTargets(shown: string, list: Piece[], keys: Map<string, string>, seen: string[]) {
+// never acts on another target than it did before (`seen`, by index). The
+// list's x and g act on the selection: a target they gain comes only by the
+// person's selection (`byPerson`), else the pane must be disarmed (`isArmed`).
+function checkTargets(
+  shown: string,
+  list: Piece[],
+  keys: Map<string, string>,
+  seen: string[],
+  isArmed = true,
+  byPerson = false,
+) {
   actionsOf(list, 'hi').forEach(([key, action], i) => {
     const target = targetOf(action)
     if (target === undefined) return
+    if (LIST_KEYS.includes(key)) {
+      const was = (seen[i] ?? '').split(',')
+      const isGained = action.type === 'stop' && action.ids.some(id => !was.includes(id))
+      if (seen[i] !== undefined && isGained && !byPerson) {
+        expect([shown, i, key, 'armed', isArmed]).toEqual([shown, i, key, 'armed', false])
+      }
+      seen[i] = action.type === 'stop' ? action.ids.join(',') : ''
+      return
+    }
     const was = keys.get(key) ?? target
     keys.set(key, was)
     expect([shown, key, target]).toEqual([shown, key, was])
@@ -363,6 +385,15 @@ test('whatever changes while the pane is open, the focusable keys only grow at t
       const targets = new Map<string, string>()
       let seen: string[] = []
       checkTargets(`${surface} ${JSON.stringify(scope)} start`, last.list, targets, seen)
+      // The pane's arming, fed as pane.tsx feeds it; the walk starts landed.
+      const drawnOf = (items: RabeItem[], size: Size) =>
+        ({
+          type: 'drawn',
+          fallback: fallbackOf(model(items), sel),
+          targets: targetsOf(paneView(model(items), size, sel)),
+          selected: sel.selected,
+        }) as const
+      let arming = arm(arm(DISARMED, drawnOf(items, size)), { type: 'landed', isMoved: true })
       for (let n = 0; n < 80; n++) {
         const what = pick(5)
         if (what === 4) {
@@ -386,17 +417,24 @@ test('whatever changes while the pane is open, the focusable keys only grow at t
           expect([shown, type === 'stop' || type === 'delete']).toEqual([shown, false])
           seen = []
           checkTargets(shown, last.list, targets, seen)
+          arming = arm(arm(arm(arming, { type: 'reset' }), drawnOf(items, size)), {
+            type: 'landed',
+            isMoved: true,
+          })
           continue
         }
         if (what === 0) size = { ...size, columns: WIDTHS[pick(WIDTHS.length)] ?? 80 }
         else if (what === 1) {
           const rows = last.keys.filter(key => key.startsWith('row:'))
-          sel.selected = rows[pick(Math.max(1, rows.length))]?.slice(4) ?? ''
+          const key = rows[pick(Math.max(1, rows.length))] ?? ''
+          sel.selected = key.slice(4)
+          arming = arm(arming, { type: 'focus', byPerson: true, key })
         } else items = change(items, pick, n)
         const next = draw(model(items), size, sel, last.held)
         const shown = `${surface} ${JSON.stringify(scope)} step ${n}`
         expect([shown, next.keys.slice(0, last.keys.length)]).toEqual([shown, last.keys])
-        checkTargets(shown, next.list, targets, seen)
+        arming = arm(arming, drawnOf(items, size))
+        checkTargets(shown, next.list, targets, seen, arming.isArmed, what === 1)
         last = next
       }
     })
@@ -415,7 +453,19 @@ test('an open item that is gone never hands its slots to the list, whose stop co
   for (const [key, action] of actions.slice(0, first.keys.length)) {
     expect([key, action.type]).not.toEqual([key, 'stop'])
   }
-  expect(actions.findIndex(([key]) => key === 'stop:shell:b')).toBeGreaterThanOrEqual(
-    first.keys.length,
-  )
+  expect(actions.findIndex(([key]) => key === 'stop')).toBeGreaterThanOrEqual(first.keys.length)
+})
+
+// The list's x and g keep one key each: walking every row leaves no slot.
+test('walking the list keeps exactly one x and one g', () => {
+  const items = ALL.map(item => ({ ...item, status: 'running' as const }))
+  const sel: Selection = { ...OPEN, order: orderOf(items) }
+  let last = draw(model(items), SIZE, sel)
+  for (const key of last.keys.filter(one => one.startsWith('row:'))) {
+    sel.selected = key.slice(4)
+    last = draw(model(items), SIZE, sel, last.held)
+  }
+  expect(last.keys.filter(key => key === 'stop')).toHaveLength(1)
+  expect(last.keys.filter(key => key === 'stop-group')).toHaveLength(1)
+  expect(last.tree.filter(one => String(one.props.label).startsWith('x:'))).toHaveLength(1)
 })

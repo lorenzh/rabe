@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { arm, DISARMED, hash, isDestructive, landing, stepRow } from './view'
+import { arm, DISARMED, isDestructive, landing, stepRow } from './view'
 
 const KEYS = ['row:a', 'row:b', 'row:c']
 
@@ -44,27 +44,41 @@ test('the pane starts disarmed, and only evidence of a safe ring arms it', () =>
   expect(arm(armed, { type: 'focus', byPerson: false, key: 'delete:cron:a' }).isArmed).toBe(true)
 })
 
+const shown = (fallback: string, targets: string[] = [], selected = 'a') =>
+  ({ type: 'drawn', fallback, targets, selected }) as const
+
 test('a view that falls back disarms once; a reset takes the fallback the next drawing shows', () => {
-  const drawn = arm(DISARMED, { type: 'drawn', fallback: '' })
-  const armed = arm(drawn, { type: 'landed', isMoved: true })
-  const fell = arm(armed, { type: 'drawn', fallback: 'open:shell:a' })
+  const armed = arm(arm(DISARMED, shown('')), { type: 'landed', isMoved: true })
+  const fell = arm(armed, shown('open:shell:a'))
   expect(fell.isArmed).toBe(false)
-  const again = arm(arm(fell, { type: 'landed', isMoved: true }), {
-    type: 'drawn',
-    fallback: 'open:shell:a',
-  })
+  const again = arm(arm(fell, { type: 'landed', isMoved: true }), shown('open:shell:a'))
   expect(again.isArmed).toBe(true)
-  expect(arm(again, { type: 'drawn', fallback: '' }).isArmed).toBe(true)
-  const reset = arm(armed, { type: 'reset' })
-  const landed = arm(reset, { type: 'landed', isMoved: true })
-  expect(arm(landed, { type: 'drawn', fallback: 'selected:file:/a.ts' }).isArmed).toBe(true)
-  expect(arm(armed, { type: 'drawn', fallback: 'selected:shell:b' }).isArmed).toBe(false)
+  expect(arm(again, shown('')).isArmed).toBe(true)
+  const landed = arm(arm(armed, { type: 'reset' }), { type: 'landed', isMoved: true })
+  expect(arm(landed, shown('selected:file:/a.ts')).isArmed).toBe(true)
+  expect(arm(armed, shown('selected:shell:b')).isArmed).toBe(false)
+})
+
+// The list's x and g act on the selection under one key each: a target that
+// comes while the person did not move the selection disarms them.
+test('a list target that comes without the person disarms; the next person focus re-arms', () => {
+  const armed = arm(arm(DISARMED, shown('', ['x a', 'g a', 'g c'])), {
+    type: 'landed',
+    isMoved: true,
+  })
+  expect(arm(armed, shown('', ['x a', 'g a', 'g c'])).isArmed).toBe(true)
+  expect(arm(armed, shown('', ['x a', 'g a'])).isArmed).toBe(true)
+  expect(arm(armed, shown('', ['x b', 'g b'], 'b')).isArmed).toBe(true)
+  expect(arm(armed, shown('', ['x a', 'g a', 'g c', 'g d'])).isArmed).toBe(false)
+  const moved = arm(armed, shown('', ['x c', 'g a', 'g c']))
+  expect(moved.isArmed).toBe(false)
+  expect(arm(moved, { type: 'focus', byPerson: true, key: 'row:a' }).isArmed).toBe(true)
 })
 
 test('the keys of destructive controls are known by their prefix', () => {
   expect(
-    ['stop:a', 'stop-group:shells:1x', 'stop-run:workflow:a', 'delete:cron:a'].map(isDestructive),
-  ).toEqual([true, true, true, true])
+    ['stop', 'stop-group', 'stop:a', 'stop-run:workflow:a', 'delete:cron:a'].map(isDestructive),
+  ).toEqual([true, true, true, true, true])
   expect(['row:a', 'back', 'copy:a', 'message-agent:a', 'tab-items'].map(isDestructive)).toEqual([
     false,
     false,
@@ -72,11 +86,4 @@ test('the keys of destructive controls are known by their prefix', () => {
     false,
     false,
   ])
-})
-
-test('a hash names a list of ids in a key: the same list the same, another list another', () => {
-  expect(hash(['a', 'b'])).toBe(hash(['a', 'b']))
-  expect(hash(['a', 'b'])).not.toBe(hash(['a', 'c']))
-  expect(hash(['ab'])).not.toBe(hash(['a', 'b']))
-  expect(hash(['a', 'b'])).toMatch(/^[0-9a-z]+$/)
 })

@@ -298,7 +298,7 @@ test('stop calls TaskStop with the task id on every surface', async ($, on) => {
   await arm($)
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
-    await ui.press({ key: `stop:${dev.id}` })
+    await ui.press({ key: 'stop' })
     await ui.unmount()
   }
   expect(stopped).toEqual(['bg_2', 'bg_2'])
@@ -606,14 +606,14 @@ test('g on a workflow agent stops its run on every surface', async ($, on) => {
   await arm($)
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
-    expect((await ui.find({ type: 'Button', key: `stop-run:${flow.id}` }))?.props).toMatchObject({
+    expect((await ui.find({ type: 'Button', key: 'stop-group' }))?.props).toMatchObject({
       label: 'g: stop run',
       hotkey: 'g',
     })
-    const x = await ui.find({ type: 'Button', key: `stop:${verify.id}` })
+    const x = await ui.find({ type: 'Button', key: 'stop' })
     expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, undefined])
     expect(await screen(ui)).toContain(' ↑↓ move · enter open · g stop run · esc close')
-    await ui.press({ key: `stop-run:${flow.id}` })
+    await ui.press({ key: 'stop-group' })
     await ui.unmount()
   }
   expect(stopped).toEqual(['wf_task', 'wf_task'])
@@ -765,16 +765,16 @@ test('the pane opens disarmed: a stop does nothing until the person moves the ri
   await $.command.run({ command: 'rabe', args: '' } as never)
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
-    const x = await ui.find({ type: 'Button', key: `stop:${dev.id}` })
+    const x = await ui.find({ type: 'Button', key: 'stop' })
     expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, undefined])
-    await ui.press({ key: `stop:${dev.id}` })
+    await ui.press({ key: 'stop' })
     await ui.unmount()
   }
   expect(stopped).toEqual([])
   await arm($, `row:${dev.id}`)
   const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
-  expect((await ui.find({ type: 'Button', key: `stop:${dev.id}` }))?.props.hotkey).toBe('x')
-  await ui.press({ key: `stop:${dev.id}` })
+  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBe('x')
+  await ui.press({ key: 'stop' })
   await ui.unmount()
   expect(stopped).toEqual(['bg_2'])
 })
@@ -787,11 +787,11 @@ test('an open item that is gone disarms the list the view falls back to', async 
   expect((await ui.find({ type: 'Button', key: `stop:${dev.id}` }))?.props.hotkey).toBe('x')
   items.splice(items.indexOf(dev), 1)
   await ui.redraw()
-  const x = await ui.find({ type: 'Button', key: `stop:${explore.id}` })
+  const x = await ui.find({ type: 'Button', key: 'stop' })
   expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, undefined])
   await arm($, `row:${explore.id}`)
   await ui.redraw()
-  expect((await ui.find({ type: 'Button', key: `stop:${explore.id}` }))?.props.hotkey).toBe('x')
+  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBe('x')
   await ui.unmount()
 })
 
@@ -801,10 +801,28 @@ test('a change of the view disarms until the ring lands; a failed landing keeps 
   hold(on, ALL, { selected: dev.id })
   await arm($)
   const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
-  expect((await ui.find({ type: 'Button', key: `stop:${dev.id}` }))?.props.hotkey).toBe('x')
+  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBe('x')
   await ui.press({ key: 'tab-cost' })
   await ui.press({ key: 'tab-items' })
-  const x = await ui.find({ type: 'Button', key: `stop:${dev.id}` })
+  const x = await ui.find({ type: 'Button', key: 'stop' })
   expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, undefined])
+  await ui.unmount()
+})
+
+test('a selected row that is gone disarms x and g; the next focus by the person re-arms them', async ($, on) => {
+  const items = ALL.filter(item => item !== lint)
+  hold(on, items, { selected: dev.id })
+  await arm($, `row:${dev.id}`)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBe('x')
+  items.splice(items.indexOf(dev), 1)
+  await ui.redraw()
+  for (const key of ['stop', 'stop-group']) {
+    const one = await ui.find({ type: 'Button', key })
+    expect([key, one?.props.hotkey]).toEqual([key, undefined])
+  }
+  await arm($, `row:${explore.id}`)
+  await ui.redraw()
+  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBe('x')
   await ui.unmount()
 })

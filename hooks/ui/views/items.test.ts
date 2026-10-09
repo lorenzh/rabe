@@ -17,16 +17,7 @@ import {
   verify,
 } from '../fixtures'
 import { grouped, orderOf } from '../lists'
-import {
-  controlRows,
-  type Drawn,
-  hash,
-  isPress,
-  NO_SELECTION,
-  NONE,
-  rowKeys,
-  type Size,
-} from '../view'
+import { controlRows, type Drawn, isPress, NO_SELECTION, NONE, rowKeys, type Size } from '../view'
 import { itemsView } from './items'
 import { fallbackOf, paneView } from './pane'
 
@@ -203,14 +194,14 @@ test('a workflow agent or a run offers g: stop run on the list', () => {
   for (const selected of [verify.id, flow.id]) {
     const { buttons } = itemsView(model, WIDE, { ...NO_SELECTION, selected })
     const run = buttons.find(one => one.hotkey === 'g')
-    expect(run).toMatchObject({ key: `stop-run:${flow.id}`, label: 'g: stop run' })
+    expect(run).toMatchObject({ key: 'stop-group', label: 'g: stop run' })
     expect(run?.action).toEqual({ type: 'stop', ids: [flow.id] })
     expect(buttons.find(one => one.hotkey === 'x')).toBeUndefined()
   }
 })
 
 const stopIds = (drawn: Drawn) => {
-  const action = drawn.buttons.find(one => one.key.startsWith('stop-group:'))?.action
+  const action = drawn.buttons.find(one => one.key === 'stop-group')?.action
   return action?.type === 'stop' ? action.ids : undefined
 }
 
@@ -315,29 +306,17 @@ test('the split detail sits in the rows the pane shows, where the focus took the
   expect(detailAt(still, 's08') + controlRows(still, WIDE)).toBe(5)
 })
 
-// A control that acts on an item carries its target in its key: another
-// selected row or another set of group rows is another key.
-test('x and g name what they stop in their keys', () => {
+// The list's x and g keep one key each and act on the selected row, so
+// walking the list leaves no slots (see arming in docs/architecture.md).
+test('x and g keep their keys and act on the selected row', () => {
   const sel = { ...NO_SELECTION, selected: explore.id }
   const [, x, g] = itemsView(model, WIDE, sel).buttons
-  expect(x).toMatchObject({
-    key: `stop:${explore.id}`,
-    action: { type: 'stop', ids: [explore.id] },
-  })
-  const ids = g?.action.type === 'stop' ? g.action.ids : []
-  expect(g?.key).toBe(`stop-group:agents:${hash(ids)}`)
+  expect(x).toMatchObject({ key: 'stop', action: { type: 'stop', ids: [explore.id] } })
+  expect(g?.key).toBe('stop-group')
   const [, other] = itemsView(model, WIDE, { ...sel, selected: review.id }).buttons
-  expect(other?.key).toBe(`stop:${review.id}`)
-  const fewer = { ...model, items: ALL.filter(item => item.id !== review.id) }
-  expect(itemsView(fewer, WIDE, sel).buttons[2]?.key).not.toBe(g?.key)
+  expect(other).toMatchObject({ key: 'stop', action: { type: 'stop', ids: [review.id] } })
   const ended = itemsView(model, WIDE, { ...sel, selected: lint.id }).buttons
-  expect(ended[1]).toMatchObject({ key: `stop:${lint.id}`, action: { type: 'none' }, dim: true })
-  const none = itemsView({ ...model, items: [] }, WIDE, NO_SELECTION).buttons
-  expect(none.map(one => [one.key, one.action.type])).toEqual([
-    ['find', 'focus'],
-    ['stop:', 'none'],
-    ['stop-group::', 'none'],
-  ])
+  expect(ended[1]).toMatchObject({ key: 'stop', action: { type: 'none' }, dim: true })
 })
 
 // Until the ring is known to sit on a safe element, stop and delete are drawn
