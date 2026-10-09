@@ -4,6 +4,25 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Added
+
+- The arrow keys and the mouse work in the pane: ↑ and ↓ move from row to row, Enter or a click opens a row, and the tabs and controls are buttons. (#TBD)
+- The detail beside the list follows the focus, without Enter. (#TBD)
+- Shells and monitors an agent started show under that agent in the Items tab and in the band. (#TBD)
+- Workflow agents can be walked and opened from the run's detail, and Effects files and `ssh -L` lines are rows you can press. (#TBD)
+
+### Changed
+
+- `j` and `k` no longer move in the pane; use ↑ and ↓. (#TBD)
+- A cron job's next run shows as its clock time (`next 15:00`) instead of a countdown that read like one; a wakeup that waits for the session shows `due`. (#TBD)
+
+### Fixed
+
+- Shells and monitors a subagent started end when their output file says so. (#TBD)
+- After a change of the tab, the search, a fold or the open item, the focus moves to a safe place, so Enter never presses a button that came to the old place. Rows found while the pane is open go to the end. (#TBD)
+- Stop and delete stay dim until Rabe knows where the focus is. On the list, `x` and `g` act only after you move the focus onto a row that is still there; a `gone` row or a group heading does not count. (#TBD)
+- The Timeline axis names each clock time once. (#TBD)
+
 ## [0.1.0] - 2026-10-09
 
 The first public version.
