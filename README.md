@@ -18,9 +18,9 @@ Status: early development. Rabe tracks Claude subagents, workflows, Codex jobs s
 - **The band** above the prompt shows one row per kind while something runs: failures from the last 10 minutes first, then Claude agents, Codex jobs, workflows, shells with their ports, monitors, cron countdowns, and the token cost. It draws nothing when nothing runs, and one line when the rows do not fit.
 - **`/rabe`** opens a pane with four tabs (`1` to `4`):
   - **Items**: every item grouped by kind, failures first, with a search field. A wide terminal pane shows the selected item beside the list. Enter opens an item: the turns of a Claude agent or a Codex job, the phases and agents of a workflow, the output of a shell or monitor, the next runs of a cron job.
-  - **Cost**: tokens per agent and Codex job. Dollars show `n/a` until Rabe has a price table.
-  - **Effects**: worktrees and open ports, with the `ssh -L` command to reach a port.
-  - **Timeline**: when each item ran, and who started what.
+  - **Cost**: the session's cost as `/cost` totals it, then each agent and Codex job with a bar by tokens, and agents that look slow (a tool call open for 2 minutes, no step for 5). Dollars per worker show `n/a` until Rabe has a price table. `j`/`k` move, Enter opens the worker.
+  - **Effects**: a warning when two agents edit the same file in one tree, the files agents edited, worktrees, and open ports with the `ssh -L` command to reach a port (`c` copies it).
+  - **Timeline**: a bar per item over the session (a tick per cron run), who started what, and a summary of the previous session in this project. `j`/`k` move, Enter opens the item.
 
 In the terminal the band and the pane are drawn as colored cells; the desktop app shows the same content as text and buttons.
 

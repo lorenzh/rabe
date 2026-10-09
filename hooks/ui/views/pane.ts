@@ -22,7 +22,7 @@ const HINT = 1
 function hint(isFocused: boolean, isOpen: boolean, tab: RabeTab): string {
   if (!isFocused) return 'tab to select · esc close'
   if (isOpen) return 'b back · esc close'
-  if (tab === 'items') return 'j/k move · enter open · 1-4 switch · esc close'
+  if (tab !== 'effects') return 'j/k move · enter open · 1-4 switch · esc close'
 
   return '1-4 switch · esc close'
 }

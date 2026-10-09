@@ -1,9 +1,10 @@
 import type { On } from 'claude-code'
 import { expect, type Mounted, mock, test } from 'claude-code/testing'
 
-import type { RabeLines, RabeTurn } from '../../types'
+import type { RabeLines, RabePrevious, RabeTurn } from '../../types'
 import type { RabeItem } from '../model'
 import { ALL, babysit, dev, explore, flow, lint, NOW, review, screen } from './fixtures'
+import { previousOf } from './lists'
 
 const SURFACES = ['terminal', 'desktop'] as const
 
@@ -264,27 +265,80 @@ test('on the desktop rows are Buttons: a group header folds, an item opens', asy
   await ui.unmount()
 })
 
+const yesterday = new Date(2026, 9, 7, 17, 40).getTime()
+const PREVIOUS: RabePrevious = {
+  endedAt: yesterday,
+  counts: { agent: 6 },
+  tokens: 800_000,
+  failed: [],
+}
+
+const USAGE = { startedAt: NOW - 3_600_000, context: {}, rateLimits: [], cost: { usd: 0.41 } }
+
+// The session's cost and folder, and a store that holds the previous session.
+function session(on: On): Record<string, unknown> {
+  const store: Record<string, unknown> = { 'previous:/p': PREVIOUS }
+  on('session.usage', async () => ({ value: USAGE }) as never)
+  on('session.cwd', async () => ({ value: '/p' }))
+  on('session.end', async (_$, e) => ({ sessionId: e.sessionId }))
+  on('store.get', async (_$, e) => ({ value: store[e.key] }))
+  on('store.set', async (_$, e) => {
+    store[e.key] = e.value
+    return { value: undefined }
+  })
+
+  return store
+}
+
 test('cost, effects and timeline tabs draw their sections on every surface', async ($, on) => {
   hold(on, ALL)
+  session(on)
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
     await ui.press({ key: 'tab-cost' })
     let shown = await screen(ui)
-    expect(shown).toContain('session total ≈ $0.25')
-    expect(shown.some(line => /^◐ claude Explore verifyToken +41k +\$0\.16$/.test(line))).toBe(true)
+    expect(shown.some(line => line.includes('≈ $0.41 session  claude $0.16'))).toBe(true)
+    expect(shown.some(line => /◐ Explore verifyToken .* 41k +\$0\.16 +1m$/.test(line))).toBe(true)
+    expect(shown).toContain(' j/k move · enter open · 1-4 switch · esc close')
+    expect(await ui.find({ type: 'Button', key: 'open' })).toBeDefined()
     await ui.press({ key: 'tab-effects' })
     shown = await screen(ui)
-    expect(shown).toContain('WORKTREES 1')
-    expect(shown.some(line => /1 agent shares the main tree/.test(line))).toBe(true)
-    expect(shown).toContain(':5173 bun run dev')
+    expect(shown).toContain('WORKTREES 1  from agent metadata, running agents included')
+    expect(shown).toContain('  :5173  bun run dev')
     expect((await ui.find({ type: 'Button', key: 'port-5173' }))?.props.hotkey).toBe('c')
     await ui.press({ key: 'tab-timeline' })
     shown = await screen(ui)
-    expect(shown).toContain('WHEN DID THINGS RUN?')
-    expect(shown.some(line => /└─ ⧉ workflow review-changes/.test(line))).toBe(true)
+    expect(shown).toContain('WHEN DID THINGS RUN?  this session, last 40 min')
+    expect(shown.some(line => /└─ ⧉ review-changes \(workflow\)/.test(line))).toBe(true)
+    expect(shown.some(line => line.includes('this project · ended yesterday 17:40'))).toBe(true)
     await ui.press({ key: 'tab-items' })
     await ui.unmount()
   }
+})
+
+test('enter on a cost row opens that item in the items tab', async ($, on) => {
+  const state = hold(on, ALL, { tab: 'cost' })
+  session(on)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: 'open' })
+  expect(state).toMatchObject({ tab: 'items', open: explore.id, selected: explore.id })
+  await ui.unmount()
+})
+
+test('the session end keeps a summary for the next session in this project', async ($, on) => {
+  hold(on, ALL)
+  const store = session(on)
+  await $.session.end({ reason: 'exit', sessionId: 's1' } as never)
+  expect(store['previous:/p']).toEqual(
+    previousOf(ALL, NOW, { startedAt: USAGE.startedAt, usd: USAGE.cost.usd }),
+  )
+})
+
+test('a session without background work keeps the previous summary', async ($, on) => {
+  hold(on, [])
+  const store = session(on)
+  await $.session.end({ reason: 'clear', sessionId: 's1' } as never)
+  expect(store['previous:/p']).toBe(PREVIOUS)
 })
 
 const wakeup: RabeItem = {
