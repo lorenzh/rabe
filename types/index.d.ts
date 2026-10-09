@@ -4,7 +4,16 @@ export type RabeItemStatus = 'running' | 'done' | 'failed' | 'stopped'
 
 export type RabeTokens = { input: number; output: number; cached?: number }
 
-export type RabeEdit = { path: string; at: number }
+// How a file changed: an Edit or Write call, a write guessed from a shell
+// command line, or a Codex file change. Absent: an Edit or Write.
+export type RabeEditVia = 'edit' | 'write' | 'shell' | 'codex'
+
+export type RabeEdit = {
+  path: string
+  at: number
+  via?: RabeEditVia
+  change?: 'add' | 'update' | 'delete'
+}
 
 export type RabeAgentDetail = {
   agentId: string
@@ -56,6 +65,7 @@ export type RabeCodexDetail = {
   isSessionPartial?: boolean
   commandCount?: number
   steps?: RabeCodexStep[]
+  edits?: RabeEdit[]
 }
 
 export type RabeShellDetail = {
@@ -145,6 +155,8 @@ declare module 'claude-code' {
       selected: string
       open: string
       order: RabeOrder
+      // The files the main session changed (no agent), newest last.
+      edits: RabeEdit[]
     }
   }
 }

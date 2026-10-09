@@ -1,6 +1,7 @@
-import type { AgentSpawnInput, AgentStatus, On } from 'claude-code'
+import type { AgentSpawnInput, AgentStatus, FsStat, On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
+import type { RabeEdit } from '../../types'
 import type { RabeItem, RabeItemOf, RabeTurn } from '../model'
 import { MAX_ENDED } from '../registry'
 import { core, memoryState } from '../testing'
@@ -30,13 +31,14 @@ const agent: RabeItem = {
 
 const turn = (index: number): RabeTurn => ({ index, at: index, text: `t${index}`, tools: [] })
 
-type Held = { items?: RabeItem[]; turns?: Record<string, RabeTurn[]> }
+type Held = { items?: RabeItem[]; turns?: Record<string, RabeTurn[]>; edits?: RabeEdit[] }
 
 function watch(on: On): Held {
   const held: Held = {}
   on('state.set', async (_$, e, next) => {
     if (e.plugin === 'rabe' && e.key === 'items') held.items = e.value as RabeItem[]
     if (e.plugin === 'rabe' && e.key === 'turns') held.turns = e.value as Held['turns']
+    if (e.plugin === 'rabe' && e.key === 'edits') held.edits = e.value as RabeEdit[]
 
     return next(e)
   })
@@ -309,9 +311,240 @@ test('an edit the engine ran is kept on its agent; a refused or failed one is no
   } as never)
   const item = held.items?.[0] as RabeItemOf<'agent'>
   expect(item.detail.edits).toEqual([
-    { path: '/repo/db.ts', at: 5000 },
-    { path: '/repo/new.ts', at: 5000 },
+    { path: '/repo/db.ts', at: 5000, via: 'edit' },
+    { path: '/repo/new.ts', at: 5000, via: 'write' },
   ])
+  expect(held.edits).toEqual([{ path: '/repo/main.ts', at: 5000, via: 'edit' }])
+})
+
+type Disk = Map<string, FsStat>
+type Effect = (disk: Disk) => void
+
+const file = (size: number, mtimeMs = 1): FsStat => ({ kind: 'file', size, mtimeMs, isLink: false })
+const dir: FsStat = { kind: 'dir', size: 0, mtimeMs: 1, isLink: false }
+// A file whose folder the command made unreadable: its stat fails with EACCES.
+const LOCKED = file(-1)
+// A file a hook hides: its stat is denied with a message that ends in ENOENT.
+const SPOOFED = file(-2)
+// a file stat may not look at (a folder without x) while the folder still lists it
+const UNREAD = file(-3)
+const hidden = (stat: FsStat | undefined) => stat === LOCKED || stat === SPOOFED
+
+// A fake shell on a fake disk: each command changes the disk as `effects` says.
+// A Bash call the engine ran has a result, no error and is not in the background.
+function shell(on: On, effects: Record<string, Effect> = {}): { disk: Disk; stats: string[] } {
+  mock.env(on, { HOME: '/home/u' })
+  const disk: Disk = new Map([
+    ['/tmp', dir],
+    ['/home/u', dir],
+  ])
+  const stats: string[] = []
+  on('fs.stat', async (_$, e) => {
+    stats.push(e.path)
+    const found = disk.get(e.path)
+    if (found === SPOOFED) return { deny: `rabe: $.fs.stat: access denied: /work/ENOENT` }
+    if (found === UNREAD) return { deny: 'EACCES' }
+    if (e.path.includes('locked') || found === LOCKED) return { deny: 'EACCES' }
+    if (e.path.includes('hang')) return new Promise<never>(() => {})
+    return found ? { value: found } : { deny: 'ENOENT' }
+  })
+  // a folder exists when it or a path below it is on the disk
+  on('fs.list', async (_$, e) => {
+    const prefix = e.path === '/' ? '/' : `${e.path}/`
+    const below = [...disk].filter(([path]) => path.startsWith(prefix))
+    const inside = (path: string) => !path.slice(prefix.length).includes('/')
+    if (e.path.includes('locked') || below.some(([path, stat]) => inside(path) && hidden(stat))) {
+      return { deny: 'EACCES' }
+    }
+    if (disk.get(e.path)?.kind === 'file') return { deny: 'ENOTDIR' }
+    if (e.path !== '/' && !disk.has(e.path) && below.length === 0) return { deny: 'ENOENT' }
+    const names = new Set(below.map(([path]) => path.slice(prefix.length).split('/')[0] as string))
+    return {
+      value: [...names].map(name => ({
+        name,
+        kind: 'file' as const,
+        size: 0,
+        mtimeMs: 0,
+        isLink: false,
+      })),
+    }
+  })
+  // the runtime answers false for a path it may not look at
+  on('fs.exists', async (_$, e) => ({ value: disk.has(e.path) && !hidden(disk.get(e.path)) }))
+  on('tool.call', { tool: 'Bash' }, async (_$, e) => {
+    const command = e.tool === 'Bash' ? e.command : ''
+    effects[command]?.(disk)
+    if (command.includes('fail'))
+      return { result: { stdout: '', stderr: 'x' } as never, isError: true }
+    if (command.includes('deny')) return { deny: 'no' }
+    if (command.includes('serve')) {
+      return { result: { stdout: '', stderr: '', backgroundTaskId: 'b1' } as never }
+    }
+
+    return { result: { stdout: '', stderr: '', interrupted: false } as never }
+  })
+
+  return { disk, stats }
+}
+
+const HEREDOC = "cat > ~/.agents/skills/demo/SKILL.md <<'EOF'\n# demo > x\nEOF\nrm /tmp/old.md"
+
+test('a background teammate writing files through Bash shows them as shell edits', async ($, on) => {
+  const held = engine(on, 'a1')
+  const { disk } = shell(on, {
+    [HEREDOC]: one => {
+      one.set('/home/u/.agents/skills/demo/SKILL.md', file(9))
+      one.delete('/tmp/old.md')
+    },
+    'echo x > /tmp/failed.md && fail': one => one.set('/tmp/failed.md', file(2)),
+    'echo x > /tmp/denied.md # deny': one => one.set('/tmp/denied.md', file(2)),
+    'echo x > /tmp/serve.log; serve': one => one.set('/tmp/serve.log', file(2)),
+  })
+  disk.set('/tmp/old.md', file(3))
+  await $.agent.spawn({ ...SPAWN, workflow: undefined })
+  const run = (command: string) => $.tool.call({ tool: 'Bash', command, agentId: 'a1' } as never)
+  await run(HEREDOC)
+  await run('echo x > /tmp/failed.md && fail')
+  await run('echo x > /tmp/denied.md # deny')
+  await run('echo x > /tmp/serve.log; serve')
+  await run('git status')
+  const item = held.items?.[0] as RabeItemOf<'agent'>
+  expect(item.detail.edits).toEqual([
+    { path: '/home/u/.agents/skills/demo/SKILL.md', at: 5000, via: 'shell' },
+    { path: '/tmp/old.md', at: 5000, via: 'shell', change: 'delete' },
+  ])
+})
+
+test('the disk decides: masked failures, no-op modes, a folder target, multi-file sed', async ($, on) => {
+  const held = engine(on, 'a1')
+  const { disk } = shell(on, {
+    'cp /tmp/src.txt /tmp/out': one => one.set('/tmp/out/src.txt', file(4)),
+    "sed -i 'q' /tmp/a /tmp/b": one => one.set('/tmp/a', file(5, 2)),
+    'export HOME=/tmp; touch ~/file': one => one.set('/tmp/file', file(0)),
+  })
+  disk.set('/tmp/src.txt', file(4))
+  disk.set('/tmp/out', dir)
+  disk.set('/tmp/a', file(5))
+  disk.set('/tmp/b', file(5))
+  await $.agent.spawn({ ...SPAWN, workflow: undefined })
+  const run = (command: string) => $.tool.call({ tool: 'Bash', command, agentId: 'a1' } as never)
+  await run('false && touch /tmp/never || true')
+  await run('cp /tmp/missing /tmp/copy; true')
+  await run('touch -c /tmp/absent')
+  await run('rm -f /tmp/absent')
+  await run('cp /tmp/src.txt /tmp/out')
+  await run("sed -i 'q' /tmp/a /tmp/b")
+  await run('export HOME=/tmp; touch ~/file')
+  const item = held.items?.[0] as RabeItemOf<'agent'>
+  expect(item.detail.edits).toEqual([
+    { path: '/tmp/out/src.txt', at: 5000, via: 'shell' },
+    { path: '/tmp/a', at: 5000, via: 'shell' },
+  ])
+})
+
+test('too many candidates, stat errors and slow stats record nothing for those files', async ($, on) => {
+  const clock = mock.clock(on, { now: 5000 })
+  const held = watch(on)
+  const many = Array.from({ length: 21 }, (_, n) => `/tmp/f${n}`).join(' ')
+  const { disk, stats } = shell(on, {
+    [`touch ${many}`]: one => {
+      for (let n = 0; n < 21; n++) one.set(`/tmp/f${n}`, file(0))
+    },
+    'touch /tmp/locked /tmp/ok': one => one.set('/tmp/ok', file(0)),
+    'touch /tmp/hang /tmp/slow': one => one.set('/tmp/slow', file(0)),
+    'touch /tmp/private/f; chmod 000 /tmp/private': one => one.set('/tmp/private/f', LOCKED),
+  })
+  disk.set('/tmp/private/f', file(3))
+  await $.tool.call({ tool: 'Bash', command: `touch ${many}` } as never)
+  expect(stats).toEqual([])
+  await $.tool.call({ tool: 'Bash', command: 'touch /tmp/locked /tmp/ok' } as never)
+  const slow = $.tool.call({ tool: 'Bash', command: 'touch /tmp/hang /tmp/slow' } as never)
+  await clock.advance(1000)
+  await slow
+  await $.tool.call({
+    tool: 'Bash',
+    command: 'touch /tmp/private/f; chmod 000 /tmp/private',
+  } as never)
+  expect(held.edits).toEqual([{ path: '/tmp/ok', at: 5000, via: 'shell' }])
+})
+
+test('a path is missing only when its folder lists without it', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const held = watch(on)
+  const { disk } = shell(on, {
+    'rm /tmp/hidden/a': one => one.set('/tmp/hidden/a', SPOOFED),
+    'rm /tmp/plain; mkdir /tmp/plain; touch /tmp/plain/f': one => {
+      one.delete('/tmp/plain')
+      one.set('/tmp/plain/f', file(0))
+    },
+    'touch /tmp/gone': one => one.set('/tmp/gone', file(0)),
+    'mkdir -p /tmp/new/deep; touch /tmp/new/deep/f': one => one.set('/tmp/new/deep/f', file(0)),
+  })
+  disk.set('/tmp/hidden/a', file(3))
+  disk.set('/tmp/plain', file(1))
+  const run = (command: string) => $.tool.call({ tool: 'Bash', command } as never)
+  await run('rm /tmp/hidden/a')
+  await run('rm /tmp/plain; mkdir /tmp/plain; touch /tmp/plain/f')
+  await run('touch /tmp/gone')
+  await run('mkdir -p /tmp/new/deep; touch /tmp/new/deep/f')
+  expect(held.edits).toEqual([
+    { path: '/tmp/gone', at: 5000, via: 'shell' },
+    { path: '/tmp/new/deep/f', at: 5000, via: 'shell' },
+  ])
+})
+
+test('a name the folder lists in another case is unknown, not missing', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const held = watch(on)
+  const { disk } = shell(on, {
+    // a case-insensitive disk: report.txt is Report.txt, and stat may no longer look at it
+    'chmod 600 /tmp/box; rm /tmp/box/report.txt': one => {
+      one.delete('/tmp/box/report.txt')
+      one.set('/tmp/box/Report.txt', UNREAD)
+    },
+  })
+  disk.set('/tmp/box/report.txt', file(3))
+  await $.tool.call({
+    tool: 'Bash',
+    command: 'chmod 600 /tmp/box; rm /tmp/box/report.txt',
+  } as never)
+  expect(held.edits ?? []).toEqual([])
+})
+
+test('a name the folder lists in another Unicode form is unknown, not missing', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const held = watch(on)
+  const composed = '/tmp/box/caf\u00e9.txt'
+  const decomposed = '/tmp/box/cafe\u0301.txt'
+  const { disk } = shell(on, {
+    // the disk keeps the decomposed name; stat may no longer look at it
+    [`chmod 600 /tmp/box; rm ${composed}`]: one => {
+      one.delete(composed)
+      one.set(decomposed, UNREAD)
+    },
+  })
+  disk.set(composed, file(3))
+  await $.tool.call({ tool: 'Bash', command: `chmod 600 /tmp/box; rm ${composed}` } as never)
+  expect(held.edits ?? []).toEqual([])
+})
+
+test('main session writes and shell writes are kept apart from agents', async ($, on) => {
+  const held = engine(on, 'a1')
+  shell(on, {
+    'echo x >> notes.txt': one => one.set('notes.txt', file(2)),
+    'echo x > /tmp/main.md': one => one.set('/tmp/main.md', file(2)),
+  })
+  on('tool.call', { tool: 'Write' }, async () => ({
+    result: { filePath: '/repo/plan.md' } as never,
+  }))
+  await $.tool.call({ tool: 'Write', file_path: '/repo/plan.md', content: '' } as never)
+  await $.tool.call({ tool: 'Bash', command: 'echo x >> notes.txt' } as never)
+  await $.tool.call({ tool: 'Bash', command: 'echo x > /tmp/main.md' } as never)
+  expect(held.edits).toEqual([
+    { path: '/repo/plan.md', at: 5000, via: 'write' },
+    { path: '/tmp/main.md', at: 5000, via: 'shell' },
+  ])
+  expect(held.items ?? []).toEqual([])
 })
 
 test('a staged edit or write leaves the file unchanged and is not kept', async ($, on) => {
@@ -343,7 +576,7 @@ test('a staged edit or write leaves the file unchanged and is not kept', async (
     agentId: 'a1',
   } as never)
   const item = held.items?.[0] as RabeItemOf<'agent'>
-  expect(item.detail.edits).toEqual([{ path: '/repo/db.ts', at: 5000 }])
+  expect(item.detail.edits).toEqual([{ path: '/repo/db.ts', at: 5000, via: 'edit' }])
 })
 
 test('a step of a loop Rabe does not know writes nothing', async ($, on) => {

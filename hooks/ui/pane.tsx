@@ -226,6 +226,7 @@ async function look(
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   const { value: turns = {} } = await $.state.get({ plugin: 'rabe', key: 'turns' })
   const { value: lines = {} } = await $.state.get({ plugin: 'rabe', key: 'lines' })
+  const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
   const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
   const { value: query = '' } = await $.state.get({ plugin: 'rabe', key: 'query' })
   const { value: folded = [] } = await $.state.get({ plugin: 'rabe', key: 'folded' })
@@ -240,6 +241,8 @@ async function look(
     now: await $.clock.now(),
     usd: usage?.cost?.usd,
     previous: await previous($).catch(() => undefined),
+    edits,
+    cwd: await $.session.cwd().catch(() => undefined),
   }
 
   const selection = {
@@ -343,7 +346,8 @@ export function pane(on: On): void {
   // Each open sorts the lists once; then they hold their order (see `stable`).
   on('command.run', { command: 'rabe' }, async $ => {
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
-    await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(items))
+    const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
+    await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(items, edits))
     holds.clear()
     feed($, { type: 'reset' })
     await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })

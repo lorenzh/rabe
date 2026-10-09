@@ -8,7 +8,7 @@ import type {
   TurnUsage,
 } from 'claude-code'
 
-import type { RabeToolUse, RabeTurn } from '../../types'
+import type { RabeEdit, RabeToolUse, RabeTurn } from '../../types'
 import {
   clip,
   type EndStatus,
@@ -19,6 +19,7 @@ import {
   type RabeTokens,
 } from '../model'
 import { addItem, type Change, commit, endItem, pastEnd, prune, updateItem } from '../registry'
+import { changed, type Seen, shellWrites } from '../writes'
 
 type Turns = Record<string, RabeTurn[]>
 type AgentItem = RabeItemOf<'agent'>
@@ -26,6 +27,8 @@ type AgentItem = RabeItemOf<'agent'>
 const POLL_MS = 3000
 const MAX_TURNS = 30
 const MAX_EDITS = 100
+const MAX_CHECKS = 20
+const LOOK_MS = 1000
 const MAX_TEXT = 300
 const MAX_PROMPT = 600
 const MAX_SUMMARY = 80
@@ -101,11 +104,20 @@ export function changedFile(
   return typeof result.filePath === 'string' ? result.filePath : input
 }
 
-// An Edit or Write that changed a file for an agent; its newest MAX_EDITS are kept.
-function edited(items: RabeItem[], id: string, path: string, at: number): RabeItem[] {
+// A Bash call that ran to its end: a result, no error, not interrupted and not
+// moved to the background.
+export function ranBash(answer: { result?: unknown; isError?: boolean }): boolean {
+  if (answer.isError || !answer.result || typeof answer.result !== 'object') return false
+  const result = answer.result as { interrupted?: unknown; backgroundTaskId?: unknown }
+
+  return result.interrupted !== true && result.backgroundTaskId === undefined
+}
+
+// Changes to files of an agent; its newest MAX_EDITS are kept.
+function edited(items: RabeItem[], id: string, changes: RabeEdit[]): RabeItem[] {
   const agent = asAgent(items, id)
   if (!agent) return items
-  const edits = [...(agent.detail.edits ?? []), { path, at }].slice(-MAX_EDITS)
+  const edits = [...(agent.detail.edits ?? []), ...changes].slice(-MAX_EDITS)
 
   return updateItem(items, id, { detail: { edits } })
 }
@@ -240,6 +252,108 @@ async function writeTurns(
   }
 }
 
+// The main session's changes go to `rabe.edits`, an agent's to its item.
+async function record(
+  $: EngineInterface,
+  agentId: string | undefined,
+  changes: RabeEdit[],
+): Promise<void> {
+  if (changes.length === 0) return
+  if (agentId) {
+    const id = itemId('agent', agentId)
+    return write($, items => edited(items, id, changes))
+  }
+  for (;;) {
+    const { value = [], version } = await $.state.get({ plugin: 'rabe', key: 'edits' })
+    const next = [...value, ...changes].slice(-MAX_EDITS)
+    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'edits' }, next, {
+      ifVersion: version,
+    })
+    if (isSet) return
+  }
+}
+
+type Listings = Map<string, Promise<Set<string> | undefined>>
+
+// A path whose stat failed is missing only when its folder lists without it,
+// or that folder is missing itself; error text is never read.
+function hasName(names: Set<string>, name: string): boolean {
+  if (names.has(name)) return true
+  const fold = (one: string) => one.normalize('NFC').toLowerCase()
+  const wanted = fold(name)
+  for (const one of names) if (fold(one) === wanted) return true
+
+  return false
+}
+
+async function isMissing($: EngineInterface, path: string, lists: Listings): Promise<boolean> {
+  const cut = path.lastIndexOf('/')
+  if (cut < 0 || path === '/') return false
+  const folder = path.slice(0, cut) || '/'
+  let names = lists.get(folder)
+  if (!names) {
+    names = $.fs.list(folder).then(
+      entries => new Set(entries.map(entry => entry.name)),
+      () => undefined,
+    )
+    lists.set(folder, names)
+  }
+  const listed = await names
+  // A name the folder lists in another case or Unicode form may be this file (macOS, Windows).
+  if (listed) return !hasName(listed, path.slice(cut + 1))
+
+  return folder !== '/' && isMissing($, folder, lists)
+}
+
+// What is on disk at each path, or undefined when the looks outlast LOOK_MS.
+async function look($: EngineInterface, paths: string[]): Promise<Seen[] | undefined> {
+  const stop = new AbortController()
+  const late = $.clock.sleep(LOOK_MS, { signal: stop.signal }).then(
+    () => undefined,
+    () => undefined,
+  )
+  const lists: Listings = new Map()
+  const seen = Promise.all(
+    paths.map(path =>
+      $.fs.stat(path).then(
+        (stat): Seen => stat,
+        async (): Promise<Seen> => ((await isMissing($, path, lists)) ? 'none' : undefined),
+      ),
+    ),
+  )
+  try {
+    return await Promise.race([seen, late])
+  } finally {
+    stop.abort()
+  }
+}
+
+type Looked = { paths: string[]; seen: Seen[] }
+
+// The call carries no cwd, so only absolute candidates are looked at.
+async function beforeBash($: EngineInterface, command: string): Promise<Looked | undefined> {
+  const home = await $.env.get('HOME')
+  const paths = shellWrites(command, undefined, home)
+    .map(one => one.path)
+    .filter(path => path.startsWith('/'))
+  if (paths.length === 0 || paths.length > MAX_CHECKS) return undefined
+  const seen = await look($, paths)
+
+  return seen && { paths, seen }
+}
+
+async function afterBash($: EngineInterface, agentId: string | undefined, before: Looked) {
+  const after = await look($, before.paths)
+  if (!after) return
+  const at = await $.clock.now()
+  const changes = before.paths.flatMap((path, n): RabeEdit[] => {
+    const change = changed(before.seen[n], after[n])
+    if (!change) return []
+    return [{ path, at, via: 'shell', ...(change === 'delete' && { change }) }]
+  })
+  await record($, agentId, changes)
+}
+
 async function readMeta($: EngineInterface, id: string): Promise<void> {
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   const item = asAgent(items, id)
@@ -356,11 +470,22 @@ export function agents(on: On): void {
     const answer = await next(e)
     try {
       const path = (e.tool === 'Edit' || e.tool === 'Write') && changedFile(answer, e.file_path)
-      if (e.agentId && path) {
-        const id = itemId('agent', e.agentId)
-        const now = await $.clock.now()
-        await write($, items => edited(items, id, path, now))
+      if (path) {
+        const via = e.tool === 'Edit' ? 'edit' : 'write'
+        await record($, e.agentId, [{ path, at: await $.clock.now(), via }])
       }
+    } catch {}
+
+    return answer
+  })
+
+  // The command line proposes files; a look on disk before and after decides.
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const before =
+      e.tool === 'Bash' ? await beforeBash($, e.command).catch(() => undefined) : undefined
+    const answer = await next(e)
+    try {
+      if (before && ranBash(answer)) await afterBash($, e.agentId, before)
     } catch {}
 
     return answer

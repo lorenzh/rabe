@@ -1,5 +1,5 @@
-import type { RabeOrder, RabePrevious } from '../../types'
-import type { RabeItem, RabeItemKind, RabeItemOf } from '../model'
+import type { RabeEdit, RabeOrder, RabePrevious } from '../../types'
+import type { RabeItem, RabeItemKind } from '../model'
 import { nextRuns } from '../schedule'
 import type { Span } from './cells/grid'
 import { C, type Style } from './cells/palette'
@@ -150,50 +150,96 @@ export function byStart(items: RabeItem[]): RabeItem[] {
   return items.toSorted((a, b) => start(a) - start(b))
 }
 
-type Agent = RabeItemOf<'agent'>
+// Who changed files: an agent, a Codex job or the main session (no item).
+export type Editor = { id: string; title: string; tree?: string; root?: string; item?: RabeItem }
+
 export type Touched = {
   id: string
   path: string
   rel: string
-  by: Agent[]
-  last: Agent
+  by: Editor[]
+  last: Editor
   edits: number
   at: number
   first: number
+  hows: string[]
+  isDeleted: boolean
+  isConflict: boolean
 }
 
-function relative(path: string, agent: Agent): string {
-  const root = agent.detail.worktreePath ?? agent.detail.cwd
+function relative(path: string, editor: Editor): string {
+  const { root } = editor
 
   return root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
 }
 
-// The files agents edited, from the Edit and Write calls the engine ran for
-// them (a turn's tool calls are only asked for and may be refused), in the
-// order they were first edited. `by` lists the editors in the order they
-// first edited, `last` the latest one, `first` and `at` the first and the
-// latest edit times.
-export function touched(items: RabeItem[]): Touched[] {
-  const edits = items
-    .flatMap(item => (item.kind === 'agent' ? [item] : []))
-    .flatMap(agent => (agent.detail.edits ?? []).map(edit => ({ agent, ...edit })))
-    .toSorted((a, b) => a.at - b.at)
+function howOf(edit: RabeEdit): string {
+  if (edit.via === 'shell') return 'via shell'
+  if (edit.via === 'codex') return `codex ${edit.change ?? 'update'}`
+
+  return edit.via ?? 'edit'
+}
+
+type Edits = { editor: Editor; edits: RabeEdit[] }
+
+function editorsOf(items: RabeItem[], main: RabeEdit[], cwd?: string): Edits[] {
+  const own = items.flatMap((item): Edits[] => {
+    if (item.kind === 'agent') {
+      const { worktreePath, cwd: root } = item.detail
+      const editor = {
+        id: item.id,
+        title: item.title,
+        tree: worktreePath,
+        root: worktreePath ?? root,
+        item,
+      }
+      return [{ editor, edits: item.detail.edits ?? [] }]
+    }
+    if (item.kind === 'codex') {
+      const editor = { id: item.id, title: item.title, root: item.detail.workspaceRoot, item }
+      return [{ editor, edits: item.detail.edits ?? [] }]
+    }
+    return []
+  })
+
+  return [...own, { editor: { id: 'main', title: 'main session', root: cwd }, edits: main }]
+}
+
+// The files changed by agents (Edit and Write calls the engine ran, not the
+// calls a turn asks for), Codex jobs (file changes) and the main session, and
+// the files shell commands of each wrote (a guess), in the order they were
+// first changed. `by` lists the editors in the order they first changed it,
+// `last` the latest one, `hows` how, `first` and `at` the first and the latest
+// change times. Two editors of one absolute path are a conflict; a relative
+// path (a shell write whose cwd is not known) is none.
+export function touched(items: RabeItem[], main: RabeEdit[] = [], cwd?: string): Touched[] {
+  const edits = editorsOf(items, main, cwd)
+    .flatMap(({ editor, edits: list }) => list.map(edit => ({ editor, edit })))
+    .toSorted((a, b) => a.edit.at - b.edit.at)
   const files = new Map<string, Touched>()
-  for (const { agent, path, at } of edits) {
+  for (const { editor, edit } of edits) {
+    const { path, at } = edit
     const file = files.get(path) ?? {
       id: `file:${path}`,
       path,
-      rel: relative(path, agent),
+      rel: relative(path, editor),
       by: [],
-      last: agent,
+      last: editor,
       edits: 0,
       at,
       first: at,
+      hows: [],
+      isDeleted: false,
+      isConflict: false,
     }
-    if (!file.by.includes(agent)) file.by.push(agent)
-    file.last = agent
+    if (!file.by.includes(editor)) file.by.push(editor)
+    const how = howOf(edit)
+    if (!file.hows.includes(how)) file.hows.push(how)
+    file.last = editor
     file.edits += 1
     file.at = at
+    file.isDeleted = edit.change === 'delete'
+    file.isConflict = file.by.length > 1 && path.startsWith('/')
     files.set(path, file)
   }
 
@@ -202,7 +248,7 @@ export function touched(items: RabeItem[]): Touched[] {
 
 // Conflicts (two editors) first, then the latest edit first.
 export function byConflict(files: Touched[]): Touched[] {
-  return files.toSorted((a, b) => Number(b.by.length > 1) - Number(a.by.length > 1) || b.at - a.at)
+  return files.toSorted((a, b) => Number(b.isConflict) - Number(a.isConflict) || b.at - a.at)
 }
 
 // Shells and monitors an agent started sit under that agent (see `byParent`).
@@ -212,7 +258,7 @@ export const FAMILIES: Group[] = ['shells', 'monitors']
 // monitors in their families), the Cost tab by tokens, the Timeline by start,
 // the Effects files by `byConflict` and its ports (the shells that run with
 // one). Held in `rabe.order` until the next open.
-export function orderOf(items: RabeItem[]): RabeOrder {
+export function orderOf(items: RabeItem[], edits: RabeEdit[] = []): RabeOrder {
   const ids = (list: RabeItem[]) => list.map(item => item.id)
 
   return {
@@ -234,7 +280,7 @@ export function orderOf(items: RabeItem[]): RabeOrder {
     ),
     cost: ids(byTokens(items)),
     timeline: ids(byStart(items)),
-    files: byConflict(touched(items)).map(file => file.id),
+    files: byConflict(touched(items, edits)).map(file => file.id),
   }
 }
 

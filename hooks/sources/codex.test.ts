@@ -1,7 +1,7 @@
 import type { On } from 'claude-code'
 import { type Engine, expect, type MockClock, mock, test } from 'claude-code/testing'
 
-import type { RabeItem } from '../model'
+import type { RabeItem, RabeItemOf } from '../model'
 import { MAX_ENDED } from '../registry'
 import { memoryState } from '../testing'
 import { codexItem, jobEnd, parseRollout } from './codex'
@@ -75,6 +75,127 @@ test('a rollout gives model, effort, sandbox, prompt, tokens and steps', () => {
   })
 })
 
+// The shape of Codex's records; paths and content are made up.
+const change = (status: string, changes: object, at: number) =>
+  line('event_msg', {
+    type: 'item_completed',
+    completed_at_ms: at,
+    item: { type: 'FileChange', id: 'exec-1', changes, status, stdout: '', stderr: '' },
+  })
+const command = (script: string, exit_code: number, at: number, cwd = 'file:///work') =>
+  line('event_msg', {
+    type: 'item_completed',
+    started_at_ms: at - 500,
+    completed_at_ms: at,
+    item: {
+      type: 'CommandExecution',
+      command: ['/bin/bash', '-lc', script],
+      cwd,
+      status: exit_code === 0 ? 'completed' : 'failed',
+      exit_code,
+      aggregated_output: '',
+    },
+  })
+
+test('completed file changes are edits; shell writes are files to check on disk', () => {
+  const rollout = [
+    change('completed', { '/work/new.cjs': { type: 'add', content: 'x' } }, 1000),
+    change(
+      'completed',
+      {
+        '/work/a.ts': { type: 'update', unified_diff: '', move_path: null },
+        '/work/old.ts': { type: 'update', unified_diff: '', move_path: '/work/moved.ts' },
+        '/work/gone.ts': { type: 'delete', content: 'x' },
+      },
+      2000,
+    ),
+    change('failed', { '/work/never.ts': { type: 'add', content: 'x' } }, 3000),
+    command("cat > notes.md <<'EOF'\nhi > there\nEOF", 0, 4000),
+    command('echo x > /work/broken.txt && false', 1, 5000),
+    command('rm /work/gone.txt; cp a.md out', 0, 6000, '/plain'),
+    command('touch x', 0, 7000, 'file:///work/a%23b%3Fc%20d'),
+  ].join('\n')
+  const { edits, checks } = parseRollout(rollout, '/home/u')
+  expect(edits).toEqual([
+    { path: '/work/new.cjs', at: 1000, via: 'codex', change: 'add' },
+    { path: '/work/a.ts', at: 2000, via: 'codex', change: 'update' },
+    { path: '/work/old.ts', at: 2000, via: 'codex', change: 'delete' },
+    { path: '/work/moved.ts', at: 2000, via: 'codex', change: 'add' },
+    { path: '/work/gone.ts', at: 2000, via: 'codex', change: 'delete' },
+  ])
+  expect(checks).toEqual([
+    { path: '/work/notes.md', from: 3500, to: 4000 },
+    { path: '/plain/out', from: 5500, to: 6000 },
+    { path: '/plain/out/a.md', from: 5500, to: 6000 },
+    { path: '/work/a#b?c d/x', from: 6500, to: 7000 },
+  ])
+})
+
+test('a shell write of a codex job counts when the file changed while the command ran', async ($, on) => {
+  const writes = watchItems(on)
+  const rollout = [
+    change('completed', { '/work/new.cjs': { type: 'add', content: 'x' } }, 3000),
+    command('touch /work/in.md /work/old.md /work/late.md /work/none.md /work', 0, 4000),
+  ].join('\n')
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: rollout,
+  })
+  w.files.set('/work/in.md', { text: 'x', mtimeMs: 3800 })
+  w.files.set('/work/old.md', { text: 'x', mtimeMs: 3000 })
+  w.files.set('/work/late.md', { text: 'x', mtimeMs: 9000 })
+  await startAndTick($, w)
+  expect((writes.at(-1)?.[0] as RabeItemOf<'codex'>).detail.edits).toEqual([
+    { path: '/work/new.cjs', at: 3000, via: 'codex', change: 'add' },
+    { path: '/work/in.md', at: 4000, via: 'shell' },
+  ])
+})
+
+test('a stalled stat ends the shell checks after a second and keeps the rest', async ($, on) => {
+  const writes = watchItems(on)
+  const rollout = [
+    change('completed', { '/work/new.cjs': { type: 'add', content: 'x' } }, 3000),
+    command('touch /work/in.md /work/hang.md', 0, 4000),
+    command('touch /work/in.md', 0, 4100),
+  ].join('\n')
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: rollout,
+  })
+  w.files.set('/work/in.md', { text: 'x', mtimeMs: 3800 })
+  await startAndTick($, w)
+  expect(writes).toHaveLength(0)
+  await w.clock.advance(1000)
+  expect((writes.at(-1)?.[0] as RabeItemOf<'codex'>).detail.edits).toEqual([
+    { path: '/work/new.cjs', at: 3000, via: 'codex', change: 'add' },
+    { path: '/work/in.md', at: 4000, via: 'shell' },
+    { path: '/work/in.md', at: 4100, via: 'shell' },
+  ])
+  expect(w.calls.filter(call => call === 'stat /work/in.md')).toHaveLength(1)
+})
+
+test('a tick is skipped while the last poll still runs', async ($, on) => {
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: ROLLOUT,
+  })
+  let open = () => {}
+  w.hold = new Promise(resolve => {
+    open = resolve
+  })
+  const polls = () => w.calls.filter(call => call === `list ${STATE}`).length
+  await startAndTick($, w)
+  await w.clock.advance(4000)
+  expect(polls()).toBe(1)
+  w.hold = undefined
+  open()
+  await w.clock.advance(2000)
+  expect(polls()).toBe(2)
+})
+
 test('an empty or broken rollout gives no fields', () => {
   expect(parseRollout('not json\n')).toEqual({ steps: [], commandCount: 0 })
 })
@@ -132,10 +253,12 @@ function job(over: Job = {}): Job {
 type World = {
   files: Map<string, { text: string; mtimeMs: number; size?: number }>
   clock: MockClock
+  calls: string[]
+  hold?: Promise<void>
 }
 
 function world(on: On, files: Record<string, string | object>, mtimeMs = 5000): World {
-  const held: World = { files: new Map(), clock: mock.clock(on, { now: 10_000 }) }
+  const held: World = { files: new Map(), clock: mock.clock(on, { now: 10_000 }), calls: [] }
   for (const [path, text] of Object.entries(files)) {
     held.files.set(path, { text: typeof text === 'string' ? text : JSON.stringify(text), mtimeMs })
   }
@@ -145,6 +268,8 @@ function world(on: On, files: Record<string, string | object>, mtimeMs = 5000): 
   on('session.id', async () => ({ value: 'sess-1' }))
   on('session.usage', async () => ({ value: { startedAt: 1000, rateLimits: [] } }) as never)
   on('fs.list', async (_$, e) => {
+    held.calls.push(`list ${e.path}`)
+    await held.hold
     const prefix = `${e.path}/`
     const names = new Set<string>()
     for (const path of held.files.keys()) {
@@ -162,6 +287,8 @@ function world(on: On, files: Record<string, string | object>, mtimeMs = 5000): 
     }
   })
   on('fs.stat', async (_$, e) => {
+    held.calls.push(`stat ${e.path}`)
+    if (e.path.includes('hang')) return new Promise<never>(() => {})
     const file = held.files.get(e.path)
     if (!file) return { deny: 'ENOENT' }
     return {

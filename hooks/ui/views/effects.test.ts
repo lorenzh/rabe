@@ -1,10 +1,10 @@
 import { expect, test } from 'claude-code/testing'
 
-import type { RabeTurn } from '../../../types'
+import type { RabeEdit, RabeTurn } from '../../../types'
 import type { RabeItem } from '../../model'
 import { cell, lines } from '../cells/grid'
 import { C, CHIP } from '../cells/palette'
-import { ALL, dev, explore, gridOf, NOW, plan } from '../fixtures'
+import { ALL, dev, explore, gridOf, NOW, plan, review } from '../fixtures'
 import { orderOf } from '../lists'
 import { isPress, type Model, NO_SELECTION, type Press, rowKeys, type Size, stepRow } from '../view'
 import { effectsView } from './effects'
@@ -76,14 +76,14 @@ test('a file edited by two agents in one tree heads the tab as a conflict', () =
 test('files touched list each file with who edited it and how often, conflicts first', () => {
   const { grid } = gridOf(effectsView(MODEL, SIZE, NO_SELECTION))
   const shown = lines(grid)
-  const head = shown.indexOf('FILES TOUCHED 4  from agent tool calls')
+  const head = shown.indexOf('FILES TOUCHED 4  from edits, Codex and shell commands')
   expect(head).toBeGreaterThan(0)
   expect(shown[head + 1]).toMatch(/^ {2}FILE +BY +CHANGE$/)
-  expect(shown[head + 2]).toMatch(/^▌ src\/logger\.ts +Plan auth split, logger in api +3 edits$/)
-  expect(shown[head + 3]).toMatch(/^ {2}src\/api\/server\.ts +logger in api +1 edit$/)
-  expect(
-    shown.some(line => /^ {2}src\/db\/pool\.ts +Explore verifyToken +1 edit$/.test(line)),
-  ).toBe(true)
+  expect(shown[head + 2]).toMatch(/^▌ src\/logger\.ts +Plan auth split, logger in api +3× edit$/)
+  expect(shown[head + 3]).toMatch(/^ {2}src\/api\/server\.ts +logger in api +edit$/)
+  expect(shown.some(line => /^ {2}src\/db\/pool\.ts +Explore verifyToken +edit$/.test(line))).toBe(
+    true,
+  )
   expect(shown.some(line => line.includes('x.ts') || line.includes('denied.ts'))).toBe(false)
 })
 
@@ -176,8 +176,8 @@ test('with no edits, agents or ports each section says so', () => {
     effectsView({ items: [], turns: {}, lines: {}, now: NOW }, SIZE, NO_SELECTION),
   )
   const shown = lines(drawn.grid)
-  expect(shown[0]).toBe('FILES TOUCHED 0  from agent tool calls')
-  expect(shown).toContain('  No agent edited a file yet.')
+  expect(shown[0]).toBe('FILES TOUCHED 0  from edits, Codex and shell commands')
+  expect(shown).toContain('  No file changed yet.')
   expect(shown).toContain('  No agents yet.')
   expect(shown).toContain('  No open port found.')
   expect(drawn.buttons).toEqual([])
@@ -294,4 +294,88 @@ test('rows found after the open go to NEW at the end, in the order they were fou
   ])
   expect(lines(gridOf(drawn).grid)).toContain('NEW 2  found since Rabe opened')
   expect(rowKeys(draw(later(NOW + 3000))).slice(3)).toEqual(['row:ssh:8080', 'row:file:/repo/b.ts'])
+})
+
+// The other editors: a Codex job, the main session, an agent's shell command.
+const job = {
+  ...review,
+  detail: {
+    ...review.detail,
+    workspaceRoot: '/repo',
+    edits: [
+      { path: '/repo/src/gen.ts', at: NOW - 5000, via: 'codex', change: 'add' },
+      { path: '/repo/src/old.ts', at: NOW - 4000, via: 'codex', change: 'delete' },
+    ],
+  },
+} as RabeItem
+const shell = {
+  ...plan,
+  detail: {
+    ...(plan as typeof plan & { kind: 'agent' }).detail,
+    edits: [
+      { path: '/home/u/.agents/skills/demo/SKILL.md', at: NOW - 3000, via: 'shell' },
+      { path: 'out/notes.md', at: NOW - 2500, via: 'shell' },
+    ],
+  },
+} as RabeItem
+const MAIN: RabeEdit[] = [
+  { path: '/repo/src/gen.ts', at: NOW - 2000, via: 'edit' },
+  { path: '/repo/plan.md', at: NOW - 1000, via: 'write' },
+]
+const OTHERS: Model = {
+  items: [job, shell],
+  turns: {},
+  lines: {},
+  now: NOW,
+  edits: MAIN,
+  cwd: '/repo',
+}
+
+test('files from Codex jobs, the main session and shell commands show who and how', () => {
+  const shown = lines(gridOf(effectsView(OTHERS, SIZE, NO_SELECTION)).grid)
+  const row = (name: string) =>
+    shown.find(line => line.includes(name) && !line.includes('conflict')) ?? ''
+  expect(row('src/gen.ts')).toMatch(
+    /src\/gen\.ts +review auth\.ts, main session +2× codex add, edit$/,
+  )
+  expect(row('src/old.ts')).toMatch(/src\/old\.ts +review auth\.ts +deleted · codex delete$/)
+  expect(row('SKILL.md')).toMatch(/ …[^ ]*\/skills\/demo\/SKILL\.md +Plan auth split +via shell$/)
+  expect(row('notes.md')).toMatch(/ out\/notes\.md +Plan auth split +via shell · cwd n\/a$/)
+  expect(row('plan.md')).toMatch(/^ {2}plan\.md +main session +write$/)
+  expect(shown[0]).toBe(
+    ' ⚠ conflict  src/gen.ts is edited by review auth.ts and main session in the main tree',
+  )
+})
+
+test('a main session row copies the path; a Codex row opens the job', () => {
+  const drawn = effectsView(OTHERS, SIZE, NO_SELECTION)
+  expect(presses(drawn).find(one => one.key === 'row:file:/repo/plan.md')?.action).toEqual({
+    type: 'copy',
+    text: '/repo/plan.md',
+  })
+  expect(presses(drawn).find(one => one.key === 'row:file:/repo/src/old.ts')?.action).toEqual({
+    type: 'open',
+    id: review.id,
+  })
+})
+
+test('two editors of one relative path are no conflict: the cwd is not known', () => {
+  const edits = [{ path: 'out/notes.md', at: NOW, via: 'shell' }]
+  const one = { ...plan, detail: { ...plan.detail, edits } } as RabeItem
+  const other = { ...one, id: 'agent:a9', title: 'other' } as RabeItem
+  const shown = lines(
+    gridOf(effectsView({ ...OTHERS, items: [one, other], edits: [] }, SIZE, NO_SELECTION)).grid,
+  )
+  expect(shown.some(line => line.includes('conflict'))).toBe(false)
+})
+
+test('a main session file found after the open goes to NEW', () => {
+  const order = orderOf(OTHERS.items, OTHERS.edits)
+  const later = {
+    ...OTHERS,
+    edits: [...MAIN, { path: '/repo/late.md', at: NOW, via: 'write' as const }],
+  }
+  const keys = rowKeys(effectsView(later, SIZE, { ...NO_SELECTION, order }))
+  expect(keys.at(-1)).toBe('row:file:/repo/late.md')
+  expect(keys.slice(0, -1)).toEqual(rowKeys(effectsView(OTHERS, SIZE, { ...NO_SELECTION, order })))
 })
