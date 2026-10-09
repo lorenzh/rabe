@@ -1,5 +1,5 @@
 import type { AgentSpawnInput, AgentStatus, FsStat, On } from 'claude-code'
-import { expect, mock, test } from 'claude-code/testing'
+import { type Engine, expect, mock, test } from 'claude-code/testing'
 
 import type { RabeEdit } from '../../types'
 import type { RabeItem, RabeItemOf, RabeTurn } from '../model'
@@ -750,3 +750,121 @@ test('an agent the cap dropped comes back when the list shows it running', async
   expect(items.find(item => item.id === 'agent:a4000')?.status).toBe('running')
   expect(items).toHaveLength(MAX_ENDED + 1)
 })
+
+const PRICES = [
+  '# test prices',
+  'provider,model,aliases,input,output,cache_read,cache_write_5m',
+  'claude,claude-opus-5-5,,4,20,0.2,5',
+].join('\n')
+
+// The plugin's own table and the user's files, as fs.read answers them.
+function priceFiles(on: On, own: Record<string, string> = {}): string[] {
+  const asked: string[] = []
+  on('fs.read', async (_$, e, next) => {
+    asked.push(e.path)
+    if (e.path.endsWith('/data/prices.csv')) return { value: PRICES }
+    if (e.path in own) return { value: own[e.path] ?? '' }
+    return next(e)
+  })
+
+  return asked
+}
+
+// The engine's stand-in for a step per model, registered before the test's first call on `$`.
+function stepper(on: On, models: string[]) {
+  // biome-ignore lint/correctness/useYield: the engine's stand-in answers without chunks
+  on('turn.step', async function* (_$, e) {
+    return {
+      turnId: e.turnId,
+      index: e.index,
+      answer: '',
+      toolUses: [],
+      stopReason: 'end_turn' as const,
+      usage: {
+        input_tokens: 100,
+        output_tokens: 20,
+        cache_read_input_tokens: 50,
+        cache_creation_input_tokens: 10,
+        model: models[e.index] ?? '',
+      },
+    }
+  })
+
+  return async ($: Engine) => {
+    for (let index = 0; index < models.length; index++) {
+      const stream = $.turn.step({
+        turnId: 't1',
+        index,
+        model: 'm',
+        messageCount: 1,
+        agentId: 'a1',
+      })
+      for await (const _ of stream);
+    }
+  }
+}
+
+// 100 in at 4, 50 read at 0.2, 10 written at 5, 20 out at 20, per million
+const STEP_USD = (100 * 4 + 50 * 0.2 + 10 * 5 + 20 * 20) / 1e6
+
+test('each step adds its price to the agent cost', async ($, on) => {
+  const held = engine(on, 'a1')
+  const asked = priceFiles(on)
+  const run = stepper(on, ['claude-opus-5-5', 'claude-opus-5-5'])
+  await $.agent.spawn(SPAWN)
+  await run($)
+  expect(held.items?.[0]?.costUsd).toBe(2 * STEP_USD)
+  expect(asked.every(path => path.endsWith('/data/prices.csv'))).toBe(true)
+})
+
+test('a step of a model without a price leaves the agent cost n/a for good', async ($, on) => {
+  const held = engine(on, 'a1')
+  priceFiles(on)
+  const run = stepper(on, ['claude-opus-5-5', 'claude-new-9', 'claude-opus-5-5'])
+  await $.agent.spawn(SPAWN)
+  await run($)
+  expect(held.items?.[0]?.tokens).toMatchObject({ output: 60 })
+  expect(held.items?.[0]?.costUsd).toBeUndefined()
+})
+
+test('an agent Rabe did not see start has no cost', async ($, on) => {
+  const state = memoryState(on)
+  mock.clock(on, { now: 5000 })
+  priceFiles(on)
+  const run = stepper(on, ['claude-opus-5-5'])
+  state['rabe.items'] = { value: [{ ...agent, startedAt: undefined }], version: 1 }
+  await run($)
+  const [item] = state['rabe.items'].value as RabeItem[]
+  expect(item?.tokens).toMatchObject({ output: 20 })
+  expect(item?.costUsd).toBeUndefined()
+})
+
+test(
+  "the user's price file comes first",
+  { options: { pricesFile: '~/prices.csv' } },
+  async ($, on) => {
+    const held = engine(on, 'a1')
+    mock.env(on, { HOME: '/home/u' })
+    priceFiles(on, {
+      '/home/u/prices.csv': 'provider,model,input,output\nclaude,claude-opus-5-5,1,1\n',
+    })
+    const run = stepper(on, ['claude-opus-5-5'])
+    await $.agent.spawn(SPAWN)
+    await run($)
+    expect(held.items?.[0]?.costUsd).toBe(180 / 1e6)
+  },
+)
+
+test(
+  'a price file that cannot be read makes the cost n/a',
+  { options: { pricesFile: '/gone.csv' } },
+  async ($, on) => {
+    const held = engine(on, 'a1')
+    priceFiles(on)
+    const run = stepper(on, ['claude-opus-5-5'])
+    await $.agent.spawn(SPAWN)
+    await run($)
+    expect(held.items?.[0]?.tokens).toBeDefined()
+    expect(held.items?.[0]?.costUsd).toBeUndefined()
+  },
+)

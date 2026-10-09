@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
 import type { RabeItem } from '../model'
-import { ALL, dev, NOW, screen } from './fixtures'
+import { ALL, dev, NOW, PRICED, screen } from './fixtures'
 
 const SURFACES = ['terminal', 'desktop'] as const
 
@@ -42,14 +42,14 @@ test('the band draws nothing while nothing runs on every surface', async ($, on)
 })
 
 test('the band is one line of count chips and the cost under an empty row on every surface', async ($, on) => {
-  holdItems(on, ALL)
+  holdItems(on, PRICED)
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...BAND } as never)
     const shown = await screen(ui)
     expect(shown).toHaveLength(2)
     expect(shown[0]?.trim()).toBe('')
     expect(shown[1]).toMatch(/^ ✗ 1 failed {3}◐ 2 claude {3}◐ 1 codex {3}⧉ 1 workflow {3}▶ 1 shell/)
-    expect(shown[1]).toContain('≈ $0.25 · 91k tok')
+    expect(shown[1]).toContain('≈ $0.31 · 91k tok')
     await ui.unmount()
   }
 })

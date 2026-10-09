@@ -129,6 +129,7 @@ export const verify: RabeItem = {
   startedAt: NOW - 40_000,
   parentId: flow.id,
   tokens: { input: 19_000, output: 3_000 },
+  costUsd: 0.06,
   detail: { agentId: 'w1', workflowPhase: 'Verify' },
 }
 
@@ -156,6 +157,9 @@ export const ALL: RabeItem[] = [
   verify,
   reviewed,
 ]
+
+// ALL without the agents that ended without token data, whose spend is unknown.
+export const PRICED: RabeItem[] = ALL.filter(item => item !== plan && item !== reviewed)
 
 type Drawing = { type: string; props?: Record<string, unknown>; children?: unknown[] }
 type Mount = { drawn: () => Promise<unknown> }

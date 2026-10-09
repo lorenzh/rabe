@@ -48,6 +48,12 @@ const ROLLOUT = [
     type: 'token_count',
     info: {
       total_token_usage: { input_tokens: 25000, cached_input_tokens: 18000, output_tokens: 3000 },
+      last_token_usage: {
+        input_tokens: 25000,
+        cached_input_tokens: 18000,
+        cache_write_input_tokens: 0,
+        output_tokens: 3000,
+      },
     },
   }),
   line('response_item', {
@@ -65,6 +71,7 @@ test('a rollout gives model, effort, sandbox, prompt, tokens and steps', () => {
     sandbox: 'read-only',
     prompt: 'Review pkg/auth.',
     tokens: { input: 25000, output: 3000, cached: 18000 },
+    requests: [{ model: 'gpt-6.1-sol', input: 25000, cached: 18000, write: 0, output: 3000 }],
     commandCount: 1,
     steps: [
       { kind: 'message', text: 'I will read the diff first.' },
@@ -196,8 +203,40 @@ test('a tick is skipped while the last poll still runs', async ($, on) => {
   expect(polls()).toBe(2)
 })
 
+const tokenCount = (total: number, last?: object) =>
+  line('event_msg', {
+    type: 'token_count',
+    info: { total_token_usage: { input_tokens: total, output_tokens: 1 }, last_token_usage: last },
+  })
+const usage = (input: number) => ({
+  input_tokens: input,
+  cached_input_tokens: 0,
+  cache_write_input_tokens: 0,
+  output_tokens: 1,
+})
+
+test('each new total is one request, with the model in use then', () => {
+  const { requests } = parseRollout(
+    [
+      line('turn_context', { model: 'gpt-6.1-sol' }),
+      line('event_msg', { type: 'token_count', info: null }),
+      tokenCount(10, usage(10)),
+      tokenCount(10, usage(10)),
+      line('turn_context', { model: 'gpt-6-luna' }),
+      tokenCount(30, usage(20)),
+      tokenCount(40, { input_tokens: 10, output_tokens: 1 }),
+    ].join('\n'),
+  )
+  expect(requests).toEqual([
+    { model: 'gpt-6.1-sol', input: 10, cached: 0, write: 0, output: 1 },
+    { model: 'gpt-6-luna', input: 20, cached: 0, write: 0, output: 1 },
+    // a count is missing: no model, so no price
+    { input: 10, cached: 0, write: 0, output: 1 },
+  ])
+})
+
 test('an empty or broken rollout gives no fields', () => {
-  expect(parseRollout('not json\n')).toEqual({ steps: [], commandCount: 0 })
+  expect(parseRollout('not json\n')).toEqual({ requests: [], steps: [], commandCount: 0 })
 })
 
 test('job states map to item states', () => {
@@ -316,6 +355,13 @@ function watchItems(on: On): RabeItem[][] {
   return writes
 }
 
+// Rabe's own price table, as fs.read answers it for the plugin's folder.
+function prices(on: On): void {
+  on('fs.read', { path: /\/data\/prices\.csv$/ }, async () => ({
+    value: 'provider,model,input,output,cache_read\nopenai,gpt-6.1-sol,2,10,0.1\n',
+  }))
+}
+
 async function startAndTick($: Engine, w: World) {
   await $.session.start({ cwd: '/work/rabe', surface: 'terminal', isInteractive: true })
   await w.clock.advance(2000)
@@ -363,6 +409,63 @@ test('a running job of this session becomes a live codex item', async ($, on) =>
   })
 })
 
+test('a job costs its requests at the price of their model', async ($, on) => {
+  const writes = watchItems(on)
+  prices(on)
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: ROLLOUT,
+  })
+  await startAndTick($, w)
+  // 7k uncached at 2, 18k cached at 0.1, 3k out at 10, per million
+  expect(writes.at(-1)?.[0]?.costUsd).toBe((7000 * 2 + 18000 * 0.1 + 3000 * 10) / 1e6)
+})
+
+test('a job whose session file is gone by its end has no cost, not the last one seen', async ($, on) => {
+  const writes = watchItems(on)
+  prices(on)
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: ROLLOUT,
+  })
+  await startAndTick($, w)
+  expect(writes.at(-1)?.[0]?.costUsd).toBeDefined()
+  w.files.delete(ROLLOUT_PATH)
+  w.files.set(`${WS}/jobs/task-1.json`, {
+    text: JSON.stringify(job({ status: 'completed', completedAt: '1970-01-01T00:00:09.000Z' })),
+    mtimeMs: 6000,
+  })
+  await w.clock.advance(2000)
+  expect(writes.at(-1)?.[0]).toMatchObject({ status: 'done', detail: { isSessionMissing: true } })
+  expect(writes.at(-1)?.[0]?.costUsd).toBeUndefined()
+})
+
+test('a running job whose session file goes away or cannot be read loses its cost', async ($, on) => {
+  const writes = watchItems(on)
+  prices(on)
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: ROLLOUT,
+  })
+  await startAndTick($, w)
+  expect(writes.at(-1)?.[0]?.costUsd).toBeDefined()
+  w.files.delete(ROLLOUT_PATH)
+  await w.clock.advance(2000)
+  expect(writes.at(-1)?.[0]?.status).toBe('running')
+  expect(writes.at(-1)?.[0]?.costUsd).toBeUndefined()
+  // back with new requests: priced again
+  w.files.set(ROLLOUT_PATH, { text: ROLLOUT, mtimeMs: 6000 })
+  await w.clock.advance(2000)
+  expect(writes.at(-1)?.[0]?.costUsd).toBeDefined()
+  // grown past 4 MiB and the tail fails: the file cannot be read
+  w.files.set(ROLLOUT_PATH, { text: ROLLOUT, mtimeMs: 7000, size: 5 * 1024 * 1024 })
+  await w.clock.advance(2000)
+  expect(writes.at(-1)?.[0]?.costUsd).toBeUndefined()
+})
+
 test('an unchanged session file causes no second write', async ($, on) => {
   const writes = watchItems(on)
   const w = world(on, {
@@ -395,6 +498,7 @@ test('a finished job ends its item; a gone session file shows as missing', async
 
 test('a session file over 4 MiB is read with grep and tail', async ($, on) => {
   const writes = watchItems(on)
+  prices(on)
   const w = world(on, {
     [`${WS}/state.json`]: { jobs: [job()] },
     [`${WS}/jobs/task-1.json`]: job(),
@@ -421,6 +525,9 @@ test('a session file over 4 MiB is read with grep and tail', async ($, on) => {
   expect(writes.at(-1)?.[0]).toMatchObject({
     detail: { model: 'gpt-6.1-sol', isSessionPartial: true, commandCount: 1 },
   })
+  // the tail misses requests, so the cost is not known
+  expect(writes.at(-1)?.[0]?.tokens).toBeDefined()
+  expect(writes.at(-1)?.[0]?.costUsd).toBeUndefined()
 })
 
 test('/rabe-stop cancels the job through the companion script', async ($, on) => {

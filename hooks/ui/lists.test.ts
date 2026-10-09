@@ -161,10 +161,30 @@ test('joinFit stops at the width and counts the rest', () => {
 })
 
 test('cost totals sum tokens and dollars and count unknowns', () => {
-  expect(totals(ALL)).toEqual({ usd: 0.25, tokens: 91_000, unknown: 2, claude: 0.16, codex: 0.09 })
+  expect(totals(ALL)).toMatchObject({ tokens: 91_000, unknown: 2, codex: 0.09 })
   expect(byTokens(ALL).slice(0, 3)).toEqual([explore, review, verify])
   expect(share(ALL, explore)).toBe('45%')
   expect(share(ALL, plan)).toBe('n/a')
+})
+
+test('a worker with tokens but no price makes its side and the sum n/a, not smaller', () => {
+  const unpriced = ALL.map(item => (item.id === verify.id ? { ...item, costUsd: undefined } : item))
+  expect(totals(unpriced)).toEqual({ tokens: 91_000, unknown: 2, codex: 0.09 })
+  expect(costLine(unpriced)).toBe('cost n/a · 91k tok · top: Explore verifyToken 41k')
+})
+
+test('a worker without a dollar amount, tokens or not, makes its side n/a', () => {
+  // plan and review:bugs ended without token data: what they spent is unknown
+  const priced = ALL.filter(item => item.id !== plan.id && item.id !== reviewed.id)
+  expect(totals(priced)).toMatchObject({ usd: 0.31, claude: 0.22, codex: 0.09 })
+  expect(totals(ALL)).toEqual({ tokens: 91_000, unknown: 2, codex: 0.09 })
+  // a Codex job whose session file is gone
+  const gone = { ...review, costUsd: undefined, tokens: undefined } as RabeItem
+  expect(totals([...priced.filter(item => item.id !== review.id), gone])).toEqual({
+    tokens: 63_000,
+    unknown: 1,
+    claude: 0.22,
+  })
 })
 
 test('without any dollar amount the cost is n/a, not $0.00', () => {
