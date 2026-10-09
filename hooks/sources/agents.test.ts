@@ -326,6 +326,8 @@ const dir: FsStat = { kind: 'dir', size: 0, mtimeMs: 1, isLink: false }
 const LOCKED = file(-1)
 // A file a hook hides: its stat is denied with a message that ends in ENOENT.
 const SPOOFED = file(-2)
+// a file stat may not look at (a folder without x) while the folder still lists it
+const UNREAD = file(-3)
 const hidden = (stat: FsStat | undefined) => stat === LOCKED || stat === SPOOFED
 
 // A fake shell on a fake disk: each command changes the disk as `effects` says.
@@ -341,6 +343,7 @@ function shell(on: On, effects: Record<string, Effect> = {}): { disk: Disk; stat
     stats.push(e.path)
     const found = disk.get(e.path)
     if (found === SPOOFED) return { deny: `rabe: $.fs.stat: access denied: /work/ENOENT` }
+    if (found === UNREAD) return { deny: 'EACCES' }
     if (e.path.includes('locked') || found === LOCKED) return { deny: 'EACCES' }
     if (e.path.includes('hang')) return new Promise<never>(() => {})
     return found ? { value: found } : { deny: 'ENOENT' }
@@ -488,6 +491,24 @@ test('a path is missing only when its folder lists without it', async ($, on) =>
     { path: '/tmp/gone', at: 5000, via: 'shell' },
     { path: '/tmp/new/deep/f', at: 5000, via: 'shell' },
   ])
+})
+
+test('a name the folder lists in another case is unknown, not missing', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const held = watch(on)
+  const { disk } = shell(on, {
+    // a case-insensitive disk: report.txt is Report.txt, and stat may no longer look at it
+    'chmod 600 /tmp/box; rm /tmp/box/report.txt': one => {
+      one.delete('/tmp/box/report.txt')
+      one.set('/tmp/box/Report.txt', UNREAD)
+    },
+  })
+  disk.set('/tmp/box/report.txt', file(3))
+  await $.tool.call({
+    tool: 'Bash',
+    command: 'chmod 600 /tmp/box; rm /tmp/box/report.txt',
+  } as never)
+  expect(held.edits ?? []).toEqual([])
 })
 
 test('main session writes and shell writes are kept apart from agents', async ($, on) => {
