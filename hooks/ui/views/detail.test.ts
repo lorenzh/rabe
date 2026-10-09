@@ -453,14 +453,14 @@ test('a codex job counts the tokens of the agent that only forwarded it', () => 
     ...explore,
     id: 'agent:f1',
     title: 'Codex rescue',
-    tokens: { input: 4_000, output: 1_000 },
+    tokens: { input: 4_000, output: 1_000, cached: 3_000 },
     costUsd: 0.01,
     detail: { agentId: 'f1', toolCount: 1, codexCalls: [call] },
   } as RabeItem
   const job = { ...review, parentId: forwarder.id } as RabeItem
   const shown = lines(open(model([forwarder, job]), job.id).grid)
   expect(shown).toContain('forwarded by claude Codex rescue · its tokens count here')
-  expect(shown).toContain(' ≈ $0.10   in 29k  out 4k  cached 18k')
+  expect(shown).toContain(' ≈ $0.10   in 29k  out 4k  cached 21k')
 })
 
 // The folded agent has no row: its job's detail opens it, with its turns, id and transcript.

@@ -141,34 +141,44 @@ export function forwarderOf(job: RabeItem, items: readonly RabeItem[]): RabeItem
 export const rowOf = (id: string, items: readonly RabeItem[]): string =>
   items.find(one => forwarderOf(one, items)?.id === id)?.id ?? id
 
-const add = (a?: number, b?: number) =>
-  a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0)
+const both = (a?: number, b?: number) => (a === undefined || b === undefined ? undefined : a + b)
 
 // A Codex job's spend with its forwarder's: one piece of work, one cost line.
+// What one of them lacks makes the sum unknown, never the other's part.
 export function withForwarder(item: RabeItem, items: readonly RabeItem[]): RabeItem {
   const by = forwarderOf(item, items)
-  if (!by?.tokens && by?.costUsd === undefined) return item
+  if (!by) return item
   const [a, b] = [item.tokens, by.tokens]
+  const cached = both(a?.cached, b?.cached)
   const tokens =
     a && b
       ? {
           input: a.input + b.input,
           output: a.output + b.output,
-          ...((a.cached ?? b.cached) !== undefined && { cached: add(a.cached, b.cached) }),
+          ...(cached !== undefined && { cached }),
         }
-      : (a ?? b)
+      : undefined
 
-  return { ...item, tokens, costUsd: add(item.costUsd, by.costUsd) } as RabeItem
+  return { ...item, tokens, costUsd: both(item.costUsd, by.costUsd) } as RabeItem
 }
 
-// Codex jobs follow the agent that started them.
-export function nest(list: RabeItem[]): RabeItem[] {
+// Codex jobs follow the agent that started them, after its other jobs. A job
+// in `held` (the order the pane opened with) keeps its place.
+export function nest(list: RabeItem[], held: readonly string[] = []): RabeItem[] {
   const isChild = (item: RabeItem) =>
-    item.kind === 'codex' && list.some(one => one.kind === 'agent' && one.id === item.parentId)
+    item.kind === 'codex' &&
+    !held.includes(item.id) &&
+    list.some(one => one.kind === 'agent' && one.id === item.parentId)
+  const rest = list.filter(item => !isChild(item))
+  const owner = (item?: RabeItem) => (item?.kind === 'codex' && item.parentId) || item?.id
+  const placed = new Set<string | undefined>()
 
-  return list
-    .filter(item => !isChild(item))
-    .flatMap(item => [item, ...list.filter(one => isChild(one) && one.parentId === item.id)])
+  return rest.flatMap((item, i) => {
+    const id = owner(item)
+    if (owner(rest[i + 1]) === id || placed.has(id)) return [item]
+    placed.add(id)
+    return [item, ...list.filter(one => isChild(one) && one.parentId === id)]
+  })
 }
 
 const recency = (item: RabeItem) => item.endedAt ?? item.startedAt ?? item.seenAt
@@ -210,14 +220,15 @@ export function grouped(
       ? (GROUPS.find(group => order[group.id]?.includes(item.id))?.id ?? kindGroupOf(item))
       : groupOf(item)
 
-  return GROUPS.map(group => ({
-    ...group,
-    items: stable(
+  return GROUPS.map(group => {
+    const held = order && (order[group.id] ?? [])
+    const list = stable(
       items.filter(item => of(item) === group.id),
-      order && (order[group.id] ?? []),
-      group.id === 'agents' ? list => nest(sortItems(list)) : sortItems,
-    ),
-  })).filter(group => group.items.length > 0)
+      held,
+      sortItems,
+    )
+    return { ...group, items: group.id === 'agents' ? nest(list, held) : list }
+  }).filter(group => group.items.length > 0)
 }
 
 const start = (item: RabeItem) => item.startedAt ?? item.seenAt

@@ -422,3 +422,34 @@ test('a Codex job sorts under the agent that started it and also did other work'
   expect(agents?.indexOf(child.id)).toBe((agents?.indexOf(busy.id) ?? 0) + 1)
   expect(orderOf(items).agents).toEqual(agents)
 })
+
+test('a Codex job found while the order is held joins its agent, after the jobs held there', () => {
+  const busy = { ...forwarder, detail: { ...forwarder.detail, toolCount: 3 } } as RabeItem
+  const first = { ...job, id: 'codex:first' } as RabeItem
+  const order = { agents: [busy.id, first.id, explore.id, plan.id] }
+  const later = { ...job, id: 'codex:later' } as RabeItem
+  const other = { ...job, id: 'codex:other', parentId: undefined } as RabeItem
+  const agents = grouped([busy, explore, plan, first, later, other], order)
+    .find(g => g.id === 'agents')
+    ?.items.map(i => i.id)
+  expect(agents).toEqual([busy.id, first.id, later.id, explore.id, plan.id, other.id])
+  // a held job keeps its place, also once it is linked to an agent
+  const linked = { ...other, parentId: plan.id } as RabeItem
+  const held = { agents: [explore.id, linked.id, plan.id] }
+  expect(
+    grouped([explore, plan, linked], held)
+      .find(g => g.id === 'agents')
+      ?.items.map(i => i.id),
+  ).toEqual(held.agents)
+})
+
+test('a forwarder whose cost or tokens are not known makes its job’s not known', () => {
+  const blind = { ...job, tokens: undefined, costUsd: undefined } as RabeItem
+  const sum = withForwarder(blind, [forwarder, blind])
+  expect(sum.tokens).toBeUndefined()
+  expect(sum.costUsd).toBeUndefined()
+  const unpriced = { ...forwarder, tokens: undefined, costUsd: undefined } as RabeItem
+  const other = withForwarder(job, [unpriced, job])
+  expect(other.tokens).toBeUndefined()
+  expect(other.costUsd).toBeUndefined()
+})
