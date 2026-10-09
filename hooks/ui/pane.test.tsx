@@ -60,7 +60,10 @@ function hold(on: On, items: RabeItem[], seeds: Ui = {}): Ui {
     if (e.plugin === 'rabe') sets[e.key] = e.value
     return next(e)
   })
-  on('ui.toast', async () => ({ value: undefined }))
+  on('ui.toast', async (_$, e) => {
+    sets.toasts = [...((sets.toasts as string[] | undefined) ?? []), e.text]
+    return { value: undefined }
+  })
 
   return sets
 }
@@ -166,8 +169,8 @@ test('an agent shows its turns from rabe.turns on every surface', async ($, on) 
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
     const shown = await screen(ui)
-    expect(shown).toContain('1 ● Searching the middleware.')
-    expect(shown).toContain('   ⎿ Grep verifyToken')
+    expect(shown).toContain('1  ● Searching the middleware.')
+    expect(shown).toContain('     ⎿ Grep verifyToken')
     expect(await ui.find({ type: 'Button', key: 'message-agent' })).toBeDefined()
     expect(await ui.find({ type: 'Input', key: 'message' })).toBeDefined()
     await ui.unmount()
@@ -180,7 +183,7 @@ test('a codex job shows its steps from the item on every surface', async ($, on)
     const ui = await $.ui.mount({ surface, ...PANE } as never)
     const shown = await screen(ui)
     expect(shown).toContain('  Review middleware/auth.ts for token-expiry bugs.')
-    expect(shown).toContain('◆ Reading the diff.')
+    expect(shown).toContain('● Reading the diff.')
     expect(shown).toContain('  thinking: Diff first.')
     expect(shown.some(line => /^ {2}\$ git diff +✓ exit 0 · 1 lines$/.test(line))).toBe(true)
     await ui.unmount()
@@ -221,7 +224,7 @@ test('a wide terminal pane shows the selected item beside the list', async ($, o
   const ui = await $.ui.mount({ surface: 'terminal', ...WIDE } as never)
   const shown = await screen(ui)
   expect(shown.some(line => /│ ◐ codex · review auth\.ts +running$/.test(line))).toBe(true)
-  expect(shown.some(line => /│ ◆ Reading the diff\.$/.test(line))).toBe(true)
+  expect(shown.some(line => /│ ● Reading the diff\.$/.test(line))).toBe(true)
   await ui.unmount()
 })
 
@@ -234,7 +237,7 @@ test('a narrow pane, and the desktop, put a one-line summary under the list', as
     const ui = await $.ui.mount({ surface, ...PANE, props } as never)
     const shown = await screen(ui)
     expect(shown).toContain(
-      ' review auth.ts · model gpt-6.1-sol · effort high · job task-1 · ◐ running',
+      ' review auth.ts · model gpt-6.1-sol · effort high · sandbox n/a · ◐ running',
     )
     await ui.unmount()
   }
@@ -328,4 +331,22 @@ test('moving the focus onto a desktop row selects it', async ($, on) => {
   })
   expect(state.selected).toBe(dev.id)
   await ui.unmount()
+})
+
+test('x stops a codex job through /rabe-stop on every surface', async ($, on) => {
+  const sets = hold(on, ALL, { open: review.id })
+  const runs: string[] = []
+  on('command.run', { command: 'rabe-stop' }, async (_$, e) => {
+    runs.push(e.args)
+    return { text: `Stopped codex ${review.title}` }
+  })
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    const stop = await ui.find({ type: 'Button', key: 'stop' })
+    expect(stop?.props.label).toBe('x: stop')
+    await ui.press({ key: 'stop' })
+    await ui.unmount()
+  }
+  expect(runs).toEqual([review.id, review.id])
+  expect(sets.toasts).toContain(`Stopped ${review.title}`)
 })

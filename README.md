@@ -11,13 +11,13 @@ Rabe (German for raven) is a Claude Code mod. It shows your subagents, Codex job
 
 ![Rabe in a Claude Code session: the band above the prompt lists running agents, shells, a monitor and a cron job, then /rabe opens the pane, shows an agent's detail, the open ports and the timeline](docs/assets/demo.gif)
 
-Status: early development. Rabe tracks Claude subagents, workflows, Codex jobs started through the Codex plugin (`/codex:rescue`, `/codex:review`), background shells (with exit code and a guessed port), monitors (with each output line and when it arrived), cron jobs and `/loop` wakeups. `/rabe-stop codex:<job id>` cancels a running Codex job. [What Rabe can see](docs/feasibility.md) lists where each piece of data comes from; [How Rabe is built](docs/architecture.md) describes the code.
+Status: early development. Rabe tracks Claude subagents, workflows, Codex jobs started through the Codex plugin (`/codex:rescue`, `/codex:review`), background shells (with exit code and a guessed port), monitors (with each output line and when it arrived), cron jobs and `/loop` wakeups. `/rabe-stop codex:<job id>`, or `x: stop` in the pane, cancels a running Codex job. [What Rabe can see](docs/feasibility.md) lists where each piece of data comes from; [How Rabe is built](docs/architecture.md) describes the code.
 
 ## What you see
 
 - **The band** above the prompt shows one row per kind while something runs: failures from the last 10 minutes first, then Claude agents, Codex jobs, workflows, shells with their ports, monitors, cron countdowns, and the token cost. It draws nothing when nothing runs, and one line when the rows do not fit.
 - **`/rabe`** opens a pane with four tabs (`1` to `4`):
-  - **Items**: every item grouped by kind, failures first, with a search field. A wide terminal pane shows the selected item beside the list. Enter opens an item: the turns of a Claude agent or a Codex job, the phases and agents of a workflow, the output of a shell or monitor, the next runs of a cron job.
+  - **Items**: every item grouped by kind, failures first, with a search field. A wide terminal pane shows the selected item beside the list. Enter opens an item: the spend, brief and turns of a Claude agent; the spend, prompt and steps of a Codex job; the phases and agents of a workflow; the output and exit code of a shell; the received lines of a monitor; the next runs of a cron job.
   - **Cost**: tokens per agent and Codex job. Dollars show `n/a` until Rabe has a price table.
   - **Effects**: worktrees and open ports, with the `ssh -L` command to reach a port.
   - **Timeline**: when each item ran, and who started what.

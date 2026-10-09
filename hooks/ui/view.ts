@@ -105,7 +105,7 @@ export function controlRows(drawn: Omit<Drawn, 'grid'>, size: Size): number {
 
 export function canStop(item: RabeItem): boolean {
   if (item.status !== 'running') return false
-  if (item.kind === 'agent') return true
+  if (item.kind === 'agent' || item.kind === 'codex') return true
   if (item.kind === 'shell' || item.kind === 'monitor' || item.kind === 'workflow') {
     return item.detail.taskId !== undefined
   }
