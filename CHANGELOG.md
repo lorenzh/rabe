@@ -4,6 +4,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-09
+
 ### Added
 
 - The Effects tab shows the files Codex jobs changed (added, updated or deleted) and the files the main session changed, with who changed each file and how. ([#16](https://github.com/lorenzh/rabe/pull/16))
@@ -11,6 +13,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Changed
 
+- On the Effects tab, Enter or a click on a file opens the agent that changed it last; when the main session changed it last, it copies the file path instead. ([#16](https://github.com/lorenzh/rabe/pull/16))
 - The band above the prompt is always one line of counts and the cost, with an empty row above it so the status line does not touch it; the empty row goes when the band has only one row. ([#17](https://github.com/lorenzh/rabe/pull/17))
 
 ### Fixed
@@ -61,6 +64,7 @@ The first public version.
 
 - Workflow agents no longer offer stop and message, which Claude Code does not support for a single workflow agent; their detail offers stopping the run. ([#8](https://github.com/lorenzh/rabe/pull/8))
 
-[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/lorenzh/rabe/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/lorenzh/rabe/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/lorenzh/rabe/releases/tag/v0.1.0
