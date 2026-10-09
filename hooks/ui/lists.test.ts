@@ -29,6 +29,7 @@ import {
   joinFit,
   matches,
   nameSpans,
+  nextAt,
   orderOf,
   phaseProgress,
   phases,
@@ -93,12 +94,24 @@ test('byParent puts the shells of the main session first, then a block per agent
   expect(byParent([dev], ALL).map(block => block.title)).toEqual([''])
 })
 
-test('time labels say running time, age, countdown or n/a', () => {
+test('time labels say running time, age, the next run or n/a', () => {
   expect(timeLabel(explore, NOW)).toBe('1m12s')
   expect(timeLabel(dev, NOW)).toBe('≥ 40m')
   expect(timeLabel(lint, NOW)).toBe('2m ago')
-  expect(timeLabel(babysit, NOW)).toBe('next 3:00')
+  expect(timeLabel(babysit, NOW)).toBe('next 10:55')
   expect(timeLabel({ ...plan, endedAt: undefined }, NOW)).toBe('n/a')
+})
+
+// A countdown in m:ss (`next 15:44`) read like a clock time that went back on
+// each drawing; the next run is its clock time, strictly after now.
+test('the next run of a cron job is its clock time, the same all through a minute', () => {
+  for (const s of [0, 1, 30, 59]) expect(nextAt(babysit, NOW + s * 1000)).toBe('10:55')
+  expect(nextAt(babysit, NOW + 3 * 60_000 - 1)).toBe('10:55')
+  expect(nextAt(babysit, NOW + 3 * 60_000)).toBe('11:00')
+  const wakeup = { ...babysit, detail: { jobId: 'wakeup-1', prompt: 'go', scheduledFor: NOW } }
+  expect(nextAt(wakeup as RabeItem, NOW - 60_000)).toBe('10:52')
+  expect(nextAt(wakeup as RabeItem, NOW)).toBe('due')
+  expect(timeLabel(wakeup as RabeItem, NOW + 5_000)).toBe('due')
 })
 
 test('names add the port and the exit code of shells', () => {
@@ -133,7 +146,7 @@ test('the band has one row per kind with running names, failed first', () => {
   const text = (names: Span[][] = []) => names.map(one => one.map(([t]) => t).join(''))
   expect(text(rows[1]?.names)).toEqual(['Explore verifyToken 1m', 'verify:db.ts 40s'])
   expect(text(rows[3]?.names)).toEqual(['review-changes · Verify 2/3 · 2 agents'])
-  expect(text(rows[6]?.names)).toEqual(['/babysit-prs · next 3:00'])
+  expect(text(rows[6]?.names)).toEqual(['/babysit-prs · next 10:55'])
   expect(bandRows([{ ...lint, endedAt: NOW - 11 * 60_000 }], NOW)).toEqual([])
 })
 

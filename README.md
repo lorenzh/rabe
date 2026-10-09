@@ -22,7 +22,7 @@ Status: early development. Version 0.1.0.
 | Codex jobs (from the Codex plugin) | Name and run time | Model, effort and sandbox, tokens, the prompt, each message and command with its exit code |
 | Background shells | Command and the port it serves | Output lines, exit code, the guessed port |
 | Monitors | Name | Each line with the time Rabe received it |
-| Cron jobs and `/loop` wakeups | Prompt and countdown to the next run | The next five runs |
+| Cron jobs and `/loop` wakeups | Prompt and the time of the next run (`due` for a wakeup that waits) | The next five runs |
 | Cost | Session cost and tokens of the background work | Cost tab: tokens per worker, workers that look stuck |
 
 The band puts failures from the last 10 minutes first. Shells and monitors that an agent started come after the others, with the name of that agent. When nothing runs, it draws nothing. When its rows do not fit, it draws one line of counts.

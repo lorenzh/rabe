@@ -1,6 +1,6 @@
 import type { RabeItem } from '../model'
-import { clockTime, countdown, duration } from './format'
-import { children, glyph, KIND_LABEL, nextRun } from './lists'
+import { clockTime, duration } from './format'
+import { children, glyph, KIND_LABEL, nextAt } from './lists'
 
 export type Facts = { title: string; status: string; lines: string[] }
 
@@ -14,8 +14,8 @@ function statusWord(item: RabeItem, now: number): string {
   }
   if (item.kind === 'monitor') return 'watching'
   if (item.kind === 'cron') {
-    const next = nextRun(item, now)
-    return next === undefined ? 'scheduled' : `next in ${countdown(next - now)}`
+    const at = nextAt(item, now)
+    return at === 'n/a' ? 'scheduled' : at === 'due' ? 'due' : `next ${at}`
   }
 
   return 'running'

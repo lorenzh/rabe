@@ -3,7 +3,7 @@ import type { RabeItem, RabeItemKind, RabeItemOf } from '../model'
 import { nextRuns } from '../schedule'
 import type { Span } from './cells/grid'
 import { C, type Style } from './cells/palette'
-import { ago, countdown, duration, short, tokens, usd } from './format'
+import { ago, clockTime, duration, short, tokens, usd } from './format'
 
 export type Group = 'failed' | 'agents' | 'shells' | 'monitors' | 'cron' | 'new'
 
@@ -49,6 +49,15 @@ export function nextRun(item: RabeItem, now: number): number | undefined {
   return item.detail.schedule ? nextRuns(item.detail.schedule, now, 1)[0] : undefined
 }
 
+// The next run as its clock time: a countdown in m:ss (`15:44`) reads like
+// one. A wakeup past its time waits for the session to go idle: `due`.
+export function nextAt(item: RabeItem, now: number): string {
+  const next = nextRun(item, now)
+  if (next === undefined) return 'n/a'
+
+  return next > now ? clockTime(next).slice(0, 5) : 'due'
+}
+
 // A shell's port (blue) and a failed shell's exit code (red) follow its title.
 export function nameSpans(item: RabeItem, style: Style = {}): Span[] {
   const out: Span[] = [[item.title, style]]
@@ -64,8 +73,8 @@ export function nameSpans(item: RabeItem, style: Style = {}): Span[] {
 export function timeLabel(item: RabeItem, now: number): string {
   if (item.status !== 'running') return item.endedAt === undefined ? 'n/a' : ago(now - item.endedAt)
   if (item.kind === 'cron') {
-    const next = nextRun(item, now)
-    return next === undefined ? 'n/a' : `next ${countdown(next - now)}`
+    const at = nextAt(item, now)
+    return at === 'n/a' || at === 'due' ? at : `next ${at}`
   }
   if (item.startedAt === undefined) return `≥ ${short(now - item.seenAt)}`
 
@@ -433,14 +442,9 @@ export function bandRows(items: RabeItem[], now: number): BandRow[] {
       glyph: '⟳',
       kind: 'cron',
       label: 'cron',
-      names: items.filter(isRunning('cron')).map(item => {
-        const next = nextRun(item, now)
-        return [
-          [item.title],
-          [' · next ', dim],
-          [next === undefined ? 'n/a' : countdown(next - now), { fg: C.bright }],
-        ]
-      }),
+      names: items
+        .filter(isRunning('cron'))
+        .map(item => [[item.title], [' · next ', dim], [nextAt(item, now), { fg: C.bright }]]),
     },
   ]
 

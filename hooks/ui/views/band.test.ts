@@ -33,9 +33,9 @@ test('names are plain, times dim, ports blue and the next cron run bright', () =
   expect(cell(grid, at(shown, 0, 'Explore'), 0)[1]).toBe(DEFAULT)
   expect(cell(grid, at(shown, 0, '1m'), 0)[1]).toBe(C.dim)
   expect(cell(grid, at(shown, 1, ':5173'), 1)[1]).toBe(C.blue)
-  expect(shown[2]).toBe(' ⟳ cron 1    /babysit-prs · next 3:00')
+  expect(shown[2]).toBe(' ⟳ cron 1    /babysit-prs · next 10:55')
   expect(cell(grid, at(shown, 2, 'next'), 2)[1]).toBe(C.dim)
-  expect(cell(grid, at(shown, 2, '3:00'), 2)[1]).toBe(C.bright)
+  expect(cell(grid, at(shown, 2, '10:55'), 2)[1]).toBe(C.bright)
 })
 
 test('the cost row puts the dollar amount first and bright, the rest dim', () => {
