@@ -62,11 +62,11 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | Mouse wheel | Scroll the pane |
 | Esc | Close the pane |
 
-The buttons under the pane show the keys that work on the current tab. A letter with no button goes to the prompt.
+The buttons under the tabs show the keys of the current tab. A key that cannot act now is dim, and pressing it does nothing. A letter with no button goes to the prompt.
 
 With the mouse, click a row to open it, a tab to switch to it, or a group name to fold the group. The wheel scrolls the pane. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
 
-The rows keep their order while the pane is open, so the row under the focus does not move. Items that start after you open it go to a NEW group at the end. On the Effects tab, files and ports found after you open it go to a NEW section at the end, in the order Rabe found them, and a port whose shell ends keeps its row, marked `ended`. Type `/rabe` again to sort the lists.
+While the pane is open, the tabs, buttons and rows keep their places, so Enter acts on the row or button that has the focus. New rows go to the end: items that start after you open the pane go to a NEW group, and on the Effects tab files and ports found later go to a NEW section, in the order Rabe found them. A row or button that is gone stays as a dim slot (`· gone` on a row) until you change the tab, the search or the folded groups, or open an item. Type `/rabe` again to sort the lists.
 
 Commands:
 

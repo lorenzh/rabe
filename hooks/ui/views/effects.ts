@@ -115,28 +115,21 @@ const sshLine = (port: number) => `ssh -L ${port}:localhost:${port} <your-host>`
 
 type Port = { item: RabeItemOf<'shell'>; port: number; at: number }
 
-// The ports to draw, one per port, naming a running shell when one has it.
-// Without an order: the ports of the running shells. With one, `held` are the
-// ports of the shells that ran with one at the open, in that order, and
-// `fresh` the others of running shells or of shells that ended since the open
-// (`portsEnded` names those that had ended), each with the time it was found.
-// Once drawn, a port keeps its row until the next open.
+// The ports of the running shells, one per port. With an order, `held` are
+// the ports of the shells that ran with one at the open, in that order, and
+// `fresh` the others, each with the time it was found. A port whose shell
+// ended leaves; the renderer keeps its row's place (see `hold`).
 function portsOf(model: Model, order?: RabeOrder): { held: Port[]; fresh: Port[] } {
   const shown = model.items.flatMap(item =>
-    item.kind === 'shell' &&
-    item.detail.port !== undefined &&
-    (item.status === 'running' ||
-      order?.ports?.includes(item.id) ||
-      order?.portsEnded?.includes(item.id) === false)
+    item.kind === 'shell' && item.detail.port !== undefined && item.status === 'running'
       ? [item]
       : [],
   )
   const byPort = (list: typeof shown): Port[] =>
     [...new Set(list.map(item => item.detail.port as number))].map(port => {
       const same = shown.filter(one => one.detail.port === port)
-      const item = same.find(one => one.status === 'running') ?? (same[0] as (typeof same)[0])
       const at = Math.min(...same.map(one => one.detail.portAt ?? one.startedAt ?? one.seenAt))
-      return { item, port, at }
+      return { item: same[0] as (typeof same)[0], port, at }
     })
   if (!order) return { held: byPort(shown), fresh: [] }
   const held = byPort(
@@ -157,12 +150,7 @@ function portRows({ item, port }: Port, hasHotkey: boolean, selected: string): L
   const isSelected = selected === `ssh:${port}`
   return [
     {
-      spans: [
-        ['  '],
-        [`:${port}`, { fg: C.blue }],
-        [`  ${item.detail.command}`],
-        ...(item.status === 'running' ? [] : [['  ended', dim] as Span]),
-      ],
+      spans: [['  '], [`:${port}`, { fg: C.blue }], [`  ${item.detail.command}`]],
     },
     {
       spans: [

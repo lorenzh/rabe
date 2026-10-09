@@ -5,6 +5,7 @@ import {
   type Drawn,
   isPress,
   type Line,
+  type Model,
   type Node,
   type Press,
   type Selection,
@@ -26,57 +27,88 @@ export const TABS: { tab: RabeTab; label: string; hotkey: string; view: View }[]
   { tab: 'timeline', label: 'Timeline', hotkey: '4', view: timelineView },
 ]
 
-const HEAD = 2
 const HINT = 1
-
-// The hint names the keys the tab binds: the arrows and Enter over its rows,
-// and the letters of its controls.
-const WORDS: Record<string, string> = {
-  stop: 'x stop',
-  'stop-group': 'g stop group',
-  'stop-run': 'g stop run',
-}
 
 const hasRows = (nodes: Node[]) =>
   nodes.some(
     node => 'spans' in node && node.spans.some(p => isPress(p) && p.key.startsWith('row:')),
   )
 
+// The hint names the keys the tab binds: the arrows and Enter over its rows,
+// and x and g of its controls while they act.
 function hint(sel: Selection, isOpen: boolean, inner: Drawn): string {
   if (!sel.isFocused) return 'tab to select · esc close'
   if (isOpen) return 'b back · esc close'
   const move = hasRows(inner.nodes) ? ['↑↓ move', 'enter open'] : []
+  const keys = inner.buttons.flatMap(one =>
+    one.hotkey === 'x' || one.hotkey === 'g' ? [one.label.replace(': ', ' ')] : [],
+  )
 
-  return [...move, ...inner.buttons.flatMap(one => WORDS[one.key] ?? []), 'esc close'].join(' · ')
+  return [...move, ...keys, 'esc close'].join(' · ')
 }
 
 const rowsOf = (nodes: Node[]) =>
   nodes.reduce((n, node) => n + ('chart' in node ? node.chart.rows : 1), 0)
 
-// The whole pane: the tab row (a plain Button per tab, hotkeys 1-4) and its
-// rule, the tab's view (or the open item's detail), and the hint at the
-// bottom. The view gets the rows its controls leave; a list longer than that
-// makes the pane scroll, and the focus carries the window along.
-export const paneView: View = (model, size, sel): Drawn => {
-  const isOpen = sel.tab === 'items' && model.items.some(item => item.id === sel.open)
-  const body = isOpen ? detailView : (TABS.find(one => one.tab === sel.tab)?.view ?? itemsView)
-  const gap = isSplit(size) ? 4 : 2
-  const tabs: Press[] = TABS.map(one => ({
+// A plain Button with a hotkey is drawn `1: label`.
+const PREFIX = 3
+
+// The tab row: every tab a plain Button, never cut. Where the full labels do
+// not fit, the other tabs keep their first letter; where those do not fit
+// either, the tabs wrap. Under the row a rule marks the active tab, on one
+// row only (the active tab is also drawn full, the others dim).
+function tabLines(model: Model, size: Size, sel: Selection): Line[] {
+  const press = (one: (typeof TABS)[number], isShort: boolean): Press => ({
     key: `tab-${one.tab}`,
-    label: one.tab === 'items' ? `${one.label} ${model.items.length}` : one.label,
+    label:
+      one.tab === sel.tab || !isShort
+        ? one.tab === 'items'
+          ? `${one.label} ${model.items.length}`
+          : one.label
+        : one.label.slice(0, 1),
     hotkey: one.hotkey,
     action: { type: 'tab', tab: one.tab },
     ...(one.tab !== sel.tab && { dim: true }),
-  }))
-  const keys = '1-4 switch'
-  const width = tabs.reduce((n, one) => n + one.label.length + gap, 1)
-  const head: Line = {
-    spans: tabs.flatMap((one, i) => (i ? [[' '.repeat(gap)], one] : [[' '], one])),
-    ...(gap > 2 && width + keys.length < size.columns && { right: [[keys, { fg: C.dim }]] }),
+  })
+  const span = (one: Press) => one.label.length + PREFIX
+  const tries = [
+    { gap: isSplit(size) ? 4 : 2, isShort: false },
+    { gap: 1, isShort: false },
+    { gap: 1, isShort: true },
+  ]
+  const fits = (list: Press[], gap: number) =>
+    list.reduce((n, one) => n + span(one), 1 + gap * (list.length - 1)) <= size.columns
+  const pick =
+    tries.find(one =>
+      fits(
+        TABS.map(tab => press(tab, one.isShort)),
+        one.gap,
+      ),
+    ) ?? (tries.at(-1) as (typeof tries)[number])
+  const tabs = TABS.map(one => press(one, pick.isShort))
+  const rows: Press[][] = []
+  for (const one of tabs) {
+    const last = rows.at(-1)
+    if (last && fits([...last, one], pick.gap)) last.push(one)
+    else rows.push([one])
   }
+  const keys = '1-4 switch'
+  const lines: Line[] = rows.map(row => {
+    const width = row.reduce((n, one) => n + span(one), 1 + pick.gap * (row.length - 1))
+    return fitLine(
+      {
+        spans: row.flatMap((one, i) => (i ? [[' '.repeat(pick.gap)], one] : [[' '], one])),
+        ...(rows.length === 1 &&
+          pick.gap > 2 &&
+          width + keys.length < size.columns && { right: [[keys, { fg: C.dim }]] }),
+      },
+      size.columns,
+    )
+  })
   const at = tabs.findIndex(one => one.key === `tab-${sel.tab}`)
-  const from = tabs.slice(0, Math.max(0, at)).reduce((n, one) => n + one.label.length + gap, 1)
-  const under = tabs[at]?.label.length ?? 0
+  const from =
+    rows.length === 1 ? tabs.slice(0, at).reduce((n, one) => n + span(one) + pick.gap, 1) : 0
+  const under = rows.length === 1 && at >= 0 ? span(tabs[at] as Press) : 0
   const rule: Line = {
     spans: [
       ['─'.repeat(from), { fg: C.rule }],
@@ -84,22 +116,36 @@ export const paneView: View = (model, size, sel): Drawn => {
       ['─'.repeat(Math.max(0, size.columns - from - under)), { fg: C.rule }],
     ],
   }
-  const room = (rows: number): Size => ({
+
+  return [...lines, fitLine(rule, size.columns)]
+}
+
+// The whole pane: the tab row and its rule, the toolbar (the tab's controls
+// and Inputs), the tab's view (or the open item's detail), and the hint at the
+// bottom. The toolbar comes before the body, so rows found later go at the end
+// of the focus order (see `hold` in render.tsx). The view gets the rows the
+// rest leaves; a list longer than that makes the pane scroll, and the focus
+// carries the window along.
+export const paneView: View = (model, size, sel): Drawn => {
+  const isOpen = sel.tab === 'items' && model.items.some(item => item.id === sel.open)
+  const body = isOpen ? detailView : (TABS.find(one => one.tab === sel.tab)?.view ?? itemsView)
+  const head = tabLines(model, size, sel)
+  const room = (rows: number, above: number): Size => ({
     ...size,
     rows: Math.max(1, rows),
-    ...(size.window && { window: { ...size.window, top: size.window.top - HEAD } }),
+    ...(size.window && { window: { ...size.window, top: size.window.top - above } }),
   })
-  const first = body(model, room(size.rows - HEAD - HINT), sel)
-  const rows = size.rows - HEAD - HINT - controlRows(first, size)
-  const inner = body(model, room(rows), sel)
+  const first = body(model, room(size.rows - head.length - HINT, head.length), sel)
+  const tools = controlRows(first, size)
+  const rows = size.rows - head.length - tools - HINT
+  const inner = body(model, room(rows, head.length + tools), sel)
   const pad = Math.max(0, rows - rowsOf(inner.nodes))
   const nodes: Node[] = [
-    fitLine(head, size.columns),
-    fitLine(rule, size.columns),
+    ...head,
     ...inner.nodes,
     ...Array.from({ length: pad }, (): Line => ({ spans: [] })),
     fitLine({ spans: [[` ${hint(sel, isOpen, inner)}`, { fg: C.dim }]] }, size.columns),
   ]
 
-  return { nodes, buttons: inner.buttons, inputs: inner.inputs }
+  return { nodes, buttons: inner.buttons, inputs: inner.inputs, toolbar: head.length }
 }

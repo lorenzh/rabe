@@ -5,11 +5,13 @@ import { C, type Style } from '../cells/palette'
 import { ago, clockTime, countdown, tokens, usd } from '../format'
 import { byStart, children, phases, share, stable, timeLabel, tokenSum } from '../lists'
 import {
+  type Action,
   canStop,
   type Drawn,
   isWorkflowAgent,
   type Line,
   type Model,
+  NONE,
   type Selection,
   type View,
   type ViewButton,
@@ -309,33 +311,30 @@ function detailButtons(
       action: { type: 'delete', id: item.id },
     })
   }
-  if (item.kind === 'agent' && item.status === 'running' && hasInput && !isWorkflowAgent(item)) {
-    buttons.push({
-      key: 'message-agent',
-      label: 'm: message',
-      hotkey: 'm',
-      action: { type: 'focus', key: 'message' },
-    })
+  // Message and stop keep their slots once the item ended: dim, no hotkey.
+  const slot = (key: string, label: string, action: Action | undefined): ViewButton =>
+    action
+      ? { key, label, hotkey: label.slice(0, 1), action }
+      : { key, label, action: NONE, dim: true }
+  if (item.kind === 'agent' && hasInput && !isWorkflowAgent(item)) {
+    const isOn = item.status === 'running'
+    buttons.push(
+      slot('message-agent', 'm: message', isOn ? { type: 'focus', key: 'message' } : undefined),
+    )
   }
   const run = isWorkflowAgent(item)
     ? items.find(one => one.id === item.parentId && one.kind === 'workflow')
-    : undefined
-  if (run && canStop(run)) {
-    buttons.push({
-      key: 'stop',
-      label: 'g: stop run',
-      hotkey: 'g',
-      action: { type: 'stop', ids: [run.id] },
-    })
-  }
-  if (canStop(item)) {
-    const isRun = item.kind === 'workflow'
-    buttons.push({
-      key: 'stop',
-      label: isRun ? 'g: stop run' : 'x: stop',
-      hotkey: isRun ? 'g' : 'x',
-      action: { type: 'stop', ids: [item.id] },
-    })
+    : item.kind === 'workflow'
+      ? item
+      : undefined
+  if (run) {
+    buttons.push(
+      slot('stop', 'g: stop run', canStop(run) ? { type: 'stop', ids: [run.id] } : undefined),
+    )
+  } else if (item.kind !== 'cron' && !isWorkflowAgent(item)) {
+    buttons.push(
+      slot('stop', 'x: stop', canStop(item) ? { type: 'stop', ids: [item.id] } : undefined),
+    )
   }
 
   return buttons

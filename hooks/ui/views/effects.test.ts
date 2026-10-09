@@ -201,7 +201,7 @@ const ten = Array.from({ length: 10 }, (_, i) => `/repo/f${i}.ts`)
 const before = (key: string, drawn: Parameters<typeof rowKeys>[0]) =>
   rowKeys(drawn).slice(0, rowKeys(drawn).indexOf(key))
 
-test('rows above a focused ssh line stay while shells, ports and conflicts come and go', () => {
+test('rows above a focused ssh line stay while shells and conflicts come and go', () => {
   const editors = [editing(api, [NOW, ...ten])]
   const items = [...editors, serve(5173), serve(3000)]
   const order = orderOf(items)
@@ -214,9 +214,8 @@ test('rows above a focused ssh line stay while shells, ports and conflicts come 
   expect(at5173).toHaveLength(10)
   expect(before('row:ssh:5173', draw(ended(3000), 'ssh:5173'))).toEqual(at5173)
   const at3000 = before('row:ssh:3000', draw(items, 'ssh:3000'))
-  const gone = draw(ended(5173), 'ssh:3000')
-  expect(before('row:ssh:3000', gone)).toEqual(at3000)
-  expect(lines(gridOf(gone).grid)).toContain('  :5173  serve 5173  ended')
+  // A port whose shell ended leaves; `hold` in render.tsx keeps its row's place.
+  expect(rowKeys(draw(ended(5173), 'ssh:3000'))).not.toContain('row:ssh:5173')
   const conflict = [editing(plan, [NOW, '/repo/f1.ts']), ...items]
   expect(before('row:ssh:3000', draw(conflict, 'ssh:3000'))).toEqual(at3000)
 })
@@ -256,7 +255,7 @@ const waiting = (id: string): RabeItem =>
 const found = (item: RabeItem, port: number, at: number): RabeItem =>
   ({ ...item, detail: { ...item.detail, port, portAt: at } }) as RabeItem
 
-test('a port found after the open keeps its place and its row, whichever shell found it', () => {
+test('a port found after the open keeps its place, whichever shell found it', () => {
   const [a, b] = [waiting('a'), waiting('b')]
   const old = { ...serve(4000, 'o'), status: 'done' as const, endedAt: NOW - 1000 }
   const order = orderOf([serve(5173), a, b, old])
@@ -269,9 +268,7 @@ test('a port found after the open keeps its place and its row, whichever shell f
   const both = [serve(5173), found(a, 8080, NOW + 1000), found(b, 3000, NOW), old]
   expect(rowKeys(draw(both))).toEqual(['row:ssh:5173', 'row:ssh:3000', 'row:ssh:8080'])
   const late = found(waiting('c'), 9229, NOW + 2000)
-  const ended = [...both, { ...late, status: 'done' as const, endedAt: NOW + 3000 }]
-  expect(rowKeys(draw(ended))).toEqual(rowKeys(draw([...both, late])))
-  expect(lines(gridOf(draw(ended)).grid)).toContain('  :9229  serve c  ended')
+  expect(rowKeys(draw([...both, late])).at(-1)).toBe('row:ssh:9229')
 })
 
 test('rows found after the open go to NEW at the end, in the order they were found', () => {

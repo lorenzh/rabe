@@ -64,16 +64,22 @@ export type Action =
   | { type: 'delete'; id: string }
   | { type: 'copy'; text: string }
   | { type: 'message'; id: string; text: string }
+  | { type: 'none' }
 
-// A control under the body, drawn `[ label ]`. The label carries the key
+// What a control that is not available now does: nothing. It keeps its slot.
+export const NONE: Action = { type: 'none' }
+
+// A control of the toolbar, drawn `[ label ]`. The label carries the key
 // ("x: stop"): the engine does not draw hotkeys. Hotkeys are one digit or one
-// lowercase letter.
+// lowercase letter. A control that is not available now is `dim` with the
+// action `NONE` and no hotkey, so it keeps its place.
 export type ViewButton = {
   key: string
   label: string
   action: Action
   hotkey?: string
   autoFocus?: true
+  dim?: true
 }
 
 // An Input under the Buttons; left out where `size.hasInput` is false.
@@ -115,11 +121,26 @@ export type Line = { spans: Part[]; right?: Span[]; bg?: number }
 // terminal, text elsewhere).
 export type Node = Line | { chart: Grid }
 
-// A view's whole output: the body, then the controls and the Inputs under it.
+// A view's whole output: the body, the controls and the Inputs. These are
+// drawn before the node at `toolbar` (the pane's toolbar), else at the end.
 export type Drawn = {
   nodes: Node[]
   buttons: ViewButton[]
   inputs?: ViewInput[]
+  toolbar?: number
+}
+
+// A drawing in document order, which is the order of the focus ring.
+export type Piece = Node | { button: ViewButton } | { input: ViewInput }
+
+export function layout(drawn: Drawn): Piece[] {
+  const at = drawn.toolbar ?? drawn.nodes.length
+  const tools: Piece[] = [
+    ...drawn.buttons.map(button => ({ button })),
+    ...(drawn.inputs ?? []).map(input => ({ input })),
+  ]
+
+  return [...drawn.nodes.slice(0, at), ...tools, ...drawn.nodes.slice(at)]
 }
 
 export type View = (model: Model, size: Size, selection: Selection) => Drawn
@@ -134,10 +155,17 @@ export const NO_SELECTION: Selection = {
 }
 
 // The item rows of a drawing in document order: what the arrow keys walk.
-export function rowKeys(drawn: Drawn): string[] {
-  return drawn.nodes.flatMap(node =>
+// A row kept only for its place (action NONE) is no stop.
+export function rowKeys(drawn: Drawn | Piece[]): string[] {
+  const list = Array.isArray(drawn) ? drawn : drawn.nodes
+
+  return list.flatMap(node =>
     'spans' in node
-      ? node.spans.flatMap(part => (isPress(part) && part.key.startsWith('row:') ? [part.key] : []))
+      ? node.spans.flatMap(part =>
+          isPress(part) && part.key.startsWith('row:') && part.action.type !== 'none'
+            ? [part.key]
+            : [],
+        )
       : [],
   )
 }
@@ -151,7 +179,7 @@ export function stepRow(keys: string[], selected: string, by: number): string | 
   return keys[at + by]
 }
 
-// Rows the controls under the body take: wrapped Buttons ("[ label ]" and a
+// Rows the toolbar takes: wrapped Buttons ("[ label ]" and a
 // gap) and one row per Input.
 export function controlRows(drawn: Omit<Drawn, 'nodes'>, size: Size): number {
   let rows = 0

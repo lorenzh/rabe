@@ -20,6 +20,7 @@ import {
   isWorkflowAgent,
   type Line,
   type Model,
+  NONE,
   type Selection,
   type Size,
   type View,
@@ -151,48 +152,39 @@ function summaryLine(model: Model, item: RabeItem): Line {
   }
 }
 
-// List keys under the list; the rows themselves take the arrows and Enter.
+// List keys in the toolbar; the rows themselves take the arrows and Enter.
 // g stops the run of a workflow or its agent, else the rows of the group the
 // selected row is shown in (`shown`). Below the split, s keeps only its letter.
+// x and g keep their slots while they cannot act: dim, without a hotkey.
 function listButtons(
   model: Model,
   size: Size,
   selected: RabeItem | undefined,
   shown: RabeItem[][],
 ) {
-  const buttons: ViewButton[] = []
   const run =
     selected?.kind === 'workflow'
       ? selected
       : selected && isWorkflowAgent(selected)
         ? model.items.find(one => one.id === selected.parentId && one.kind === 'workflow')
         : undefined
-  if (selected && selected !== run && canStop(selected)) {
-    buttons.push({
-      key: 'stop',
-      label: 'x: stop',
-      hotkey: 'x',
-      action: { type: 'stop', ids: [selected.id] },
-    })
-  }
   const group = (shown.find(list => selected && list.includes(selected)) ?? [])
     .filter(canStop)
     .map(one => one.id)
-  if (run && canStop(run)) {
-    buttons.push({
-      key: 'stop-run',
-      label: 'g: stop run',
-      hotkey: 'g',
-      action: { type: 'stop', ids: [run.id] },
-    })
-  } else if (!run && group.length > 1) {
-    buttons.push({
-      key: 'stop-group',
-      label: 'g: stop group',
-      hotkey: 'g',
-      action: { type: 'stop', ids: group },
-    })
-  }
+  const slot = (key: string, label: string, ids: string[] | undefined): ViewButton =>
+    ids
+      ? { key, label, hotkey: label.slice(0, 1), action: { type: 'stop', ids } }
+      : { key, label, action: NONE, dim: true }
+  const buttons: ViewButton[] = [
+    slot(
+      'stop',
+      'x: stop',
+      selected && selected !== run && canStop(selected) ? [selected.id] : undefined,
+    ),
+    run
+      ? slot('stop-group', 'g: stop run', canStop(run) ? [run.id] : undefined)
+      : slot('stop-group', 'g: stop group', group.length > 1 ? group : undefined),
+  ]
   if (size.hasInput) {
     buttons.push({
       key: 'find',
@@ -221,12 +213,14 @@ const search = (sel: Selection): ViewInput => ({
 // view while the focus walks a list longer than the pane.
 export const itemsView: View = (model, size, sel): Drawn => {
   const inputs = size.hasInput ? [search(sel)] : []
-  const note = (value: string, buttons: ViewButton[] = []): Drawn => ({
+  const note = (value: string, buttons: ViewButton[]): Drawn => ({
     nodes: [fitLine({ spans: [[value, { fg: C.dim }]] }, size.columns)],
     buttons,
     inputs,
   })
-  if (model.items.length === 0) return note(' Nothing runs in the background.')
+  if (model.items.length === 0) {
+    return note(' Nothing runs in the background.', listButtons(model, size, undefined, []))
+  }
   const split = isSplit(size)
   const { lines, order, shown } = listLines(model, sel, split ? size.rows : size.rows - 2)
   const selected = selectedItem(order, sel)

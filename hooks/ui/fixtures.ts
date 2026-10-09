@@ -178,7 +178,11 @@ function walk(one: unknown, out: string[]): void {
   if (type === 'Raster') {
     const { columns, rows, cells } = props as { columns: number; rows: number; cells: string }
     out.push(...lines(decode(columns, rows, cells)))
-  } else if (type === 'Box' && props.flexDirection === 'row' && props.key !== 'controls') {
+  } else if (
+    type === 'Box' &&
+    props.flexDirection === 'row' &&
+    !String(props.key).startsWith('controls')
+  ) {
     out.push(inline(one).trimEnd())
   } else if (type === 'Box') {
     for (const child of children) walk(child, out)

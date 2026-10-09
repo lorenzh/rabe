@@ -202,15 +202,17 @@ export const FAMILIES: Group[] = ['shells', 'monitors']
 // The order the pane shows when it opens: each group sorted (shells and
 // monitors in their families), the Cost tab by tokens, the Timeline by start,
 // the Effects files by `byConflict` and its ports (the shells that run with
-// one; `portsEnded` the shells with one that had ended). Held in `rabe.order`
-// until the next open.
+// one). Held in `rabe.order` until the next open.
 export function orderOf(items: RabeItem[]): RabeOrder {
   const ids = (list: RabeItem[]) => list.map(item => item.id)
-  const withPort = items.filter(item => item.kind === 'shell' && item.detail.port !== undefined)
 
   return {
-    ports: ids(withPort.filter(item => item.status === 'running')),
-    portsEnded: ids(withPort.filter(item => item.status !== 'running')),
+    ports: ids(
+      items.filter(
+        item =>
+          item.kind === 'shell' && item.detail.port !== undefined && item.status === 'running',
+      ),
+    ),
     ...Object.fromEntries(
       grouped(items).map(group => [
         group.id,

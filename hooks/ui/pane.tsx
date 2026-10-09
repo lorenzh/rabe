@@ -2,10 +2,11 @@ import type { EngineInterface, On, RenderSurface } from 'claude-code'
 
 import type { RabePrevious } from '../../types'
 import { KIND_LABEL, orderOf, previousOf } from './lists'
-import { render } from './render'
+import { type Held, hold, render } from './render'
 import {
   type Action,
   bounded,
+  layout,
   type Model,
   rowKeys,
   type Selection,
@@ -144,6 +145,8 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       $.ui.toast(result.isCopied ? `Copied: ${action.text}` : `Copy failed: ${result.reason}`)
       return
     }
+    case 'none':
+      return
     case 'message': {
       const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
       const item = items.find(one => one.id === action.id)
@@ -188,13 +191,31 @@ async function look(
   return { model, selection }
 }
 
+// The view the person chose. A change of it is theirs, so its hold starts anew.
+const scopeOf = (sel: Selection) => JSON.stringify([sel.tab, sel.open, sel.query, sel.folded])
+
+// Per surface, the focusable keys the pane drew since it opened, for one view
+// (`scope`). A render hook may not write `$.state` (drawing is pure), so this
+// is a module value: a reload starts the hold anew, as a new drawing would.
+const holds = new Map<string, { scope: string; keys: Held[] }>()
+
+const heldOf = (surface: RenderSurface, sel: Selection): Held[] | undefined => {
+  const mine = holds.get(surface)
+  return mine?.scope === scopeOf(sel) ? mine.keys : undefined
+}
+
 // An arrow key in a pane taller than its body scrolls it a row; Rabe moves
 // the focus to the next or previous row instead, and the pane follows the
 // focus. Past either end the scroll goes on, to show what is above or below.
 async function arrow($: EngineInterface, by: number, bodyRows: number): Promise<boolean> {
   const { model, selection } = await look($, true)
   const size = { columns: 80, rows: bodyRows, surface: 'terminal', hasInput: true } as const
-  const key = stepRow(rowKeys(paneView(model, size, selection)), selection.selected, by)
+  const drawn = layout(paneView(model, size, selection))
+  const key = stepRow(
+    rowKeys(hold(drawn, heldOf('terminal', selection)).list),
+    selection.selected,
+    by,
+  )
   if (!key) return false
   void $.ui.focus({ requestId: PANE, key }).catch(() => undefined)
 
@@ -217,6 +238,7 @@ export function pane(on: On): void {
   on('command.run', { command: 'rabe' }, async $ => {
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(items))
+    holds.clear()
     await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })
     $.clock.after(1500, () => void refocus($).catch(() => undefined))
 
@@ -257,7 +279,10 @@ export function pane(on: On): void {
       }),
     })
 
-    return render(ui, e.surface, paneView(model, size, selection), (action, surface) => {
+    const out = hold(layout(paneView(model, size, selection)), heldOf(e.surface, selection))
+    holds.set(e.surface, { scope: scopeOf(selection), keys: out.held })
+
+    return render(ui, e.surface, out.list, (action, surface) => {
       void act($, action, surface)
     })
   })

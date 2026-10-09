@@ -4,7 +4,7 @@ import { cell, lines } from '../cells/grid'
 import { C, DEFAULT } from '../cells/palette'
 import { ALL, ci, dev, explore, flow, gridOf, lint, NOW, plan, review, verify } from '../fixtures'
 import { grouped, orderOf } from '../lists'
-import { type Drawn, isPress, NO_SELECTION, rowKeys, type Size } from '../view'
+import { controlRows, type Drawn, isPress, NO_SELECTION, rowKeys, type Size } from '../view'
 import { itemsView } from './items'
 import { paneView } from './pane'
 
@@ -181,7 +181,7 @@ test('a workflow agent or a run offers g: stop run on the list', () => {
   for (const selected of [verify.id, flow.id]) {
     const { buttons } = itemsView(model, WIDE, { ...NO_SELECTION, selected })
     const run = buttons.find(one => one.hotkey === 'g')
-    expect(run).toMatchObject({ key: 'stop-run', label: 'g: stop run' })
+    expect(run).toMatchObject({ key: 'stop-group', label: 'g: stop run' })
     expect(run?.action).toEqual({ type: 'stop', ids: [flow.id] })
     expect(buttons.find(one => one.hotkey === 'x')).toBeUndefined()
   }
@@ -290,5 +290,5 @@ test('the split detail sits in the rows the pane shows, where the focus took the
       selected: (many[8] as RabeItem).id,
     },
   )
-  expect(detailAt(still, 's08')).toBe(5)
+  expect(detailAt(still, 's08') + controlRows(still, WIDE)).toBe(5)
 })

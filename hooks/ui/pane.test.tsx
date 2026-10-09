@@ -111,6 +111,27 @@ test('a pane closed before the focus call stays closed', async ($, on) => {
   expect(opens).toHaveLength(1)
 })
 
+test('a row gone while the pane is open keeps its slot until /rabe opens it anew', async ($, on) => {
+  const other = { ...dev, id: 'shell:other', title: 'other' }
+  const items = [dev, other]
+  hold(on, items)
+  on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+  const draw = async () => {
+    const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    const shown = await screen(ui)
+    const slot = await ui.find({ type: 'Button', key: `row:${other.id}` })
+    await ui.unmount()
+    return { shown, slot }
+  }
+  await draw()
+  items.pop()
+  const gone = await draw()
+  expect(gone.shown).toContain(' other · gone')
+  expect(gone.slot?.props).toMatchObject({ label: 'other', dimColor: true })
+  await $.command.run({ command: 'rabe', args: '' } as never)
+  expect((await draw()).slot).toBeUndefined()
+})
+
 test('the pane shows the tabs and the empty state on every surface', async ($, on) => {
   hold(on, [])
   for (const surface of SURFACES) {
@@ -149,8 +170,9 @@ test('the pane draws rows of Text and plain Buttons, no Raster, and keeps the hi
   expect(row?.props).toMatchObject({ label: 'bun run dev', plain: true, dimColor: true })
   expect(await ui.find({ type: 'Box', key: `line:row:${dev.id}` })).toBeDefined()
   const shown = await screen(ui)
+  expect(shown.at(-1)).toBe(' ↑↓ move · enter open · esc close')
   const controls = (await ui.findAll({ type: 'Button' })).filter(one => !one.props.plain)
-  expect(shown[shown.length - controls.length - 1]).toBe(' ↑↓ move · enter open · esc close')
+  expect(shown.slice(2, 2 + controls.length)).toEqual(controls.map(one => one.props.label))
   await ui.unmount()
 })
 
@@ -561,13 +583,14 @@ test('g on a workflow agent stops its run on every surface', async ($, on) => {
   })
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
-    expect((await ui.find({ type: 'Button', key: 'stop-run' }))?.props).toMatchObject({
+    expect((await ui.find({ type: 'Button', key: 'stop-group' }))?.props).toMatchObject({
       label: 'g: stop run',
       hotkey: 'g',
     })
-    expect(await ui.find({ type: 'Button', key: 'stop' })).toBeUndefined()
+    const x = await ui.find({ type: 'Button', key: 'stop' })
+    expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, undefined])
     expect(await screen(ui)).toContain(' ↑↓ move · enter open · g stop run · esc close')
-    await ui.press({ key: 'stop-run' })
+    await ui.press({ key: 'stop-group' })
     await ui.unmount()
   }
   expect(stopped).toEqual(['wf_task', 'wf_task'])

@@ -156,7 +156,7 @@ test('a codex job whose session file is gone says so', () => {
   } as RabeItem
   const { grid: g, buttons } = open(model([job]), job.id)
   expect(lines(g)).toContain('job task-9 · session file gone')
-  expect(buttons.find(b => b.key === 'stop')).toBeUndefined()
+  expect(buttons.find(b => b.key === 'stop')).toMatchObject({ dim: true, action: { type: 'none' } })
 })
 
 test('a workflow shows its phases and each agent with tokens and time', () => {
@@ -274,10 +274,15 @@ test('a workflow agent offers no own stop or message, only stopping its run', ()
   })
 })
 
-test('a workflow agent whose run cannot be stopped offers no stop', () => {
+test('a workflow agent whose run cannot be stopped keeps a dim stop that does nothing', () => {
   const run = { ...flow, detail: { runId: 'wf1', phases: [] } } as RabeItem
   const { buttons } = open(model([run, verify]), verify.id)
-  expect(buttons.find(b => b.key === 'stop')).toBeUndefined()
+  expect(buttons.find(b => b.key === 'stop')).toEqual({
+    key: 'stop',
+    label: 'g: stop run',
+    action: { type: 'none' },
+    dim: true,
+  })
 })
 
 const older = {
