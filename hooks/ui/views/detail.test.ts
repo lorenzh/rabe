@@ -371,14 +371,40 @@ test('every control of a detail that acts on an item names it in its key', () =>
 
 test('an agent shows its id and transcript, and c copies the id', () => {
   const { grid: g, buttons } = open(model([explore]), explore.id)
-  expect(lines(g)).toContain('agent a1 · transcript /t/agent-a1.jsonl')
+  expect(lines(g)).toContain('agent a1')
+  expect(lines(g)).toContain('transcript /t/agent-a1.jsonl')
   expect(buttons.find(b => b.key === `copy:${explore.id}`)).toMatchObject({
     label: 'c: copy id',
     hotkey: 'c',
     action: { type: 'copy', text: 'a1' },
   })
   const bare = { ...plan, detail: { agentId: 'a2' } } as RabeItem
-  expect(lines(open(model([bare]), bare.id).grid)).toContain('agent a2 · transcript n/a')
+  const bareLines = lines(open(model([bare]), bare.id).grid)
+  expect(bareLines).toContain('agent a2')
+  expect(bareLines).toContain('transcript n/a')
+})
+
+// The whole path, with the agent file's name at its end, at any width.
+test('an agent shows its transcript path in full, across lines', () => {
+  const path = `/home/me/.claude/projects/-home-me-src-app/${'0'.repeat(36)}/subagents/agent-a1.jsonl`
+  const agent = { ...explore, detail: { ...explore.detail, transcriptPath: path } } as RabeItem
+  const joined = (shown: string[]) => {
+    const at = shown.findIndex(line => line.trim().startsWith('transcript '))
+    return shown
+      .slice(at, at + 4)
+      .map(line => line.trim())
+      .join('')
+  }
+  expect(joined(lines(open(model([agent]), agent.id).grid))).toContain(`transcript ${path}`)
+  const split = gridOf(
+    itemsView(
+      model([agent]),
+      { ...TERMINAL, columns: 120 },
+      { ...NO_SELECTION, selected: agent.id },
+    ),
+  )
+  const right = lines(split.grid).map(line => line.slice(line.indexOf('│') + 1))
+  expect(joined(right)).toContain(`transcript ${path}`)
 })
 
 test('a codex job shows its thread, and c copies the command that resumes it', () => {
@@ -410,4 +436,33 @@ test('a codex job counts the tokens of the agent that only forwarded it', () => 
   const shown = lines(open(model([forwarder, job]), job.id).grid)
   expect(shown).toContain('forwarded by claude Codex rescue · its tokens count here')
   expect(shown).toContain(' ≈ $0.10   in 29k  out 4k  cached 18k')
+})
+
+// The folded agent has no row: its job's detail opens it, with its turns, id and transcript.
+test('a codex job opens the agent that only forwarded it', () => {
+  const call = { at: NOW - 60_000, command: 'task' as const, text: 'codex-companion.mjs task' }
+  const forwarder = {
+    ...explore,
+    id: 'agent:f1',
+    title: 'Codex rescue',
+    detail: { agentId: 'f1', toolCount: 1, codexCalls: [call] },
+  } as RabeItem
+  const job = { ...review, parentId: forwarder.id } as RabeItem
+  expect(open(model([forwarder, job]), job.id).buttons).toContainEqual({
+    key: 'forwarder:agent:f1',
+    label: 'f: open forwarder',
+    hotkey: 'f',
+    action: { type: 'open', id: 'agent:f1' },
+  })
+  const busy = {
+    ...forwarder,
+    detail: { ...forwarder.detail, toolCount: 3 },
+  } as RabeItem
+  for (const items of [
+    [busy, job],
+    [forwarder, review],
+  ]) {
+    const { buttons } = open(model(items), job.id)
+    expect(buttons.some(b => b.key.startsWith('forwarder:'))).toBe(false)
+  }
 })

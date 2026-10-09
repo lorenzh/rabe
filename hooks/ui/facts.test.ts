@@ -4,16 +4,17 @@ import { facts } from './facts'
 import { ALL, babysit, ci, dev, explore, lint, NOW, plan, review, verify } from './fixtures'
 
 test('agent facts show type, model, worktree and start; spend is in the detail', () => {
-  const { title, status, lines } = facts(explore, NOW, ALL)
+  const { title, status, lines, long } = facts(explore, NOW, ALL)
   expect(title).toBe('claude · Explore verifyToken')
   expect(status).toBe('◐ running')
   expect(lines).toEqual([
     'Explore · opus-5-5 · worktree pkg-db',
     'branch worktree-agent-a1',
-    'agent a1 · transcript /t/agent-a1.jsonl',
+    'agent a1',
     'started by main session',
     'ran 10:50:48 → now · 1m12s',
   ])
+  expect(long).toBe('transcript /t/agent-a1.jsonl')
 })
 
 test('missing data shows n/a', () => {

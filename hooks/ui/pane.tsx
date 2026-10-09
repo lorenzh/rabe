@@ -1,7 +1,7 @@
 import type { EngineInterface, On, RenderSurface } from 'claude-code'
 
 import type { RabePrevious } from '../../types'
-import { KIND_LABEL, orderOf, previousOf } from './lists'
+import { KIND_LABEL, orderOf, previousOf, rowOf } from './lists'
 import { type At, type Held, hold, render } from './render'
 import {
   type Action,
@@ -174,8 +174,11 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
     }
     case 'open': {
       // Back selects the item that was open: the focus may have moved onto a
-      // row inside its detail (a workflow's agents).
-      const { value: was = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
+      // row inside its detail (a workflow's agents). A folded forwarder has no
+      // row, so back selects its job.
+      const { value: open = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
+      const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+      const was = rowOf(open, items)
       const id = action.id || was
       if (id) {
         await $.state.set({ plugin: 'rabe', key: 'selected' }, id)

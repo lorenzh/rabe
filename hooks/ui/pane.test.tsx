@@ -223,6 +223,26 @@ test('enter on a row opens it, and b goes back to the list', async ($, on) => {
   await ui.unmount()
 })
 
+// The forwarder has no row of its own, so back from it selects its job's row.
+test('f opens the forwarder of a codex job, and b goes back to the job', async ($, on) => {
+  const call = { at: NOW - 60_000, command: 'task' as const, text: 'codex-companion.mjs task' }
+  const forwarder = {
+    ...explore,
+    id: 'agent:f1',
+    title: 'Codex rescue',
+    detail: { agentId: 'f1', toolCount: 1, codexCalls: [call] },
+  } as RabeItem
+  const job = { ...review, parentId: forwarder.id } as RabeItem
+  const state = hold(on, [forwarder, job, dev], { open: job.id, selected: job.id })
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: `forwarder:${forwarder.id}` })
+  expect(state).toMatchObject({ open: forwarder.id, tab: 'items' })
+  expect(await screen(ui)).toContain('agent f1')
+  await ui.press({ key: 'back' })
+  expect(state).toMatchObject({ open: '', selected: job.id })
+  await ui.unmount()
+})
+
 test('a shell shows the lines its source read on every surface', async ($, on) => {
   hold(on, ALL, { open: lint.id })
   for (const surface of SURFACES) {

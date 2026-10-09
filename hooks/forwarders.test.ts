@@ -122,11 +122,34 @@ test('without proof a job keeps no parent and the list stays the same', () => {
   for (const items of cases) expect(linkForwarders(items)).toBe(items)
 })
 
-test('a call already linked to a job proves no second one', () => {
+test('a second job that fits the same call drops the link: no guess', () => {
   const items = [
     forwarder('f1', [call()]),
     job('j1', { parentId: 'agent:f1' }),
     job('j2', { startedAt: NOW + 900 }),
   ]
-  expect(linkForwarders(items)).toBe(items)
+  const out = linkForwarders(items)
+  expect(parentOf(out, 'codex:j1')).toBeUndefined()
+  expect(parentOf(out, 'codex:j2')).toBeUndefined()
+})
+
+// The main session started a job with the forwarder's prompt before the
+// forwarder's own job showed: the prompt linked the wrong one.
+test('the thread a call returns moves its link to the job it started', () => {
+  const main = job('jm', { parentId: 'agent:f1' }, { threadId: 'th-main' })
+  const own = job('jf', { startedAt: NOW + 900 }, { threadId: 'th-own' })
+  const done = call({ endedAt: NOW + 9000, threadId: 'th-own' })
+  const out = linkForwarders([forwarder('f1', [done]), main, own])
+  expect(parentOf(out, 'codex:jm')).toBeUndefined()
+  expect(parentOf(out, 'codex:jf')).toBe('agent:f1')
+  expect(linkForwarders(out)).toBe(out)
+})
+
+test('the job id a background launch returns moves its link to that job', () => {
+  const main = job('jm', { parentId: 'agent:f1' })
+  const own = job('jf', { startedAt: NOW + 900 })
+  const done = call({ endedAt: NOW + 950, jobId: 'jf' })
+  const out = linkForwarders([forwarder('f1', [done]), main, own])
+  expect(parentOf(out, 'codex:jm')).toBeUndefined()
+  expect(parentOf(out, 'codex:jf')).toBe('agent:f1')
 })

@@ -60,25 +60,26 @@ function isProof(call: RabeCodexCall, job: RabeItemOf<'codex'>): boolean {
 type Call = { agent: string; call: RabeCodexCall }
 
 // Sets `parentId` on each Codex job that exactly one agent's companion call
-// started, where that call fits no other job; else the job keeps no parent.
+// started, where that call fits no other job; else the job has no parent.
+// Each poll checks every link again: a job id or thread the call returned
+// later, or a second job that fits, takes back a link the prompt made.
 export function linkForwarders(items: RabeItem[]): RabeItem[] {
   const calls: Call[] = items.flatMap(item =>
     item.kind === 'agent'
       ? (item.detail.codexCalls ?? []).map(call => ({ agent: item.id, call }))
       : [],
   )
-  if (calls.length === 0) return items
   const jobs = items.filter((item): item is RabeItemOf<'codex'> => item.kind === 'codex')
   let out = items
   for (const job of jobs) {
-    if (job.parentId !== undefined) continue
     const found = calls.filter(one => isProof(one.call, job))
     const [only] = found
-    if (!only || found.length > 1) continue
-    const fits = jobs.filter(
-      one => (one.parentId === undefined || one.parentId === only.agent) && isProof(only.call, one),
-    )
-    if (fits.length === 1) out = updateItem(out, job.id, { parentId: only.agent })
+    const isSure =
+      only !== undefined &&
+      found.length === 1 &&
+      jobs.filter(one => isProof(only.call, one)).length === 1
+    const parentId = isSure ? only.agent : undefined
+    if (job.parentId !== parentId) out = updateItem(out, job.id, { parentId })
   }
 
   return out

@@ -6,6 +6,7 @@ import { ago, clockTime, countdown, tokens, usd } from '../format'
 import {
   byStart,
   children,
+  forwarderOf,
   phases,
   share,
   stable,
@@ -282,7 +283,7 @@ export function detailLines(
   columns: number,
   sel?: Selection,
 ): Line[] {
-  const top = [...headLines(model, item), ...topLines(model, item, columns)]
+  const top = [...headLines(model, item, columns), ...topLines(model, item, columns)]
   const room = rows - top.length
   const body = room > 0 ? bodyLines(model, item, columns, sel).slice(-room) : []
 
@@ -341,6 +342,16 @@ function detailButtons(
   if (item.kind === 'codex' && item.detail.threadId) {
     buttons.push(resumeButton(`codex resume ${item.detail.threadId}`, item.detail.threadId))
   }
+  // The agent folded into this job has no row; its detail opens from here.
+  const forwarder = forwarderOf(item, items)
+  if (forwarder) {
+    buttons.push({
+      key: `forwarder:${forwarder.id}`,
+      label: 'f: open forwarder',
+      hotkey: 'f',
+      action: { type: 'open', id: forwarder.id },
+    })
+  }
   if (item.kind === 'cron' && item.detail.scheduledFor === undefined) {
     buttons.push({
       key: `delete:${item.id}`,
@@ -398,7 +409,7 @@ export const detailView: View = (model, size, sel): Drawn => {
   const shown =
     item.kind === 'workflow'
       ? [
-          ...headLines(model, item),
+          ...headLines(model, item, size.columns),
           ...topLines(model, item, size.columns),
           ...workflowLines(model, item, size.columns, sel),
         ]

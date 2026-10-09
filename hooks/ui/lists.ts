@@ -126,6 +126,10 @@ export function forwarderOf(job: RabeItem, items: readonly RabeItem[]): RabeItem
   return parent && first === job && isForwarder(parent, items) ? parent : undefined
 }
 
+// The row that stands for item `id`: a folded forwarder's is its job's.
+export const rowOf = (id: string, items: readonly RabeItem[]): string =>
+  items.find(one => forwarderOf(one, items)?.id === id)?.id ?? id
+
 const add = (a?: number, b?: number) =>
   a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0)
 

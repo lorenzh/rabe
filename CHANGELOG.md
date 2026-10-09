@@ -10,7 +10,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Changed
 
-- A Codex job started through the Codex plugin's forwarding agent (`codex:codex-rescue`) shows as one row: the agent that only passed the request on has no row of its own, and its tokens count toward the job. A job started by an agent that also did other work shows indented under that agent. Rabe links them only when the agent's command names the job, or the job started while the command ran and has its prompt or its thread. (fixes [#14](https://github.com/lorenzh/rabe/issues/14))
+- A Codex job started through the Codex plugin's forwarding agent (`codex:codex-rescue`) shows as one row: the agent that only passed the request on has no row of its own, and its tokens count toward the job. A job started by an agent that also did other work shows indented under that agent. Rabe links them only when the evidence fits one job: the agent's command names the job, or the job started while the command ran and has its prompt or its thread. A link the prompt made moves when the command returns another job or thread, and goes while two jobs fit. In the job's detail, `f` opens the agent with its turns, id and transcript. (fixes [#14](https://github.com/lorenzh/rabe/issues/14))
 
 ## [0.3.0] - 2026-10-09
 
