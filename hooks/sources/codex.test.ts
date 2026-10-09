@@ -247,6 +247,55 @@ test('a rate-limit record between two equal totals adds no request', () => {
   expect(requests).toHaveLength(1)
 })
 
+// A record with its time, as Codex writes each line.
+const timed = (ms: number, record: string) =>
+  JSON.stringify({ timestamp: new Date(ms).toISOString(), ...JSON.parse(record) })
+const userMessage = (text: string) =>
+  line('event_msg', {
+    type: 'item_completed',
+    item: { type: 'UserMessage', content: [{ type: 'text', text }] },
+  })
+const commandRun = line('event_msg', {
+  type: 'item_completed',
+  item: { type: 'CommandExecution', command: ['ls'], exit_code: 0 },
+})
+const total = (input: number, output: number, last: object) =>
+  line('event_msg', {
+    type: 'token_count',
+    info: {
+      total_token_usage: { input_tokens: input, cached_input_tokens: 0, output_tokens: output },
+      last_token_usage: last,
+    },
+  })
+// A thread resumed by a second job: the first job's turn comes first.
+const RESUMED = [
+  timed(100, line('turn_context', { model: 'gpt-6.1-sol' })),
+  timed(110, userMessage('Job A')),
+  timed(120, commandRun),
+  timed(130, total(10, 1, usage(10))),
+  timed(1100, line('turn_context', { model: 'gpt-6-luna' })),
+  timed(1110, userMessage('Job B')),
+  timed(1120, total(30, 2, usage(20))),
+]
+
+test('a resumed thread counts only the turns after the job started', () => {
+  const own = parseRollout(RESUMED.join('\n'), undefined, 1000)
+  expect(own.requests).toEqual([{ model: 'gpt-6-luna', input: 20, cached: 0, write: 0, output: 1 }])
+  expect(own.tokens).toEqual({ input: 20, output: 1, cached: 0 })
+  expect(own.prompt).toBe('Job B')
+  expect(own.commandCount).toBe(0)
+  expect(own.model).toBe('gpt-6-luna')
+  // without the first job's total, this job's share of the thread total is not known
+  const cut = RESUMED.filter((_, i) => i !== 3).join('\n')
+  expect(parseRollout(cut, undefined, 1000).tokens).toBeUndefined()
+  // a job that started the thread counts all of it
+  expect(parseRollout(RESUMED.join('\n'), undefined, 50).tokens).toEqual({
+    input: 30,
+    output: 2,
+    cached: 0,
+  })
+})
+
 test('an empty or broken rollout gives no fields', () => {
   expect(parseRollout('not json\n')).toEqual({ requests: [], steps: [], commandCount: 0 })
 })
@@ -432,6 +481,20 @@ test('a job costs its requests at the price of their model', async ($, on) => {
   await startAndTick($, w)
   // 7k uncached at 2, 18k cached at 0.1, 3k out at 10, per million
   expect(writes.at(-1)?.[0]?.costUsd).toBe((7000 * 2 + 18000 * 0.1 + 3000 * 10) / 1e6)
+})
+
+test('a job that resumed a thread costs only its own requests', async ($, on) => {
+  const writes = watchItems(on)
+  prices(on)
+  const resumed = RESUMED.map(one => one.replace('gpt-6-luna', 'gpt-6.1-sol')).join('\n')
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: resumed,
+  })
+  await startAndTick($, w)
+  // 20 input at 2 and 1 output at 10 per million: the first job's request is not counted
+  expect(Math.round((writes.at(-1)?.[0]?.costUsd ?? 0) * 1e6)).toBe(20 * 2 + 10)
 })
 
 test('a job whose session file is gone by its end has no cost, not the last one seen', async ($, on) => {

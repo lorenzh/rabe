@@ -166,9 +166,14 @@ function request(value: unknown, model: string | undefined): CodexRequest {
   return { ...(!counts.includes(undefined) && { model }), input, cached, write, output }
 }
 
-export function parseRollout(text: string, home?: string): Rollout {
+// `since` is the job's start: a job that resumed a thread finds the turns of
+// the jobs before it in the same file, and counts none of them.
+export function parseRollout(text: string, home?: string, since?: number): Rollout {
   const out: Rollout = { requests: [], commandCount: 0, steps: [] }
   let total = ''
+  // the thread's total when the job started; undefined while none was seen
+  let base: Rec | undefined
+  let isResumed = false
   const edits: RabeEdit[] = []
   const checks: Check[] = []
   const pending = new Map<string, RabeCodexStep>()
@@ -181,13 +186,27 @@ export function parseRollout(text: string, home?: string): Rollout {
       out.model = str(payload.model) ?? str(settings.model) ?? out.model
       out.effort = str(payload.effort) ?? str(settings.reasoning_effort) ?? out.effort
       out.sandbox = str(rec(payload.sandbox_policy).type) ?? out.sandbox
+    } else if (since !== undefined && Date.parse(str(record.timestamp) ?? '') < since) {
+      isResumed = true
+      const info = rec(payload.info)
+      if (payload.type === 'token_count' && Object.keys(info).length) {
+        base = rec(info.total_token_usage)
+        total = JSON.stringify(base)
+      }
     } else if (record.type === 'event_msg' && payload.type === 'token_count') {
       const info = rec(payload.info)
       const usage = rec(info.total_token_usage)
-      const input = num(usage.input_tokens)
-      const output = num(usage.output_tokens)
+      // the total counts the whole thread: a resumed job's share needs the total it started at
+      const own = (key: string) => {
+        const now = num(usage[key])
+        if (!isResumed || now === undefined) return now
+        const before = num(base?.[key])
+        return before === undefined ? undefined : now - before
+      }
+      const input = own('input_tokens')
+      const output = own('output_tokens')
       if (input !== undefined && output !== undefined) {
-        out.tokens = defined({ input, output, cached: num(usage.cached_input_tokens) })
+        out.tokens = defined({ input, output, cached: own('cached_input_tokens') })
       }
       // a record without counts (rate limits only) or that repeats the total adds no request
       const key = JSON.stringify(usage)
@@ -438,7 +457,7 @@ async function readSession(
   if (stat.size <= MAX_READ) {
     const text = await $.fs.read(path).catch(() => undefined)
     if (text === undefined) return { path }
-    const rollout = await confirmed($, parseRollout(String(text), home), looks)
+    const rollout = await confirmed($, parseRollout(String(text), home, jobStart(job)), looks)
 
     return { path, updatedAt, rollout, usd: codexUsd(await prices($, file), rollout.requests) }
   }
@@ -453,7 +472,11 @@ async function readSession(
     path,
     updatedAt,
     isPartial: true,
-    rollout: await confirmed($, parseRollout(`${head.stdout}\n${tail.stdout}`, home), looks),
+    rollout: await confirmed(
+      $,
+      parseRollout(`${head.stdout}\n${tail.stdout}`, home, jobStart(job)),
+      looks,
+    ),
   }
 }
 
