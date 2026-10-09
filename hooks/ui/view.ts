@@ -220,13 +220,16 @@ export type Shown = {
 
 // `isListArmed`: the list's x and g act on the selection, so they also need
 // the person's focus on a live row since the last reset.
-export type Arming = { isArmed: boolean; isListArmed: boolean; shown?: Shown }
+// `step`: the row a person's arrow asked Rabe's `$.ui.focus` to move onto.
+export type Arming = { isArmed: boolean; isListArmed: boolean; shown?: Shown; step?: string }
 
 export const DISARMED: Arming = { isArmed: false, isListArmed: false }
 
 export type ArmEvent =
   // The pane opened, or the person changed the view (tab, open, back, fold, search).
   | { type: 'reset' }
+  // The arrow hook carries out the person's arrow with a `$.ui.focus` onto `key`.
+  | { type: 'step'; key: string }
   // Rabe's own `$.ui.focus` moved the ring, or was refused or threw.
   | { type: 'landed'; isMoved: boolean }
   // A `ui.focus` on the pane that no hook refused: by the person, or by Rabe
@@ -244,12 +247,18 @@ export function arm(state: Arming, event: ArmEvent): Arming {
   switch (event.type) {
     case 'reset':
       return DISARMED
-    case 'landed':
-      return event.isMoved ? { ...state, isArmed: true } : { ...state, ...DISARMED }
+    case 'step':
+      return { ...state, step: event.key }
+    case 'landed': {
+      const { step: _, ...rest } = state
+      return event.isMoved ? { ...rest, isArmed: true } : { ...rest, ...DISARMED }
+    }
     case 'focus': {
-      const isArmed = state.isArmed || event.byPerson || !isDestructive(event.key)
-      const isRow = event.byPerson && event.key.startsWith('row:')
-      return { ...state, isArmed, isListArmed: isRow ? event.isLiveRow : state.isListArmed }
+      const { step, ...rest } = state
+      const byPerson = event.byPerson || event.key === step
+      const isArmed = state.isArmed || byPerson || !isDestructive(event.key)
+      const isRow = byPerson && event.key.startsWith('row:')
+      return { ...rest, isArmed, isListArmed: isRow ? event.isLiveRow : state.isListArmed }
     }
     case 'drawn': {
       const { fallback, targets, selected } = event
@@ -262,6 +271,7 @@ export function arm(state: Arming, event: ArmEvent): Arming {
         isArmed: state.isArmed && !isAuto,
         isListArmed: state.isListArmed && !isAuto && !fallback.includes('selected:'),
         shown: { fallback, targets, selected },
+        ...(state.step !== undefined && { step: state.step }),
       }
     }
   }

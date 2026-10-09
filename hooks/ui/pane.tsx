@@ -262,6 +262,7 @@ async function arrow($: EngineInterface, by: number, bodyRows: number): Promise<
     by,
   )
   if (!key) return false
+  feed($, { type: 'step', key })
   void focusOn($, key)
 
   return true

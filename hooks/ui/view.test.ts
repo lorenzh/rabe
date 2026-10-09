@@ -66,6 +66,31 @@ test("the list's x and g arm only on the person's focus on a live row", () => {
   expect(arm(live, { type: 'reset' }).isListArmed).toBe(false)
 })
 
+// GPT review round 8: in a pane taller than its body the arrow hook carries out
+// the person's arrow with Rabe's own `$.ui.focus`, which arrives as a plugin's
+// focus. Fed as pane.tsx feeds it, that move is the person's.
+test('an arrow Rabe carries out arms x and g on a live row, and only that move', () => {
+  const step = (key: string) => ({ type: 'step', key }) as const
+  const moved = { type: 'landed', isMoved: true } as const
+  const arrow = (from: typeof DISARMED, key: string, isLiveRow = true, isMoved = true) =>
+    arm(arm(arm(from, step(key)), focus(key, false, isLiveRow)), { type: 'landed', isMoved })
+  const landed = arm(arm(DISARMED, { type: 'reset' }), moved)
+  const live = arrow(landed, 'row:a')
+  expect([live.isArmed, live.isListArmed]).toEqual([true, true])
+  // A row gone meanwhile, a move that lands elsewhere, a refused one.
+  expect(arrow(landed, 'row:a', false).isListArmed).toBe(false)
+  expect(arm(arm(landed, step('row:a')), focus('group-shells', false)).isListArmed).toBe(false)
+  expect(arm(arm(landed, step('row:a')), focus('row:b', false)).isListArmed).toBe(false)
+  expect(arrow(landed, 'row:a', true, false).isListArmed).toBe(false)
+  // The step lasts one move: a landing after it is Rabe's, also onto that row.
+  for (const after of [moved, { type: 'landed', isMoved: false }, { type: 'reset' }] as const) {
+    const later = arm(arm(arm(landed, step('row:a')), after), focus('row:a', false))
+    expect([after.type, later.isListArmed]).toEqual([after.type, false])
+  }
+  const elsewhere = arm(arm(landed, step('row:a')), focus('group-shells', false))
+  expect(arm(elsewhere, focus('row:a', false)).isListArmed).toBe(false)
+})
+
 const shown = (fallback: string, targets: string[] = [], selected = 'a') =>
   ({ type: 'drawn', fallback, targets, selected }) as const
 

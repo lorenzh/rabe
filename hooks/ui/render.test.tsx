@@ -17,8 +17,10 @@ import {
   type Model,
   NO_SELECTION,
   type Piece,
+  rowKeys,
   type Selection,
   type Size,
+  stepRow,
   targetsOf,
 } from './view'
 import { fallbackOf, isLiveRow, paneView } from './views/pane'
@@ -400,7 +402,7 @@ test(
           }) as const
         let arming = arm(arm(DISARMED, drawnOf(items, size)), { type: 'landed', isMoved: true })
         for (let n = 0; n < 80; n++) {
-          const what = pick(5)
+          const what = pick(6)
           if (what === 4) {
             // The view changes: its hold starts anew, and the ring, which keeps
             // its index, is moved; where it lands must not stop or delete.
@@ -446,6 +448,24 @@ test(
               key,
               false,
             ])
+          } else if (what === 5) {
+            // The person presses an arrow in a pane taller than its body: Rabe
+            // moves the ring with its own $.ui.focus, which the engine may
+            // refuse; a row may go before the move lands.
+            const key = stepRow(rowKeys(last.list), sel.selected, pick(2) ? 1 : -1)
+            if (key) {
+              const isMoved = pick(4) > 0
+              if (pick(4) === 0) items = change(items, pick, n)
+              if (isMoved) sel.selected = key.slice(4)
+              isLive = isMoved && isLiveRow(model(items), sel, key)
+              arming = arm(arming, { type: 'step', key })
+              if (isMoved) {
+                arming = arm(arming, { type: 'focus', byPerson: false, key, isLiveRow: isLive })
+              }
+              arming = arm(arming, { type: 'landed', isMoved })
+              const shown = `${surface} ${JSON.stringify(scope)} step ${n} arrow ${key}`
+              expect([shown, arming.isListArmed]).toEqual([shown, isLive])
+            }
           } else if (what !== 0) items = change(items, pick, n)
           const next = draw(model(items), size, sel, last.held)
           const shown = `${surface} ${JSON.stringify(scope)} step ${n}`
