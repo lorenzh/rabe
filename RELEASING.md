@@ -55,7 +55,10 @@ All of these must be true. Tick them in the release pull request.
 
 ## Steps
 
-0. Before you publish anything, set up the upgrade test: in a clean Claude Code config (`CLAUDE_CONFIG_DIR=$(mktemp -d)`), install the **current** published version from the marketplace and run `/rabe` once, so it has saved options and a previous-session summary.
+0. Before you publish anything, set up the upgrade test with the **current** published version:
+   - In a new shell: `export CLAUDE_CONFIG_DIR="$(mktemp -d)"`, and note the folder for step 9.
+   - Install Rabe from the marketplace and set the option `hideBuiltinTasks` to `false` (not the default), so step 9 can see that options survive.
+   - In one project folder, start some background work (a background shell is enough), end the session, start a new one in the same folder, and check that `/rabe` shows the previous-session summary. It is saved when a session ends while background items exist.
 1. Create a release branch in a worktree and work there: `git worktree add .worktrees/release -b release/vX.Y.Z main`, `cd .worktrees/release`, `bun install`.
 2. Set `version` in `.claude-plugin/plugin.json` to `X.Y.Z`.
 3. Move the changes from "Unreleased" in `CHANGELOG.md` to a new `## [X.Y.Z] - YYYY-MM-DD` section and add the compare link at the end of the file.
@@ -71,5 +74,5 @@ All of these must be true. Tick them in the release pull request.
    ```sh
    gh release create vX.Y.Z --title "Rabe vX.Y.Z" --notes-file <notes.md>
    ```
-9. In the config from step 0, run `claude plugin update rabe` and `/reload-plugins`. Check that `claude plugin list` shows `X.Y.Z`, `/rabe` works, the options kept their values and the previous-session summary still shows. Then start a fresh session and check `/rabe` again.
+9. In a shell with the same `CLAUDE_CONFIG_DIR` as step 0, run `claude plugin update rabe` and `/reload-plugins`. Check that `claude plugin list` shows `X.Y.Z`, `/rabe` works, the options kept their values and the previous-session summary still shows. Then start a fresh session and check `/rabe` again.
 10. Remove the release worktree.
