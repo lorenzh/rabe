@@ -13,6 +13,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Changed
 
+- On the Effects tab, Enter or a click on a file opens the agent that changed it last; when the main session changed it last, it copies the file path instead. ([#16](https://github.com/lorenzh/rabe/pull/16))
 - The band above the prompt is always one line of counts and the cost, with an empty row above it so the status line does not touch it; the empty row goes when the band has only one row. ([#17](https://github.com/lorenzh/rabe/pull/17))
 
 ### Fixed
