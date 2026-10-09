@@ -1,8 +1,8 @@
 import { expect, test } from 'claude-code/testing'
-import type { RabeItem } from '../../model'
+import type { RabeItem, RabeItemOf } from '../../model'
 import { cell, lines } from '../cells/grid'
 import { C, DEFAULT } from '../cells/palette'
-import { ALL, dev, explore, flow, gridOf, lint, NOW, verify } from '../fixtures'
+import { ALL, ci, dev, explore, flow, gridOf, lint, NOW, verify } from '../fixtures'
 import { grouped } from '../lists'
 import { type Drawn, isPress, NO_SELECTION, rowKeys, type Size } from '../view'
 import { itemsView } from './items'
@@ -108,7 +108,7 @@ test('a folded group shows its header only', () => {
   ])
 })
 
-test('a workflow agent in the list has no stop and stays out of a group stop', () => {
+test('a workflow agent stays out of a group stop', () => {
   const other = {
     ...verify,
     id: 'agent:w2',
@@ -116,10 +116,72 @@ test('a workflow agent in the list has no stop and stays out of a group stop', (
     detail: { agentId: 'w2', workflowPhase: 'Verify' },
   } as RabeItem
   const m = { items: [flow, verify, other, explore], turns: {}, lines: {}, now: NOW }
-  const { buttons } = gridOf(itemsView(m, WIDE, { ...NO_SELECTION, selected: verify.id }))
-  expect(buttons.find(b => b.key === 'stop')).toBeUndefined()
+  const { buttons } = gridOf(itemsView(m, WIDE, { ...NO_SELECTION, selected: explore.id }))
   const group = buttons.find(b => b.key === 'stop-group')?.action
   expect(group).toMatchObject({ type: 'stop' })
   expect(group?.type === 'stop' ? group.ids : []).not.toContain(verify.id)
   expect(group?.type === 'stop' ? group.ids : []).not.toContain(other.id)
+})
+
+const mine: RabeItem = {
+  ...(dev as RabeItemOf<'shell'>),
+  id: 'shell:m',
+  title: 'bun test',
+  parentId: explore.id,
+  detail: { command: 'bun test', taskId: 'm' },
+}
+const theirs: RabeItem = { ...ci, id: 'monitor:w', title: 'tail build.log', parentId: verify.id }
+const lost: RabeItem = {
+  ...(dev as RabeItemOf<'shell'>),
+  id: 'shell:l',
+  title: 'make',
+  parentId: 'agent:gone',
+  detail: { command: 'make', taskId: 'l' },
+}
+const families = { ...model, items: [mine, dev, theirs, lost, ci, explore, flow, verify] }
+
+test('shells and monitors of an agent sit indented under a header with its glyph and name', () => {
+  const drawn = itemsView(families, { ...NARROW, rows: 40 }, { ...NO_SELECTION, selected: mine.id })
+  const { grid } = gridOf(drawn)
+  const shown = lines(grid)
+  const from = shown.findIndex(line => line.startsWith('▾ SHELLS'))
+  expect(shown.slice(from, from + 6).map(line => line.slice(0, 40).trimEnd())).toEqual([
+    '▾ SHELLS 3 running',
+    ' ▶ bun run dev :5173',
+    ' ◐ Explore verifyToken',
+    '▌  ▶ bun test',
+    ' ◐ agent n/a',
+    '   ▶ make',
+  ])
+  const head = from + 2
+  expect(cell(grid, 1, head)[1]).toBe(C.yellow)
+  expect(cell(grid, 3, head)[1]).toBe(C.dim)
+  expect(shown).toContain(' ◐ review-changes › verify:db.ts')
+  expect(rowKeys(drawn).slice(3)).toEqual([
+    `row:${dev.id}`,
+    `row:${mine.id}`,
+    `row:${lost.id}`,
+    `row:${ci.id}`,
+    `row:${theirs.id}`,
+  ])
+  expect(presses(drawn).find(one => one.autoFocus)?.key).toBe(`row:${mine.id}`)
+})
+
+test('with nothing selected the first row drawn has the focus, also when agents regroup a list', () => {
+  const m = { ...model, items: [mine, dev, explore] }
+  const drawn = itemsView(m, NARROW, NO_SELECTION)
+  expect(presses(drawn).find(one => one.autoFocus)?.key).toBe(rowKeys(drawn)[0])
+  const shells = itemsView({ ...model, items: [mine, dev] }, NARROW, NO_SELECTION)
+  expect(rowKeys(shells)).toEqual([`row:${dev.id}`, `row:${mine.id}`])
+  expect(presses(shells).find(one => one.autoFocus)?.key).toBe(`row:${dev.id}`)
+})
+
+test('a workflow agent or a run offers g: stop run on the list', () => {
+  for (const selected of [verify.id, flow.id]) {
+    const { buttons } = itemsView(model, WIDE, { ...NO_SELECTION, selected })
+    const run = buttons.find(one => one.hotkey === 'g')
+    expect(run).toMatchObject({ key: 'stop-run', label: 'g: stop run' })
+    expect(run?.action).toEqual({ type: 'stop', ids: [flow.id] })
+    expect(buttons.find(one => one.hotkey === 'x')).toBeUndefined()
+  }
 })

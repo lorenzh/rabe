@@ -3,10 +3,20 @@ import type { Span } from '../cells/grid'
 import { C, type Style, tone } from '../cells/palette'
 import { facts } from '../facts'
 import { tokens, usd } from '../format'
-import { type Group, glyph, grouped, groupNote, groupOf, matches } from '../lists'
+import {
+  byParent,
+  type Family,
+  type Group,
+  glyph,
+  grouped,
+  groupNote,
+  groupOf,
+  matches,
+} from '../lists'
 import {
   canStop,
   type Drawn,
+  isWorkflowAgent,
   type Line,
   type Model,
   type Selection,
@@ -33,8 +43,31 @@ export function isSplit(size: Size): boolean {
   return size.columns >= SPLIT_COLUMNS
 }
 
+// Shells and monitors an agent started sit under that agent.
+const FAMILIES: Group[] = ['shells', 'monitors']
+
+// A header for an agent's shells or monitors: its glyph and name, not a row.
+function familyHead(family: Family): Line {
+  const { parent } = family
+
+  return {
+    spans: [
+      [' '],
+      [parent ? glyph(parent) : '◐', { fg: parent ? tone(parent) : C.dim }],
+      [' '],
+      [family.title, { fg: C.dim }],
+    ],
+  }
+}
+
+const indent = (line: Line): Line => ({
+  ...line,
+  spans: [...line.spans.slice(0, 1), ['  '], ...line.spans.slice(1)],
+})
+
 // The items in list order, groups folded or not, with the lines the list
-// shows: a header per group (a Button that folds it) and a row per item.
+// shows: a header per group (a Button that folds it), a row per item, and in
+// SHELLS and MONITORS the rows of each agent indented under its name.
 // Gaps between groups only where the whole list fits in `rows`.
 function listLines(
   model: Model,
@@ -42,9 +75,17 @@ function listLines(
   rows: number,
 ): { lines: Line[]; order: RabeItem[] } {
   const visible = model.items.filter(item => matches(item, sel.query))
-  const groups = grouped(visible, sel.order)
-  const order = groups.flatMap(group => (sel.folded.includes(group.id) ? [] : group.items))
+  const groups = grouped(visible, sel.order).map(group => ({
+    ...group,
+    families: FAMILIES.includes(group.id)
+      ? byParent(group.items, model.items)
+      : [{ id: '', title: '', items: group.items }],
+  }))
+  const order = groups.flatMap(group =>
+    sel.folded.includes(group.id) ? [] : group.families.flatMap(family => family.items),
+  )
   const selected = selectedItem(order, sel)
+  const row = (item: RabeItem) => itemLine(item, model.now, item === selected)
   const blocks = groups.map((group): Line[] => {
     const isFolded = sel.folded.includes(group.id)
     const head: Line = {
@@ -58,8 +99,15 @@ function listLines(
         [` ${groupNote(group.id, group.items) || group.items.length}`, { fg: C.dim }],
       ],
     }
-    const items = isFolded ? [] : group.items
-    return [head, ...items.map(item => itemLine(item, model.now, item === selected))]
+    if (isFolded) return [head]
+    return [
+      head,
+      ...group.families.flatMap(family =>
+        family.id === ''
+          ? family.items.map(row)
+          : [familyHead(family), ...family.items.map(item => indent(row(item)))],
+      ),
+    ]
   })
   const spaced = blocks.flatMap((block, i) => (i > 0 ? [{ spans: [] }, ...block] : block))
   const lines = spaced.length <= rows ? spaced : blocks.flat()
@@ -92,10 +140,17 @@ function summaryLine(model: Model, item: RabeItem): Line {
 }
 
 // List keys under the list; the rows themselves take the arrows and Enter.
-// Below the split, s keeps only its letter.
+// g stops the run of a workflow or its agent, else the group. Below the
+// split, s keeps only its letter.
 function listButtons(model: Model, size: Size, selected: RabeItem | undefined) {
   const buttons: ViewButton[] = []
-  if (selected && canStop(selected)) {
+  const run =
+    selected?.kind === 'workflow'
+      ? selected
+      : selected && isWorkflowAgent(selected)
+        ? model.items.find(one => one.id === selected.parentId && one.kind === 'workflow')
+        : undefined
+  if (selected && selected !== run && canStop(selected)) {
     buttons.push({
       key: 'stop',
       label: 'x: stop',
@@ -108,7 +163,14 @@ function listButtons(model: Model, size: Size, selected: RabeItem | undefined) {
         .filter(one => groupOf(one) === groupOf(selected) && canStop(one))
         .map(one => one.id)
     : []
-  if (group.length > 1) {
+  if (run && canStop(run)) {
+    buttons.push({
+      key: 'stop-run',
+      label: 'g: stop run',
+      hotkey: 'g',
+      action: { type: 'stop', ids: [run.id] },
+    })
+  } else if (!run && group.length > 1) {
     buttons.push({
       key: 'stop-group',
       label: 'g: stop group',

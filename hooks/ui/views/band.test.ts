@@ -1,8 +1,9 @@
 import { expect, test } from 'claude-code/testing'
 
+import type { RabeItem } from '../../model'
 import { cell, lines } from '../cells/grid'
 import { C, CHIP, DEFAULT } from '../cells/palette'
-import { ALL, babysit, dev, explore, gridOf, NOW } from '../fixtures'
+import { ALL, babysit, ci, dev, explore, flow, gridOf, NOW, verify } from '../fixtures'
 import { NO_SELECTION, type Size } from '../view'
 import { bandView } from './band'
 
@@ -59,4 +60,27 @@ test('a band taller than maxRows becomes one line of count chips, failed first',
   )
   expect(cell(grid, at(shown, 0, '▶'), 0).slice(1)).toEqual([CHIP.shell.fg, CHIP.shell.bg])
   expect(cell(grid, at(shown, 0, '≈'), 0)[1]).toBe(C.bright)
+})
+
+test('shells and monitors an agent started follow the main session ones, after a dim agent name, and count in both forms', () => {
+  const mine = {
+    ...dev,
+    id: 'shell:m',
+    title: 'bun test',
+    parentId: explore.id,
+    detail: { command: 'bun test' },
+  } as RabeItem
+  const theirs = { ...ci, id: 'monitor:w', title: 'tail build.log', parentId: verify.id }
+  const items = [mine, dev, theirs, ci, explore, verify, flow]
+  const { grid } = gridOf(bandView(model(items), SIZE, NO_SELECTION))
+  const shown = lines(grid)
+  expect(shown).toContain(' ▶ shells 2    bun run dev :5173 · Explore verifyToken › bun test')
+  expect(shown).toContain(
+    ' ◉ watch 2     CI run #482 · review-changes › verify:db.ts › tail build.log',
+  )
+  const y = shown.findIndex(line => line.startsWith(' ▶ shells'))
+  expect(cell(grid, at(shown, y, 'Explore'), y)[1]).toBe(C.dim)
+  expect(cell(grid, at(shown, y, 'bun test'), y)[1]).toBe(DEFAULT)
+  const one = lines(gridOf(bandView(model(items), { ...SIZE, rows: 2 }, NO_SELECTION)).grid)
+  expect(one[0]).toContain('▶ 2 shells   ◉ 2 monitors')
 })
