@@ -1,38 +1,54 @@
-import { grid, spans } from '../cells/grid'
+import { grid, type Span, spans } from '../cells/grid'
 import { C, CHIP } from '../cells/palette'
-import { bandLine, bandRows, costLine, joinFit } from '../lists'
+import { type BandRow, bandRows, costLine, joinFit } from '../lists'
 import type { View } from '../view'
 
-const CHIP_WIDTH = 12
+// The one-line band names each count: [one, more].
+const COUNT: Record<BandRow['kind'], [string, string]> = {
+  failed: ['failed', 'failed'],
+  agent: ['claude', 'claude'],
+  codex: ['codex', 'codex'],
+  workflow: ['workflow', 'workflows'],
+  shell: ['shell', 'shells'],
+  monitor: ['monitor', 'monitors'],
+  cron: ['cron', 'cron'],
+}
+
+const cost = (parts: string[]): Span[] => [
+  [parts[0] ?? '', { fg: C.bright }],
+  [parts.length > 1 ? ` · ${parts.slice(1).join(' · ')}` : '', { fg: C.dim }],
+]
 
 // The band above the prompt: one row per kind with a colored chip, then the
-// cost; one summary line when the rows do not fit in `size.rows` (maxRows).
-// The grid is exactly as tall as its lines, so it never draws an empty one.
+// cost; one line of count chips when the rows do not fit in `size.rows`
+// (maxRows). The grid is exactly as tall as its lines, so it never draws an
+// empty one.
 export const bandView: View = (model, size) => {
   const rows = bandRows(model.items, model.now)
-  const cost = costLine(model.items)
-  const count = rows.length + (cost ? 1 : 0)
+  const money = costLine(model.items)?.split(' · ')
+  const count = rows.length + (money ? 1 : 0)
   if (count > size.rows) {
     const g = grid(size.columns, 1)
-    spans(g, 0, 0, [[`${bandLine(model.items, model.now)} · /rabe for details`]])
+    const chips = rows.flatMap((row): Span[] => {
+      const n = row.names.length
+      return [[` ${row.glyph} ${n} ${COUNT[row.kind][n === 1 ? 0 : 1]} `, CHIP[row.kind]], [' ']]
+    })
+    spans(g, 0, 0, [...chips, ...(money ? cost(money.slice(0, 2)) : [])])
     return { grid: g, buttons: [] }
   }
   const g = grid(size.columns, count)
-  const names = size.columns - CHIP_WIDTH - 1
+  const labels = rows.map(row => `${row.glyph} ${row.label} ${row.names.length}`)
+  const chip = Math.max(10, ...labels.map(label => label.length)) + 2
+  const names = size.columns - chip - 1
   rows.forEach((row, y) => {
-    const chip = `${` ${row.glyph} ${row.label} ${row.names.length}`.padEnd(CHIP_WIDTH)}`
     spans(g, 0, y, [
-      [chip, CHIP[row.kind]],
+      [` ${labels[y]}`.padEnd(chip), CHIP[row.kind]],
       [' '],
-      [joinFit(row.names, names), { fg: row.kind === 'failed' ? C.red : C.text }],
+      ...joinFit(row.names, names),
     ])
   })
-  if (cost) {
-    spans(g, 0, rows.length, [
-      [' $ cost'.padEnd(CHIP_WIDTH), CHIP.cost],
-      [' '],
-      [cost, { fg: C.dim }],
-    ])
+  if (money) {
+    spans(g, 0, rows.length, [[' $ cost'.padEnd(chip), CHIP.cost], [' '], ...cost(money)])
   }
 
   return { grid: g, buttons: [] }

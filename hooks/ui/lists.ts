@@ -1,5 +1,7 @@
 import type { RabeItem, RabeItemKind } from '../model'
 import { nextRuns } from '../schedule'
+import type { Span } from './cells/grid'
+import { C, type Style } from './cells/palette'
 import { ago, countdown, duration, short, tokens, usd } from './format'
 
 export type Group = 'failed' | 'agents' | 'shells' | 'monitors' | 'cron'
@@ -45,15 +47,16 @@ export function nextRun(item: RabeItem, now: number): number | undefined {
   return item.detail.schedule ? nextRuns(item.detail.schedule, now, 1)[0] : undefined
 }
 
-export function name(item: RabeItem): string {
-  if (item.kind !== 'shell') return item.title
-  const port = item.detail.port === undefined ? '' : ` :${item.detail.port}`
-  const exit =
-    item.status === 'failed' && item.detail.exitCode !== undefined
-      ? ` exit ${item.detail.exitCode}`
-      : ''
+// A shell's port (blue) and a failed shell's exit code (red) follow its title.
+export function nameSpans(item: RabeItem, style: Style = {}): Span[] {
+  const out: Span[] = [[item.title, style]]
+  if (item.kind !== 'shell') return out
+  if (item.detail.port !== undefined) out.push([` :${item.detail.port}`, { fg: C.blue }])
+  if (item.status === 'failed' && item.detail.exitCode !== undefined) {
+    out.push([` exit ${item.detail.exitCode}`, { fg: C.red }])
+  }
 
-  return `${item.title}${port}${exit}`
+  return out
 }
 
 export function timeLabel(item: RabeItem, now: number): string {
@@ -207,109 +210,96 @@ export function costLine(items: RabeItem[]): string | undefined {
   const top = byTokens(items)[0]
   const topText = top?.tokens ? ` · top: ${top.title} ${tokens(tokenSum(top))}` : ''
 
-  const dollars = sum.usd === undefined ? ' · cost n/a' : ` ≈ ${usd(sum.usd)}`
+  const dollars = sum.usd === undefined ? 'cost n/a' : `≈ ${usd(sum.usd)}`
 
-  return `${tokens(sum.tokens)} tok${dollars}${topText}`
+  return `${dollars} · ${tokens(sum.tokens)} tok${topText}`
 }
 
 export type BandRow = {
   glyph: string
   kind: RabeItemKind | 'failed'
   label: string
-  names: string[]
+  names: Span[][]
 }
 
 const isRunning = (kind: RabeItemKind) => (item: RabeItem) =>
   item.kind === kind && item.status === 'running'
 
 export function bandRows(items: RabeItem[], now: number): BandRow[] {
-  const run = (item: RabeItem) =>
-    item.startedAt === undefined ? '' : ` ${short(now - item.startedAt)}`
+  const dim = { fg: C.dim }
+  const run = (item: RabeItem): Span[] => [
+    [item.title],
+    [item.startedAt === undefined ? '' : ` ${short(now - item.startedAt)}`, dim],
+  ]
   const failed = items.filter(
     item => item.status === 'failed' && now - (item.endedAt ?? item.seenAt) < 10 * 60_000,
   )
   const rows: BandRow[] = [
-    { glyph: '✗', kind: 'failed', label: 'failed', names: failed.map(name) },
+    { glyph: '✗', kind: 'failed', label: 'failed', names: failed.map(item => nameSpans(item)) },
     {
       glyph: '◐',
       kind: 'agent',
       label: 'claude',
-      names: items.filter(isRunning('agent')).map(item => `${item.title}${run(item)}`),
+      names: items.filter(isRunning('agent')).map(run),
     },
-    {
-      glyph: '◐',
-      kind: 'codex',
-      label: 'codex',
-      names: items.filter(isRunning('codex')).map(item => `${item.title}${run(item)}`),
-    },
+    { glyph: '◐', kind: 'codex', label: 'codex', names: items.filter(isRunning('codex')).map(run) },
     {
       glyph: '⧉',
       kind: 'workflow',
       label: 'workflow',
       names: items
         .filter(isRunning('workflow'))
-        .map(
-          flow =>
-            `${flow.title} · ${phaseProgress(items, flow)} · ${children(items, flow.id).length} agents`,
-        ),
+        .map(flow => [
+          [flow.title],
+          [` · ${phaseProgress(items, flow)} · ${children(items, flow.id).length} agents`, dim],
+        ]),
     },
     {
       glyph: '▶',
       kind: 'shell',
       label: 'shells',
-      names: items.filter(isRunning('shell')).map(name),
+      names: items.filter(isRunning('shell')).map(item => nameSpans(item)),
     },
     {
       glyph: '◉',
       kind: 'monitor',
       label: 'watch',
-      names: items.filter(isRunning('monitor')).map(name),
+      names: items.filter(isRunning('monitor')).map(item => nameSpans(item)),
     },
     {
       glyph: '⟳',
       kind: 'cron',
       label: 'cron',
-      names: items.filter(isRunning('cron')).map(item => `${item.title} ${timeLabel(item, now)}`),
+      names: items.filter(isRunning('cron')).map(item => {
+        const next = nextRun(item, now)
+        return [
+          [item.title],
+          [' · next ', dim],
+          [next === undefined ? 'n/a' : countdown(next - now), { fg: C.bright }],
+        ]
+      }),
     },
   ]
 
   return rows.filter(row => row.names.length > 0)
 }
 
-export function joinFit(names: string[], width: number): string {
-  let text = ''
+const width = (list: Span[]) => list.reduce((n, [text]) => n + text.length, 0)
+
+// Names joined with a dim " · " until `width`, then a dim "+N" for the rest.
+export function joinFit(names: Span[][], max: number): Span[] {
+  const sep: Span = [' · ', { fg: C.dim }]
+  let out: Span[] = []
   for (const [i, one] of names.entries()) {
-    const next = text ? `${text} · ${one}` : one
+    const next = i === 0 ? one : [...out, sep, ...one]
     const rest = names.length - i - 1
-    if (i > 0 && next.length + (rest ? ` +${rest}`.length : 0) > width) {
-      return `${text} +${names.length - i}`
+    if (i > 0 && width(next) + (rest ? ` +${rest}`.length : 0) > max) {
+      return [...out, [` +${names.length - i}`, { fg: C.dim }]]
     }
-    text = next
+    out = next
   }
 
-  return text
-}
-
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
-
-export function bandLine(items: RabeItem[], now: number): string {
-  const count = (kind: RabeItemKind) => items.filter(isRunning(kind)).length
-  const claude = count('agent')
-  const codex = count('codex')
-  const failed = items.filter(
-    item => item.status === 'failed' && now - (item.endedAt ?? 0) < 600_000,
-  )
-  const parts = [
-    claude + codex > 0 && `◐ ${plural(claude + codex, 'agent')} (${claude} claude, ${codex} codex)`,
-    count('shell') > 0 && `▶ ${plural(count('shell'), 'shell')}`,
-    failed.length > 0 && `✗ ${failed.length} failed`,
-    count('monitor') > 0 && `◉ ${plural(count('monitor'), 'monitor')}`,
-    count('cron') > 0 && `⟳ ${count('cron')} cron`,
-    count('workflow') > 0 && `⧉ ${plural(count('workflow'), 'workflow')}`,
-    costLine(items)?.split(' · ')[0],
-  ]
-
-  return parts.filter(Boolean).join(' · ')
+  return out
 }
 
 export type TreeLine = { prefix: string; item: RabeItem }

@@ -47,10 +47,10 @@ test('the band draws one row per kind, failed first, then the cost on every surf
     const ui = await $.ui.mount({ surface, ...BAND } as never)
     const shown = await screen(ui)
     expect(shown[0]).toMatch(/^ ✗ failed 1 +bun run lint exit 2$/)
-    expect(shown).toContain(' ◐ claude 2  Explore verifyToken 1m · verify:db.ts 40s')
-    expect(shown).toContain(' ▶ shells 1  bun run dev :5173')
-    expect(shown).toContain(' ◉ watch 1   CI run #482')
-    expect(shown.at(-1)).toBe(' $ cost      91k tok ≈ $0.25 · top: Explore verifyToken 41k')
+    expect(shown).toContain(' ◐ claude 2    Explore verifyToken 1m · verify:db.ts 40s')
+    expect(shown).toContain(' ▶ shells 1    bun run dev :5173')
+    expect(shown).toContain(' ◉ watch 1     CI run #482')
+    expect(shown.at(-1)).toBe(' $ cost        ≈ $0.25 · 91k tok · top: Explore verifyToken 41k')
     await ui.unmount()
   }
 })
@@ -86,7 +86,7 @@ test('a short band collapses to one line on every surface', async ($, on) => {
     const ui = await $.ui.mount({ surface, ...BAND, props } as never)
     const shown = await screen(ui)
     expect(shown).toHaveLength(1)
-    expect(shown[0]).toMatch(/^◐ 3 agents \(2 claude, 1 codex\) · ▶ 1 shell · ✗ 1 failed/)
+    expect(shown[0]).toMatch(/^ ✗ 1 failed {3}◐ 2 claude {3}◐ 1 codex {3}⧉ 1 workflow {3}▶ 1 shell/)
     await ui.unmount()
   }
 })

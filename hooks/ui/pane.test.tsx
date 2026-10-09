@@ -88,12 +88,26 @@ test('the pane shows the tabs and the empty state on every surface', async ($, o
       props: { ...PROPS, isFocused: false },
     } as never)
     const shown = await screen(ui)
-    expect(shown[0]).toMatch(/^ Items 0 {3}Cost {3}Effects {3}Timeline +1-4 switch$/)
+    if (surface === 'terminal') expect(shown[0]).toBe(' Items 0  Cost  Effects  Timeline')
     expect(shown).toContain(' Nothing runs in the background.')
     expect(shown).toContain(' tab to select · esc close')
     expect(await ui.find({ type: 'Button', key: 'tab-cost' })).toBeDefined()
     await ui.unmount()
   }
+})
+
+test('a wide terminal pane spaces the tabs and names the keys; the desktop draws the tabs as Buttons', async ($, on) => {
+  hold(on, ALL)
+  const ui = await $.ui.mount({ surface: 'terminal', ...WIDE } as never)
+  expect((await screen(ui))[0]).toMatch(/^ Items 10 {4}Cost {4}Effects {4}Timeline +1-4 switch$/)
+  await ui.unmount()
+  const desk = await $.ui.mount({ surface: 'desktop', ...PANE } as never)
+  const shown = await screen(desk)
+  expect(shown.filter(line => /Cost.*Effects/.test(line))).toEqual([])
+  expect(shown).not.toContain(' ')
+  expect((await desk.find({ type: 'Button', key: 'tab-items' }))?.props.label).toBe('Items 10')
+  expect((await desk.find({ type: 'Button', key: 'tab-cost' }))?.props.hotkey).toBe('2')
+  await desk.unmount()
 })
 
 test('the pane is a Raster as wide as the body and leaves room for its Buttons', async ($, on) => {
@@ -111,18 +125,24 @@ test('the items tab groups items, failed first, with status words on every surfa
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
     const shown = (await screen(ui)).map(line => line.trim())
-    expect(shown).toContain('▾ FAILED 1')
-    expect(shown).toContain('▾ AGENTS 6  4 claude · 1 codex · 1 workflow')
-    expect(shown.some(line => /^▌?✗ bun run lint exit 2 +failed 2m ago$/.test(line))).toBe(true)
-    expect(shown.some(line => /^▶ bun run dev :5173 +≥ 40m$/.test(line))).toBe(true)
-    expect(shown).toContain('j/k move · enter open · 1-4 switch · esc close')
+    if (surface === 'terminal') {
+      expect(shown).toContain('▾ FAILED 1')
+      expect(shown).toContain('▾ AGENTS 4 claude · 1 codex · 1 workflow')
+      expect(shown.some(line => /^▌✗ bun run lint exit 2 +failed 2m ago$/.test(line))).toBe(true)
+      expect(shown.some(line => /^▶ bun run dev :5173 +≥ 40m$/.test(line))).toBe(true)
+      expect(shown).toContain('j/k move · enter open · esc close')
+    } else {
+      expect(shown).toContain('Agents 6')
+      expect(shown).toContain('✗ bun run lint · exit 2 · failed 2m ago')
+      expect(shown).toContain('▶ bun run dev · :5173 · ≥ 40m')
+    }
     await ui.unmount()
   }
 })
 
-test('j moves the selection and enter opens the selected item on every surface', async ($, on) => {
+test('j moves the selection and enter opens the selected item on the terminal', async ($, on) => {
   const state = hold(on, ALL)
-  for (const surface of SURFACES) {
+  for (const surface of ['terminal'] as const) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
     const before = state.selected
     await ui.press({ key: 'down' })
@@ -225,19 +245,24 @@ test('a wide terminal pane shows the selected item beside the list', async ($, o
   await ui.unmount()
 })
 
-test('a narrow pane, and the desktop, put a one-line summary under the list', async ($, on) => {
+test('a narrow terminal pane puts a one-line summary under the list and short key labels', async ($, on) => {
   hold(on, ALL, { selected: review.id })
-  for (const [surface, props] of [
-    ['terminal', PROPS],
-    ['desktop', WIDE.props],
-  ] as const) {
-    const ui = await $.ui.mount({ surface, ...PANE, props } as never)
-    const shown = await screen(ui)
-    expect(shown).toContain(
-      ' review auth.ts · model gpt-6.1-sol · effort high · job task-1 · ◐ running',
-    )
-    await ui.unmount()
-  }
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  const shown = await screen(ui)
+  expect(shown).toContain('◐ review auth.ts · gpt-6.1-sol · ≈ $0.09 · 25k in · running')
+  const buttons = await ui.findAll({ type: 'Button' })
+  expect(buttons.map(one => one.props.label)).toEqual([
+    'j',
+    'k',
+    'open',
+    'g: stop group',
+    's',
+    '1',
+    '2',
+    '3',
+    '4',
+  ])
+  await ui.unmount()
 })
 
 test('the search narrows the list on every surface', async ($, on) => {
@@ -257,7 +282,7 @@ test('on the desktop rows are Buttons: a group header folds, an item opens', asy
   const state = hold(on, ALL)
   const ui = await $.ui.mount({ surface: 'desktop', ...PANE } as never)
   await ui.press({ key: 'group-shells' })
-  expect(await ui.find({ type: 'Button', text: '▸ SHELLS 1  1 running' })).toBeDefined()
+  expect(await ui.find({ type: 'Button', text: 'Shells 1 · folded' })).toBeDefined()
   expect(await ui.find({ type: 'Button', key: `row:${dev.id}` })).toBeUndefined()
   await ui.press({ key: `row:${explore.id}` })
   expect(state.open).toBe(explore.id)
