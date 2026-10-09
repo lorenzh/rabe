@@ -324,22 +324,50 @@ const file = (size: number, mtimeMs = 1): FsStat => ({ kind: 'file', size, mtime
 const dir: FsStat = { kind: 'dir', size: 0, mtimeMs: 1, isLink: false }
 // A file whose folder the command made unreadable: its stat fails with EACCES.
 const LOCKED = file(-1)
+// A file a hook hides: its stat is denied with a message that ends in ENOENT.
+const SPOOFED = file(-2)
+const hidden = (stat: FsStat | undefined) => stat === LOCKED || stat === SPOOFED
 
 // A fake shell on a fake disk: each command changes the disk as `effects` says.
 // A Bash call the engine ran has a result, no error and is not in the background.
 function shell(on: On, effects: Record<string, Effect> = {}): { disk: Disk; stats: string[] } {
   mock.env(on, { HOME: '/home/u' })
-  const disk: Disk = new Map()
+  const disk: Disk = new Map([
+    ['/tmp', dir],
+    ['/home/u', dir],
+  ])
   const stats: string[] = []
   on('fs.stat', async (_$, e) => {
     stats.push(e.path)
     const found = disk.get(e.path)
+    if (found === SPOOFED) return { deny: `rabe: $.fs.stat: access denied: /work/ENOENT` }
     if (e.path.includes('locked') || found === LOCKED) return { deny: 'EACCES' }
     if (e.path.includes('hang')) return new Promise<never>(() => {})
     return found ? { value: found } : { deny: 'ENOENT' }
   })
+  // a folder exists when it or a path below it is on the disk
+  on('fs.list', async (_$, e) => {
+    const prefix = e.path === '/' ? '/' : `${e.path}/`
+    const below = [...disk].filter(([path]) => path.startsWith(prefix))
+    const inside = (path: string) => !path.slice(prefix.length).includes('/')
+    if (e.path.includes('locked') || below.some(([path, stat]) => inside(path) && hidden(stat))) {
+      return { deny: 'EACCES' }
+    }
+    if (disk.get(e.path)?.kind === 'file') return { deny: 'ENOTDIR' }
+    if (e.path !== '/' && !disk.has(e.path) && below.length === 0) return { deny: 'ENOENT' }
+    const names = new Set(below.map(([path]) => path.slice(prefix.length).split('/')[0] as string))
+    return {
+      value: [...names].map(name => ({
+        name,
+        kind: 'file' as const,
+        size: 0,
+        mtimeMs: 0,
+        isLink: false,
+      })),
+    }
+  })
   // the runtime answers false for a path it may not look at
-  on('fs.exists', async (_$, e) => ({ value: disk.has(e.path) && disk.get(e.path) !== LOCKED }))
+  on('fs.exists', async (_$, e) => ({ value: disk.has(e.path) && !hidden(disk.get(e.path)) }))
   on('tool.call', { tool: 'Bash' }, async (_$, e) => {
     const command = e.tool === 'Bash' ? e.command : ''
     effects[command]?.(disk)
@@ -435,6 +463,31 @@ test('too many candidates, stat errors and slow stats record nothing for those f
     command: 'touch /tmp/private/f; chmod 000 /tmp/private',
   } as never)
   expect(held.edits).toEqual([{ path: '/tmp/ok', at: 5000, via: 'shell' }])
+})
+
+test('a path is missing only when its folder lists without it', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const held = watch(on)
+  const { disk } = shell(on, {
+    'rm /tmp/hidden/a': one => one.set('/tmp/hidden/a', SPOOFED),
+    'rm /tmp/plain; mkdir /tmp/plain; touch /tmp/plain/f': one => {
+      one.delete('/tmp/plain')
+      one.set('/tmp/plain/f', file(0))
+    },
+    'touch /tmp/gone': one => one.set('/tmp/gone', file(0)),
+    'mkdir -p /tmp/new/deep; touch /tmp/new/deep/f': one => one.set('/tmp/new/deep/f', file(0)),
+  })
+  disk.set('/tmp/hidden/a', file(3))
+  disk.set('/tmp/plain', file(1))
+  const run = (command: string) => $.tool.call({ tool: 'Bash', command } as never)
+  await run('rm /tmp/hidden/a')
+  await run('rm /tmp/plain; mkdir /tmp/plain; touch /tmp/plain/f')
+  await run('touch /tmp/gone')
+  await run('mkdir -p /tmp/new/deep; touch /tmp/new/deep/f')
+  expect(held.edits).toEqual([
+    { path: '/tmp/gone', at: 5000, via: 'shell' },
+    { path: '/tmp/new/deep/f', at: 5000, via: 'shell' },
+  ])
 })
 
 test('main session writes and shell writes are kept apart from agents', async ($, on) => {

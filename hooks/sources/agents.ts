@@ -273,10 +273,26 @@ async function record(
   }
 }
 
-// Only a stat that failed with ENOENT or ENOTDIR says a path is absent;
-// `$.fs.exists` also answers false for a folder it may not read.
-function isMissing(error: unknown): boolean {
-  return /\b(ENOENT|ENOTDIR)$/.test(error instanceof Error ? error.message : String(error))
+type Listings = Map<string, Promise<Set<string> | undefined>>
+
+// A path whose stat failed is missing only when its folder lists without it,
+// or that folder is missing itself; error text is never read.
+async function isMissing($: EngineInterface, path: string, lists: Listings): Promise<boolean> {
+  const cut = path.lastIndexOf('/')
+  if (cut < 0 || path === '/') return false
+  const folder = path.slice(0, cut) || '/'
+  let names = lists.get(folder)
+  if (!names) {
+    names = $.fs.list(folder).then(
+      entries => new Set(entries.map(entry => entry.name)),
+      () => undefined,
+    )
+    lists.set(folder, names)
+  }
+  const listed = await names
+  if (listed) return !listed.has(path.slice(cut + 1))
+
+  return folder !== '/' && isMissing($, folder, lists)
 }
 
 // What is on disk at each path, or undefined when the looks outlast LOOK_MS.
@@ -286,11 +302,12 @@ async function look($: EngineInterface, paths: string[]): Promise<Seen[] | undef
     () => undefined,
     () => undefined,
   )
+  const lists: Listings = new Map()
   const seen = Promise.all(
     paths.map(path =>
       $.fs.stat(path).then(
         (stat): Seen => stat,
-        (error: unknown): Seen => (isMissing(error) ? 'none' : undefined),
+        async (): Promise<Seen> => ((await isMissing($, path, lists)) ? 'none' : undefined),
       ),
     ),
   )
