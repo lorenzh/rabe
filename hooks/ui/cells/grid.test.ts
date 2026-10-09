@@ -49,9 +49,19 @@ test('safe keeps width-1 BMP characters and replaces the rest', () => {
   expect(safe('日本')).toBe('??')
   expect(safe('é')).toBe('e?')
   expect(safe('✅ ok')).toBe('? ok')
-  expect(safe('नमस्ते')).toBe('नमस?त?')
+  expect(safe('नमस्ते')).toBe('??????')
   expect(safe('a\u200db')).toBe('a?b')
   expect(safe('\u1160\u11a8\ud7b0')).toBe('???')
+})
+
+test('safe keeps an allow list of width-1 characters; anything else is a stand-in', () => {
+  expect(safe('☰ menu')).toBe('? menu')
+  expect(safe('⚙★♥☺')).toBe('????')
+  expect(safe('Grüße, Ωmega, Жук, Łódź, ő € → ░▒ ¿')).toBe('Grüße, Ωmega, Жук, Łódź, ő € → ░▒ ¿')
+  expect(safe('· … ≈ ≥ ⎇ ⎿ ■ ▶ ▸ ▾ ◉ ● ◐ ◷ ⚠ ✓ ✗ ✻ ⟳ ⧉')).toBe(
+    '· … ≈ ≥ ⎇ ⎿ ■ ▶ ▸ ▾ ◉ ● ◐ ◷ ⚠ ✓ ✗ ✻ ⟳ ⧉',
+  )
+  expect(safe('\u0378\u00ad\u2060x')).toBe('???x')
 })
 
 test('fit pads short text and cuts long text with an ellipsis', () => {

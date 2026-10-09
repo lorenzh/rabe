@@ -9,83 +9,37 @@ export type Cell = [codePoint: number, fg: number, bg: number]
 const SPACE = 32
 const STAND_IN = '?'
 
-// ponytail: a short table of wide, zero-width and emoji ranges in the BMP;
-// a character it misses makes the engine refuse the Raster, naming the cell.
-const NOT_WIDTH_1: [number, number][] = [
-  [0x0300, 0x036f],
-  [0x0483, 0x0489],
-  [0x0591, 0x05c7],
-  [0x0610, 0x061a],
-  [0x064b, 0x065f],
-  [0x0e31, 0x0e3a],
-  [0x1100, 0x11ff],
-  [0x1ab0, 0x1aff],
-  [0x1dc0, 0x1dff],
-  [0x200b, 0x200f],
-  [0x2028, 0x202e],
-  [0x2060, 0x206f],
-  [0x20d0, 0x20ff],
-  [0x231a, 0x231b],
-  [0x2329, 0x232a],
-  [0x23e9, 0x23ec],
-  [0x23f0, 0x23f0],
-  [0x23f3, 0x23f3],
-  [0x25fd, 0x25fe],
-  [0x2614, 0x2615],
-  [0x2648, 0x2653],
-  [0x267f, 0x267f],
-  [0x2693, 0x2693],
-  [0x26a1, 0x26a1],
-  [0x26aa, 0x26ab],
-  [0x26bd, 0x26be],
-  [0x26c4, 0x26c5],
-  [0x26ce, 0x26ce],
-  [0x26d4, 0x26d4],
-  [0x26ea, 0x26ea],
-  [0x26f2, 0x26f3],
-  [0x26f5, 0x26f5],
-  [0x26fa, 0x26fa],
-  [0x26fd, 0x26fd],
-  [0x2705, 0x2705],
-  [0x270a, 0x270b],
-  [0x2728, 0x2728],
-  [0x274c, 0x274c],
-  [0x274e, 0x274e],
-  [0x2753, 0x2755],
-  [0x2757, 0x2757],
-  [0x2795, 0x2797],
-  [0x27b0, 0x27b0],
-  [0x27bf, 0x27bf],
-  [0x2b1b, 0x2b1c],
-  [0x2b50, 0x2b50],
-  [0x2b55, 0x2b55],
-  [0x2e80, 0x303e],
-  [0x3041, 0xa4cf],
-  [0xa960, 0xa97f],
-  [0xac00, 0xdfff],
-  [0xf900, 0xfaff],
-  [0xfe00, 0xfe0f],
-  [0xfe10, 0xfe19],
-  [0xfe20, 0xfe2f],
-  [0xfe30, 0xfe6f],
-  [0xfeff, 0xfeff],
-  [0xff00, 0xff60],
-  [0xffe0, 0xffe6],
-  [0xfff0, 0xffff],
+// An allow list: code points terminals draw one cell wide. ASCII, Latin-1
+// letters and punctuation, Latin Extended-A and B, Greek, Cyrillic, general
+// punctuation, currency signs, arrows, box drawing and block elements.
+const WIDTH_1: [number, number][] = [
+  [0x0020, 0x007e],
+  [0x00a1, 0x024f],
+  [0x0370, 0x03ff],
+  [0x0400, 0x0482],
+  [0x048a, 0x04ff],
+  [0x2010, 0x2027],
+  [0x2030, 0x205e],
+  [0x20a0, 0x20c0],
+  [0x2190, 0x21ff],
+  [0x2500, 0x259f],
 ]
 
-// Combining marks and format characters take no cell of their own.
-const ZERO_WIDTH = /[\p{M}\p{Cf}]/u
+// The glyphs Rabe draws outside those ranges.
+const GLYPHS = '≈≥⎇⎿■▶▸▾◉●◐◷⚠✓✗✻⟳⧉'
+const OWN = new Set([...GLYPHS].map(ch => ch.codePointAt(0)))
+
+// Unassigned code points, marks and format and control characters take no cell.
+const NO_CELL = /[\p{Cn}\p{M}\p{Cf}\p{Cc}]/u
 
 function isWidth1(code: number): boolean {
-  if (code < 0x20 || (code >= 0x7f && code < 0xa0) || code === 0xad || code > 0xffff) return false
-  if (ZERO_WIDTH.test(String.fromCharCode(code))) return false
+  if (NO_CELL.test(String.fromCodePoint(code))) return false
 
-  return !NOT_WIDTH_1.some(([from, to]) => code >= from && code <= to)
+  return OWN.has(code) || WIDTH_1.some(([from, to]) => code >= from && code <= to)
 }
 
-// One character per cell: whitespace becomes a space, anything that is not a
-// printable width-1 BMP character becomes the stand-in.
+// One character per cell: whitespace becomes a space, anything not on the
+// allow list becomes the stand-in.
 export function safe(text: string): string {
   let out = ''
   for (const ch of text) {

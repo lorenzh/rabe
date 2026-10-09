@@ -122,7 +122,7 @@ Line times: task notifications are delayed and often carry several lines, so the
 
 ### Raster
 
-`Raster` (d.ts:9188) is a fixed grid of cells: `columns` 1 to 512, `rows` 1 to 256, and `cells`, standard padded base64 of little-endian u32 triplets `[codePoint, foreground, background]`. A code point is one printable width-1 BMP character, or the tree is refused naming the cell's index. A color is `0x00RRGGBB`, or `0x01000000` for the terminal's default. Rabe cuts every grid to that size before it draws (`clamp`), and `safe()` replaces combining marks, format characters (such as the Devanagari virama U+094D) and Hangul Jamo vowels and finals (U+1160 to U+11FF, U+D7B0 to U+D7FF), which take no cell. No bold, underline or italic. It is a leaf (no press, no focus), and only the terminal's element table has it.
+`Raster` (d.ts:9188) is a fixed grid of cells: `columns` 1 to 512, `rows` 1 to 256, and `cells`, standard padded base64 of little-endian u32 triplets `[codePoint, foreground, background]`. A code point is one printable width-1 BMP character, or the tree is refused naming the cell's index. A color is `0x00RRGGBB`, or `0x01000000` for the terminal's default. Rabe cuts every grid to that size before it draws (`clamp`), and `safe()` keeps only an allow list of width-1 characters (see the cell engine in architecture). The engine's own width table is not published: it refuses characters a deny list misses, such as `☰` (U+2630), and takes every character on the allow list, which a test checks against the pinned version. No bold, underline or italic. It is a leaf (no press, no focus), and only the terminal's element table has it.
 
 Tested in a live 2.1.295 session in tmux (a spike mod, 2026-10-08):
 
