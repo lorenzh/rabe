@@ -3,13 +3,14 @@ import { nextRuns } from '../../schedule'
 import { type Span, wrap } from '../cells/grid'
 import { C, type Style } from '../cells/palette'
 import { ago, clockTime, countdown, tokens, usd } from '../format'
-import { children, phases, share, sortItems, timeLabel, tokenSum } from '../lists'
+import { byStart, children, phases, share, stable, timeLabel, tokenSum } from '../lists'
 import {
   canStop,
   type Drawn,
   isWorkflowAgent,
   type Line,
   type Model,
+  type Selection,
   type View,
   type ViewButton,
   type ViewInput,
@@ -180,7 +181,7 @@ function codexLines(item: RabeItem, columns: number): Line[] {
   )
 }
 
-function workflowLines(model: Model, item: RabeItem, columns: number): Line[] {
+function workflowLines(model: Model, item: RabeItem, columns: number, sel?: Selection): Line[] {
   const list = phases(model.items, item)
   const mark = { done: '✓', running: '◐', failed: '✗', waiting: '·' } as const
   const out: Line[] = text(
@@ -199,10 +200,10 @@ function workflowLines(model: Model, item: RabeItem, columns: number): Line[] {
         [` ${note || 'not started'}`, dim],
       ],
     })
-    for (const agent of sortItems(p.agents)) {
+    for (const agent of stable(p.agents, sel?.order?.timeline, byStart)) {
       const tok = tokenSum(agent)
       out.push({
-        ...itemLine(agent, model.now),
+        ...itemLine(agent, model.now, agent.id === sel?.selected),
         right: [[`${tok < 0 ? 'n/a' : tokens(tok)} · ${timeLabel(agent, model.now)} `, dim]],
       })
     }
@@ -245,14 +246,14 @@ function cronLines(model: Model, item: RabeItem): Line[] {
 }
 
 // The body of one item's detail, newest last; callers keep the tail that fits.
-export function bodyLines(model: Model, item: RabeItem, columns: number): Line[] {
+export function bodyLines(model: Model, item: RabeItem, columns: number, sel?: Selection): Line[] {
   switch (item.kind) {
     case 'agent':
       return agentLines(model, item, columns)
     case 'codex':
       return codexLines(item, columns)
     case 'workflow':
-      return workflowLines(model, item, columns)
+      return workflowLines(model, item, columns, sel)
     case 'cron':
       return cronLines(model, item)
     default:
@@ -261,10 +262,16 @@ export function bodyLines(model: Model, item: RabeItem, columns: number): Line[]
 }
 
 // One item in `rows` lines: head, the fixed top, then the newest body lines.
-export function detailLines(model: Model, item: RabeItem, rows: number, columns: number): Line[] {
+export function detailLines(
+  model: Model,
+  item: RabeItem,
+  rows: number,
+  columns: number,
+  sel?: Selection,
+): Line[] {
   const top = [...headLines(model, item), ...topLines(model, item, columns)]
   const room = rows - top.length
-  const body = room > 0 ? bodyLines(model, item, columns).slice(-room) : []
+  const body = room > 0 ? bodyLines(model, item, columns, sel).slice(-room) : []
 
   return [...top, ...body].slice(0, rows)
 }
@@ -338,7 +345,14 @@ function detailButtons(
 export const detailView: View = (model, size, sel): Drawn => {
   const item = model.items.find(one => one.id === sel.open)
   if (!item) return { nodes: [], buttons: [] }
-  const shown = detailLines(model, item, size.rows, size.columns)
+  const shown =
+    item.kind === 'workflow'
+      ? [
+          ...headLines(model, item),
+          ...topLines(model, item, size.columns),
+          ...workflowLines(model, item, size.columns, sel),
+        ]
+      : detailLines(model, item, size.rows, size.columns)
   const inputs: ViewInput[] =
     item.kind === 'agent' && item.status === 'running' && size.hasInput && !isWorkflowAgent(item)
       ? [

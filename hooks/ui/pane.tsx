@@ -105,18 +105,22 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       await $.state.set({ plugin: 'rabe', key: 'folded' }, next)
       return
     }
-    case 'open':
-      if (action.id) {
-        await $.state.set({ plugin: 'rabe', key: 'selected' }, action.id)
+    case 'open': {
+      // Back selects the item that was open: the focus may have moved onto a
+      // row inside its detail (a workflow's agents).
+      const { value: was = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
+      const id = action.id || was
+      if (id) {
+        await $.state.set({ plugin: 'rabe', key: 'selected' }, id)
         await $.state.set({ plugin: 'rabe', key: 'tab' }, 'items')
       }
       await $.state.set({ plugin: 'rabe', key: 'open' }, action.id)
       // Back on the list the ring would stay where b was; put it on the row.
-      if (!action.id) {
-        const { value: selected = '' } = await $.state.get({ plugin: 'rabe', key: 'selected' })
-        await $.ui.focus({ requestId: PANE, key: `row:${selected}` }).catch(() => undefined)
+      if (!action.id && id) {
+        await $.ui.focus({ requestId: PANE, key: `row:${id}` }).catch(() => undefined)
       }
       return
+    }
     case 'query':
       await $.state.set({ plugin: 'rabe', key: 'query' }, action.text)
       return

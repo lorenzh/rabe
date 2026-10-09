@@ -3,7 +3,7 @@ import { expect, type Mounted, mock, test } from 'claude-code/testing'
 
 import type { RabeLines, RabePrevious, RabeTurn } from '../../types'
 import type { RabeItem, RabeItemOf } from '../model'
-import { ALL, babysit, dev, explore, flow, lint, NOW, review, screen } from './fixtures'
+import { ALL, babysit, dev, explore, flow, lint, NOW, review, screen, verify } from './fixtures'
 import { orderOf, previousOf } from './lists'
 
 const SURFACES = ['terminal', 'desktop'] as const
@@ -491,4 +491,43 @@ test('an arrow past the last row scrolls the pane on', async ($, on) => {
   })
   await $.ui.scroll({ ...ARROW, by: 1 })
   expect(passed).toEqual([1])
+})
+
+test('a workflow agent row is a plain Button that opens that agent on every surface', async ($, on) => {
+  const state = hold(on, ALL, { open: flow.id, selected: flow.id })
+  for (const surface of SURFACES) {
+    delete state.open
+    delete state.selected
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    const row = await ui.find({ type: 'Button', key: `row:${verify.id}` })
+    expect(row?.props).toMatchObject({ label: 'verify:db.ts', plain: true, dimColor: true })
+    expect((await ui.find({ type: 'Button', key: 'back' }))?.props.autoFocus).toBe(true)
+    await ui.press({ key: `row:${verify.id}` })
+    expect(state).toMatchObject({ open: verify.id, selected: verify.id })
+    expect(await screen(ui)).toContain('Turns n/a: none seen since Rabe loaded.')
+    await ui.unmount()
+  }
+})
+
+test('the focus on a workflow agent row marks it, and b goes back to the run', async ($, on) => {
+  const state = hold(on, ALL, { open: flow.id, selected: flow.id })
+  on('ui.focus', async () => ({}))
+  for (const surface of SURFACES) {
+    delete state.open
+    delete state.selected
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    await $.ui.focus({
+      component: 'Pane',
+      requestId: 'rabe',
+      plugin: 'rabe',
+      element: `row:${verify.id}`,
+      origin: { kind: 'person' },
+    })
+    expect(state.selected).toBe(verify.id)
+    await ui.redraw()
+    expect((await screen(ui)).some(line => line.startsWith('▌◐ verify:db.ts'))).toBe(true)
+    await ui.press({ key: 'back' })
+    expect(state).toMatchObject({ open: '', selected: flow.id })
+    await ui.unmount()
+  }
 })
