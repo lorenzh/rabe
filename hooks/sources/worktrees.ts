@@ -1,6 +1,7 @@
 import type { EngineInterface, On } from 'claude-code'
 
 import type { RabeWorktree } from '../../types'
+import { isAbsolute } from '../model'
 
 const POLL_MS = 10_000
 const TIMEOUT_MS = 5000
@@ -8,16 +9,17 @@ const MAX = 100
 
 // `git worktree list --porcelain`: one block per worktree, the main one
 // first. A path git had to quote, a relative one and a bare entry are left
-// out: Rabe never guesses where a file lives.
+// out: Rabe never guesses where a file lives. Git for Windows prints drive
+// (`C:/repo`) and UNC (`//host/share`) paths.
 export function parseWorktrees(text: string): RabeWorktree[] {
   const out: RabeWorktree[] = []
   for (const [i, block] of text.split(/\n\s*\n/).entries()) {
     const lines = block.split('\n').map(line => line.trimEnd())
     const path = lines.find(line => line.startsWith('worktree '))?.slice('worktree '.length)
-    if (!path?.startsWith('/') || lines.includes('bare')) continue
+    if (!path || !isAbsolute(path) || lines.includes('bare')) continue
     const branch = lines.find(line => line.startsWith('branch '))?.slice('branch '.length)
     out.push({
-      path: path.length > 1 ? path.replace(/\/+$/, '') : path,
+      path: /^([A-Za-z]:)?\/$/.test(path) ? path : path.replace(/\/+$/, ''),
       ...(branch && { branch: branch.replace(/^refs\/heads\//, '') }),
       ...(lines.includes('detached') && { isDetached: true }),
       ...(i === 0 && { isMain: true }),

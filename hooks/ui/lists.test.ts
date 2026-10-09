@@ -222,6 +222,25 @@ test('a path belongs to the worktree with the longest matching prefix', () => {
   expect(treeOf('src/a.ts', TREES)).toBeUndefined()
 })
 
+// Windows: git prints C:/…, the tools pass C:\…, and case does not count.
+test('a Windows path belongs to its worktree whatever its slashes and case', () => {
+  const trees = [
+    { path: 'C:/Users/me/repo', branch: 'main', isMain: true },
+    { path: 'C:/Users/me/repo/.worktrees/fix', branch: 'fix' },
+    { path: '//host/share/repo', branch: 'unc' },
+  ]
+  expect(treeOf('C:\\Users\\me\\repo\\src\\a.ts', trees)?.branch).toBe('main')
+  expect(treeOf('c:\\users\\ME\\Repo\\.worktrees\\fix\\a.ts', trees)?.branch).toBe('fix')
+  expect(treeOf('\\\\host\\share\\repo\\a.ts', trees)?.branch).toBe('unc')
+  expect(treeOf('C:\\Users\\me\\repo2\\a.ts', trees)).toBeUndefined()
+  // a POSIX path keeps its case
+  expect(treeOf('/Repo/a.ts', [{ path: '/repo' }])).toBeUndefined()
+  const path = 'C:\\Users\\me\\repo\\src\\a.ts'
+  const agent = { ...explore, detail: { agentId: 'a1', edits: [{ path, at: NOW }] } } as RabeItem
+  const [file] = touched([agent], [{ path: 'c:/users/me/repo/src/a.ts', at: NOW + 1 }], '', trees)
+  expect(file).toMatchObject({ rel: 'src\\a.ts', isConflict: true, tree: { branch: 'main' } })
+})
+
 test('with git each file is relative to its worktree, also a main session file', () => {
   const main = [
     { path: '/repo/.worktrees/fix/src/login.ts', at: NOW },

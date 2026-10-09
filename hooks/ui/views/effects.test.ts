@@ -66,9 +66,7 @@ const MODEL: Model = { items: ITEMS, turns: TURNS, lines: {}, now: NOW, cwd: '/r
 test('a file edited by two agents in one tree heads the tab as a conflict', () => {
   const { grid } = gridOf(effectsView(MODEL, SIZE, NO_SELECTION))
   const shown = lines(grid)
-  expect(shown[0]).toBe(
-    ' ⚠ conflict  src/logger.ts is edited by Plan auth split and logger in api in the main tree',
-  )
+  expect(shown[0]).toBe(' ⚠ conflict  src/logger.ts is edited by Plan auth split and logger in api')
   expect(cell(grid, 1, 0)).toEqual(['⚠'.codePointAt(0), C.red, CHIP.failed.bg])
   expect(cell(grid, 89, 0)[2]).toBe(CHIP.failed.bg)
 })
@@ -342,9 +340,7 @@ test('files from Codex jobs, the main session and shell commands show who and ho
   expect(row('SKILL.md')).toMatch(/ …[^ ]*\/skills\/demo\/SKILL\.md +Plan auth split +via shell$/)
   expect(row('notes.md')).toMatch(/ out\/notes\.md +Plan auth split +via shell$/)
   expect(row('plan.md')).toMatch(/^ {2}plan\.md +main session +write$/)
-  expect(shown[0]).toBe(
-    ' ⚠ conflict  src/gen.ts is edited by review auth.ts and main session in the main tree',
-  )
+  expect(shown[0]).toBe(' ⚠ conflict  src/gen.ts is edited by review auth.ts and main session')
 })
 
 test('a main session row copies the path; a Codex row opens the job', () => {
@@ -420,4 +416,31 @@ test('a conflict in a git worktree names that worktree', () => {
   }
   const shown = lines(gridOf(effectsView(model, SIZE, NO_SELECTION)).grid)
   expect(shown[0]).toBe(' ⚠ conflict  a.ts is edited by Plan auth split and main session in fix')
+})
+
+// The banner names a tree only when it is proven to hold the file: git lists
+// it, or the editor's worktree from Claude Code's metadata contains the path.
+test('a conflict names the main tree only when git places the file there', () => {
+  const draw = (path: string, worktrees?: Model['worktrees'], worktreePath?: string) => {
+    const detail = { agentId: 'a2', cwd: '/repo', worktreePath, edits: [{ path, at: NOW }] }
+    const model: Model = {
+      items: [{ ...plan, detail } as RabeItem],
+      turns: {},
+      lines: {},
+      now: NOW,
+      edits: [{ path, at: NOW + 1 }],
+      cwd: '/repo',
+      ...(worktrees && { worktrees }),
+    }
+    return lines(gridOf(effectsView(model, SIZE, NO_SELECTION)).grid)[0]
+  }
+  const main = [{ path: '/repo', branch: 'main', isMain: true }]
+  const by = ' ⚠ conflict  shared.txt is edited by Plan auth split and main session'
+  expect(draw('/tmp/shared.txt', main)).toBe(by.replace('shared.txt', '/tmp/shared.txt'))
+  expect(draw('/repo/shared.txt', main)).toBe(`${by} in the main tree`)
+  expect(draw('/repo/shared.txt')).toBe(by)
+  expect(draw('/repo/.wt/fix/shared.txt', undefined, '/repo/.wt/fix')).toBe(`${by} in fix`)
+  expect(draw('/repo/shared.txt', undefined, '/repo/.wt/fix')).toBe(
+    by.replace('shared.txt', '/repo/shared.txt'),
+  )
 })

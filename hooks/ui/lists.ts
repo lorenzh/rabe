@@ -1,5 +1,5 @@
 import type { RabeEdit, RabeOrder, RabePrevious, RabeWorktree } from '../../types'
-import type { RabeItem, RabeItemKind } from '../model'
+import { isAbsolute, isInside, pathKey, type RabeItem, type RabeItemKind } from '../model'
 import { nextRuns } from '../schedule'
 import type { Span } from './cells/grid'
 import { C, type Style } from './cells/palette'
@@ -248,7 +248,7 @@ export type Touched = {
 // The worktree whose path is the longest prefix of `path`.
 export function treeOf(path: string, trees: RabeWorktree[]): RabeWorktree | undefined {
   return trees
-    .filter(tree => path === tree.path || path.startsWith(`${tree.path}/`))
+    .filter(tree => isInside(path, tree.path))
     .reduce<RabeWorktree | undefined>(
       (best, tree) => (best && best.path.length >= tree.path.length ? best : tree),
       undefined,
@@ -256,7 +256,10 @@ export function treeOf(path: string, trees: RabeWorktree[]): RabeWorktree | unde
 }
 
 function relative(path: string, root?: string): string {
-  return root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
+  const base = root?.replace(/[\\/]+$/, '')
+  return base && isInside(path, base) && pathKey(path) !== pathKey(base)
+    ? path.slice(base.length + 1)
+    : path
 }
 
 function howOf(edit: RabeEdit): string {
@@ -312,7 +315,8 @@ export function touched(
   for (const { editor, edit } of edits) {
     const { path, at } = edit
     const tree = trees && treeOf(path, trees)
-    const file = files.get(path) ?? {
+    const key = pathKey(path)
+    const file = files.get(key) ?? {
       id: `file:${path}`,
       path,
       rel: relative(path, tree ? tree.path : editor.root),
@@ -333,8 +337,8 @@ export function touched(
     file.edits += 1
     file.at = at
     file.isDeleted = edit.change === 'delete'
-    file.isConflict = file.by.length > 1 && path.startsWith('/')
-    files.set(path, file)
+    file.isConflict = file.by.length > 1 && isAbsolute(path)
+    files.set(key, file)
   }
 
   return [...files.values()]
@@ -577,7 +581,7 @@ export type TreeRow = { name: string; branch?: string; who: string[] }
 const treeName = (path: string) =>
   path.includes('/.claude/')
     ? path.slice(path.indexOf('.claude/'))
-    : (path.split('/').filter(Boolean).at(-1) ?? path)
+    : (path.split(/[\\/]/).filter(Boolean).at(-1) ?? path)
 
 // The WORKTREES section: one row per worktree in use, each with who works
 // there. With git (`trees`) a worktree is in use when a file in it changed
@@ -612,7 +616,9 @@ export function worktreeRows(
   const agents = items.flatMap(item => (item.kind === 'agent' ? [item] : []))
   for (const agent of agents) {
     const { worktreePath, worktreeBranch, cwd: at } = agent.detail
-    const own = known?.find(tree => tree.path === worktreePath)
+    const own = worktreePath
+      ? known?.find(tree => pathKey(tree.path) === pathKey(worktreePath))
+      : undefined
     if (own) add(own.path, gitRow(own), agent.title)
     else if (worktreePath) {
       const row = { name: treeName(worktreePath), branch: worktreeBranch ?? 'n/a' }
@@ -620,7 +626,7 @@ export function worktreeRows(
     } else if (known && files.some(file => file.tree && file.by.some(one => one.id === agent.id))) {
     } else if (!at) unknown += 1
     else if (!known) {
-      if (at === cwd) add('main', { name: 'main tree' }, agent.title)
+      if (cwd && pathKey(at) === pathKey(cwd)) add('main', { name: 'main tree' }, agent.title)
       else unknown += 1
     } else {
       const tree = treeOf(at, known)

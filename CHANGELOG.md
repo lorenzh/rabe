@@ -18,7 +18,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
-- The Effects tab lists every git worktree files changed in, with its branch and who changed files there, the main session included, and shows each file relative to its worktree. Before, it knew only the worktrees of isolated agents, so a worktree the main session or a plain agent edited by its full path was missing and its files showed with their full path. An agent started in a subfolder shows in the worktree that holds the folder, not as a worktree of its own, and its tree reads `n/a` when Rabe cannot tell it. The WORKTREES count now matches its rows. Rabe reads the worktrees with `git worktree list`; without Git it works as before. (fixes [#19](https://github.com/lorenzh/rabe/issues/19))
+- The Effects tab lists every git worktree files changed in, with its branch and who changed files there, the main session included, and shows each file relative to its worktree. Before, it knew only the worktrees of isolated agents, so a worktree the main session or a plain agent edited by its full path was missing and its files showed with their full path. An agent started in a subfolder shows in the worktree that holds the folder, not as a worktree of its own, and its tree reads `n/a` when Rabe cannot tell it. The WORKTREES count now matches its rows. Windows drive and UNC paths match their worktree whatever their slashes and letter case. The conflict warning names a tree only when Git or the agent's worktree shows that it holds the file. Rabe reads the worktrees with `git worktree list`; without Git it works as before. (fixes [#19](https://github.com/lorenzh/rabe/issues/19))
 
 ### Removed
 

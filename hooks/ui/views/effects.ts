@@ -1,5 +1,5 @@
 import type { RabeOrder } from '../../../types'
-import type { RabeItemOf } from '../../model'
+import { isInside, type RabeItemOf } from '../../model'
 import { fit, type Span } from '../cells/grid'
 import { C, CHIP } from '../cells/palette'
 import { byConflict, stable, type Touched, touched, worktreeRows } from '../lists'
@@ -16,8 +16,15 @@ function conflictLines(files: Touched[]): Line[] {
   const conflicts = files.filter(file => file.isConflict)
   const [first] = conflicts
   if (!first) return []
-  const tree = first.tree ? (first.tree.isMain ? undefined : first.tree.path) : first.by[0]?.tree
-  const where = tree ? ` in ${tree.split('/').filter(Boolean).at(-1)}` : ' in the main tree'
+  // a tree only when it is proven to hold the file: git placed it, or an
+  // editor's worktree (Claude Code's metadata) contains its path
+  const own = first.by.find(editor => editor.tree && isInside(first.path, editor.tree))
+  const tree = first.tree?.path ?? own?.tree
+  const where = first.tree?.isMain
+    ? ' in the main tree'
+    : tree
+      ? ` in ${tree.split(/[\\/]/).filter(Boolean).at(-1)}`
+      : ''
   const more = conflicts.length > 1 ? ` · +${conflicts.length - 1} more` : ''
 
   return [
