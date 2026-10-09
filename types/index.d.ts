@@ -64,6 +64,8 @@ export type RabeShellDetail = {
   outputPath?: string
   exitCode?: number
   port?: number
+  // When Rabe found the port; orders the Effects tab's NEW rows.
+  portAt?: number
 }
 
 export type RabeMonitorDetail = {

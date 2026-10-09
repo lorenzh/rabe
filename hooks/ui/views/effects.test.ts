@@ -250,3 +250,51 @@ test('a pane too short for every section scrolls to the ssh rows instead of losi
     expect(ssh).toHaveLength(items.filter(item => item.kind === 'shell').length)
   }
 })
+
+const waiting = (id: string): RabeItem =>
+  ({ ...dev, id: `shell:${id}`, detail: { command: `serve ${id}`, taskId: id } }) as RabeItem
+const found = (item: RabeItem, port: number, at: number): RabeItem =>
+  ({ ...item, detail: { ...item.detail, port, portAt: at } }) as RabeItem
+
+test('a port found after the open keeps its place and its row, whichever shell found it', () => {
+  const [a, b] = [waiting('a'), waiting('b')]
+  const old = { ...serve(4000, 'o'), status: 'done' as const, endedAt: NOW - 1000 }
+  const order = orderOf([serve(5173), a, b, old])
+  const draw = (list: RabeItem[]) =>
+    effectsView({ ...MODEL, items: list }, SIZE, { ...NO_SELECTION, selected: 'ssh:3000', order })
+  expect(rowKeys(draw([serve(5173), a, found(b, 3000, NOW), old]))).toEqual([
+    'row:ssh:5173',
+    'row:ssh:3000',
+  ])
+  const both = [serve(5173), found(a, 8080, NOW + 1000), found(b, 3000, NOW), old]
+  expect(rowKeys(draw(both))).toEqual(['row:ssh:5173', 'row:ssh:3000', 'row:ssh:8080'])
+  const late = found(waiting('c'), 9229, NOW + 2000)
+  const ended = [...both, { ...late, status: 'done' as const, endedAt: NOW + 3000 }]
+  expect(rowKeys(draw(ended))).toEqual(rowKeys(draw([...both, late])))
+  expect(lines(gridOf(draw(ended)).grid)).toContain('  :9229  serve c  ended')
+})
+
+test('rows found after the open go to NEW at the end, in the order they were found', () => {
+  const items = [editing(api, [NOW, '/repo/a.ts']), serve(5173), serve(3000)]
+  const order = orderOf(items)
+  const draw = (list: RabeItem[]) =>
+    effectsView({ ...MODEL, items: list }, SIZE, { ...NO_SELECTION, selected: 'ssh:5173', order })
+  const at5173 = before('row:ssh:5173', draw(items))
+  const later = (fileAt: number) => [
+    editing(api, [NOW, '/repo/a.ts'], [fileAt, '/repo/b.ts']),
+    serve(5173),
+    found(waiting('c'), 8080, NOW + 2000),
+    serve(3000),
+  ]
+  const drawn = draw(later(NOW + 1000))
+  expect(before('row:ssh:5173', drawn)).toEqual(at5173)
+  expect(rowKeys(drawn)).toEqual([
+    'row:file:/repo/a.ts',
+    'row:ssh:5173',
+    'row:ssh:3000',
+    'row:file:/repo/b.ts',
+    'row:ssh:8080',
+  ])
+  expect(lines(gridOf(drawn).grid)).toContain('NEW 2  found since Rabe opened')
+  expect(rowKeys(draw(later(NOW + 3000))).slice(3)).toEqual(['row:ssh:8080', 'row:file:/repo/b.ts'])
+})

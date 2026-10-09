@@ -150,6 +150,7 @@ export type Touched = {
   last: Agent
   edits: number
   at: number
+  first: number
 }
 
 function relative(path: string, agent: Agent): string {
@@ -161,7 +162,8 @@ function relative(path: string, agent: Agent): string {
 // The files agents edited, from the Edit and Write calls the engine ran for
 // them (a turn's tool calls are only asked for and may be refused), in the
 // order they were first edited. `by` lists the editors in the order they
-// first edited, `last` the latest one.
+// first edited, `last` the latest one, `first` and `at` the first and the
+// latest edit times.
 export function touched(items: RabeItem[]): Touched[] {
   const edits = items
     .flatMap(item => (item.kind === 'agent' ? [item] : []))
@@ -177,6 +179,7 @@ export function touched(items: RabeItem[]): Touched[] {
       last: agent,
       edits: 0,
       at,
+      first: at,
     }
     if (!file.by.includes(agent)) file.by.push(agent)
     file.last = agent
@@ -199,17 +202,15 @@ export const FAMILIES: Group[] = ['shells', 'monitors']
 // The order the pane shows when it opens: each group sorted (shells and
 // monitors in their families), the Cost tab by tokens, the Timeline by start,
 // the Effects files by `byConflict` and its ports (the shells that run with
-// one). Held in `rabe.order` until the next open.
+// one; `portsEnded` the shells with one that had ended). Held in `rabe.order`
+// until the next open.
 export function orderOf(items: RabeItem[]): RabeOrder {
   const ids = (list: RabeItem[]) => list.map(item => item.id)
+  const withPort = items.filter(item => item.kind === 'shell' && item.detail.port !== undefined)
 
   return {
-    ports: ids(
-      items.filter(
-        item =>
-          item.kind === 'shell' && item.status === 'running' && item.detail.port !== undefined,
-      ),
-    ),
+    ports: ids(withPort.filter(item => item.status === 'running')),
+    portsEnded: ids(withPort.filter(item => item.status !== 'running')),
     ...Object.fromEntries(
       grouped(items).map(group => [
         group.id,

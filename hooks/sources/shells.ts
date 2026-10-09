@@ -108,9 +108,13 @@ async function poll($: EngineInterface): Promise<void> {
       if (isWhole) await keepLines($, item.id, lines)
       const port = item.detail.port ?? guessPort(text)
       const now = await $.clock.now()
+      const portAt = item.detail.portAt ?? (port ? now : undefined)
       await write($, held => {
         const next = updateItem(held, item.id, {
-          detail: { ...(port && { port }), ...(exitCode !== undefined && { exitCode }) },
+          detail: {
+            ...(port && { port, portAt }),
+            ...(exitCode !== undefined && { exitCode }),
+          },
         })
 
         return ended ? endItem(next, item.id, ended, now) : next
