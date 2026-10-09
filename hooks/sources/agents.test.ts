@@ -1,4 +1,4 @@
-import type { AgentSpawnInput, AgentStatus, On } from 'claude-code'
+import type { AgentSpawnInput, AgentStatus, FsStat, On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
 import type { RabeEdit } from '../../types'
@@ -317,11 +317,29 @@ test('an edit the engine ran is kept on its agent; a refused or failed one is no
   expect(held.edits).toEqual([{ path: '/repo/main.ts', at: 5000, via: 'edit' }])
 })
 
-// A Bash call the engine ran: a result, no error, not moved to the background.
-function bash(on: On): void {
+type Disk = Map<string, FsStat>
+type Effect = (disk: Disk) => void
+
+const file = (size: number, mtimeMs = 1): FsStat => ({ kind: 'file', size, mtimeMs, isLink: false })
+const dir: FsStat = { kind: 'dir', size: 0, mtimeMs: 1, isLink: false }
+
+// A fake shell on a fake disk: each command changes the disk as `effects` says.
+// A Bash call the engine ran has a result, no error and is not in the background.
+function shell(on: On, effects: Record<string, Effect> = {}): { disk: Disk; stats: string[] } {
   mock.env(on, { HOME: '/home/u' })
+  const disk: Disk = new Map()
+  const stats: string[] = []
+  on('fs.stat', async (_$, e) => {
+    stats.push(e.path)
+    if (e.path.includes('locked')) return { deny: 'EACCES' }
+    if (e.path.includes('hang')) return new Promise<never>(() => {})
+    const found = disk.get(e.path)
+    return found ? { value: found } : { deny: 'ENOENT' }
+  })
+  on('fs.exists', async (_$, e) => ({ value: disk.has(e.path) || e.path.includes('locked') }))
   on('tool.call', { tool: 'Bash' }, async (_$, e) => {
     const command = e.tool === 'Bash' ? e.command : ''
+    effects[command]?.(disk)
     if (command.includes('fail'))
       return { result: { stdout: '', stderr: 'x' } as never, isError: true }
     if (command.includes('deny')) return { deny: 'no' }
@@ -331,19 +349,31 @@ function bash(on: On): void {
 
     return { result: { stdout: '', stderr: '', interrupted: false } as never }
   })
+
+  return { disk, stats }
 }
+
+const HEREDOC = "cat > ~/.agents/skills/demo/SKILL.md <<'EOF'\n# demo > x\nEOF\nrm /tmp/old.md"
 
 test('a background teammate writing files through Bash shows them as shell edits', async ($, on) => {
   const held = engine(on, 'a1')
-  bash(on)
+  const { disk } = shell(on, {
+    [HEREDOC]: one => {
+      one.set('/home/u/.agents/skills/demo/SKILL.md', file(9))
+      one.delete('/tmp/old.md')
+    },
+    'echo x > /tmp/failed.md && fail': one => one.set('/tmp/failed.md', file(2)),
+    'echo x > /tmp/denied.md # deny': one => one.set('/tmp/denied.md', file(2)),
+    'echo x > /tmp/serve.log; serve': one => one.set('/tmp/serve.log', file(2)),
+  })
+  disk.set('/tmp/old.md', file(3))
   await $.agent.spawn({ ...SPAWN, workflow: undefined })
-  const run = (command: string, agentId?: string) =>
-    $.tool.call({ tool: 'Bash', command, agentId } as never)
-  await run("cat > ~/.agents/skills/demo/SKILL.md <<'EOF'\n# demo > x\nEOF\nrm /tmp/old.md", 'a1')
-  await run('echo x > /tmp/failed.md && fail', 'a1')
-  await run('echo x > /tmp/denied.md # deny', 'a1')
-  await run('echo x > /tmp/serve.log; serve', 'a1')
-  await run('git status', 'a1')
+  const run = (command: string) => $.tool.call({ tool: 'Bash', command, agentId: 'a1' } as never)
+  await run(HEREDOC)
+  await run('echo x > /tmp/failed.md && fail')
+  await run('echo x > /tmp/denied.md # deny')
+  await run('echo x > /tmp/serve.log; serve')
+  await run('git status')
   const item = held.items?.[0] as RabeItemOf<'agent'>
   expect(item.detail.edits).toEqual([
     { path: '/home/u/.agents/skills/demo/SKILL.md', at: 5000, via: 'shell' },
@@ -351,18 +381,68 @@ test('a background teammate writing files through Bash shows them as shell edits
   ])
 })
 
+test('the disk decides: masked failures, no-op modes, a folder target, multi-file sed', async ($, on) => {
+  const held = engine(on, 'a1')
+  const { disk } = shell(on, {
+    'cp /tmp/src.txt /tmp/out': one => one.set('/tmp/out/src.txt', file(4)),
+    "sed -i 'q' /tmp/a /tmp/b": one => one.set('/tmp/a', file(5, 2)),
+    'export HOME=/tmp; touch ~/file': one => one.set('/tmp/file', file(0)),
+  })
+  disk.set('/tmp/src.txt', file(4))
+  disk.set('/tmp/out', dir)
+  disk.set('/tmp/a', file(5))
+  disk.set('/tmp/b', file(5))
+  await $.agent.spawn({ ...SPAWN, workflow: undefined })
+  const run = (command: string) => $.tool.call({ tool: 'Bash', command, agentId: 'a1' } as never)
+  await run('false && touch /tmp/never || true')
+  await run('cp /tmp/missing /tmp/copy; true')
+  await run('touch -c /tmp/absent')
+  await run('rm -f /tmp/absent')
+  await run('cp /tmp/src.txt /tmp/out')
+  await run("sed -i 'q' /tmp/a /tmp/b")
+  await run('export HOME=/tmp; touch ~/file')
+  const item = held.items?.[0] as RabeItemOf<'agent'>
+  expect(item.detail.edits).toEqual([
+    { path: '/tmp/out/src.txt', at: 5000, via: 'shell' },
+    { path: '/tmp/a', at: 5000, via: 'shell' },
+  ])
+})
+
+test('too many candidates, stat errors and slow stats record nothing for those files', async ($, on) => {
+  const clock = mock.clock(on, { now: 5000 })
+  const held = watch(on)
+  const many = Array.from({ length: 21 }, (_, n) => `/tmp/f${n}`).join(' ')
+  const { stats } = shell(on, {
+    [`touch ${many}`]: one => {
+      for (let n = 0; n < 21; n++) one.set(`/tmp/f${n}`, file(0))
+    },
+    'touch /tmp/locked /tmp/ok': one => one.set('/tmp/ok', file(0)),
+    'touch /tmp/hang /tmp/slow': one => one.set('/tmp/slow', file(0)),
+  })
+  await $.tool.call({ tool: 'Bash', command: `touch ${many}` } as never)
+  expect(stats).toEqual([])
+  await $.tool.call({ tool: 'Bash', command: 'touch /tmp/locked /tmp/ok' } as never)
+  const slow = $.tool.call({ tool: 'Bash', command: 'touch /tmp/hang /tmp/slow' } as never)
+  await clock.advance(1000)
+  await slow
+  expect(held.edits).toEqual([{ path: '/tmp/ok', at: 5000, via: 'shell' }])
+})
+
 test('main session writes and shell writes are kept apart from agents', async ($, on) => {
   const held = engine(on, 'a1')
-  bash(on)
+  shell(on, {
+    'echo x >> notes.txt': one => one.set('notes.txt', file(2)),
+    'echo x > /tmp/main.md': one => one.set('/tmp/main.md', file(2)),
+  })
   on('tool.call', { tool: 'Write' }, async () => ({
     result: { filePath: '/repo/plan.md' } as never,
   }))
   await $.tool.call({ tool: 'Write', file_path: '/repo/plan.md', content: '' } as never)
   await $.tool.call({ tool: 'Bash', command: 'echo x >> notes.txt' } as never)
-  await $.tool.call({ tool: 'Bash', command: 'touch /tmp/a && fail' } as never)
+  await $.tool.call({ tool: 'Bash', command: 'echo x > /tmp/main.md' } as never)
   expect(held.edits).toEqual([
     { path: '/repo/plan.md', at: 5000, via: 'write' },
-    { path: 'notes.txt', at: 5000, via: 'shell' },
+    { path: '/tmp/main.md', at: 5000, via: 'shell' },
   ])
   expect(held.items ?? []).toEqual([])
 })

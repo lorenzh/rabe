@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { shellWrites } from './writes'
+import { changed, shellWrites } from './writes'
 
 const HOME = '/home/u'
 const paths = (command: string, cwd?: string) =>
@@ -113,19 +113,26 @@ test('tee, sed -i, touch', () => {
   expect(paths('touch --reference=/tmp/ref -r /tmp/r2 /tmp/new2')).toEqual(['/tmp/new2'])
 })
 
-test('cp, mv, install and ln write their destination; mv and rm delete', () => {
-  expect(paths('cp -r src/a.md /tmp/b.md')).toEqual(['/tmp/b.md'])
+test('cp, mv, install and ln write their destination, or a file in it; mv and rm delete', () => {
+  expect(paths('cp -r src/a.md /tmp/b.md')).toEqual(['/tmp/b.md', '/tmp/b.md/a.md'])
   expect(paths('cp a.md b.md /tmp/out')).toEqual(['/tmp/out/a.md', '/tmp/out/b.md'])
   expect(paths('cp /x/a.md /tmp/out/')).toEqual(['/tmp/out/a.md'])
   expect(paths('cp -t /tmp/out /x/a.md')).toEqual(['/tmp/out/a.md'])
   expect(paths('cp --target-directory /tmp/out /tmp/src')).toEqual(['/tmp/out/src'])
   expect(paths('cp --target-directory=/tmp/out -- /tmp/s2')).toEqual(['/tmp/out/s2'])
   expect(paths('cp -T /x/dir /tmp/copy')).toEqual(['/tmp/copy'])
-  expect(paths('mv /tmp/old.md /tmp/new.md')).toEqual(['-/tmp/old.md', '/tmp/new.md'])
+  expect(paths('mv /tmp/old.md /tmp/new.md')).toEqual([
+    '/tmp/new.md',
+    '-/tmp/old.md',
+    '/tmp/new.md/old.md',
+  ])
   expect(paths('mv -t /tmp/d /tmp/a')).toEqual(['-/tmp/a', '/tmp/d/a'])
-  expect(paths('install -m 644 bin/rabe /usr/local/bin/rabe')).toEqual(['/usr/local/bin/rabe'])
+  expect(paths('install -m 644 bin/rabe /usr/local/bin/rabe')).toEqual([
+    '/usr/local/bin/rabe',
+    '/usr/local/bin/rabe/rabe',
+  ])
   expect(paths('install -d /tmp/dir')).toEqual([])
-  expect(paths('ln -sf /opt/tool /tmp/link')).toEqual(['/tmp/link'])
+  expect(paths('ln -sf /opt/tool /tmp/link')).toEqual(['/tmp/link', '/tmp/link/tool'])
   expect(paths('rm -f /tmp/gone.txt')).toEqual(['-/tmp/gone.txt'])
   expect(paths('/bin/rm -rf /tmp/d2')).toEqual(['-/tmp/d2'])
 })
@@ -144,6 +151,18 @@ test('globs, brace expansions, unknown tildes and process substitutions are skip
   expect(paths('touch ~other/x "~/quoted" ~')).toEqual(['~/quoted'])
   expect(paths('cp a b /tmp/dir/*')).toEqual([])
   expect(shellWrites('touch ~/x /tmp/y').map(one => one.path)).toEqual(['/tmp/y'])
+})
+
+test('candidates the disk decides on: masked failures, no-op modes, multi-file sed', () => {
+  expect(paths('false && touch /tmp/never || true')).toEqual(['/tmp/never'])
+  expect(paths('cp /tmp/missing /tmp/out; true')).toEqual(['/tmp/out', '/tmp/out/missing'])
+  expect(paths('touch -c /tmp/absent; rm -f /tmp/gone')).toEqual(['/tmp/absent', '-/tmp/gone'])
+  expect(paths("sed -i 'q' /tmp/a /tmp/b")).toEqual(['/tmp/a', '/tmp/b'])
+})
+
+test('a tilde after HOME changes is skipped', () => {
+  expect(paths('export HOME=/tmp; touch ~/file /tmp/plain')).toEqual(['/tmp/plain'])
+  expect(paths('HOME=/x touch ~/f')).toEqual([])
 })
 
 test('known prefixes unwrap before the lookup', () => {
@@ -252,4 +271,17 @@ test('hostile input never throws and stays fast', () => {
   ]
   for (const text of huge) expect(Array.isArray(shellWrites(text, '/repo', HOME))).toBe(true)
   expect(Date.now() - started).toBeLessThan(5000)
+})
+
+test('a file counts as written when it is new or its mtime or size changed', () => {
+  const at = (size: number, mtimeMs: number) => ({ kind: 'file' as const, size, mtimeMs })
+  expect(changed('none', at(1, 1))).toBe('write')
+  expect(changed(at(1, 1), at(1, 2))).toBe('write')
+  expect(changed(at(1, 1), at(2, 1))).toBe('write')
+  expect(changed(at(1, 1), at(1, 1))).toBeUndefined()
+  expect(changed(at(1, 1), 'none')).toBe('delete')
+  expect(changed('none', 'none')).toBeUndefined()
+  expect(changed('none', { kind: 'dir', size: 0, mtimeMs: 2 })).toBeUndefined()
+  expect(changed(undefined, at(1, 1))).toBeUndefined()
+  expect(changed(at(1, 1), undefined)).toBeUndefined()
 })

@@ -19,7 +19,7 @@ import {
   type RabeTokens,
 } from '../model'
 import { addItem, type Change, commit, endItem, pastEnd, prune, updateItem } from '../registry'
-import { shellWrites } from '../writes'
+import { changed, type Seen, shellWrites } from '../writes'
 
 type Turns = Record<string, RabeTurn[]>
 type AgentItem = RabeItemOf<'agent'>
@@ -27,6 +27,8 @@ type AgentItem = RabeItemOf<'agent'>
 const POLL_MS = 3000
 const MAX_TURNS = 30
 const MAX_EDITS = 100
+const MAX_CHECKS = 20
+const LOOK_MS = 1000
 const MAX_TEXT = 300
 const MAX_PROMPT = 600
 const MAX_SUMMARY = 80
@@ -271,6 +273,58 @@ async function record(
   }
 }
 
+// What is on disk at each path, or undefined when the looks outlast LOOK_MS.
+async function look($: EngineInterface, paths: string[]): Promise<Seen[] | undefined> {
+  const stop = new AbortController()
+  const late = $.clock.sleep(LOOK_MS, { signal: stop.signal }).then(
+    () => undefined,
+    () => undefined,
+  )
+  const seen = Promise.all(
+    paths.map(path =>
+      $.fs.stat(path).then(
+        (stat): Seen => stat,
+        () =>
+          $.fs.exists(path).then(
+            (is): Seen => (is ? undefined : 'none'),
+            () => undefined,
+          ),
+      ),
+    ),
+  )
+  try {
+    return await Promise.race([seen, late])
+  } finally {
+    stop.abort()
+  }
+}
+
+type Looked = { paths: string[]; seen: Seen[] }
+
+// The call carries no cwd, so only absolute candidates are looked at.
+async function beforeBash($: EngineInterface, command: string): Promise<Looked | undefined> {
+  const home = await $.env.get('HOME')
+  const paths = shellWrites(command, undefined, home)
+    .map(one => one.path)
+    .filter(path => path.startsWith('/'))
+  if (paths.length === 0 || paths.length > MAX_CHECKS) return undefined
+  const seen = await look($, paths)
+
+  return seen && { paths, seen }
+}
+
+async function afterBash($: EngineInterface, agentId: string | undefined, before: Looked) {
+  const after = await look($, before.paths)
+  if (!after) return
+  const at = await $.clock.now()
+  const changes = before.paths.flatMap((path, n): RabeEdit[] => {
+    const change = changed(before.seen[n], after[n])
+    if (!change) return []
+    return [{ path, at, via: 'shell', ...(change === 'delete' && { change }) }]
+  })
+  await record($, agentId, changes)
+}
+
 async function readMeta($: EngineInterface, id: string): Promise<void> {
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   const item = asAgent(items, id)
@@ -396,24 +450,13 @@ export function agents(on: On): void {
     return answer
   })
 
-  // The Bash call carries no cwd, so relative paths stay relative.
+  // The command line proposes files; a look on disk before and after decides.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const before =
+      e.tool === 'Bash' ? await beforeBash($, e.command).catch(() => undefined) : undefined
     const answer = await next(e)
     try {
-      if (e.tool === 'Bash' && ranBash(answer)) {
-        const writes = shellWrites(e.command, undefined, await $.env.get('HOME'))
-        const at = await $.clock.now()
-        await record(
-          $,
-          e.agentId,
-          writes.map(({ path, isDeleted }) => ({
-            path,
-            at,
-            via: 'shell' as const,
-            ...(isDeleted && { change: 'delete' as const }),
-          })),
-        )
-      }
+      if (before && ranBash(answer)) await afterBash($, e.agentId, before)
     } catch {}
 
     return answer

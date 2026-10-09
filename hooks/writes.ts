@@ -1,5 +1,8 @@
-// The files a shell command line surely writes, read from its words: file
-// redirections and a fixed table of commands. When in doubt it records nothing.
+import type { FsStat } from 'claude-code'
+
+// The files a shell command line may write or delete, read from its words: file
+// redirections and a fixed table of commands. Candidates only: the caller
+// checks each on disk.
 
 export type ShellWrite = { path: string; isDeleted?: true }
 
@@ -482,14 +485,14 @@ function targets(name: string, args: Word[]): Target[] {
   const whole = opts.has('T')
   if (!dest || !sources.length || (whole && (dir || sources.length > 1))) return []
   const into = !whole && (dir || sources.length > 1 || dest.text.endsWith('/'))
-  const out: Target[] = []
+  // `cp a b` writes `b`, or `b/a` when `b` is a folder: both are candidates.
+  const out: Target[] = into ? [] : [[dest]]
   for (const source of sources) {
     if (name === 'mv') out.push([source, true])
     const base = basename(source.text)
-    if (!into || !source.known || !dest.known || /^\.{0,2}$/.test(base)) continue
+    if (whole || !source.known || !dest.known || /^\.{0,2}$/.test(base)) continue
     out.push([literal(`${dest.text.replace(/\/+$/, '')}/${base}`)])
   }
-  if (!into) out.push([dest])
 
   return out
 }
@@ -583,7 +586,8 @@ function pipeline(run: Run, segments: Tok[][], isSure: boolean): boolean {
 
 export function shellWrites(command: string, cwd?: string, home?: string): ShellWrite[] {
   try {
-    return parse(command, cwd, home)
+    // ponytail: a HOME assignment anywhere drops every `~`, not only the later ones
+    return parse(command, cwd, /\bHOME=/.test(command) ? undefined : home)
   } catch {
     return []
   }
@@ -625,4 +629,18 @@ function parse(command: string, cwd?: string, home?: string): ShellWrite[] {
   }
 
   return [...out.values()]
+}
+
+// What a path held: its stat, 'none' when it is not there, undefined when unknown.
+export type Seen = Pick<FsStat, 'kind' | 'size' | 'mtimeMs'> | 'none' | undefined
+
+// How a path changed between two looks: a file that is new or has another
+// mtime or size is written; a path that is gone is deleted.
+export function changed(before: Seen, after: Seen): 'write' | 'delete' | undefined {
+  if (!before || !after) return
+  if (after === 'none') return before === 'none' ? undefined : 'delete'
+  if (after.kind !== 'file') return
+  if (before === 'none' || before.mtimeMs !== after.mtimeMs || before.size !== after.size) {
+    return 'write'
+  }
 }

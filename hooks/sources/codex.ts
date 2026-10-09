@@ -22,6 +22,8 @@ const MAX_TEXT = 300
 const MAX_EDITS = 100
 const CHANGES = ['add', 'update', 'delete'] as const
 const DAY = 24 * 60 * 60 * 1000
+const MAX_CHECKS = 20
+const LATE_MS = 2000
 
 type Rec = Record<string, unknown>
 
@@ -36,7 +38,11 @@ export type Rollout = {
   commandCount: number
   steps: RabeCodexStep[]
   edits?: RabeEdit[]
+  checks?: Check[]
 }
+
+// A file a shell command may have written while it ran, from `from` to `to`.
+export type Check = { path: string; from: number; to: number }
 
 export type CodexSession = {
   path?: string
@@ -100,6 +106,26 @@ function pendingCommand(input: unknown): string {
   return text.split('\n')[0] ?? ''
 }
 
+// Codex writes the cwd as a `file://` URL.
+function folder(cwd: unknown): string | undefined {
+  const text = str(cwd)
+  if (!text?.startsWith('file://')) return text
+  try {
+    return decodeURI(text.slice('file://'.length))
+  } catch {
+    return undefined
+  }
+}
+
+// The absolute files a command line may write; a command with more is skipped.
+function commandChecks(item: Rec, from: number, to: number, home?: string): Check[] {
+  const paths = shellWrites(shellLine(item.command), folder(item.cwd), home)
+    .filter(one => !one.isDeleted && one.path.startsWith('/'))
+    .map(one => one.path)
+
+  return paths.length > MAX_CHECKS ? [] : paths.map(path => ({ path, from, to }))
+}
+
 function lineCount(output: unknown): number | undefined {
   const text = str(output)
 
@@ -122,6 +148,7 @@ function fileChanges(changes: unknown, at: number): RabeEdit[] {
 export function parseRollout(text: string, home?: string): Rollout {
   const out: Rollout = { commandCount: 0, steps: [] }
   const edits: RabeEdit[] = []
+  const checks: Check[] = []
   const pending = new Map<string, RabeCodexStep>()
   for (const raw of text.split('\n')) {
     const record = parseJson(raw)
@@ -146,14 +173,9 @@ export function parseRollout(text: string, home?: string): Rollout {
       if (item.type === 'FileChange' && item.status === 'completed') {
         edits.push(...fileChanges(item.changes, at))
       }
-      if (item.type === 'CommandExecution' && item.exit_code === 0) {
-        for (const { path, isDeleted } of shellWrites(
-          shellLine(item.command),
-          str(item.cwd),
-          home,
-        )) {
-          edits.push({ path, at, via: 'shell', ...(isDeleted && { change: 'delete' as const }) })
-        }
+      const from = num(payload.started_at_ms)
+      if (item.type === 'CommandExecution' && item.exit_code === 0 && from !== undefined) {
+        checks.push(...commandChecks(item, from, at, home))
       }
       if (item.type === 'CommandExecution') {
         out.commandCount += 1
@@ -192,6 +214,7 @@ export function parseRollout(text: string, home?: string): Rollout {
   }
   out.steps = out.steps.slice(-MAX_STEPS)
   if (edits.length) out.edits = edits.slice(-MAX_EDITS)
+  if (checks.length) out.checks = checks.slice(-MAX_EDITS)
 
   return defined(out)
 }
@@ -301,6 +324,23 @@ async function findRollout(
   return undefined
 }
 
+// A shell write counts when its file was changed while the command ran; a
+// delete leaves nothing to look at, so only FileChange records give those.
+async function confirmed($: EngineInterface, rollout: Rollout): Promise<Rollout> {
+  const { checks, ...rest } = rollout
+  if (!checks) return rollout
+  const written: RabeEdit[] = []
+  for (const { path, from, to } of checks) {
+    const stat = await $.fs.stat(path).catch(() => undefined)
+    if (stat?.kind === 'file' && stat.mtimeMs >= from && stat.mtimeMs <= to + LATE_MS) {
+      written.push({ path, at: to, via: 'shell' })
+    }
+  }
+  const edits = [...(rest.edits ?? []), ...written].sort((a, b) => a.at - b.at).slice(-MAX_EDITS)
+
+  return edits.length ? { ...rest, edits } : rest
+}
+
 async function readSession(
   $: EngineInterface,
   codexHome: string,
@@ -323,7 +363,7 @@ async function readSession(
 
     return text === undefined
       ? { path }
-      : { path, updatedAt, rollout: parseRollout(String(text), home) }
+      : { path, updatedAt, rollout: await confirmed($, parseRollout(String(text), home)) }
   }
   const head = await $.process
     .run(['grep', '-m', '2', '-E', '"type":"(turn_context|UserMessage)"', path])
@@ -335,7 +375,7 @@ async function readSession(
     path,
     updatedAt,
     isPartial: true,
-    rollout: parseRollout(`${head.stdout}\n${tail.stdout}`, home),
+    rollout: await confirmed($, parseRollout(`${head.stdout}\n${tail.stdout}`, home)),
   }
 }
 

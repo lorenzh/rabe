@@ -1,7 +1,7 @@
 import type { On } from 'claude-code'
 import { type Engine, expect, type MockClock, mock, test } from 'claude-code/testing'
 
-import type { RabeItem } from '../model'
+import type { RabeItem, RabeItemOf } from '../model'
 import { MAX_ENDED } from '../registry'
 import { memoryState } from '../testing'
 import { codexItem, jobEnd, parseRollout } from './codex'
@@ -82,21 +82,22 @@ const change = (status: string, changes: object, at: number) =>
     completed_at_ms: at,
     item: { type: 'FileChange', id: 'exec-1', changes, status, stdout: '', stderr: '' },
   })
-const command = (script: string, exit_code: number, at: number) =>
+const command = (script: string, exit_code: number, at: number, cwd = 'file:///work') =>
   line('event_msg', {
     type: 'item_completed',
+    started_at_ms: at - 500,
     completed_at_ms: at,
     item: {
       type: 'CommandExecution',
       command: ['/bin/bash', '-lc', script],
-      cwd: '/work',
+      cwd,
       status: exit_code === 0 ? 'completed' : 'failed',
       exit_code,
       aggregated_output: '',
     },
   })
 
-test('completed file changes and shell writes of a rollout are its edits', () => {
+test('completed file changes are edits; shell writes are files to check on disk', () => {
   const rollout = [
     change('completed', { '/work/new.cjs': { type: 'add', content: 'x' } }, 1000),
     change(
@@ -111,14 +112,41 @@ test('completed file changes and shell writes of a rollout are its edits', () =>
     change('failed', { '/work/never.ts': { type: 'add', content: 'x' } }, 3000),
     command("cat > notes.md <<'EOF'\nhi > there\nEOF", 0, 4000),
     command('echo x > /work/broken.txt && false', 1, 5000),
+    command('rm /work/gone.txt; cp a.md out', 0, 6000, '/plain'),
   ].join('\n')
-  expect(parseRollout(rollout, '/home/u').edits).toEqual([
+  const { edits, checks } = parseRollout(rollout, '/home/u')
+  expect(edits).toEqual([
     { path: '/work/new.cjs', at: 1000, via: 'codex', change: 'add' },
     { path: '/work/a.ts', at: 2000, via: 'codex', change: 'update' },
     { path: '/work/old.ts', at: 2000, via: 'codex', change: 'delete' },
     { path: '/work/moved.ts', at: 2000, via: 'codex', change: 'add' },
     { path: '/work/gone.ts', at: 2000, via: 'codex', change: 'delete' },
-    { path: '/work/notes.md', at: 4000, via: 'shell' },
+  ])
+  expect(checks).toEqual([
+    { path: '/work/notes.md', from: 3500, to: 4000 },
+    { path: '/plain/out', from: 5500, to: 6000 },
+    { path: '/plain/out/a.md', from: 5500, to: 6000 },
+  ])
+})
+
+test('a shell write of a codex job counts when the file changed while the command ran', async ($, on) => {
+  const writes = watchItems(on)
+  const rollout = [
+    change('completed', { '/work/new.cjs': { type: 'add', content: 'x' } }, 3000),
+    command('touch /work/in.md /work/old.md /work/late.md /work/none.md /work', 0, 4000),
+  ].join('\n')
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: rollout,
+  })
+  w.files.set('/work/in.md', { text: 'x', mtimeMs: 3800 })
+  w.files.set('/work/old.md', { text: 'x', mtimeMs: 3000 })
+  w.files.set('/work/late.md', { text: 'x', mtimeMs: 9000 })
+  await startAndTick($, w)
+  expect((writes.at(-1)?.[0] as RabeItemOf<'codex'>).detail.edits).toEqual([
+    { path: '/work/new.cjs', at: 3000, via: 'codex', change: 'add' },
+    { path: '/work/in.md', at: 4000, via: 'shell' },
   ])
 })
 
