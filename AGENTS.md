@@ -18,7 +18,7 @@
 ## TDD
 - Write the failing test first, then the code.
 - Tests live next to the module as `*.test.ts` or `*.test.tsx` and import from `claude-code/testing`.
-- `bun run test` runs every test; there is no single-file filter, and the suite takes under a second.
+- `bun run test` runs every test; there is no single-file filter, and the suite takes about 11 seconds.
 - UI tests mount on `terminal` and `desktop` and find elements by type and text; `Text` keeps no `key`.
 - Logic that needs no `$` (parsers, formatting, the next cron run) lives in plain functions with their own tests.
 - A test's `$` has no `state` noun: watch writes with a test hook on `state.set`. A test needs `mock.clock(on)` when the code reads the clock.
