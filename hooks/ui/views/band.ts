@@ -27,7 +27,7 @@ export const bandView: View = (model, size) => {
   const top = size.rows >= 2 ? 1 : 0
   const g = grid(size.columns, top + 1)
   const chips = rows.flatMap((row): Span[] => {
-    const n = row.names.length
+    const n = row.count
     return [[` ${row.glyph} ${n} ${COUNT[row.kind][n === 1 ? 0 : 1]} `, CHIP[row.kind]], [' ']]
   })
   spans(g, 0, top, [...chips, ...(money ? cost(money.slice(0, 2)) : [])])

@@ -54,12 +54,11 @@ function head(path: string, width: number): string {
   return chars.length > width ? `…${chars.slice(chars.length - width + 1).join('')}` : path
 }
 
-// How the file changed; a shell write is a guess, and a relative one has no known cwd.
+// How the file changed; a shell write is a guess.
 function how(file: Touched): string {
   const count = file.edits > 1 ? `${file.edits}× ` : ''
-  const where = file.path.startsWith('/') ? '' : ' · cwd n/a'
 
-  return `${count}${file.hows.join(', ')}${where}`
+  return `${count}${file.hows.join(', ')}`
 }
 
 function fileRow(file: Touched, w: Widths, selected: string): Line {

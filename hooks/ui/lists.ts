@@ -421,98 +421,25 @@ export function costLine(items: RabeItem[], session?: number): string | undefine
   return `${dollars} · ${tokens(sum.tokens)} tok${topText}`
 }
 
-export type BandRow = {
-  glyph: string
-  kind: RabeItemKind | 'failed'
-  label: string
-  names: Span[][]
-}
+export type BandRow = { glyph: string; kind: RabeItemKind | 'failed'; count: number }
 
-const isRunning = (kind: RabeItemKind) => (item: RabeItem) =>
-  item.kind === kind && item.status === 'running'
-
-// Running shells or monitors as the Items tab groups them: the main
-// session's first, then each agent's after its dim name.
-function familyNames(items: RabeItem[], kind: 'shell' | 'monitor'): Span[][] {
-  return byParent(items.filter(isRunning(kind)), items).flatMap(family =>
-    family.items.map((item): Span[] =>
-      family.id === ''
-        ? nameSpans(item)
-        : [[`${family.title} › `, { fg: C.dim }], ...nameSpans(item)],
-    ),
-  )
-}
-
+// What the band counts per kind, failed (in the last 10 minutes) first.
 export function bandRows(items: RabeItem[], now: number): BandRow[] {
-  const dim = { fg: C.dim }
-  const run = (item: RabeItem): Span[] => [
-    [item.title],
-    [item.startedAt === undefined ? '' : ` ${short(now - item.startedAt)}`, dim],
-  ]
+  const running = (kind: RabeItemKind) =>
+    items.filter(item => item.kind === kind && item.status === 'running').length
   const failed = items.filter(
     item => item.status === 'failed' && now - (item.endedAt ?? item.seenAt) < 10 * 60_000,
-  )
+  ).length
   const rows: BandRow[] = [
-    { glyph: '✗', kind: 'failed', label: 'failed', names: failed.map(item => nameSpans(item)) },
-    {
-      glyph: '◐',
-      kind: 'agent',
-      label: 'claude',
-      names: items.filter(isRunning('agent')).map(run),
-    },
-    { glyph: '◐', kind: 'codex', label: 'codex', names: items.filter(isRunning('codex')).map(run) },
-    {
-      glyph: '⧉',
-      kind: 'workflow',
-      label: 'workflow',
-      names: items
-        .filter(isRunning('workflow'))
-        .map(flow => [
-          [flow.title],
-          [` · ${phaseProgress(items, flow)} · ${children(items, flow.id).length} agents`, dim],
-        ]),
-    },
-    {
-      glyph: '▶',
-      kind: 'shell',
-      label: 'shells',
-      names: familyNames(items, 'shell'),
-    },
-    {
-      glyph: '◉',
-      kind: 'monitor',
-      label: 'watch',
-      names: familyNames(items, 'monitor'),
-    },
-    {
-      glyph: '⟳',
-      kind: 'cron',
-      label: 'cron',
-      names: items
-        .filter(isRunning('cron'))
-        .map(item => [[item.title], [' · next ', dim], [nextAt(item, now), { fg: C.bright }]]),
-    },
+    { glyph: '✗', kind: 'failed', count: failed },
+    ...(['agent', 'codex', 'workflow', 'shell', 'monitor', 'cron'] as const).map(kind => ({
+      glyph: RUNNING_GLYPH[kind],
+      kind,
+      count: running(kind),
+    })),
   ]
 
-  return rows.filter(row => row.names.length > 0)
-}
-
-const width = (list: Span[]) => list.reduce((n, [text]) => n + text.length, 0)
-
-// Names joined with a dim " · " until `width`, then a dim "+N" for the rest.
-export function joinFit(names: Span[][], max: number): Span[] {
-  const sep: Span = [' · ', { fg: C.dim }]
-  let out: Span[] = []
-  for (const [i, one] of names.entries()) {
-    const next = i === 0 ? one : [...out, sep, ...one]
-    const rest = names.length - i - 1
-    if (i > 0 && width(next) + (rest ? ` +${rest}`.length : 0) > max) {
-      return [...out, [` +${names.length - i}`, { fg: C.dim }]]
-    }
-    out = next
-  }
-
-  return out
+  return rows.filter(row => row.count > 0)
 }
 
 export type TreeLine = { prefix: string; item: RabeItem }

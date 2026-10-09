@@ -340,7 +340,7 @@ test('files from Codex jobs, the main session and shell commands show who and ho
   )
   expect(row('src/old.ts')).toMatch(/src\/old\.ts +review auth\.ts +deleted · codex delete$/)
   expect(row('SKILL.md')).toMatch(/ …[^ ]*\/skills\/demo\/SKILL\.md +Plan auth split +via shell$/)
-  expect(row('notes.md')).toMatch(/ out\/notes\.md +Plan auth split +via shell · cwd n\/a$/)
+  expect(row('notes.md')).toMatch(/ out\/notes\.md +Plan auth split +via shell$/)
   expect(row('plan.md')).toMatch(/^ {2}plan\.md +main session +write$/)
   expect(shown[0]).toBe(
     ' ⚠ conflict  src/gen.ts is edited by review auth.ts and main session in the main tree',

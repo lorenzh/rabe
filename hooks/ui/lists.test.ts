@@ -1,7 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { RabeItem } from '../model'
-import type { Span } from './cells/grid'
 import { C } from './cells/palette'
 
 import {
@@ -26,7 +25,6 @@ import {
   costLine,
   grouped,
   groupNote,
-  joinFit,
   matches,
   nameSpans,
   nextAt,
@@ -132,29 +130,18 @@ test('search matches title, kind and command', () => {
   expect(matches(ci, 'nope')).toBe(false)
 })
 
-test('the band has one row per kind with running names, failed first', () => {
+test('the band counts each kind that runs, failed first', () => {
   const rows = bandRows(ALL, NOW)
-  expect(rows.map(row => row.label)).toEqual([
-    'failed',
-    'claude',
-    'codex',
-    'workflow',
-    'shells',
-    'watch',
-    'cron',
+  expect(rows.map(row => [row.kind, row.glyph, row.count])).toEqual([
+    ['failed', '✗', 1],
+    ['agent', '◐', 2],
+    ['codex', '◐', 1],
+    ['workflow', '⧉', 1],
+    ['shell', '▶', 1],
+    ['monitor', '◉', 1],
+    ['cron', '⟳', 1],
   ])
-  const text = (names: Span[][] = []) => names.map(one => one.map(([t]) => t).join(''))
-  expect(text(rows[1]?.names)).toEqual(['Explore verifyToken 1m', 'verify:db.ts 40s'])
-  expect(text(rows[3]?.names)).toEqual(['review-changes · Verify 2/3 · 2 agents'])
-  expect(text(rows[6]?.names)).toEqual(['/babysit-prs · next 10:55'])
   expect(bandRows([{ ...lint, endedAt: NOW - 11 * 60_000 }], NOW)).toEqual([])
-})
-
-test('joinFit stops at the width and counts the rest', () => {
-  const names: Span[][] = [[['aaa']], [['bbb']], [['ccc']]]
-  const text = (list: Span[]) => list.map(([t]) => t).join('')
-  expect(text(joinFit(names, 20))).toBe('aaa · bbb · ccc')
-  expect(joinFit(names, 10)).toEqual([['aaa'], [' +2', { fg: C.dim }]])
 })
 
 test('cost totals sum tokens and dollars and count unknowns', () => {

@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Removed
+
+- Code nobody reached: the Effects tab's ` · cwd n/a` mark (every file path Rabe records is absolute) and the names the band built for each kind but no longer draws. Nothing changes on screen. (fixes [#22](https://github.com/lorenzh/rabe/issues/22))
+
 ## [0.3.0] - 2026-10-09
 
 ### Added
