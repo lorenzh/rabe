@@ -218,7 +218,7 @@ export const itemsView: View = (model, size, sel): Drawn => {
   if (selected && split) {
     const listWidth = Math.min(48, Math.floor(size.columns * 0.42))
     const right = size.columns - listWidth - 2
-    const detail = summary(model, selected, size.rows, right).map(plain)
+    const detail = summary(model, selected, size.rows, right, sel).map(plain)
     const rule: Span[] = [['│', { fg: C.rule }], [' ']]
     const rows = Math.max(lines.length, detail.length, size.rows)
     const left = [...lines, ...Array.from({ length: rows - lines.length }, () => ({ spans: [] }))]

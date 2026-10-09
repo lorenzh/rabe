@@ -18,7 +18,7 @@ Status: early development. Version 0.1.0.
 | Kind | In the band | In the pane |
 |---|---|---|
 | Claude subagents | Name and run time | Tokens, share of the session, the prompt it got, each turn with its tool calls |
-| Workflows | Current phase and agent count | Phases in order, the agents of each phase with tokens and time |
+| Workflows | Current phase and agent count | Phases in order, the agents of each phase in start order with tokens and time; select an agent to open it |
 | Codex jobs (from the Codex plugin) | Name and run time | Model, effort and sandbox, tokens, the prompt, each message and command with its exit code |
 | Background shells | Command and the port it serves | Output lines, exit code, the guessed port |
 | Monitors | Name | Each line with the time Rabe received it |

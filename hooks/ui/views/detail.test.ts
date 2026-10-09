@@ -16,7 +16,7 @@ import {
   review,
   verify,
 } from '../fixtures'
-import { type Model, NO_SELECTION, rowKeys, type Size } from '../view'
+import { isPress, type Model, NO_SELECTION, rowKeys, type Size } from '../view'
 import { detailView } from './detail'
 import { itemsView } from './items'
 
@@ -278,4 +278,59 @@ test('a workflow agent whose run cannot be stopped offers no stop', () => {
   const run = { ...flow, detail: { runId: 'wf1', phases: [] } } as RabeItem
   const { buttons } = open(model([run, verify]), verify.id)
   expect(buttons.find(b => b.key === 'stop')).toBeUndefined()
+})
+
+const older = {
+  ...verify,
+  id: 'agent:w2',
+  title: 'verify:auth.ts',
+  status: 'done',
+  startedAt: NOW - 90_000,
+  endedAt: NOW - 50_000,
+  detail: { agentId: 'w2', workflowPhase: 'Verify' },
+} as RabeItem
+
+test('a workflow lists the agents of a phase in start order, whatever their status', () => {
+  const keys = rowKeys(
+    detailView(model([flow, verify, older]), TERMINAL, { ...NO_SELECTION, open: flow.id }),
+  )
+  expect(keys).toEqual([`row:${older.id}`, `row:${verify.id}`])
+})
+
+test('a workflow keeps the held order, so a row never moves under the focus', () => {
+  const sel = { ...NO_SELECTION, open: flow.id, order: { timeline: [verify.id, older.id] } }
+  const late = { ...older, id: 'agent:w3', startedAt: NOW - 200_000 } as RabeItem
+  const keys = rowKeys(detailView(model([flow, verify, older, late]), TERMINAL, sel))
+  expect(keys).toEqual([`row:${verify.id}`, `row:${older.id}`, `row:${late.id}`])
+})
+
+test('the workflow agent row that holds the focus is marked; the others are dim', () => {
+  const sel = { ...NO_SELECTION, open: flow.id, selected: verify.id }
+  const drawn = detailView(model([flow, verify, older]), TERMINAL, sel)
+  const { grid: g } = gridOf(drawn)
+  const y = find(g, '▌◐ verify:db.ts')[1]
+  expect(cell(g, 0, y)).toEqual(['▌'.codePointAt(0), C.orange, C.selected])
+  const other = find(g, ' ✓ verify:auth.ts')[1]
+  expect(bg(g, [0, other])).not.toBe(C.selected)
+  expect(fg(g, [3, other])).toBe(C.dim)
+  // b: back keeps the one autoFocus of the drawing.
+  const presses = drawn.nodes.flatMap(node => ('spans' in node ? node.spans.filter(isPress) : []))
+  expect(presses.some(p => p.autoFocus)).toBe(false)
+})
+
+test('a workflow draws every agent row, also past the rows of the pane', () => {
+  const many = Array.from(
+    { length: 30 },
+    (_, i) => ({ ...older, id: `agent:m${i}`, startedAt: NOW - 100_000 + i }) as RabeItem,
+  )
+  const drawn = detailView(
+    model([flow, ...many]),
+    { ...TERMINAL, rows: 12 },
+    {
+      ...NO_SELECTION,
+      open: flow.id,
+    },
+  )
+  expect(rowKeys(drawn)).toHaveLength(30)
+  expect(lines(gridOf(drawn).grid)[0]).toMatch(/^⧉ workflow · review-changes/)
 })
