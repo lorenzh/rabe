@@ -277,7 +277,8 @@ export function bodyLines(model: Model, item: RabeItem, columns: number, sel?: S
   }
 }
 
-// One item in `rows` lines: head, the fixed top, then the newest body lines.
+// One item: head, the fixed top, then the newest body lines that fit in
+// `rows`. The head and top are never cut: what does not fit scrolls.
 export function detailLines(
   model: Model,
   item: RabeItem,
@@ -289,7 +290,7 @@ export function detailLines(
   const room = rows - top.length
   const body = room > 0 ? bodyLines(model, item, columns, sel).slice(-room) : []
 
-  return [...top, ...body].slice(0, rows)
+  return [...top, ...body]
 }
 
 // A control that copies the command resuming `id`; its key names the id.

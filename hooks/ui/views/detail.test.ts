@@ -422,6 +422,14 @@ test('an agent shows its transcript path in full, across lines', () => {
   )
   const right = lines(split.grid).map(line => line.slice(line.indexOf('│') + 1))
   expect(joined(right)).toContain(`transcript ${path}`)
+  // a short pane keeps the whole head and scrolls it, in full and in the split
+  const short = { ...TERMINAL, columns: 80, rows: 6 }
+  expect(joined(lines(open(model([agent]), agent.id, short).grid))).toContain(`transcript ${path}`)
+  const low = gridOf(
+    itemsView(model([agent]), { ...short, columns: 120 }, { ...NO_SELECTION, selected: agent.id }),
+  )
+  const side = lines(low.grid).map(line => line.slice(line.indexOf('│') + 1))
+  expect(joined(side)).toContain(`transcript ${path}`)
 })
 
 test('a codex job shows its thread, and c copies the command that resumes it', () => {
