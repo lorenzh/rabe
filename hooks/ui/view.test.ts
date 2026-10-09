@@ -32,16 +32,38 @@ test('a change of the view lands the focus ring on the active tab, then where it
 
 // Destructive controls act only while the ring is known to sit on a safe
 // element (see arming in docs/architecture.md).
+const focus = (key: string, byPerson = true, isLiveRow = key.startsWith('row:')) =>
+  ({ type: 'focus', byPerson, key, isLiveRow }) as const
+
 test('the pane starts disarmed, and only evidence of a safe ring arms it', () => {
   expect(DISARMED.isArmed).toBe(false)
   const armed = arm(DISARMED, { type: 'landed', isMoved: true })
   expect(armed.isArmed).toBe(true)
   expect(arm(armed, { type: 'reset' }).isArmed).toBe(false)
   expect(arm(armed, { type: 'landed', isMoved: false }).isArmed).toBe(false)
-  expect(arm(DISARMED, { type: 'focus', byPerson: true, key: 'stop:shell:a' }).isArmed).toBe(true)
-  expect(arm(DISARMED, { type: 'focus', byPerson: false, key: 'row:shell:a' }).isArmed).toBe(true)
-  expect(arm(DISARMED, { type: 'focus', byPerson: false, key: 'stop:shell:a' }).isArmed).toBe(false)
-  expect(arm(armed, { type: 'focus', byPerson: false, key: 'delete:cron:a' }).isArmed).toBe(true)
+  expect(arm(DISARMED, focus('stop:shell:a')).isArmed).toBe(true)
+  expect(arm(DISARMED, focus('row:shell:a', false)).isArmed).toBe(true)
+  expect(arm(DISARMED, focus('stop:shell:a', false)).isArmed).toBe(false)
+  expect(arm(armed, focus('delete:cron:a', false)).isArmed).toBe(true)
+})
+
+// GPT review round 7: the list's x and g act on the selection, which only a
+// live row the person focused names; a landing, a header, a tab, a control
+// or a gone slot is no such evidence.
+test("the list's x and g arm only on the person's focus on a live row", () => {
+  const landed = arm(DISARMED, { type: 'landed', isMoved: true })
+  expect([landed.isArmed, landed.isListArmed]).toEqual([true, false])
+  expect(arm(landed, focus('row:a', false)).isListArmed).toBe(false)
+  for (const key of ['tab-items', 'group-shells', 'find', 'stop', 'stop-group']) {
+    expect([key, arm(landed, focus(key)).isListArmed]).toEqual([key, false])
+  }
+  expect(arm(landed, focus('row:a', true, false)).isListArmed).toBe(false)
+  const live = arm(landed, focus('row:a'))
+  expect(live.isListArmed).toBe(true)
+  expect(arm(live, focus('group-shells')).isListArmed).toBe(true)
+  expect(arm(live, focus('row:gone', true, false)).isListArmed).toBe(false)
+  expect(arm(live, { type: 'landed', isMoved: false }).isListArmed).toBe(false)
+  expect(arm(live, { type: 'reset' }).isListArmed).toBe(false)
 })
 
 const shown = (fallback: string, targets: string[] = [], selected = 'a') =>
@@ -72,7 +94,24 @@ test('a list target that comes without the person disarms; the next person focus
   expect(arm(armed, shown('', ['x a', 'g a', 'g c', 'g d'])).isArmed).toBe(false)
   const moved = arm(armed, shown('', ['x c', 'g a', 'g c']))
   expect(moved.isArmed).toBe(false)
-  expect(arm(moved, { type: 'focus', byPerson: true, key: 'row:a' }).isArmed).toBe(true)
+  expect(arm(moved, focus('row:a')).isArmed).toBe(true)
+})
+
+// Shell a selected, then gone: the list falls back to b. Shift+Tab to the
+// group header and Tab back to `gone a` must not let x stop b.
+test('while the selection falls back, x and g stay inert until the person focuses a live row', () => {
+  let state = arm(arm(DISARMED, shown('', ['x a'])), focus('row:a'))
+  expect(arm(state, shown('', ['x a'])).isListArmed).toBe(true)
+  state = arm(state, shown('selected:a', ['x b']))
+  expect(state.isListArmed).toBe(false)
+  for (const one of [focus('group-shells'), focus('row:a', true, false)]) {
+    state = arm(arm(state, one), shown('selected:a', ['x b']))
+    expect([one.key, state.isArmed, state.isListArmed]).toEqual([one.key, true, false])
+  }
+  const live = arm(arm(state, focus('row:b')), shown('', ['x b'], 'b'))
+  expect(live.isListArmed).toBe(true)
+  const open = arm(arm(DISARMED, shown('open:a selected:a')), focus('row:a', true, false))
+  expect(arm(open, shown('open:a selected:a')).isListArmed).toBe(false)
 })
 
 test('the keys of destructive controls are known by their prefix', () => {

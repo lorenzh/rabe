@@ -54,6 +54,8 @@ export type Selection = {
   isFocused: boolean
   // Stop and delete act only while this holds (`arm`).
   isArmed: boolean
+  // The list's x and g act only while this holds too (`arm`).
+  isListArmed: boolean
 }
 
 export type Action =
@@ -155,6 +157,7 @@ export const NO_SELECTION: Selection = {
   open: '',
   isFocused: false,
   isArmed: false,
+  isListArmed: false,
 }
 
 // The item rows of a drawing in document order: what the arrow keys walk.
@@ -215,9 +218,11 @@ export type Shown = {
   selected: string
 }
 
-export type Arming = { isArmed: boolean; shown?: Shown }
+// `isListArmed`: the list's x and g act on the selection, so they also need
+// the person's focus on a live row since the last reset.
+export type Arming = { isArmed: boolean; isListArmed: boolean; shown?: Shown }
 
-export const DISARMED: Arming = { isArmed: false }
+export const DISARMED: Arming = { isArmed: false, isListArmed: false }
 
 export type ArmEvent =
   // The pane opened, or the person changed the view (tab, open, back, fold, search).
@@ -225,8 +230,9 @@ export type ArmEvent =
   // Rabe's own `$.ui.focus` moved the ring, or was refused or threw.
   | { type: 'landed'; isMoved: boolean }
   // A `ui.focus` on the pane that no hook refused: by the person, or by Rabe
-  // (a landing, `autoFocus`) onto element `key`.
-  | { type: 'focus'; byPerson: boolean; key: string }
+  // (a landing, `autoFocus`) onto element `key`; `isLiveRow`: a row the list
+  // draws, not a gone slot (`isLiveRow` in views/pane.ts).
+  | { type: 'focus'; byPerson: boolean; key: string; isLiveRow: boolean }
   // A drawing.
   | ({ type: 'drawn' } & Shown)
 
@@ -237,11 +243,14 @@ export const isDestructive = (key: string): boolean => DESTRUCTIVE.test(key)
 export function arm(state: Arming, event: ArmEvent): Arming {
   switch (event.type) {
     case 'reset':
-      return { isArmed: false }
+      return DISARMED
     case 'landed':
-      return { ...state, isArmed: event.isMoved }
-    case 'focus':
-      return event.byPerson || !isDestructive(event.key) ? { ...state, isArmed: true } : state
+      return event.isMoved ? { ...state, isArmed: true } : { ...state, ...DISARMED }
+    case 'focus': {
+      const isArmed = state.isArmed || event.byPerson || !isDestructive(event.key)
+      const isRow = event.byPerson && event.key.startsWith('row:')
+      return { ...state, isArmed, isListArmed: isRow ? event.isLiveRow : state.isListArmed }
+    }
     case 'drawn': {
       const { fallback, targets, selected } = event
       const was = state.shown
@@ -249,7 +258,11 @@ export function arm(state: Arming, event: ArmEvent): Arming {
         was !== undefined &&
         ((fallback !== '' && fallback !== was.fallback) ||
           (selected === was.selected && targets.some(one => !was.targets.includes(one))))
-      return { isArmed: state.isArmed && !isAuto, shown: { fallback, targets, selected } }
+      return {
+        isArmed: state.isArmed && !isAuto,
+        isListArmed: state.isListArmed && !isAuto && !fallback.includes('selected:'),
+        shown: { fallback, targets, selected },
+      }
     }
   }
 }
@@ -258,15 +271,13 @@ export function arm(state: Arming, event: ArmEvent): Arming {
 export const LIST_KEYS = ['stop', 'stop-group']
 
 // What the list's x and g act on in a drawing: one entry per control and item.
-// Fewer entries (a row of the group ended) stop less than the person saw;
-// a new entry is a target they did not choose.
+// Fewer entries (a row of the group ended, g can no longer act) stop less
+// than the person saw; a new entry is a target they did not choose.
 export const targetsOf = (drawn: Drawn): string[] =>
   drawn.buttons
     .filter(one => LIST_KEYS.includes(one.key))
     .flatMap(({ key, label, action }) =>
-      action.type === 'stop'
-        ? action.ids.map(id => JSON.stringify([key, label, id]))
-        : [JSON.stringify([key, label, action.type])],
+      action.type === 'stop' ? action.ids.map(id => JSON.stringify([key, label, id])) : [],
     )
 
 // Rows the toolbar takes: wrapped Buttons ("[ label ]" and a

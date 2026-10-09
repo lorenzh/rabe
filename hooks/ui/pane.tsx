@@ -19,7 +19,7 @@ import {
   targetsOf,
   taskIdOf,
 } from './view'
-import { fallbackOf, paneView } from './views/pane'
+import { fallbackOf, isLiveRow, paneView } from './views/pane'
 
 const PANE = 'rabe'
 
@@ -225,6 +225,7 @@ async function look(
     open,
     isFocused,
     isArmed: arming.isArmed,
+    isListArmed: arming.isListArmed,
     ...(order && { order }),
   }
 
@@ -304,7 +305,13 @@ export function pane(on: On): void {
     }
     const result = await next(e)
     if (e.element && !('deny' in result && result.deny)) {
-      feed($, { type: 'focus', byPerson: e.origin.kind === 'person', key: e.element })
+      const { model, selection } = await look($, true)
+      feed($, {
+        type: 'focus',
+        byPerson: e.origin.kind === 'person',
+        key: e.element,
+        isLiveRow: isLiveRow(model, selection, e.element),
+      })
     }
 
     return result
@@ -336,7 +343,7 @@ export function pane(on: On): void {
     })
 
     // What x and g would act on decides whether they may.
-    const armed = paneView(model, size, { ...seen, isArmed: true })
+    const armed = paneView(model, size, { ...seen, isArmed: true, isListArmed: true })
     const { selected } = seen
     feed($, {
       type: 'drawn',
@@ -344,8 +351,8 @@ export function pane(on: On): void {
       targets: targetsOf(armed),
       selected,
     })
-    const selection = { ...seen, isArmed: arming.isArmed }
-    const drawn = arming.isArmed ? armed : paneView(model, size, selection)
+    const selection = { ...seen, isArmed: arming.isArmed, isListArmed: arming.isListArmed }
+    const drawn = arming.isArmed && arming.isListArmed ? armed : paneView(model, size, selection)
     const out = hold(layout(drawn), heldOf(e.surface, selection))
     holds.set(e.surface, { scope: scopeOf(selection), keys: out.held })
 

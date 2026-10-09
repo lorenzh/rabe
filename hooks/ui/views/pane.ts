@@ -4,6 +4,7 @@ import {
   controlRows,
   type Drawn,
   isPress,
+  LIST_KEYS,
   type Line,
   type Model,
   NONE,
@@ -133,13 +134,18 @@ function tabLines(model: Model, size: Size, sel: Selection): Line[] {
 // The view then falls back to the list, or to its first row.
 export function fallbackOf(model: Model, sel: Selection): string {
   if (sel.tab !== 'items') return ''
-  if (sel.open) return model.items.some(item => item.id === sel.open) ? '' : `open:${sel.open}`
-  if (!sel.selected) return ''
+  const isOpenGone = sel.open !== '' && !model.items.some(item => item.id === sel.open)
+  if (sel.open && !isOpenGone) return ''
+  const isSelectedGone = sel.selected !== '' && !isLiveRow(model, sel, `row:${sel.selected}`)
 
-  return listOrder(model, sel).some(item => item.id === sel.selected)
-    ? ''
-    : `selected:${sel.selected}`
+  return [isOpenGone && `open:${sel.open}`, isSelectedGone && `selected:${sel.selected}`]
+    .filter(Boolean)
+    .join(' ')
 }
+
+// Whether `key` is a row the Items list draws, not a gone slot of one.
+export const isLiveRow = (model: Model, sel: Selection, key: string): boolean =>
+  key.startsWith('row:') && listOrder(model, sel).some(item => `row:${item.id}` === key)
 
 // Stop and delete drawn while the pane is disarmed: dim, no action, no hotkey.
 const disarmed = (one: ViewButton): ViewButton => {
@@ -162,7 +168,12 @@ export const paneView: View = (model, size, sel): Drawn => {
   const tools = controlRows(first, size)
   const rows = size.rows - head.length - tools - HINT
   const drawn = body(model, room(rows, head.length + tools), sel)
-  const inner = sel.isArmed ? drawn : { ...drawn, buttons: drawn.buttons.map(disarmed) }
+  const isInert = (one: ViewButton) =>
+    !sel.isArmed || (!sel.isListArmed && LIST_KEYS.includes(one.key))
+  const inner = {
+    ...drawn,
+    buttons: drawn.buttons.map(one => (isInert(one) ? disarmed(one) : one)),
+  }
   const pad = Math.max(0, rows - rowsOf(inner.nodes))
   const nodes: Node[] = [
     ...head,

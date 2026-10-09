@@ -84,7 +84,8 @@ function hold(on: On, items: RabeItem[], seeds: Ui = {}): Ui {
   return sets
 }
 
-// The person moves the ring (Tab or an arrow), which arms the pane's stops.
+// The person moves the ring (Tab or an arrow), which arms the pane's stops;
+// the list's x and g arm only on a live row.
 async function arm(
   $: { ui: { focus: (e: UiFocusInput) => Promise<unknown> } },
   element = 'tab-items',
@@ -295,7 +296,7 @@ test('stop calls TaskStop with the task id on every surface', async ($, on) => {
     stopped.push(e.task_id)
     return { result: {}, text: 'stopped' }
   })
-  await arm($)
+  await arm($, `row:${dev.id}`)
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
     await ui.press({ key: 'stop' })
@@ -603,7 +604,7 @@ test('g on a workflow agent stops its run on every surface', async ($, on) => {
     stopped.push(e.task_id)
     return { result: {}, text: 'stopped' }
   })
-  await arm($)
+  await arm($, `row:${verify.id}`)
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
     expect((await ui.find({ type: 'Button', key: 'stop-group' }))?.props).toMatchObject({
@@ -799,7 +800,7 @@ test('an open item that is gone disarms the list the view falls back to', async 
 // fails, as one another hook refuses does.
 test('a change of the view disarms until the ring lands; a failed landing keeps it so', async ($, on) => {
   hold(on, ALL, { selected: dev.id })
-  await arm($)
+  await arm($, `row:${dev.id}`)
   const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
   expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBe('x')
   await ui.press({ key: 'tab-cost' })
@@ -820,6 +821,30 @@ test('a selected row that is gone disarms x and g; the next focus by the person 
   for (const key of ['stop', 'stop-group']) {
     const one = await ui.find({ type: 'Button', key })
     expect([key, one?.props.hotkey]).toEqual([key, undefined])
+  }
+  await arm($, `row:${explore.id}`)
+  await ui.redraw()
+  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBe('x')
+  await ui.unmount()
+})
+
+// GPT review round 7: the selected shell is gone and the list falls back to
+// another row. The group header and the gone slot are no choice of a target.
+test('a person focus on a gone slot or a group header leaves x and g inert', async ($, on) => {
+  const items = ALL.filter(item => item !== lint)
+  hold(on, items, { selected: dev.id })
+  await arm($, `row:${dev.id}`)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBe('x')
+  items.splice(items.indexOf(dev), 1)
+  await ui.redraw()
+  for (const element of ['group-shells', `row:${dev.id}`, 'tab-items']) {
+    await arm($, element)
+    await ui.redraw()
+    for (const key of ['stop', 'stop-group']) {
+      const one = await ui.find({ type: 'Button', key })
+      expect([element, key, one?.props.hotkey]).toEqual([element, key, undefined])
+    }
   }
   await arm($, `row:${explore.id}`)
   await ui.redraw()

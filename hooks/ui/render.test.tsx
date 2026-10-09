@@ -21,7 +21,7 @@ import {
   type Size,
   targetsOf,
 } from './view'
-import { fallbackOf, paneView } from './views/pane'
+import { fallbackOf, isLiveRow, paneView } from './views/pane'
 
 const PROBE = {
   surface: 'terminal',
@@ -95,7 +95,7 @@ function elements(one: unknown): Element[] {
 }
 
 const SIZE: Size = { columns: 80, rows: 30, surface: 'terminal', hasInput: true }
-const OPEN: Selection = { ...NO_SELECTION, isFocused: true, isArmed: true }
+const OPEN: Selection = { ...NO_SELECTION, isFocused: true, isArmed: true, isListArmed: true }
 
 type Step = { keys: string[]; held: Held[]; tree: Element[]; acts: Action[]; list: Piece[] }
 
@@ -313,7 +313,8 @@ function targetOf(action: Action): string | undefined {
 // A key never changes what it acts on, and a focusable index of the hold
 // never acts on another target than it did before (`seen`, by index). The
 // list's x and g act on the selection: a target they gain comes only by the
-// person's selection (`byPerson`), else the pane must be disarmed (`isArmed`).
+// person's focus on a live row (`byPerson`), else they must be disarmed
+// (`isArmed`).
 function checkTargets(
   shown: string,
   list: Piece[],
@@ -424,21 +425,90 @@ test('whatever changes while the pane is open, the focusable keys only grow at t
           continue
         }
         if (what === 0) size = { ...size, columns: WIDTHS[pick(WIDTHS.length)] ?? 80 }
-        else if (what === 1) {
-          const rows = last.keys.filter(key => key.startsWith('row:'))
-          const key = rows[pick(Math.max(1, rows.length))] ?? ''
-          sel.selected = key.slice(4)
-          arming = arm(arming, { type: 'focus', byPerson: true, key })
-        } else items = change(items, pick, n)
+        let isLive = false
+        if (what === 1) {
+          // The person focuses a row, a gone slot or a group header.
+          const stops = last.keys.filter(key => key.startsWith('row:') || key.startsWith('group-'))
+          const key = stops[pick(Math.max(1, stops.length))] ?? ''
+          if (key.startsWith('row:')) sel.selected = key.slice(4)
+          isLive = isLiveRow(model(items), sel, key)
+          const was = arming.isListArmed
+          arming = arm(arming, { type: 'focus', byPerson: true, key, isLiveRow: isLive })
+          const arms = !isLive && !was && arming.isListArmed
+          expect([`${surface} ${JSON.stringify(scope)} step ${n}`, key, arms]).toEqual([
+            `${surface} ${JSON.stringify(scope)} step ${n}`,
+            key,
+            false,
+          ])
+        } else if (what !== 0) items = change(items, pick, n)
         const next = draw(model(items), size, sel, last.held)
         const shown = `${surface} ${JSON.stringify(scope)} step ${n}`
         expect([shown, next.keys.slice(0, last.keys.length)]).toEqual([shown, last.keys])
         arming = arm(arming, drawnOf(items, size))
-        checkTargets(shown, next.list, targets, seen, arming.isArmed, what === 1)
+        const isListArmed = arming.isArmed && arming.isListArmed
+        // While the selection falls back, the list's x and g stay inert.
+        if (fallbackOf(model(items), sel).includes('selected:')) {
+          expect([shown, 'fallback armed', isListArmed]).toEqual([shown, 'fallback armed', false])
+        }
+        checkTargets(shown, next.list, targets, seen, isListArmed, isLive)
         last = next
       }
     })
   }
+})
+
+// The pane's arming as pane.tsx feeds it a drawing, and the list's x as the
+// person sees it.
+function drawnEvent(items: RabeItem[], sel: Selection) {
+  return {
+    type: 'drawn',
+    fallback: fallbackOf(model(items), sel),
+    targets: targetsOf(paneView(model(items), SIZE, { ...sel, isArmed: true, isListArmed: true })),
+    selected: sel.selected,
+  } as const
+}
+
+const xOf = (items: RabeItem[], sel: Selection, arming: typeof DISARMED) =>
+  paneView(model(items), SIZE, { ...sel, ...arming }).buttons.find(one => one.key === 'stop')
+
+// GPT review round 7: shell a is selected and goes; the list falls back to b
+// and disarms. Shift+Tab to the group header, Tab back to `gone a`: x must
+// not stop b, which the person never chose.
+test('focus on a gone slot or a group header never arms x on the row the list fell back to', () => {
+  const [a, b] = [shell('a'), shell('b')]
+  const sel: Selection = { ...OPEN, selected: a.id, order: orderOf([a, b]) }
+  const focus = (items: RabeItem[], key: string) =>
+    ({ type: 'focus', byPerson: true, key, isLiveRow: isLiveRow(model(items), sel, key) }) as const
+  let arming = arm(arm(DISARMED, drawnEvent([a, b], sel)), focus([a, b], `row:${a.id}`))
+  arming = arm(arming, drawnEvent([a, b], sel))
+  expect(xOf([a, b], sel, arming)?.action).toEqual({ type: 'stop', ids: [a.id] })
+  const first = draw(model([a, b]), SIZE, sel)
+  const later = draw(model([b]), SIZE, sel, first.held)
+  expect(later.keys).toContain(`row:${a.id}`)
+  arming = arm(arming, drawnEvent([b], sel))
+  for (const key of ['group-shells', `row:${a.id}`]) {
+    arming = arm(arm(arming, focus([b], key)), drawnEvent([b], sel))
+    expect([key, xOf([b], sel, arming)?.action.type]).toEqual([key, 'none'])
+  }
+  sel.selected = b.id
+  arming = arm(arm(arming, focus([b], `row:${b.id}`)), drawnEvent([b], sel))
+  expect(xOf([b], sel, arming)?.action).toEqual({ type: 'stop', ids: [b.id] })
+})
+
+// GPT review round 7: g of a group of two running rows stops both; one ends,
+// and g can no longer act. A row that leaves the group keeps x armed.
+test('a group that shrinks from two stoppable rows to one keeps x armed', () => {
+  const [a, b] = [shell('a'), shell('b')]
+  const sel: Selection = { ...OPEN, selected: a.id, order: orderOf([a, b]) }
+  const live = { type: 'focus', byPerson: true, key: `row:${a.id}`, isLiveRow: true } as const
+  const before = arm(arm(arm(DISARMED, drawnEvent([a, b], sel)), live), drawnEvent([a, b], sel))
+  const ended = { ...b, status: 'done', endedAt: NOW } as RabeItem
+  expect(targetsOf(paneView(model([a, ended]), SIZE, sel))).toEqual([
+    JSON.stringify(['stop', 'x: stop', a.id]),
+  ])
+  const after = arm(before, drawnEvent([a, ended], sel))
+  expect([after.isArmed, after.isListArmed]).toEqual([true, true])
+  expect(xOf([a, ended], sel, after)?.action).toEqual({ type: 'stop', ids: [a.id] })
 })
 
 // GPT review round 6: an ended shell's detail is open and another shell runs;

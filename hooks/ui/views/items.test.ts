@@ -19,7 +19,7 @@ import {
 import { grouped, orderOf } from '../lists'
 import { controlRows, type Drawn, isPress, NO_SELECTION, NONE, rowKeys, type Size } from '../view'
 import { itemsView } from './items'
-import { fallbackOf, paneView } from './pane'
+import { fallbackOf, isLiveRow, paneView } from './pane'
 
 const WIDE: Size = { columns: 100, rows: 24, surface: 'terminal', hasInput: true }
 const NARROW: Size = { ...WIDE, columns: 80, rows: 12 }
@@ -323,7 +323,7 @@ test('x and g keep their keys and act on the selected row', () => {
 // but do nothing (see arming in docs/architecture.md).
 test('a disarmed pane draws its stops and deletes dim, without action or hotkey', () => {
   const sel = { ...NO_SELECTION, selected: explore.id, isFocused: true }
-  const armed = paneView(model, WIDE, { ...sel, isArmed: true })
+  const armed = paneView(model, WIDE, { ...sel, isArmed: true, isListArmed: true })
   const disarmed = paneView(model, WIDE, sel)
   expect(disarmed.buttons.map(one => one.key)).toEqual(armed.buttons.map(one => one.key))
   expect(disarmed.buttons.slice(1)).toEqual(
@@ -336,6 +336,10 @@ test('a disarmed pane draws its stops and deletes dim, without action or hotkey'
   const hint = (drawn: Drawn) => lines(gridOf(drawn).grid).at(-1)?.trim()
   expect(hint(armed)).toBe('↑↓ move · enter open · x stop · g stop group · esc close')
   expect(hint(disarmed)).toBe('↑↓ move · enter open · esc close')
+  const list = paneView(model, WIDE, { ...sel, isArmed: true })
+  expect(list.buttons).toEqual(disarmed.buttons)
+  const detail = paneView(model, WIDE, { ...sel, open: babysit.id, isArmed: true })
+  expect(detail.buttons.find(one => one.key.startsWith('delete:'))?.action.type).toBe('delete')
 })
 
 test('a view falls back when its open item or its selected row is gone', () => {
@@ -348,4 +352,16 @@ test('a view falls back when its open item or its selected row is gone', () => {
   expect(fallbackOf(model, { ...sel, query: 'zz' })).toBe(`selected:${explore.id}`)
   expect(fallbackOf(model, { ...sel, tab: 'cost', selected: 'agent:gone' })).toBe('')
   expect(fallbackOf(model, NO_SELECTION)).toBe('')
+  const both = { ...sel, open: 'shell:gone', selected: 'shell:gone' }
+  expect(fallbackOf(model, both)).toBe('open:shell:gone selected:shell:gone')
+})
+
+test('a row is live where the list draws it, not as a gone slot, a header or a control', () => {
+  const sel = { ...NO_SELECTION, selected: explore.id }
+  expect(isLiveRow(model, sel, `row:${explore.id}`)).toBe(true)
+  expect(isLiveRow(model, sel, 'row:agent:gone')).toBe(false)
+  expect(isLiveRow(model, { ...sel, query: 'zz' }, `row:${explore.id}`)).toBe(false)
+  for (const key of ['group-shells', 'tab-items', 'stop', explore.id]) {
+    expect([key, isLiveRow(model, sel, key)]).toEqual([key, false])
+  }
 })
