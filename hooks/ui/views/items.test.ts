@@ -224,26 +224,29 @@ const shellOf = (id: string, parentId?: string): RabeItem => ({
   detail: { command: id, taskId: id },
 })
 
-test('a held list adds an agent shell at the end, never above a row', () => {
-  const a1 = shellOf('a1', explore.id)
-  const b1 = shellOf('b1', plan.id)
-  const before = [explore, plan, a1, b1]
-  const order = orderOf(before)
-  const sel = { ...NO_SELECTION, selected: b1.id, order }
+test('a held list adds new items in NEW at the end, never above the focused row', () => {
+  const s1 = shellOf('s1')
+  const s2 = shellOf('s2')
+  const before = [explore, s1, s2]
+  const sel = { ...NO_SELECTION, selected: s2.id, order: orderOf(before) }
+  const upTo = (drawn: Drawn) => rowKeys(drawn).slice(0, rowKeys(drawn).indexOf(`row:${s2.id}`) + 1)
+  const held = upTo(itemsView({ ...model, items: before }, NARROW, sel))
+  const agent: RabeItem = { ...plan, status: 'running', endedAt: undefined }
   const a2 = shellOf('a2', explore.id)
-  const drawn = itemsView({ ...model, items: [...before, a2] }, NARROW, sel)
-  const shells = rowKeys(drawn).filter(key => key.startsWith('row:shell:'))
-  expect(shells).toEqual([`row:${a1.id}`, `row:${b1.id}`, `row:${a2.id}`])
+  const watch = { ...ci, id: 'monitor:new' }
+  const drawn = itemsView({ ...model, items: [...before, agent, a2, watch] }, NARROW, sel)
+  expect(upTo(drawn)).toEqual(held)
+  expect(rowKeys(drawn).slice(held.length)).toEqual(
+    [agent.id, a2.id, watch.id].map(id => `row:${id}`),
+  )
   const shown = lines(gridOf(drawn).grid).map(line => line.trimEnd())
-  expect(shown.filter(line => line === ' ◐ Explore verifyToken')).toHaveLength(2)
-  const main = shellOf('main')
-  const later = itemsView({ ...model, items: [...before, a2, main] }, NARROW, sel)
-  expect(rowKeys(later).filter(key => key.startsWith('row:shell:'))).toEqual([
-    `row:${a1.id}`,
-    `row:${b1.id}`,
-    `row:${a2.id}`,
-    `row:${main.id}`,
-  ])
+  expect(shown.some(line => line.startsWith('▾ NEW 3'))).toBe(true)
+})
+
+test('the first shell after the open does not open a SHELLS group above the monitors', () => {
+  const sel = { ...NO_SELECTION, selected: ci.id, order: orderOf([explore, ci]) }
+  const keys = rowKeys(itemsView({ ...model, items: [explore, ci, shellOf('late')] }, NARROW, sel))
+  expect(keys).toEqual([`row:${explore.id}`, `row:${ci.id}`, 'row:shell:late'])
 })
 
 test('a held order keeps the families as the list showed them when it opened', () => {

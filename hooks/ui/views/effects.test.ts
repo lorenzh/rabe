@@ -6,7 +6,7 @@ import { cell, lines } from '../cells/grid'
 import { C, CHIP } from '../cells/palette'
 import { ALL, dev, explore, gridOf, NOW, plan } from '../fixtures'
 import { orderOf } from '../lists'
-import { isPress, type Model, NO_SELECTION, type Press, rowKeys, type Size } from '../view'
+import { isPress, type Model, NO_SELECTION, type Press, rowKeys, type Size, stepRow } from '../view'
 import { effectsView } from './effects'
 
 const SIZE: Size = { columns: 90, rows: 30, surface: 'terminal', hasInput: false }
@@ -183,14 +183,56 @@ test('with no edits, agents or ports each section says so', () => {
   expect(drawn.buttons).toEqual([])
 })
 
-test('a long file list is cut to the rows left, with the rest counted', () => {
+test('a long file list is drawn whole; the tab scrolls to the ports', () => {
   const many = Array.from({ length: 40 }, (_, i) => `/repo/f${i}.ts`)
   const model = { ...MODEL, items: [editing(api, [NOW, ...many]), dev], turns: {} }
-  const { grid } = gridOf(effectsView(model, { ...SIZE, rows: 16 }, NO_SELECTION))
-  const shown = lines(grid)
-  expect(grid.rows).toBeLessThanOrEqual(16)
-  expect(shown.some(line => /^ {2}… \d+ more$/.test(line))).toBe(true)
-  expect(shown).toContain('  :5173  bun run dev')
+  const drawn = effectsView(model, { ...SIZE, rows: 16 }, NO_SELECTION)
+  expect(rowKeys(drawn).filter(key => key.startsWith('row:file:'))).toHaveLength(40)
+  expect(lines(gridOf(drawn).grid)).toContain('  :5173  bun run dev')
+})
+
+const serve = (port: number, id = `p${port}`): RabeItem =>
+  ({
+    ...dev,
+    id: `shell:${id}`,
+    detail: { command: `serve ${port}`, taskId: id, port },
+  }) as RabeItem
+const ten = Array.from({ length: 10 }, (_, i) => `/repo/f${i}.ts`)
+const before = (key: string, drawn: Parameters<typeof rowKeys>[0]) =>
+  rowKeys(drawn).slice(0, rowKeys(drawn).indexOf(key))
+
+test('rows above a focused ssh line stay while shells, ports and conflicts come and go', () => {
+  const editors = [editing(api, [NOW, ...ten])]
+  const items = [...editors, serve(5173), serve(3000)]
+  const order = orderOf(items)
+  const small = { ...SIZE, columns: 100, rows: 18 }
+  const draw = (list: RabeItem[], selected: string) =>
+    effectsView({ ...MODEL, items: list }, small, { ...NO_SELECTION, selected, order })
+  const ended = (port: number) =>
+    items.map(item => (item.id === `shell:p${port}` ? { ...item, status: 'done' as const } : item))
+  const at5173 = before('row:ssh:5173', draw(items, 'ssh:5173'))
+  expect(at5173).toHaveLength(10)
+  expect(before('row:ssh:5173', draw(ended(3000), 'ssh:5173'))).toEqual(at5173)
+  const at3000 = before('row:ssh:3000', draw(items, 'ssh:3000'))
+  const gone = draw(ended(5173), 'ssh:3000')
+  expect(before('row:ssh:3000', gone)).toEqual(at3000)
+  expect(lines(gridOf(gone).grid)).toContain('  :5173  serve 5173  ended')
+  const conflict = [editing(plan, [NOW, '/repo/f1.ts']), ...items]
+  expect(before('row:ssh:3000', draw(conflict, 'ssh:3000'))).toEqual(at3000)
+})
+
+test('two shells on one port draw one ssh line, so the arrows reach the next port', () => {
+  const items = [serve(5173, 'a'), serve(5173, 'b'), serve(3000)]
+  const drawn = effectsView({ ...MODEL, items }, SIZE, NO_SELECTION)
+  const keys = rowKeys(drawn)
+  expect(keys).toEqual(['row:ssh:5173', 'row:ssh:3000'])
+  expect(stepRow(keys, 'ssh:5173', 1)).toBe('row:ssh:3000')
+  expect(lines(gridOf(drawn).grid)).toContain('PORTS 2  found in shell output, may miss some')
+  const held = { ...NO_SELECTION, order: orderOf([serve(5173, 'a')]) }
+  const later = [{ ...serve(5173, 'a'), status: 'done' as const }, serve(5173, 'b')]
+  const again = effectsView({ ...MODEL, items: later }, SIZE, held)
+  expect(rowKeys(again)).toEqual(['row:ssh:5173'])
+  expect(lines(gridOf(again).grid)).toContain('  :5173  serve 5173')
 })
 
 test('a pane too short for every section scrolls to the ssh rows instead of losing them', () => {

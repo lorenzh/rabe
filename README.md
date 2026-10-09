@@ -66,7 +66,7 @@ The buttons under the pane show the keys that work on the current tab. A letter 
 
 With the mouse, click a row to open it, a tab to switch to it, or a group name to fold the group. The wheel scrolls the pane. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
 
-The rows keep their order while the pane is open, so the row under the focus does not move. New items go to the end of their group. Type `/rabe` again to sort the lists.
+The rows keep their order while the pane is open, so the row under the focus does not move. Items that start after you open it go to a NEW group at the end, and on the Effects tab a port whose shell ends keeps its row, marked `ended`. Only a file an agent edits for the first time still adds a row above the ports. Type `/rabe` again to sort the lists.
 
 Commands:
 

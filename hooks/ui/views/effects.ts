@@ -36,8 +36,7 @@ function conflictLines(files: Touched[]): Line[] {
 // A selectable row's start: the orange marker when selected, else a space.
 const mark = (isSelected: boolean): Span => [isSelected ? '▌' : ' ', { fg: C.orange }]
 
-// The rows of `shown`, the files that fit, and a count of the rest.
-function fileLines(files: Touched[], shown: Touched[], width: number, selected: string): Line[] {
+function fileLines(files: Touched[], width: number, selected: string): Line[] {
   const head: Line = {
     spans: [
       [`FILES TOUCHED ${files.length}`, { fg: C.orange }],
@@ -48,7 +47,7 @@ function fileLines(files: Touched[], shown: Touched[], width: number, selected: 
   const inner = Math.max(2, width - 2 - CHANGE - 2)
   const fileWidth = Math.ceil(inner / 2)
   const byWidth = inner - fileWidth
-  const rows: Line[] = shown.map(file => {
+  const rows: Line[] = files.map(file => {
     const isSelected = file.id === selected
     const name = fit(file.rel, fileWidth).trimEnd()
     return {
@@ -68,13 +67,11 @@ function fileLines(files: Touched[], shown: Touched[], width: number, selected: 
       ...(isSelected && { bg: C.selected }),
     }
   })
-  const rest = files.length - shown.length
 
   return [
     head,
     { spans: [[`  ${fit('FILE', fileWidth)} ${fit('BY', byWidth)} CHANGE`, dim]] },
     ...rows,
-    ...(rest ? [{ spans: [[`  … ${rest} more`, dim]] } as Line] : []),
   ]
 }
 
@@ -107,25 +104,42 @@ function treeLines(model: Model): Line[] {
 
 const sshLine = (port: number) => `ssh -L ${port}:localhost:${port} <your-host>`
 
+// The ports to draw: one per port, from the shells that run with one and,
+// while an order is held, those that ran at the open (an ended one keeps its
+// row). A running shell names the port when one does.
+function portsOf(model: Model, held?: string[]) {
+  const shells = stable(
+    model.items.flatMap(item =>
+      item.kind === 'shell' &&
+      item.detail.port !== undefined &&
+      (item.status === 'running' || held?.includes(item.id))
+        ? [{ id: item.id, item, port: item.detail.port }]
+        : [],
+    ),
+    held,
+    list => list,
+  )
+
+  return [...new Set(shells.map(one => one.port))].map(port => {
+    const same = shells.filter(one => one.port === port)
+    const { item } =
+      same.find(one => one.item.status === 'running') ?? (same[0] as (typeof same)[0])
+    return { item, port }
+  })
+}
+
 // The Effects tab: a conflict when two agents edit one file in one tree, the
 // files agents touched (each a row that opens the agent that edited it last),
-// the worktrees, and the ports of running shells, each with its ssh command
-// as a row that copies it (`c` the first). The files hold their order while
-// the pane is open (`stable`). The file list is cut to leave room for the
-// rest; what still does not fit makes the pane scroll, so no row is lost.
+// the worktrees, and the ports of shells, each with its ssh command as a row
+// that copies it (`c` the first). The files and ports hold their order while
+// the pane is open (`stable`), and every file is a row: the tab scrolls, and
+// no row above another comes or goes while a port changes.
 export const effectsView: View = (model, size, sel): Drawn => {
   const files = stable(touched(model.items), sel.order?.files, byConflict)
-  const ports = model.items.flatMap(item =>
-    item.kind === 'shell' && item.status === 'running' && item.detail.port !== undefined
-      ? [{ item, port: item.detail.port }]
-      : [],
-  )
+  const ports = portsOf(model, sel.order?.ports)
   const top = conflictLines(files)
   const trees = treeLines(model)
-  const bottom = 1 + trees.length + 1 + 1 + Math.max(1, ports.length * 2)
-  const room = Math.max(1, size.rows - top.length - bottom - 2)
-  const shown = files.length > room ? files.slice(0, Math.max(0, room - 1)) : files
-  const ids = [...shown.map(file => file.id), ...ports.map(({ port }) => `ssh:${port}`)]
+  const ids = [...files.map(file => file.id), ...ports.map(({ port }) => `ssh:${port}`)]
   const selected = ids.includes(sel.selected) ? sel.selected : (ids[0] ?? '')
   const portLines: Line[] = [
     {
@@ -137,7 +151,14 @@ export const effectsView: View = (model, size, sel): Drawn => {
     ...ports.flatMap(({ item, port }, i): Line[] => {
       const isSelected = selected === `ssh:${port}`
       return [
-        { spans: [['  '], [`:${port}`, { fg: C.blue }], [`  ${item.detail.command}`]] },
+        {
+          spans: [
+            ['  '],
+            [`:${port}`, { fg: C.blue }],
+            [`  ${item.detail.command}`],
+            ...(item.status === 'running' ? [] : [['  ended', dim] as Span]),
+          ],
+        },
         {
           spans: [
             mark(isSelected),
@@ -160,7 +181,7 @@ export const effectsView: View = (model, size, sel): Drawn => {
   const lines = focusOn(
     [
       ...top,
-      ...fileLines(files, shown, size.columns, selected),
+      ...fileLines(files, size.columns, selected),
       { spans: [] },
       ...trees,
       { spans: [] },

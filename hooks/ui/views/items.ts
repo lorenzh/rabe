@@ -35,6 +35,7 @@ const GROUP_COLOR: Record<Group, number> = {
   shells: C.yellow,
   monitors: C.blue,
   cron: C.purple,
+  new: C.bright,
 }
 
 // The split needs room for both columns; below this the detail opens in place.
@@ -85,7 +86,7 @@ function listLines(
   const groups = grouped(visible, sel.order).map(group => ({
     ...group,
     families: FAMILIES.includes(group.id)
-      ? byParent(group.items, model.items, sel.order !== undefined)
+      ? byParent(group.items, model.items)
       : [{ id: '', title: '', items: group.items }],
   }))
   const order = groups.flatMap(group =>
