@@ -5,8 +5,11 @@ import { facts } from '../facts'
 import { glyph, nameSpans, timeLabel } from '../lists'
 import { isPress, type Line, type Model, type Part } from '../view'
 
+// A plain Button with a hotkey draws `c: ` before its label.
+const prefix = (part: Part) => (isPress(part) && part.hotkey ? part.hotkey.length + 2 : 0)
+
 const width = (list: Part[]) =>
-  list.reduce((n, part) => n + [...(isPress(part) ? part.label : part[0])].length, 0)
+  list.reduce((n, part) => n + prefix(part) + [...(isPress(part) ? part.label : part[0])].length, 0)
 
 const cut = (text: string, room: number) => {
   const chars = [...safe(text)]
@@ -24,10 +27,10 @@ export function fitLine(line: Line, columns: number): Line {
   const out: Part[] = []
   let used = 0
   const add = (part: Part, limit: number) => {
-    if (used >= limit) return
-    const shown = cut(isPress(part) ? part.label : part[0], limit - used)
+    if (used + prefix(part) >= limit) return
+    const shown = cut(isPress(part) ? part.label : part[0], limit - used - prefix(part))
     if (!shown) return
-    used += [...shown].length
+    used += prefix(part) + [...shown].length
     if (isPress(part)) {
       out.push({
         ...part,

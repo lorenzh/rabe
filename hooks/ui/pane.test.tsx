@@ -3,7 +3,19 @@ import { expect, type Mounted, mock, test } from 'claude-code/testing'
 
 import type { RabeLines, RabePrevious, RabeTurn } from '../../types'
 import type { RabeItem, RabeItemOf } from '../model'
-import { ALL, babysit, dev, explore, flow, lint, NOW, review, screen, verify } from './fixtures'
+import {
+  ALL,
+  babysit,
+  dev,
+  explore,
+  flow,
+  lint,
+  NOW,
+  plan,
+  review,
+  screen,
+  verify,
+} from './fixtures'
 import { orderOf, previousOf } from './lists'
 
 const SURFACES = ['terminal', 'desktop'] as const
@@ -351,7 +363,10 @@ test('cost, effects and timeline tabs draw their sections on every surface', asy
     shown = await screen(ui)
     expect(shown).toContain('WORKTREES 1  from agent metadata, running agents included')
     expect(shown).toContain('  :5173  bun run dev')
-    expect((await ui.find({ type: 'Button', key: 'port-5173' }))?.props.hotkey).toBe('c')
+    expect((await ui.find({ type: 'Button', key: 'row:ssh:5173' }))?.props).toMatchObject({
+      plain: true,
+      hotkey: 'c',
+    })
     await ui.press({ key: 'tab-timeline' })
     shown = await screen(ui)
     expect(shown).toContain('WHEN DID THINGS RUN?  this session, last 40 min')
@@ -369,6 +384,80 @@ test('enter on a cost row opens that item in the items tab', async ($, on) => {
   await ui.press({ key: `row:${explore.id}` })
   expect(state).toMatchObject({ tab: 'items', open: explore.id, selected: explore.id })
   await ui.unmount()
+})
+
+test('enter on a timeline row opens that item on every surface', async ($, on) => {
+  const state = hold(on, ALL)
+  session(on)
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    await ui.press({ key: 'tab-timeline' })
+    await ui.press({ key: `row:${babysit.id}` })
+    expect(state).toMatchObject({ tab: 'items', open: babysit.id, selected: babysit.id })
+    await ui.press({ key: 'back' })
+    await ui.unmount()
+  }
+})
+
+const edited: RabeItem = {
+  ...(plan as RabeItemOf<'agent'>),
+  detail: { ...(plan as RabeItemOf<'agent'>).detail, edits: [{ path: '/repo/src/a.ts', at: NOW }] },
+}
+
+test('an effects file row opens its editor and the ssh line copies, on every surface', async ($, on) => {
+  const state = hold(
+    on,
+    ALL.map(item => (item.id === plan.id ? edited : item)),
+  )
+  session(on)
+  const copies: string[] = []
+  on('ui.copy', async (_$, e) => {
+    copies.push(e.text)
+    return { value: { isCopied: true as const } }
+  })
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    await ui.press({ key: 'tab-effects' })
+    await ui.press({ key: 'row:ssh:5173' })
+    await ui.press({ key: 'row:file:/repo/src/a.ts' })
+    expect(state).toMatchObject({ tab: 'items', open: plan.id, selected: plan.id })
+    await ui.press({ key: 'back' })
+    await ui.unmount()
+  }
+  const ssh = 'ssh -L 5173:localhost:5173 <your-host>'
+  expect(copies).toEqual([ssh, ssh])
+  expect(state.toasts).toContain(`Copied: ${ssh}`)
+})
+
+test('moving the focus onto a cost or effects row selects it on every surface', async ($, on) => {
+  const state = hold(
+    on,
+    ALL.map(item => (item.id === plan.id ? edited : item)),
+  )
+  session(on)
+  on('ui.focus', async () => ({}))
+  const focus = (element: string) =>
+    $.ui.focus({
+      component: 'Pane',
+      requestId: 'rabe',
+      plugin: 'rabe',
+      element,
+      origin: { kind: 'person' },
+    })
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    await ui.press({ key: 'tab-cost' })
+    await focus(`row:${review.id}`)
+    expect(state.selected).toBe(review.id)
+    expect((await ui.find({ type: 'Button', key: `row:${review.id}` }))?.props.dimColor).toBeFalsy()
+    await ui.press({ key: 'tab-effects' })
+    await focus('row:file:/repo/src/a.ts')
+    expect(state.selected).toBe('file:/repo/src/a.ts')
+    const row = await ui.find({ type: 'Button', key: 'row:file:/repo/src/a.ts' })
+    expect(row?.props).toMatchObject({ autoFocus: true })
+    expect(row?.props.dimColor).toBeFalsy()
+    await ui.unmount()
+  }
 })
 
 test('the session end keeps a summary for the next session in this project', async ($, on) => {

@@ -1,7 +1,7 @@
 import type { RabeItem } from '../model'
 import { decode, type Grid, grid, lines, paste, type Span, spans } from './cells/grid'
 import { C } from './cells/palette'
-import { type Drawn, isPress } from './view'
+import { type Drawn, isPress, type Press } from './view'
 
 export const NOW = new Date(2026, 9, 8, 10, 52, 0).getTime()
 
@@ -196,13 +196,19 @@ export async function screen(ui: Mount): Promise<string[]> {
   return out
 }
 
+// A plain Button's label as the terminal draws it: `c: label` with a hotkey.
+const drawnLabel = (part: Press) => (part.hotkey ? `${part.hotkey}: ${part.label}` : part.label)
+
 const widthOf = (drawn: Drawn) =>
   Math.max(
     1,
     ...drawn.nodes.map(node =>
       'chart' in node
         ? node.chart.columns
-        : node.spans.reduce((n, part) => n + [...(isPress(part) ? part.label : part[0])].length, 0),
+        : node.spans.reduce(
+            (n, part) => n + [...(isPress(part) ? drawnLabel(part) : part[0])].length,
+            0,
+          ),
     ),
   )
 
@@ -224,7 +230,7 @@ export function raster(drawn: Drawn, columns = widthOf(drawn)): Grid {
       (part): Span =>
         isPress(part)
           ? [
-              part.label,
+              drawnLabel(part),
               { ...(part.dim && { fg: C.dim }), ...(part.bg !== undefined && { bg: part.bg }) },
             ]
           : part,
