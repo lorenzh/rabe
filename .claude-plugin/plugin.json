@@ -13,6 +13,12 @@
       "title": "Hide Claude Code's own background count",
       "default": true,
       "description": "Removes the shells and monitors count and its '\u2193 to manage' from the hint under the prompt, and the 'still running' part from the line that ends a turn, since Rabe's band shows them. The agent list under the prompt cannot be hidden."
+    },
+    "pricesFile": {
+      "type": "file",
+      "title": "Your own price table",
+      "default": "",
+      "description": "A CSV file in the format of Rabe's data/prices.csv (an absolute path, or one that starts with ~/). Its rows come before Rabe's, for the same model or one Rabe does not know. Empty: Rabe's table only. A file that cannot be read makes every cost n/a."
     }
   }
 }

@@ -158,10 +158,18 @@ test('joinFit stops at the width and counts the rest', () => {
 })
 
 test('cost totals sum tokens and dollars and count unknowns', () => {
-  expect(totals(ALL)).toEqual({ usd: 0.25, tokens: 91_000, unknown: 2, claude: 0.16, codex: 0.09 })
+  expect(totals(ALL)).toEqual({ usd: 0.31, tokens: 91_000, unknown: 2, claude: 0.22, codex: 0.09 })
   expect(byTokens(ALL).slice(0, 3)).toEqual([explore, review, verify])
   expect(share(ALL, explore)).toBe('45%')
   expect(share(ALL, plan)).toBe('n/a')
+})
+
+test('a worker with tokens but no price makes its side and the sum n/a, not smaller', () => {
+  const unpriced = ALL.map(item => (item.id === verify.id ? { ...item, costUsd: undefined } : item))
+  expect(totals(unpriced)).toEqual({ tokens: 91_000, unknown: 2, codex: 0.09 })
+  expect(costLine(unpriced)).toBe('cost n/a · 91k tok · top: Explore verifyToken 41k')
+  // a worker without tokens yet spent nothing Rabe knows of
+  expect(totals(ALL.filter(item => item.id !== verify.id)).claude).toBe(0.16)
 })
 
 test('without any dollar amount the cost is n/a, not $0.00', () => {

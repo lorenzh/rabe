@@ -44,9 +44,11 @@ function costBox(model: Model, item: RabeItem): Line[] {
   const sum = (key: 'input' | 'output' | 'cached') =>
     known.reduce((n, one) => n + (one.tokens?.[key] ?? 0), 0)
   const costs = list.filter(one => one.costUsd !== undefined)
-  const cost: Span = costs.length
-    ? [`≈ ${usd(costs.reduce((n, one) => n + (one.costUsd ?? 0), 0))}`, { fg: C.bright }]
-    : ['cost n/a', dim]
+  // one worker with tokens but no price makes the sum unknown
+  const cost: Span =
+    costs.length && known.every(one => one.costUsd !== undefined)
+      ? [`≈ ${usd(costs.reduce((n, one) => n + (one.costUsd ?? 0), 0))}`, { fg: C.bright }]
+      : ['cost n/a', dim]
   const cached = sum('cached')
   const tok: Span[] = known.length
     ? [

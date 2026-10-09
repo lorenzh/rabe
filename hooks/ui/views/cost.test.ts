@@ -17,7 +17,7 @@ test('the cost tab heads with the session cost, the totals and the running count
   const { grid } = gridOf(costView(MODEL, SIZE, NO_SELECTION))
   const shown = lines(grid)
   expect(shown[0]).toBe(
-    ' ≈ $0.41 session  claude $0.16   codex $0.09   tokens 91k   running 7   2 n/a',
+    ' ≈ $0.41 session  claude ≈ $0.22  codex ≈ $0.09  tokens 91k  running 7  2 n/a',
   )
   expect(cell(grid, 1, 0)).toEqual(['≈'.codePointAt(0), C.bright, C.panel])
   expect(cell(grid, 79, 0)[2]).toBe(C.panel)
@@ -34,7 +34,7 @@ test('each worker has a block bar by tokens in its kind color, and n/a where unk
   const { grid } = gridOf(costView(MODEL, SIZE, NO_SELECTION))
   const shown = lines(grid)
   const top = row(shown, /Explore verifyToken/)
-  expect(shown[top]).toMatch(/^▌◐ Explore verifyToken +█+ +41k +\$0\.16 +1m$/)
+  expect(shown[top]).toMatch(/^▌◐ Explore verifyToken +█+ +41k +≈ \$0\.16 +1m$/)
   const x = shown[top]?.indexOf('█') ?? -1
   expect(cell(grid, x, top)[1]).toBe(CHIP.agent.fg)
   expect(cell(grid, 0, top)[2]).toBe(C.selected)

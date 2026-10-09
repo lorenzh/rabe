@@ -129,6 +129,7 @@ export const verify: RabeItem = {
   startedAt: NOW - 40_000,
   parentId: flow.id,
   tokens: { input: 19_000, output: 3_000 },
+  costUsd: 0.06,
   detail: { agentId: 'w1', workflowPhase: 'Verify' },
 }
 

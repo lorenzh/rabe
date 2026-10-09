@@ -49,7 +49,7 @@ test('the band is one line of count chips and the cost under an empty row on eve
     expect(shown).toHaveLength(2)
     expect(shown[0]?.trim()).toBe('')
     expect(shown[1]).toMatch(/^ ✗ 1 failed {3}◐ 2 claude {3}◐ 1 codex {3}⧉ 1 workflow {3}▶ 1 shell/)
-    expect(shown[1]).toContain('≈ $0.25 · 91k tok')
+    expect(shown[1]).toContain('≈ $0.31 · 91k tok')
     await ui.unmount()
   }
 })

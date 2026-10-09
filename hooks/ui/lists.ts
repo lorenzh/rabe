@@ -376,20 +376,27 @@ const plus = (sum: number | undefined, value: number | undefined) =>
 
 export function totals(items: RabeItem[]): Totals {
   const out: Totals = { tokens: 0, unknown: 0 }
+  const unpriced = new Set<'claude' | 'codex'>()
   for (const item of items) {
     if (item.kind !== 'agent' && item.kind !== 'codex') continue
+    const side = item.kind === 'agent' ? 'claude' : 'codex'
     if (!item.tokens) out.unknown += 1
     out.tokens += item.tokens ? item.tokens.input + item.tokens.output : 0
-    if (item.costUsd === undefined) continue
+    if (item.costUsd === undefined) {
+      if (item.tokens) unpriced.add(side)
+      continue
+    }
     out.usd = plus(out.usd, item.costUsd)
-    if (item.kind === 'agent') out.claude = plus(out.claude, item.costUsd)
-    else out.codex = plus(out.codex, item.costUsd)
+    out[side] = plus(out[side], item.costUsd)
   }
+  // a worker that spent tokens Rabe cannot price makes its sum unknown, not smaller
+  for (const side of unpriced) delete out[side]
+  if (unpriced.size) delete out.usd
 
   return out
 }
 
-export const cost = (n: number | undefined) => (n === undefined ? 'n/a' : usd(n))
+export const cost = (n: number | undefined) => (n === undefined ? 'n/a' : `≈ ${usd(n)}`)
 
 export const tokenSum = (item: RabeItem) =>
   item.tokens ? item.tokens.input + item.tokens.output : -1

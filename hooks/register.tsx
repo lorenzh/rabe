@@ -6,7 +6,7 @@ import { builtin } from './ui/builtin'
 import { pane } from './ui/pane'
 
 export const register: Register = (on, options) => {
-  sources(on)
+  sources(on, String(options.pricesFile ?? ''))
   band(on)
   pane(on)
   if (options.hideBuiltinTasks !== false) builtin(on)

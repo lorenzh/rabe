@@ -104,8 +104,9 @@ test('a long brief keeps three lines', () => {
   expect(shown[at + 4]).toBe('')
 })
 
-test('an agent without turns and tokens says n/a', () => {
-  const shown = lines(open(model([verify]), verify.id).grid)
+test('an agent without turns and a price says n/a', () => {
+  const bare = { ...verify, costUsd: undefined }
+  const shown = lines(open(model([bare]), verify.id).grid)
   expect(shown).toContain('Turns n/a: none seen since Rabe loaded.')
   expect(shown).toContain(' cost n/a   in 19k  out 3k')
   expect(shown.some(line => line.includes('active n/a'))).toBe(true)
@@ -168,11 +169,18 @@ test('a workflow shows its phases and each agent with tokens and time', () => {
   const shown = lines(g)
   expect(shown).toContain('✓ Review → ◐ Verify → · Report')
   expect(shown).toContain(' 2 agents')
+  expect(shown.some(line => line.startsWith(' ≈ $0.06   in 19k'))).toBe(true)
   expect(fg(g, find(g, 'VERIFY'))).toBe(C.green)
   expect(shown.some(line => /◐ verify:db\.ts +22k · 40s$/.test(line))).toBe(true)
   expect(shown.some(line => /✓ review:bugs +n\/a · 3m ago$/.test(line))).toBe(true)
   expect(rowKeys(drawn)).toContain(`row:${verify.id}`)
   expect(buttons.find(b => b.key === `stop-run:${flow.id}`)?.label).toBe('g: stop run')
+})
+
+test('a workflow with an agent that has tokens but no price shows cost n/a', () => {
+  const items = ALL.map(item => (item.id === verify.id ? { ...item, costUsd: undefined } : item))
+  const shown = lines(open(model(items), flow.id).grid)
+  expect(shown.some(line => line.startsWith(' cost n/a   in 19k'))).toBe(true)
 })
 
 test('a shell shows its output tail and its exit code in color', () => {
