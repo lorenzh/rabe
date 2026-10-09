@@ -190,7 +190,7 @@ async function choose($: EngineInterface, id: string): Promise<boolean> {
 }
 
 // Hides ended items for the session: they stay in `rabe.items`, which polls
-// fill again, and the views leave them out (`kept`). An id stays even when
+// fill again, and only the list leaves them out (`kept`). An id stays even when
 // the cap drops its item, which a poll may find again.
 async function remove($: EngineInterface, action: Action & { type: 'remove' | 'clear' }) {
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
@@ -287,9 +287,8 @@ async function look(
   $: EngineInterface,
   isFocused: boolean,
 ): Promise<{ model: Model; selection: Selection }> {
-  const { value: all = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+  const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   const { value: removed = [] } = await $.state.get({ plugin: 'rabe', key: 'removed' })
-  const items = kept(all, removed)
   const { value: turns = {} } = await $.state.get({ plugin: 'rabe', key: 'turns' })
   const { value: lines = {} } = await $.state.get({ plugin: 'rabe', key: 'lines' })
   const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
@@ -302,6 +301,7 @@ async function look(
   const usage = await $.session.usage().catch(() => undefined)
   const model = {
     items,
+    removed,
     turns,
     lines,
     now: await $.clock.now(),
@@ -412,9 +412,8 @@ export function pane(on: On): void {
   // Each open sorts the lists once; then they hold their order (see `stable`).
   on('command.run', { command: 'rabe' }, async $ => {
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
-    const { value: removed = [] } = await $.state.get({ plugin: 'rabe', key: 'removed' })
     const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
-    await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(kept(items, removed), edits))
+    await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(items, edits))
     holds.clear()
     feed($, { type: 'reset' })
     await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })

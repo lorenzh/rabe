@@ -6,7 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Added
 
-- Remove finished and failed items from the list: `r` removes the selected row once it is done, failed or stopped, and `a` removes every such row the search shows. Running items stay. Removed items stay hidden for the session, in every tab and in the band. (fixes [#13](https://github.com/lorenzh/rabe/issues/13))
+- Remove finished and failed items from the list: `r` removes the selected row once it is done, failed or stopped, and `a` removes every such row the search shows. Running items stay. Removed rows stay off the list and the band's chips for the session; workflow phases, token counts, the cost and the other tabs still count them. (fixes [#13](https://github.com/lorenzh/rabe/issues/13))
 
 ### Changed
 

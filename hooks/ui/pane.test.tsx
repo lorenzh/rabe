@@ -14,6 +14,7 @@ import {
   NOW,
   plan,
   review,
+  reviewed,
   screen,
   verify,
 } from './fixtures'
@@ -1162,4 +1163,25 @@ test('r and a remove ended rows for the session; running rows stay', async ($, o
   expect(shown).not.toContain(lint.title)
   expect(shown).toContain(dev.title)
   await again.unmount()
+})
+
+// Removing hides rows on the list only: a removed workflow agent still counts
+// in its run's phases and tokens, and a removed item still counts in the cost.
+test('a removed workflow agent still counts in its run and the cost', async ($, on) => {
+  const done = { ...reviewed, tokens: { input: 30_000, output: 2_000 } }
+  const items = ALL.map(item => (item.id === reviewed.id ? done : item))
+  hold(on, items, { removed: [done.id], open: flow.id, order: orderOf(items) })
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  const detail = (await screen(ui)).join('\n')
+  expect(detail).toContain('✓ Review → ◐ Verify')
+  expect(detail).toMatch(/review:bugs +32k/)
+  expect(detail).not.toContain('REVIEW not started')
+  await ui.press({ key: 'back' })
+  const shown = (await screen(ui)).join('\n')
+  expect(shown).toContain(`Items ${items.length - 1}`)
+  expect(shown).not.toContain('review:bugs')
+  await ui.unmount()
+  const band = await $.ui.mount(BAND as never)
+  expect((await screen(band)).join('\n')).toContain('123k tok')
+  await band.unmount()
 })

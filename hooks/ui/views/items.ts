@@ -11,6 +11,7 @@ import {
   glyph,
   grouped,
   groupNote,
+  kept,
   matches,
 } from '../lists'
 import {
@@ -78,7 +79,7 @@ function shownFrom(size: Size, at: number): number {
 // SHELLS and MONITORS the rows of each agent indented under its name.
 // Gaps between groups only where the whole list fits in `rows`.
 function groupsOf(model: Model, sel: Selection) {
-  const visible = model.items.filter(item => matches(item, sel.query))
+  const visible = kept(model.items, model.removed).filter(item => matches(item, sel.query))
 
   return grouped(visible, sel.order).map(group => ({
     ...group,
@@ -252,7 +253,7 @@ export const itemsView: View = (model, size, sel): Drawn => {
     buttons,
     inputs,
   })
-  if (model.items.length === 0) {
+  if (kept(model.items, model.removed).length === 0) {
     return note(' Nothing runs in the background.', listButtons(model, size, undefined, []))
   }
   const split = isSplit(size)

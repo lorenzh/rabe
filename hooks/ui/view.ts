@@ -7,9 +7,12 @@ import { type Grid, MAX_COLUMNS, MAX_ROWS, type Span } from './cells/grid'
 // What every view reads: the sources' session values, never files. `usd` is
 // the session's cost as /cost totals it; `previous` is the last session in
 // this project that had background work, from `$.store`. `edits` are the
-// files the main session changed, `cwd` the session's folder.
+// files the main session changed, `cwd` the session's folder. `removed` are
+// the ids the person removed (`rabe.removed`): only the list and the band's
+// chips leave them out (`kept`); summaries and the other tabs count them.
 export type Model = {
   items: RabeItem[]
+  removed?: string[]
   turns: Record<string, RabeTurn[]>
   lines: Record<string, RabeLines>
   now: number
