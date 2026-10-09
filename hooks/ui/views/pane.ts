@@ -34,6 +34,7 @@ const HINT = 1
 const WORDS: Record<string, string> = {
   stop: 'x stop',
   'stop-group': 'g stop group',
+  'stop-run': 'g stop run',
 }
 
 const hasRows = (nodes: Node[]) =>

@@ -3,7 +3,7 @@ import { expect, type Mounted, mock, test } from 'claude-code/testing'
 
 import type { RabeLines, RabePrevious, RabeTurn } from '../../types'
 import type { RabeItem, RabeItemOf } from '../model'
-import { ALL, babysit, dev, explore, flow, lint, NOW, review, screen } from './fixtures'
+import { ALL, babysit, dev, explore, flow, lint, NOW, review, screen, verify } from './fixtures'
 import { orderOf, previousOf } from './lists'
 
 const SURFACES = ['terminal', 'desktop'] as const
@@ -415,19 +415,73 @@ test('a cron job offers delete on every surface', async ($, on) => {
   }
 })
 
-test('moving the focus onto a desktop row selects it', async ($, on) => {
-  const state = hold(on, ALL)
-  on('ui.focus', async () => ({}))
-  const ui = await $.ui.mount({ surface: 'desktop', ...PANE } as never)
-  await $.ui.focus({
+const focus = (element: string) =>
+  ({
     component: 'Pane',
     requestId: 'rabe',
     plugin: 'rabe',
-    element: `row:${dev.id}`,
+    element,
     origin: { kind: 'person' },
+  }) as const
+
+test('moving the focus onto a row selects it, and the detail beside the list follows on every surface', async ($, on) => {
+  const state = hold(on, ALL)
+  on('ui.focus', async () => ({}))
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...WIDE } as never)
+    await $.ui.focus(focus(`row:${dev.id}`))
+    expect(state.selected).toBe(dev.id)
+    const shown = await screen(ui)
+    expect(shown.some(line => /│ ▶ shell · bun run dev +running$/.test(line))).toBe(true)
+    expect((await ui.find({ type: 'Button', key: `row:${dev.id}` }))?.props.autoFocus).toBe(true)
+    await $.ui.focus(focus(`row:${lint.id}`))
+    await ui.unmount()
+  }
+})
+
+const child: RabeItem = {
+  ...(dev as RabeItemOf<'shell'>),
+  id: 'shell:m',
+  title: 'bun test',
+  parentId: explore.id,
+  detail: { command: 'bun test', taskId: 'm' },
+}
+
+test('the shells of an agent sit under its name on every surface, and their row opens them', async ($, on) => {
+  const state = hold(on, [...ALL, child])
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    const shown = await screen(ui)
+    const at = shown.indexOf(' ◐ Explore verifyToken')
+    expect(at).toBeGreaterThan(0)
+    expect(shown[at + 1]).toMatch(/^[ ▌] {2}▶ bun test +≥ 40m$/)
+    await ui.press({ key: `row:${child.id}` })
+    expect(state).toMatchObject({ open: child.id, selected: child.id })
+    await ui.press({ key: 'back' })
+    await ui.unmount()
+  }
+})
+
+test('g on a workflow agent stops its run on every surface', async ($, on) => {
+  hold(on, ALL, { selected: verify.id })
+  const stopped: unknown[] = []
+  on('tool.call', async (_$, e, next) => {
+    if (e.tool !== 'TaskStop') return next(e)
+    stopped.push(e.task_id)
+    return { result: {}, text: 'stopped' }
   })
-  expect(state.selected).toBe(dev.id)
-  await ui.unmount()
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    expect((await ui.find({ type: 'Button', key: 'stop-run' }))?.props).toMatchObject({
+      label: 'g: stop run',
+      hotkey: 'g',
+    })
+    expect(await ui.find({ type: 'Button', key: 'stop' })).toBeUndefined()
+    expect(await screen(ui)).toContain(' ↑↓ move · enter open · g stop run · esc close')
+    await ui.press({ key: 'stop-run' })
+    await ui.unmount()
+  }
+  expect(stopped).toEqual(['wf_task', 'wf_task'])
 })
 
 test('x stops a codex job through /rabe-stop on every surface', async ($, on) => {

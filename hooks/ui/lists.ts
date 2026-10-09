@@ -305,6 +305,18 @@ export type BandRow = {
 const isRunning = (kind: RabeItemKind) => (item: RabeItem) =>
   item.kind === kind && item.status === 'running'
 
+// Running shells or monitors as the Items tab groups them: the main
+// session's first, then each agent's after its dim name.
+function familyNames(items: RabeItem[], kind: 'shell' | 'monitor'): Span[][] {
+  return byParent(items.filter(isRunning(kind)), items).flatMap(family =>
+    family.items.map((item): Span[] =>
+      family.id === ''
+        ? nameSpans(item)
+        : [[`${family.title} › `, { fg: C.dim }], ...nameSpans(item)],
+    ),
+  )
+}
+
 export function bandRows(items: RabeItem[], now: number): BandRow[] {
   const dim = { fg: C.dim }
   const run = (item: RabeItem): Span[] => [
@@ -338,13 +350,13 @@ export function bandRows(items: RabeItem[], now: number): BandRow[] {
       glyph: '▶',
       kind: 'shell',
       label: 'shells',
-      names: items.filter(isRunning('shell')).map(item => nameSpans(item)),
+      names: familyNames(items, 'shell'),
     },
     {
       glyph: '◉',
       kind: 'monitor',
       label: 'watch',
-      names: items.filter(isRunning('monitor')).map(item => nameSpans(item)),
+      names: familyNames(items, 'monitor'),
     },
     {
       glyph: '⟳',

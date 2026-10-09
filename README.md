@@ -25,11 +25,11 @@ Status: early development. Version 0.1.0.
 | Cron jobs and `/loop` wakeups | Prompt and countdown to the next run | The next five runs |
 | Cost | Session cost and tokens of the background work | Cost tab: tokens per worker, workers that look stuck |
 
-The band puts failures from the last 10 minutes first. When nothing runs, it draws nothing. When its rows do not fit, it draws one line of counts.
+The band puts failures from the last 10 minutes first. Shells and monitors that an agent started come after the others, with the name of that agent. When nothing runs, it draws nothing. When its rows do not fit, it draws one line of counts.
 
 The pane has four tabs:
 
-- **Items**: all items grouped by kind, with a search field. If the pane is 90 columns or wider, the selected item shows beside the list.
+- **Items**: all items grouped by kind, with a search field. Shells and monitors that an agent started show under the name of that agent. If the pane is 90 columns or wider, the selected item shows beside the list.
 - **Cost**: the session cost as `/cost` totals it, and a bar of tokens per agent and Codex job. Agents that look slow or stuck show under "Load".
 - **Effects**: files that agents edited, a warning when two agents edit the same file, worktrees, and open ports with the `ssh -L` command to reach them.
 - **Timeline**: a bar per item over the session, who started what, and a summary of the previous session in this project.
@@ -55,7 +55,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | `1` to `4` | Switch tab |
 | `s` | Search |
 | `x` | Stop the selected item |
-| `g` | Stop the whole group, or a workflow run |
+| `g` | Stop the whole group, or the workflow run of the selected run or workflow agent |
 | `m` | Send a message to an agent |
 | `c` | Copy the command, the prompt or the `ssh -L` line |
 | `d` | Delete a cron job |
