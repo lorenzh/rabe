@@ -24,7 +24,7 @@ let shown: Grid = grid(1, 1)
 // refused character is noted and the rest drawn again, so all are listed.
 test('the engine takes every character safe lets through in a Raster', async ($, on) => {
   on('ui.render', { component: 'AbovePrompt' }, async ($, e) =>
-    render($.ui.resolve(e), e.surface, { grid: shown, buttons: [] }, () => {}),
+    render($.ui.resolve(e), e.surface, { nodes: [{ chart: shown }], buttons: [] }, () => {}),
   )
   let rest: string[] = []
   for (let code = 0x21; code <= 0xffff; code++) {

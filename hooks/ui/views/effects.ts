@@ -1,9 +1,9 @@
 import type { RabeItemOf } from '../../model'
-import { fit, grid, type Span } from '../cells/grid'
+import { fit, type Span } from '../cells/grid'
 import { C, CHIP } from '../cells/palette'
 import { worktrees } from '../lists'
-import type { Drawn, Model, View, ViewButton } from '../view'
-import { draw, type Line } from './lines'
+import type { Drawn, Line, Model, View, ViewButton } from '../view'
+import { fitLine } from './lines'
 
 const dim = { fg: C.dim }
 const CHANGE = 8
@@ -128,7 +128,6 @@ const sshLine = (port: number) => `ssh -L ${port}:localhost:${port} <your-host>`
 // files agents touched, the worktrees, and the ports of running shells with
 // the ssh command to reach them; a Button copies each command.
 export const effectsView: View = (model, size): Drawn => {
-  const g = grid(size.columns, size.rows)
   const files = touched(model)
   const ports = model.items.flatMap(item =>
     item.kind === 'shell' && item.status === 'running' && item.detail.port !== undefined
@@ -155,7 +154,7 @@ export const effectsView: View = (model, size): Drawn => {
   const bottom = [{ spans: [] }, ...treeLines(model), { spans: [] }, ...portLines]
   const room = Math.max(1, size.rows - top.length - bottom.length - 2)
   const lines = [...top, ...fileLines(files, size.columns, room), ...bottom]
-  draw(g, 0, 0, size.columns, lines.slice(0, size.rows))
+  const nodes = lines.slice(0, size.rows).map(line => fitLine(line, size.columns))
   const buttons: ViewButton[] = ports.map(({ port }, i) => ({
     key: `port-${port}`,
     label: i === 0 ? `c: copy ssh :${port}` : `copy ssh :${port}`,
@@ -163,5 +162,5 @@ export const effectsView: View = (model, size): Drawn => {
     action: { type: 'copy', text: sshLine(port) },
   }))
 
-  return { grid: g, buttons }
+  return { nodes, buttons }
 }

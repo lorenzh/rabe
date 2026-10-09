@@ -3,8 +3,20 @@ import { expect, test } from 'claude-code/testing'
 import type { RabeItem } from '../../model'
 import { cell, type Grid, lines } from '../cells/grid'
 import { C } from '../cells/palette'
-import { ALL, babysit, ci, dev, explore, flow, lint, NOW, review, verify } from '../fixtures'
-import { type Model, NO_SELECTION, type Size } from '../view'
+import {
+  ALL,
+  babysit,
+  ci,
+  dev,
+  explore,
+  flow,
+  gridOf,
+  lint,
+  NOW,
+  review,
+  verify,
+} from '../fixtures'
+import { type Model, NO_SELECTION, rowKeys, type Size } from '../view'
 import { detailView } from './detail'
 import { itemsView } from './items'
 
@@ -15,7 +27,7 @@ function model(items: RabeItem[] = ALL, extra: Partial<Model> = {}): Model {
 }
 
 function open(m: Model, id: string, size: Size = TERMINAL) {
-  return detailView(m, size, { ...NO_SELECTION, open: id })
+  return gridOf(detailView(m, size, { ...NO_SELECTION, open: id }))
 }
 
 // The row and column where `text` starts.
@@ -148,14 +160,15 @@ test('a codex job whose session file is gone says so', () => {
 })
 
 test('a workflow shows its phases and each agent with tokens and time', () => {
-  const { grid: g, buttons, rows } = open(model(), flow.id)
+  const drawn = open(model(), flow.id)
+  const { grid: g, buttons } = drawn
   const shown = lines(g)
   expect(shown).toContain('✓ Review → ◐ Verify → · Report')
   expect(shown).toContain(' 2 agents')
   expect(fg(g, find(g, 'VERIFY'))).toBe(C.green)
   expect(shown.some(line => /◐ verify:db\.ts +22k · 40s$/.test(line))).toBe(true)
   expect(shown.some(line => /✓ review:bugs +n\/a · 3m ago$/.test(line))).toBe(true)
-  expect(Object.values(rows ?? {}).map(row => row.key)).toContain(`row:${verify.id}`)
+  expect(rowKeys(drawn)).toContain(`row:${verify.id}`)
   expect(buttons.find(b => b.key === 'stop')?.label).toBe('g: stop run')
 })
 
@@ -235,10 +248,8 @@ test('a short detail keeps the head and the newest body lines', () => {
 })
 
 test('the split shows the same detail beside the list', () => {
-  const { grid: g } = itemsView(
-    model(),
-    { ...TERMINAL, columns: 120 },
-    { ...NO_SELECTION, selected: review.id },
+  const { grid: g } = gridOf(
+    itemsView(model(), { ...TERMINAL, columns: 120 }, { ...NO_SELECTION, selected: review.id }),
   )
   expect(lines(g).some(line => line.endsWith('● Reading the diff.'))).toBe(true)
   expect(lines(g).some(line => line.includes('│ ▸ prompt'))).toBe(true)

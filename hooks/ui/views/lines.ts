@@ -1,49 +1,107 @@
 import type { RabeItem } from '../../model'
-import { type Grid, type Span, spans, wrap } from '../cells/grid'
+import { type Span, safe, wrap } from '../cells/grid'
 import { C, type Style, tone } from '../cells/palette'
 import { facts } from '../facts'
 import { glyph, nameSpans, timeLabel } from '../lists'
-import type { Action, Model, ViewButton } from '../view'
+import { isPress, type Line, type Model, type Part } from '../view'
 
-export type Line = {
-  spans: Span[]
-  right?: Span[]
-  bg?: number
-  action?: { key: string; action: Action }
+const width = (list: Part[]) =>
+  list.reduce((n, part) => n + [...(isPress(part) ? part.label : part[0])].length, 0)
+
+const cut = (text: string, room: number) => {
+  const chars = [...safe(text)]
+  return chars.length > room ? `${chars.slice(0, room - 1).join('')}…` : chars.join('')
 }
 
-// Draws lines from row `y`, each cut to `width`, a right part aligned to the end.
-export function draw(g: Grid, x: number, y: number, width: number, list: Line[]): void {
-  list.forEach((line, i) => {
-    if (line.bg !== undefined) spans(g, x, y + i, [[' '.repeat(width), { bg: line.bg }]], width)
-    const right = (line.right ?? []).reduce((n, [text]) => n + [...text].length, 0)
-    const end = spans(g, x, y + i, line.spans, Math.max(0, width - (right ? right + 1 : 0)))
-    if (right) spans(g, Math.max(end + 1, x + width - right), y + i, line.right ?? [], right)
-  })
+// A line exactly `width` cells wide, as a grid row was: the parts cut with `…`
+// where they run out, the right part at the end, padded between. The line's
+// background moves onto each part, so lines can be set side by side.
+export function fitLine(line: Line, columns: number): Line {
+  const right = line.right ?? []
+  const rightWidth = width(right)
+  const room = Math.max(0, columns - (rightWidth ? rightWidth + 1 : 0))
+  const bg = line.bg
+  const out: Part[] = []
+  let used = 0
+  const add = (part: Part, limit: number) => {
+    if (used >= limit) return
+    const shown = cut(isPress(part) ? part.label : part[0], limit - used)
+    if (!shown) return
+    used += [...shown].length
+    if (isPress(part)) {
+      out.push({
+        ...part,
+        label: shown,
+        ...((part.bg ?? bg) !== undefined && { bg: part.bg ?? bg }),
+      })
+    } else {
+      out.push([shown, { ...part[1], bg: part[1]?.bg ?? bg }])
+    }
+  }
+  for (const part of line.spans) add(part, room)
+  const start = Math.max(used + (rightWidth ? 1 : 0), columns - rightWidth)
+  if (start > used) out.push([' '.repeat(start - used), { bg }])
+  used = start
+  for (const part of right) add(part, columns)
+
+  return { spans: out }
 }
 
-export function text(value: string, width: number, style: Style = {}, indent = ''): Line[] {
+// Two columns of lines as one: `left` cut to `leftWidth`, then `gap`, then
+// `right` cut to `rightWidth`; the shorter side is padded with empty lines.
+export function beside(
+  left: Line[],
+  leftWidth: number,
+  gap: Span[],
+  right: Line[],
+  rightWidth: number,
+): Line[] {
+  const rows = Math.max(left.length, right.length)
+
+  return Array.from({ length: rows }, (_, y) => ({
+    spans: [
+      ...fitLine(left[y] ?? { spans: [] }, leftWidth).spans,
+      ...gap,
+      ...fitLine(right[y] ?? { spans: [] }, rightWidth).spans,
+    ],
+  }))
+}
+
+export function text(
+  value: string,
+  width: number,
+  style: Style = {},
+  indent = '',
+): (Line & { spans: Span[] })[] {
   return wrap(value, Math.max(1, width - indent.length)).map(one => ({
     spans: [[`${indent}${one}`, style]],
   }))
 }
 
+// An item's row: marker, glyph, the name as a plain Button that opens it, the
+// port or exit code, and its time at the right end. The selected row (the one
+// holding the focus) has an orange `▌` and a background; the other names are
+// dim at rest.
 export function itemLine(item: RabeItem, now: number, isSelected = false): Line {
   const time = timeLabel(item, now)
   const right = item.status === 'running' ? time : `${item.status} ${time}`
-
-  const fg = isSelected ? C.bright : item.status === 'running' ? C.text : C.dim
+  const [name, ...after] = nameSpans(item)
 
   return {
     spans: [
       [isSelected ? '▌' : ' ', { fg: C.orange }],
       [glyph(item), { fg: tone(item) }],
       [' '],
-      ...nameSpans(item, { fg }),
+      {
+        key: `row:${item.id}`,
+        label: name?.[0] ?? item.title,
+        action: { type: 'open', id: item.id },
+        ...(!isSelected && { dim: true }),
+      },
+      ...after,
     ],
     right: [[`${right} `, { fg: isSelected ? C.text : C.dim }]],
     ...(isSelected && { bg: C.selected }),
-    action: { key: `row:${item.id}`, action: { type: 'open', id: item.id } },
   }
 }
 
@@ -64,23 +122,23 @@ export function headLines(model: Model, item: RabeItem): Line[] {
   ]
 }
 
-// j, k and Enter over a list the view draws: Enter (focused) opens the
-// selected item in the Items tab. j and k stay bound at the ends of the list,
-// so the keys never fall through to the prompt.
-export function moveButtons(order: RabeItem[], selected: RabeItem | undefined): ViewButton[] {
-  if (!selected) return []
-  const at = order.indexOf(selected)
-  const next = order[Math.min(at + 1, order.length - 1)] ?? selected
-  const prev = order[Math.max(at - 1, 0)] ?? selected
-
-  return [
-    { key: 'down', label: 'j: down', hotkey: 'j', action: { type: 'select', id: next.id } },
-    { key: 'up', label: 'k: up', hotkey: 'k', action: { type: 'select', id: prev.id } },
-    { key: 'open', label: 'open', autoFocus: true, action: { type: 'open', id: selected.id } },
-  ]
+// A line with its Buttons as text: a preview that takes no focus.
+export function plain(line: Line): Line {
+  return {
+    ...line,
+    spans: line.spans.map(
+      (part): Span => (isPress(part) ? [part.label, part.dim ? { fg: C.dim } : {}] : part),
+    ),
+  }
 }
 
-// The first index of a window of `rows` that keeps index `at` in view.
-export function windowStart(length: number, at: number, rows: number): number {
-  return Math.max(0, Math.min(at - rows + 2, length - rows))
+// The row the focus starts on: the selected item's, else the first.
+export function focusOn(lines: Line[], selected: string): Line[] {
+  const rows = lines
+    .flatMap(line => line.spans.filter(isPress))
+    .filter(p => p.key.startsWith('row:'))
+  const target = rows.find(p => p.key === `row:${selected}`) ?? rows[0]
+  if (target) target.autoFocus = true
+
+  return lines
 }

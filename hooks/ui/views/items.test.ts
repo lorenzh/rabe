@@ -2,8 +2,9 @@ import { expect, test } from 'claude-code/testing'
 import type { RabeItem } from '../../model'
 import { cell, lines } from '../cells/grid'
 import { C, DEFAULT } from '../cells/palette'
-import { ALL, babysit, dev, explore, flow, lint, NOW, verify } from '../fixtures'
-import { NO_SELECTION, type Size } from '../view'
+import { ALL, dev, explore, flow, gridOf, lint, NOW, verify } from '../fixtures'
+import { grouped } from '../lists'
+import { type Drawn, isPress, NO_SELECTION, rowKeys, type Size } from '../view'
 import { itemsView } from './items'
 
 const WIDE: Size = { columns: 100, rows: 24, surface: 'terminal', hasInput: true }
@@ -15,7 +16,7 @@ const at = (shown: string[], y: number, text: string) => shown[y]?.indexOf(text)
 const keys = (buttons: { key: string; label: string }[]) => buttons.map(one => one.label)
 
 test('at 90 columns and more the list and the selected item sit side by side', () => {
-  const { grid } = itemsView(model, WIDE, NO_SELECTION)
+  const { grid } = gridOf(itemsView(model, WIDE, NO_SELECTION))
   const shown = lines(grid)
   expect(grid.columns).toBe(100)
   expect(shown[0]).toMatch(/^▾ FAILED 1 +│ ✗ shell · bun run lint/)
@@ -27,90 +28,84 @@ test('at 90 columns and more the list and the selected item sit side by side', (
   expect(cell(grid, at(shown, 3, '4 claude'), 3)[1]).toBe(C.dim)
 })
 
-test('the selected row has a marker, a background and a bright name; others stay plain', () => {
-  const { grid } = itemsView(model, WIDE, { ...NO_SELECTION, selected: dev.id })
+test('the selected row has a marker and a background; the other names are dim', () => {
+  const { grid } = gridOf(itemsView(model, WIDE, { ...NO_SELECTION, selected: dev.id }))
   const shown = lines(grid)
   const y = shown.findIndex(line => line.startsWith('▌▶ bun run dev :5173'))
   expect(cell(grid, 0, y)).toEqual(['▌'.codePointAt(0), C.orange, C.selected])
-  expect(cell(grid, 3, y).slice(1)).toEqual([C.bright, C.selected])
+  expect(cell(grid, 3, y).slice(1)).toEqual([DEFAULT, C.selected])
   expect(cell(grid, at(shown, y, ':5173'), y)[1]).toBe(C.blue)
   expect(cell(grid, at(shown, y, '≥ 40m'), y)[1]).toBe(DEFAULT)
   const other = shown.findIndex(line => line.startsWith(' ◐ verify:db.ts'))
-  expect(cell(grid, 3, other).slice(1)).toEqual([DEFAULT, DEFAULT])
+  expect(cell(grid, 3, other).slice(1)).toEqual([C.dim, DEFAULT])
   expect(cell(grid, at(shown, other, '40s'), other)[1]).toBe(C.dim)
 })
 
-test('the wide list Buttons name their keys, open has the focus and stop shows for a running item', () => {
-  const { buttons } = itemsView(model, WIDE, { ...NO_SELECTION, selected: explore.id })
-  expect(keys(buttons)).toEqual([
-    'j: down',
-    'k: up',
-    'open',
-    'x: stop',
-    'g: stop group',
-    's: search',
-  ])
-  expect(buttons.find(one => one.key === 'open')?.autoFocus).toBe(true)
-  expect(buttons.map(one => one.hotkey)).toEqual(['j', 'k', undefined, 'x', 'g', 's'])
+const presses = (drawn: Drawn) =>
+  drawn.nodes.flatMap(node => ('spans' in node ? node.spans.filter(isPress) : []))
+
+test('each row is a plain Button keyed by its item that opens it; the selected one takes the focus', () => {
+  const drawn = itemsView(model, WIDE, { ...NO_SELECTION, selected: explore.id })
+  const rows = presses(drawn).filter(one => one.key.startsWith('row:'))
+  expect(rows.map(one => one.key)).toContain(`row:${dev.id}`)
+  const own = rows.find(one => one.key === `row:${explore.id}`)
+  expect(own).toMatchObject({ label: 'Explore verifyToken', autoFocus: true })
+  expect(own?.action).toEqual({ type: 'open', id: explore.id })
+  expect(own?.dim).toBeUndefined()
+  expect(rows.filter(one => one.autoFocus)).toHaveLength(1)
+  expect(rows.find(one => one.key === `row:${dev.id}`)?.dim).toBe(true)
+  expect(keys(drawn.buttons)).toEqual(['x: stop', 'g: stop group', 's: search'])
+  expect(drawn.buttons.map(one => one.hotkey)).toEqual(['x', 'g', 's'])
 })
 
-test('j and k stay bound at the ends of the list, so the keys never fall through to the prompt', () => {
-  const last = itemsView(model, WIDE, { ...NO_SELECTION, selected: babysit.id })
-  expect(last.buttons.find(one => one.key === 'down')?.action).toEqual({
-    type: 'select',
-    id: babysit.id,
-  })
-  const first = itemsView(model, WIDE, { ...NO_SELECTION, selected: lint.id })
-  expect(first.buttons.find(one => one.key === 'up')?.action).toEqual({
-    type: 'select',
-    id: lint.id,
-  })
+test('a group header is a Button that folds it; with nothing selected the first row has the focus', () => {
+  const drawn = itemsView(model, WIDE, NO_SELECTION)
+  const list = presses(drawn)
+  expect(list[0]).toMatchObject({ key: 'group-failed', label: 'FAILED' })
+  expect(list[0]?.action).toEqual({ type: 'fold', group: 'failed' })
+  expect(list.find(one => one.autoFocus)?.key).toBe(`row:${lint.id}`)
+})
+
+test('the detail beside the list has no Buttons, so the arrows walk the list alone', () => {
+  const drawn = itemsView(model, WIDE, { ...NO_SELECTION, selected: flow.id })
+  expect(rowKeys(drawn)).toEqual(
+    grouped(ALL).flatMap(group => group.items.map(item => `row:${item.id}`)),
+  )
 })
 
 test('below 90 columns the list fills the width, drops the gaps and ends with one summary line', () => {
-  const { grid, buttons } = itemsView(model, NARROW, { ...NO_SELECTION, selected: explore.id })
+  const { grid, buttons } = gridOf(
+    itemsView(model, NARROW, { ...NO_SELECTION, selected: explore.id }),
+  )
   const shown = lines(grid)
-  expect(grid.rows).toBe(12)
+  const end = shown.length - 1
   expect(shown.every(line => !line.includes('│'))).toBe(true)
-  expect(shown.slice(0, 10).some(line => line === '')).toBe(false)
-  expect(shown[11]).toBe('◐ Explore verifyToken · opus-5-5 · ≈ $0.16 · 36k in · running')
-  expect(cell(grid, 0, 11).slice(1)).toEqual([C.yellow, C.panel])
-  expect(cell(grid, 79, 11)[2]).toBe(C.panel)
-  expect(cell(grid, at(shown, 11, '≈'), 11)[1]).toBe(C.bright)
-  expect(keys(buttons)).toEqual(['j', 'k', 'open', 'x: stop', 'g: stop group', 's'])
+  expect(shown.slice(0, end).some(line => line === '')).toBe(false)
+  expect(shown[end]).toBe('◐ Explore verifyToken · opus-5-5 · ≈ $0.16 · 36k in · running')
+  expect(cell(grid, 0, end).slice(1)).toEqual([C.yellow, C.panel])
+  expect(cell(grid, 79, end)[2]).toBe(C.panel)
+  expect(cell(grid, at(shown, end, '≈'), end)[1]).toBe(C.bright)
+  expect(keys(buttons)).toEqual(['x: stop', 'g: stop group', 's'])
 })
 
 test('below 90 columns a list that fits keeps the gaps between groups', () => {
-  const { grid } = itemsView(model, { ...NARROW, rows: 30 }, NO_SELECTION)
+  const { grid } = gridOf(itemsView(model, { ...NARROW, rows: 30 }, NO_SELECTION))
   expect(lines(grid)[2]).toBe('')
 })
 
-test('off the terminal each row is plain text the renderer turns into a Button', () => {
-  const { grid, buttons, rows } = itemsView(model, DESKTOP, NO_SELECTION)
-  const shown = lines(grid)
-  expect(shown.slice(0, 4)).toEqual([
-    'Failed 1',
-    '✗ bun run lint · exit 2 · failed 2m ago',
-    'Agents 6',
-    '◐ verify:db.ts · 40s',
+test('the list is never cut: a pane taller than its body scrolls, and the desktop draws the same', () => {
+  const short = lines(gridOf(itemsView(model, { ...NARROW, rows: 4 }, NO_SELECTION)).grid)
+  expect(short.some(line => line.includes('⟳ /babysit-prs'))).toBe(true)
+  const desk = lines(gridOf(itemsView(model, DESKTOP, NO_SELECTION)).grid)
+  expect(desk).toEqual(lines(gridOf(itemsView(model, WIDE, NO_SELECTION)).grid))
+})
+
+test('a folded group shows its header only', () => {
+  const { grid } = gridOf(itemsView(model, NARROW, { ...NO_SELECTION, folded: ['failed'] }))
+  expect(lines(grid).slice(0, 2)).toEqual([
+    '▸ FAILED 1',
+    '▾ AGENTS 4 claude · 1 codex · 1 workflow',
   ])
-  expect(shown).toContain('▶ bun run dev · :5173 · ≥ 40m')
-  expect(shown).toContain('⟳ /babysit-prs · next 3:00')
-  expect(rows?.[0]).toEqual({ key: 'group-failed', action: { type: 'fold', group: 'failed' } })
-  expect(rows?.[1]).toEqual({ key: `row:${lint.id}`, action: { type: 'open', id: lint.id } })
-  expect(grid.rows).toBe(shown.length)
-  expect(shown.at(-1)).toBe('⟳ /babysit-prs · next 3:00')
-  expect(buttons.map(one => one.key)).toEqual(['find'])
-})
-
-test('off the terminal the list is never cut: the surface scrolls it', () => {
-  const { grid } = itemsView(model, { ...DESKTOP, rows: 4 }, NO_SELECTION)
-  expect(lines(grid).at(-1)).toBe('⟳ /babysit-prs · next 3:00')
-})
-
-test('a folded group says so off the terminal', () => {
-  const { grid } = itemsView(model, DESKTOP, { ...NO_SELECTION, folded: ['failed'] })
-  expect(lines(grid).slice(0, 2)).toEqual(['Failed 1 · folded', 'Agents 6'])
 })
 
 test('a workflow agent in the list has no stop and stays out of a group stop', () => {
@@ -121,7 +116,7 @@ test('a workflow agent in the list has no stop and stays out of a group stop', (
     detail: { agentId: 'w2', workflowPhase: 'Verify' },
   } as RabeItem
   const m = { items: [flow, verify, other, explore], turns: {}, lines: {}, now: NOW }
-  const { buttons } = itemsView(m, WIDE, { ...NO_SELECTION, selected: verify.id })
+  const { buttons } = gridOf(itemsView(m, WIDE, { ...NO_SELECTION, selected: verify.id }))
   expect(buttons.find(b => b.key === 'stop')).toBeUndefined()
   const group = buttons.find(b => b.key === 'stop-group')?.action
   expect(group).toMatchObject({ type: 'stop' })

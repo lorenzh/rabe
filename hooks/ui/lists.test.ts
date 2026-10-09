@@ -21,6 +21,7 @@ import {
 import {
   bandRows,
   bar,
+  byParent,
   byTokens,
   costLine,
   grouped,
@@ -28,10 +29,12 @@ import {
   joinFit,
   matches,
   nameSpans,
+  orderOf,
   phaseProgress,
   phases,
   previousOf,
   share,
+  stable,
   timeLabel,
   totals,
   tree,
@@ -45,6 +48,51 @@ test('groups put failed first and running before ended', () => {
   expect(groups[1]?.items.at(-1)).toBe(plan)
   expect(groupNote('agents', groups[1]?.items ?? [])).toBe('4 claude · 1 codex · 1 workflow')
   expect(groupNote('shells', [dev, { ...dev, status: 'done' }])).toBe('1 running · 1 ended')
+})
+
+test('a held order keeps rows in place: new items append, status changes move nothing', () => {
+  const order = orderOf(ALL)
+  expect(order.failed).toEqual([lint.id])
+  expect(order.agents?.at(-1)).toBe(plan.id)
+  expect(order.cost?.[0]).toBe(explore.id)
+  const ended = ALL.map(item =>
+    item === dev ? { ...dev, status: 'failed' as const, endedAt: NOW } : item,
+  )
+  const fresh: RabeItem = { ...dev, id: 'shell:new', title: 'new', startedAt: NOW }
+  const older: RabeItem = { ...dev, id: 'shell:old', title: 'old', startedAt: NOW - 99 * 60_000 }
+  const groups = grouped([...ended, fresh, older], order)
+  expect(groups.find(g => g.id === 'failed')?.items).toEqual([lint])
+  expect(groups.find(g => g.id === 'shells')?.items.map(item => item.id)).toEqual([
+    dev.id,
+    fresh.id,
+    older.id,
+  ])
+  expect(
+    grouped(ended)
+      .find(g => g.id === 'failed')
+      ?.items.map(item => item.id),
+  ).toEqual([dev.id, lint.id])
+})
+
+test('stable sorts a list nobody has seen and keeps a held one', () => {
+  const sort = (list: RabeItem[]) => list.toSorted((a, b) => a.seenAt - b.seenAt)
+  expect(stable([dev, ci, babysit], undefined, sort)).toEqual([dev, babysit, ci])
+  expect(stable([dev, ci, babysit], [ci.id], sort)).toEqual([ci, dev, babysit])
+})
+
+test('byParent puts the shells of the main session first, then a block per agent', () => {
+  const mine: RabeItem = { ...dev, id: 'shell:m', parentId: explore.id }
+  const theirs: RabeItem = { ...ci, id: 'monitor:w', parentId: verify.id }
+  const lost: RabeItem = { ...dev, id: 'shell:l', parentId: 'agent:gone' }
+  const blocks = byParent([mine, dev, theirs, lost, ci], ALL)
+  expect(blocks.map(block => [block.title, block.items.map(item => item.id)])).toEqual([
+    ['', [dev.id, ci.id]],
+    ['Explore verifyToken', [mine.id]],
+    ['review-changes › verify:db.ts', [theirs.id]],
+    ['agent n/a', [lost.id]],
+  ])
+  expect(blocks[1]?.parent).toBe(explore)
+  expect(byParent([dev], ALL).map(block => block.title)).toEqual([''])
 })
 
 test('time labels say running time, age, countdown or n/a', () => {

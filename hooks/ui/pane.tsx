@@ -1,9 +1,17 @@
 import type { EngineInterface, On, RenderSurface } from 'claude-code'
 
 import type { RabePrevious } from '../../types'
-import { KIND_LABEL, previousOf } from './lists'
+import { KIND_LABEL, orderOf, previousOf } from './lists'
 import { render } from './render'
-import { type Action, bounded, taskIdOf } from './view'
+import {
+  type Action,
+  bounded,
+  type Model,
+  rowKeys,
+  type Selection,
+  stepRow,
+  taskIdOf,
+} from './view'
 import { paneView } from './views/pane'
 
 const PANE = 'rabe'
@@ -89,9 +97,6 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
     case 'tab':
       await $.state.set({ plugin: 'rabe', key: 'tab' }, action.tab)
       return
-    case 'select':
-      await $.state.set({ plugin: 'rabe', key: 'selected' }, action.id)
-      return
     case 'fold': {
       const { value: folded = [] } = await $.state.get({ plugin: 'rabe', key: 'folded' })
       const next = folded.includes(action.group)
@@ -106,9 +111,10 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
         await $.state.set({ plugin: 'rabe', key: 'tab' }, 'items')
       }
       await $.state.set({ plugin: 'rabe', key: 'open' }, action.id)
-      // Back on the list the ring would stay where b was, on the first Button.
-      if (!action.id && surface === 'terminal') {
-        await $.ui.focus({ requestId: PANE, key: 'open' }).catch(() => undefined)
+      // Back on the list the ring would stay where b was; put it on the row.
+      if (!action.id) {
+        const { value: selected = '' } = await $.state.get({ plugin: 'rabe', key: 'selected' })
+        await $.ui.focus({ requestId: PANE, key: `row:${selected}` }).catch(() => undefined)
       }
       return
     case 'query':
@@ -149,6 +155,48 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
   }
 }
 
+// What the pane draws from: the sources' values and the person's place.
+async function look(
+  $: EngineInterface,
+  isFocused: boolean,
+): Promise<{ model: Model; selection: Selection }> {
+  const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+  const { value: turns = {} } = await $.state.get({ plugin: 'rabe', key: 'turns' })
+  const { value: lines = {} } = await $.state.get({ plugin: 'rabe', key: 'lines' })
+  const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
+  const { value: query = '' } = await $.state.get({ plugin: 'rabe', key: 'query' })
+  const { value: folded = [] } = await $.state.get({ plugin: 'rabe', key: 'folded' })
+  const { value: selected = '' } = await $.state.get({ plugin: 'rabe', key: 'selected' })
+  const { value: open = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
+  const { value: order } = await $.state.get({ plugin: 'rabe', key: 'order' })
+  const usage = await $.session.usage().catch(() => undefined)
+  const model = {
+    items,
+    turns,
+    lines,
+    now: await $.clock.now(),
+    usd: usage?.cost?.usd,
+    previous: await previous($).catch(() => undefined),
+  }
+
+  const selection = { tab, query, folded, selected, open, isFocused, ...(order && { order }) }
+
+  return { model, selection }
+}
+
+// An arrow key in a pane taller than its body scrolls it a row; Rabe moves
+// the focus to the next or previous row instead, and the pane follows the
+// focus. Past either end the scroll goes on, to show what is above or below.
+async function arrow($: EngineInterface, by: number, bodyRows: number): Promise<boolean> {
+  const { model, selection } = await look($, true)
+  const size = { columns: 80, rows: bodyRows, surface: 'terminal', hasInput: true } as const
+  const key = stepRow(rowKeys(paneView(model, size, selection)), selection.selected, by)
+  if (!key) return false
+  void $.ui.focus({ requestId: PANE, key }).catch(() => undefined)
+
+  return true
+}
+
 export function pane(on: On): void {
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -161,7 +209,10 @@ export function pane(on: On): void {
     return next(e)
   })
 
+  // Each open sorts the lists once; then they hold their order (see `stable`).
   on('command.run', { command: 'rabe' }, async $ => {
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(items))
     await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })
     $.clock.after(1500, () => void refocus($).catch(() => undefined))
 
@@ -182,32 +233,22 @@ export function pane(on: On): void {
     return next(e)
   }).catch((_$, e, next) => next(e))
 
+  on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
+    if (e.pointer || Math.abs(e.by) !== 1) return next(e)
+    if (await arrow($, e.by, e.bodyRows).catch(() => false)) return {}
+
+    return next(e)
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const ui = $.ui.resolve(e)
-    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
-    const { value: turns = {} } = await $.state.get({ plugin: 'rabe', key: 'turns' })
-    const { value: lines = {} } = await $.state.get({ plugin: 'rabe', key: 'lines' })
-    const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
-    const { value: query = '' } = await $.state.get({ plugin: 'rabe', key: 'query' })
-    const { value: folded = [] } = await $.state.get({ plugin: 'rabe', key: 'folded' })
-    const { value: selected = '' } = await $.state.get({ plugin: 'rabe', key: 'selected' })
-    const { value: open = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
-    const usage = await $.session.usage().catch(() => undefined)
-    const model = {
-      items,
-      turns,
-      lines,
-      now: await $.clock.now(),
-      usd: usage?.cost?.usd,
-      previous: await previous($).catch(() => undefined),
-    }
+    const { model, selection } = await look($, e.props.isFocused)
     const size = bounded({
       columns: e.props.bodyColumns,
       rows: e.props.scroll?.bodyRows || 24,
       surface: e.surface,
       hasInput: 'Input' in ui,
     })
-    const selection = { tab, query, folded, selected, open, isFocused: e.props.isFocused }
 
     return render(ui, e.surface, paneView(model, size, selection), (action, surface) => {
       void act($, action, surface)

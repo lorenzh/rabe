@@ -1,6 +1,6 @@
 import type { RabeItem } from '../../model'
 import { nextRuns } from '../../schedule'
-import { grid, type Span, wrap } from '../cells/grid'
+import { type Span, wrap } from '../cells/grid'
 import { C, type Style } from '../cells/palette'
 import { ago, clockTime, countdown, tokens, usd } from '../format'
 import { children, phases, share, sortItems, timeLabel, tokenSum } from '../lists'
@@ -8,12 +8,13 @@ import {
   canStop,
   type Drawn,
   isWorkflowAgent,
+  type Line,
   type Model,
   type View,
   type ViewButton,
   type ViewInput,
 } from '../view'
-import { draw, headLines, itemLine, type Line, text } from './lines'
+import { fitLine, headLines, itemLine, text } from './lines'
 
 const dim = { fg: C.dim }
 const BRIEF_ROWS = 3
@@ -335,11 +336,9 @@ function detailButtons(
 
 // One item in full, in place of the list: facts, then the newest body lines.
 export const detailView: View = (model, size, sel): Drawn => {
-  const g = grid(size.columns, size.rows)
   const item = model.items.find(one => one.id === sel.open)
-  if (!item) return { grid: g, buttons: [] }
+  if (!item) return { nodes: [], buttons: [] }
   const shown = detailLines(model, item, size.rows, size.columns)
-  draw(g, 0, 0, size.columns, shown)
   const inputs: ViewInput[] =
     item.kind === 'agent' && item.status === 'running' && size.hasInput && !isWorkflowAgent(item)
       ? [
@@ -352,10 +351,10 @@ export const detailView: View = (model, size, sel): Drawn => {
           },
         ]
       : []
-  const rows: Drawn['rows'] = {}
-  shown.forEach((line, y) => {
-    if (line.action) rows[y] = line.action
-  })
 
-  return { grid: g, buttons: detailButtons(item, size.hasInput, model.items), inputs, rows }
+  return {
+    nodes: shown.map(line => fitLine(line, size.columns)),
+    buttons: detailButtons(item, size.hasInput, model.items),
+    inputs,
+  }
 }

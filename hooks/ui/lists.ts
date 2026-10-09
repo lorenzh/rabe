@@ -1,4 +1,4 @@
-import type { RabePrevious } from '../../types'
+import type { RabeOrder, RabePrevious } from '../../types'
 import type { RabeItem, RabeItemKind } from '../model'
 import { nextRuns } from '../schedule'
 import type { Span } from './cells/grid'
@@ -98,11 +98,87 @@ export function sortItems(items: RabeItem[]): RabeItem[] {
   )
 }
 
-export function grouped(items: RabeItem[]): { id: Group; label: string; items: RabeItem[] }[] {
+// A list that does not reorder under the focus. Without `held` (nobody has
+// seen the list yet) it is `sort(list)`; with it, the held ids come first in
+// held order, then the others in the order of `list`, which is the order Rabe
+// saw them: new items append, and a status change moves nothing.
+export function stable(
+  list: RabeItem[],
+  held: readonly string[] | undefined,
+  sort: (list: RabeItem[]) => RabeItem[],
+): RabeItem[] {
+  if (!held) return sort(list)
+  const at = new Map(held.map((id, i) => [id, i]))
+
+  return list.toSorted((a, b) => (at.get(a.id) ?? held.length) - (at.get(b.id) ?? held.length))
+}
+
+// The group an item keeps while an order is held: a held item stays where it
+// was; a new one goes by its kind, since its status may change.
+function heldGroup(item: RabeItem, order: RabeOrder): Group {
+  const held = GROUPS.find(group => order[group.id]?.includes(item.id))?.id
+  if (held) return held
+
+  return groupOf({ ...item, status: 'running' } as RabeItem)
+}
+
+// The Items tab's groups, failed first. Without `order` each group sorts
+// running first, then the newest; with it, rows stay where `orderOf` put them.
+export function grouped(
+  items: RabeItem[],
+  order?: RabeOrder,
+): { id: Group; label: string; items: RabeItem[] }[] {
+  const of = (item: RabeItem) => (order ? heldGroup(item, order) : groupOf(item))
+
   return GROUPS.map(group => ({
     ...group,
-    items: sortItems(items.filter(item => groupOf(item) === group.id)),
+    items: stable(
+      items.filter(item => of(item) === group.id),
+      order?.[group.id],
+      sortItems,
+    ),
   })).filter(group => group.items.length > 0)
+}
+
+const start = (item: RabeItem) => item.startedAt ?? item.seenAt
+
+export function byStart(items: RabeItem[]): RabeItem[] {
+  return items.toSorted((a, b) => start(a) - start(b))
+}
+
+// The order the pane shows when it opens: each group sorted, the Cost tab by
+// tokens, the Timeline by start. Held in `rabe.order` until the next open.
+export function orderOf(items: RabeItem[]): RabeOrder {
+  const ids = (list: RabeItem[]) => list.map(item => item.id)
+
+  return {
+    ...Object.fromEntries(grouped(items).map(group => [group.id, ids(group.items)])),
+    cost: ids(byTokens(items)),
+    timeline: ids(byStart(items)),
+  }
+}
+
+export type Family = { id: string; parent?: RabeItem; title: string; items: RabeItem[] }
+
+// Shells and monitors by who started them: the main session's first (title
+// ''), then one block per agent in the order of `list`. A workflow agent reads
+// "run › agent"; an agent Rabe no longer holds "agent n/a".
+export function byParent(list: RabeItem[], items: RabeItem[]): Family[] {
+  const blocks = new Map<string, Family>([['', { id: '', title: '', items: [] }]])
+  for (const item of list) {
+    const id = item.parentId ?? ''
+    let block = blocks.get(id)
+    if (!block) {
+      const parent = items.find(one => one.id === id)
+      const run = parent && items.find(one => one.id === parent.parentId && one.kind === 'workflow')
+      const title = !parent ? 'agent n/a' : run ? `${run.title} › ${parent.title}` : parent.title
+      block = { id, ...(parent && { parent }), title, items: [] }
+      blocks.set(id, block)
+    }
+    block.items.push(item)
+  }
+
+  return [...blocks.values()].filter(block => block.items.length > 0)
 }
 
 export function groupNote(id: Group, items: RabeItem[]): string {

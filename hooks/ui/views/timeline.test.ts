@@ -3,8 +3,8 @@ import { expect, test } from 'claude-code/testing'
 import type { RabePrevious } from '../../../types'
 import { cell, lines } from '../cells/grid'
 import { C, CHIP } from '../cells/palette'
-import { ALL, babysit, dev, lint, NOW, plan } from '../fixtures'
-import { type Model, NO_SELECTION, type Size } from '../view'
+import { ALL, babysit, dev, gridOf, lint, NOW, plan } from '../fixtures'
+import { isPress, type Model, NO_SELECTION, rowKeys, type Size } from '../view'
 import { timelineView } from './timeline'
 
 const SIZE: Size = { columns: 100, rows: 40, surface: 'terminal', hasInput: false }
@@ -23,7 +23,7 @@ const PREVIOUS: RabePrevious = {
 const find = (shown: string[], text: string) => shown.findIndex(line => line.includes(text))
 
 test('the timeline heads with the window, a color legend and a time axis', () => {
-  const { grid } = timelineView(MODEL, SIZE, NO_SELECTION)
+  const { grid } = gridOf(timelineView(MODEL, SIZE, NO_SELECTION))
   const shown = lines(grid)
   expect(shown[0]).toBe('WHEN DID THINGS RUN?  this session, last 40 min')
   expect(shown[1]).toBe(' shell   claude   codex   monitor   cron run   done   failed')
@@ -34,7 +34,7 @@ test('the timeline heads with the window, a color legend and a time axis', () =>
 })
 
 test('each item gets a bar over its run, colored by kind while it runs, then by its end', () => {
-  const { grid } = timelineView(MODEL, SIZE, NO_SELECTION)
+  const { grid } = gridOf(timelineView(MODEL, SIZE, NO_SELECTION))
   const shown = lines(grid)
   const first = find(shown, 'bun run dev')
   expect(first).toBe(4)
@@ -51,45 +51,41 @@ test('each item gets a bar over its run, colored by kind while it runs, then by 
 
 test('a long name is cut and keeps a space before its bar', () => {
   const long = { ...dev, title: 'python3 -u -m http.server 4173', startedAt: NOW - 39 * 60_000 }
-  const shown = lines(timelineView({ ...MODEL, items: [long] }, SIZE, NO_SELECTION).grid)
+  const shown = lines(gridOf(timelineView({ ...MODEL, items: [long] }, SIZE, NO_SELECTION)).grid)
   expect(shown[4]).toMatch(/^▌python3 -u -m http\.se… █+$/)
 })
 
 test('a cron job draws one tick per run since Rabe saw it', () => {
-  const { grid } = timelineView(MODEL, SIZE, NO_SELECTION)
+  const { grid } = gridOf(timelineView(MODEL, SIZE, NO_SELECTION))
   const shown = lines(grid)
   const at = find(shown, babysit.title)
   const ticks = (shown[at]?.match(/█/g) ?? []).length
   expect(ticks).toBe(6)
-  expect(cell(grid, shown[at]?.indexOf('█') ?? 0, at)[1]).toBe(C.purple)
+  expect(cell(grid, shown[at]?.indexOf('█') ?? 0, at)[1]).toBe(CHIP.cron.fg)
 })
 
 test('a deleted cron job draws no ticks after it ended', () => {
   const stopped = { ...babysit, status: 'stopped' as const, endedAt: NOW - 16 * 60_000 }
   const model = { ...MODEL, items: ALL.map(item => (item === babysit ? stopped : item)) }
-  const shown = lines(timelineView(model, SIZE, NO_SELECTION).grid)
+  const shown = lines(gridOf(timelineView(model, SIZE, NO_SELECTION)).grid)
   const at = find(shown, babysit.title)
   expect((shown[at]?.match(/█/g) ?? []).length).toBe(3)
 })
 
-test('j, k and enter move through the bars and open one', () => {
+test('each bar row is a Button that opens it, in the order the pane opened with', () => {
   const sel = { ...NO_SELECTION, tab: 'timeline' as const, selected: babysit.id }
-  const drawn = timelineView(MODEL, SIZE, sel)
-  const keys = Object.fromEntries(drawn.buttons.map(one => [one.key, one.action]))
-  expect(keys).toEqual({
-    down: { type: 'select', id: plan.id },
-    up: { type: 'select', id: dev.id },
-    open: { type: 'open', id: babysit.id },
-  })
-  const at = find(lines(drawn.grid), babysit.title)
-  expect(drawn.rows?.[at]).toEqual({
-    key: `row:${babysit.id}`,
-    action: { type: 'open', id: babysit.id },
-  })
+  const drawn = gridOf(timelineView(MODEL, SIZE, sel))
+  expect(drawn.buttons).toEqual([])
+  const rows = drawn.nodes.flatMap(node => ('spans' in node ? node.spans.filter(isPress) : []))
+  const own = rows.find(one => one.key === `row:${babysit.id}`)
+  expect(own).toMatchObject({ label: babysit.title, autoFocus: true })
+  expect(own?.action).toEqual({ type: 'open', id: babysit.id })
+  const held = timelineView(MODEL, SIZE, { ...sel, order: { timeline: [plan.id] } })
+  expect(rowKeys(held)[0]).toBe(`row:${plan.id}`)
 })
 
 test('who started what sits beside the previous session on a wide pane', () => {
-  const { grid } = timelineView({ ...MODEL, previous: PREVIOUS }, SIZE, NO_SELECTION)
+  const { grid } = gridOf(timelineView({ ...MODEL, previous: PREVIOUS }, SIZE, NO_SELECTION))
   const shown = lines(grid)
   const head = find(shown, 'WHO STARTED WHAT?')
   expect(shown[head]).toMatch(/^WHO STARTED WHAT\? {2}agents and their children +PREVIOUS SESSION$/)
@@ -107,7 +103,7 @@ test('who started what sits beside the previous session on a wide pane', () => {
 
 test('on a narrow pane the previous session follows the tree; without one it says so', () => {
   const size = { ...SIZE, columns: 60, rows: 60 }
-  const { grid } = timelineView(MODEL, size, NO_SELECTION)
+  const { grid } = gridOf(timelineView(MODEL, size, NO_SELECTION))
   const shown = lines(grid)
   expect(grid.columns).toBe(60)
   const prev = find(shown, 'PREVIOUS SESSION')
@@ -115,10 +111,9 @@ test('on a narrow pane the previous session follows the tree; without one it say
   expect(shown[prev + 1]).toBe(' No earlier session with background work in this project.')
 })
 
-test('the timeline fits few rows and keeps the selected bar in view', () => {
+test('the timeline draws every bar; the pane scrolls what is below its body', () => {
   const sel = { ...NO_SELECTION, selected: lint.id }
-  const { grid } = timelineView(MODEL, { ...SIZE, columns: 72, rows: 14 }, sel)
-  expect(grid.rows).toBeLessThanOrEqual(14)
+  const { grid } = gridOf(timelineView(MODEL, { ...SIZE, columns: 72, rows: 14 }, sel))
   expect(lines(grid).some(line => line.startsWith('▌bun run lint'))).toBe(true)
   expect(lines(grid)).toContain('WHO STARTED WHAT?  agents and their children')
 })

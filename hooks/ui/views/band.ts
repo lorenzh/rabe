@@ -34,7 +34,7 @@ export const bandView: View = (model, size) => {
       return [[` ${row.glyph} ${n} ${COUNT[row.kind][n === 1 ? 0 : 1]} `, CHIP[row.kind]], [' ']]
     })
     spans(g, 0, 0, [...chips, ...(money ? cost(money.slice(0, 2)) : [])])
-    return { grid: g, buttons: [] }
+    return { nodes: [{ chart: g }], buttons: [] }
   }
   const g = grid(size.columns, count)
   const labels = rows.map(row => `${row.glyph} ${row.label} ${row.names.length}`)
@@ -51,5 +51,5 @@ export const bandView: View = (model, size) => {
     spans(g, 0, rows.length, [[' $ cost'.padEnd(chip), CHIP.cost], [' '], ...cost(money)])
   }
 
-  return { grid: g, buttons: [] }
+  return { nodes: [{ chart: g }], buttons: [] }
 }

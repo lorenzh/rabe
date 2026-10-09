@@ -29,7 +29,8 @@
 - `hooks/sources/<kind>.ts`: one module per source (agents, codex, shells, monitors, crons, workflows) that turns events and files into items; `hooks/sources/index.ts` calls each one. Each file's `write($, change)` caps the list and drops the per-item state of the items it removed; a timer's write skips the plugin's own `state.set` hooks.
 - `hooks/tasks.ts`, `hooks/schedule.ts`: pure parsers for task notifications, task output files and cron schedules. Views read session state only, never files.
 - `hooks/testing.ts`: test helpers (`memoryState`, `files`, `core`); the test's `$` has no `state` noun.
-- `hooks/ui/`: band and pane drawing. Only `band.tsx`, `pane.tsx` and `builtin.tsx` touch `$`. Views are pure `View` functions in `hooks/ui/views/` that return a cell grid and their Buttons; `render.tsx` draws them; the cell engine is `hooks/ui/cells/` (see `docs/architecture.md`).
+- `hooks/ui/`: band and pane drawing. Only `band.tsx`, `pane.tsx` and `builtin.tsx` touch `$`. Views are pure `View` functions in `hooks/ui/views/` that return lines (Text parts and one plain Button per selectable row) and their controls; `render.tsx` draws them; the cell engine in `hooks/ui/cells/` draws charts only (see `docs/architecture.md`).
+- Colors: only xterm-256 entries from `hooks/ui/cells/palette.ts`; a list never reorders while the pane is open (`stable` in `hooks/ui/lists.ts`).
 - `$.state` keys: declare each in `types/index.d.ts` and name that file as `"types"` in `.claude-plugin/plugin.json`.
 - `types/claude-code.d.ts`: API types written by Claude Code. Do not edit; replace it when the pinned Claude Code version changes.
 

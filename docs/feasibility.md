@@ -1,15 +1,15 @@
 ---
 title: What Rabe can see
-description: Where Rabe gets each piece of data about background work (mod API, files on disk, source code), what is not available, the pane key model, what a Raster can draw, what of Claude Code's own display a mod can hide, and what still needs a runtime test.
-tags: [feasibility, data-sources, mod-api, claude-code, codex, runtime-tests]
-keywords: [staged, resume, timer writes, Raster, ui.panes, combining mark, Hangul Jamo, autonomous-loop, Edit, Write, session.usage, cost.usd, $.store, session.end, previous session, files touched, cells, bodyColumns, blit, autoFocus, closeOnEscape, PromptHint, TurnDuration, disableAgentView, agent list, local_bash, installed_plugins.json, CLAUDE_PLUGIN_DATA, CODEX_HOME, sessionId, custom_tool_call, CommandExecution, subagent, workflow, workflowPhase, meta.json, worktree, codex, rollout, threadId, token_count, model_reasoning_summary, shell, task output, monitor, cron, CronList, TaskStop, tool.check, hotkey, Button, focus, band, pane, 4 MiB, n/a, task-notification, output-file, exited with code, killed, backgroundTaskId, background_tasks, session_crons, ScheduleWakeup, scheduledFor, scheduled-trigger, transcript, tool_use, tool_result, item_completed, task_complete]
+description: Where Rabe gets each piece of data about background work (mod API, files on disk, source code), what is not available, the pane key, focus and mouse model, what plain Buttons and a Raster can draw, colors under tmux, what of Claude Code's own display a mod can hide, and what still needs a runtime test.
+tags: [feasibility, data-sources, mod-api, claude-code, codex, runtime-tests, focus, mouse]
+keywords: [plain Button, dimColor, hover, ui.scroll, ui.focus, ui.press, pointer, arrow keys, mouse, fullscreen, ansi256, xterm-256, reorder, focus ring, subagent tasks, staged, resume, timer writes, Raster, ui.panes, combining mark, Hangul Jamo, autonomous-loop, Edit, Write, session.usage, cost.usd, $.store, session.end, previous session, files touched, cells, bodyColumns, blit, autoFocus, closeOnEscape, PromptHint, TurnDuration, disableAgentView, agent list, local_bash, installed_plugins.json, CLAUDE_PLUGIN_DATA, CODEX_HOME, sessionId, custom_tool_call, CommandExecution, subagent, workflow, workflowPhase, meta.json, worktree, codex, rollout, threadId, token_count, model_reasoning_summary, shell, task output, monitor, cron, CronList, TaskStop, tool.check, hotkey, Button, focus, band, pane, 4 MiB, n/a, task-notification, output-file, exited with code, killed, backgroundTaskId, background_tasks, session_crons, ScheduleWakeup, scheduledFor, scheduled-trigger, transcript, tool_use, tool_result, item_completed, task_complete]
 ---
 
 # What Rabe can see
 
 This page lists where Rabe gets each piece of data, and what it cannot get. It is the result of two independent reviews (Claude Opus 5.5 and GPT-6.1 Sol), a second round on the points where they disagreed, and our own checks.
 
-Checked on 2026-10-08 with Claude Code 2.1.294 and 2.1.295 (runtime tests in an interactive 2.1.295 session) and Codex CLI 0.160.1 with the Codex plugin 1.0.6. Line numbers like `d.ts:3159` refer to the mod API types that Claude Code 2.1.294 writes to `.claude-plugin/types/claude-code/index.d.ts`.
+Checked on 2026-10-08 and 2026-10-09 with Claude Code 2.1.294 and 2.1.295 (runtime tests in an interactive 2.1.295 session) and Codex CLI 0.160.1 with the Codex plugin 1.0.6. Line numbers like `d.ts:3159` refer to the mod API types that Claude Code 2.1.294 writes to `.claude-plugin/types/claude-code/index.d.ts`.
 
 ## Where data comes from
 
@@ -89,6 +89,10 @@ Limits: Codex deletes old session files, so older jobs show `n/a` for tokens and
 | Port | Not reported. Guessed from the output (`localhost:5173`, `127.0.0.1:8080`, `port 4000`). `ss -ltnp` is not used. |
 | Stop | `TaskStop`. |
 
+### A subagent's background tasks
+
+Tested in the same spike: a subagent's background `Bash` and `Monitor` calls reach the mod's `tool.call` hook with the subagent's `agentId` (the Bash result has `backgroundTaskId`, the Monitor result `taskId`). Their `tasks/<id>.output` files are in the main session's `tasks` folder. Their end notifications go only to the subagent: the main session gets only the agent's own task notifications. So Rabe ends a subagent's shells and monitors from the last line of the output file (`[exited with code N]`, `[killed]`), and does not end them at the main session's `Stop` when `background_tasks` leaves them out.
+
 ## Monitors
 
 Command, description, timeout and `persistent` come from the Monitor tool input and result (d.ts:16231, d.ts:20620). A monitor has no interval: it is one command that streams lines.
@@ -116,7 +120,7 @@ Line times: task notifications are delayed and often carry several lines, so the
 
 - **Band above the prompt.** Several lines up to `maxRows`; the engine draws its own "n more" row (d.ts:10200). Collapse belongs to the engine (ctrl+x ctrl+a, d.ts:10184); the hook gets no collapsed flag. When nothing runs, the band draws nothing.
 - **Pane.** Docks beside the transcript, or sits inline at about a third of the height. There is no full screen (d.ts:10241). Design for narrow widths with `bodyColumns`.
-- **Keys.** Tested: nothing holds focus when the pane opens, so Enter does nothing until Tab is pressed, unless a Button has `autoFocus`. Tab and Down move focus between Buttons (`ui.focus` fires); Left and Right do nothing. Enter presses the focused Button. Space never presses a Button: it takes the keys away from the pane. Hotkeys are one digit or one lowercase letter, and Shift is ignored, so `X` is the same as `x` (d.ts:1070, d.ts:9334). `/`, space and `←→` cannot be bindings. `Client.onKey` gets every key, but only after a mouse click (d.ts:1583).
+- **Keys.** Tested: nothing holds focus when the pane opens, so Enter does nothing until Tab is pressed, unless a Button has `autoFocus`. Tab and Down move focus between Buttons (`ui.focus` fires); Left and Right do nothing. Enter presses the focused Button. Space never presses a Button: it takes the keys away from the pane. Hotkeys are one digit or one lowercase letter, and Shift is ignored, so `X` is the same as `x` (d.ts:1070, d.ts:9334). `/`, space and `←→` cannot be bindings. `Client.onKey` gets every key, but only after a mouse click (d.ts:1583). How the arrows, Tab and the mouse act on plain Buttons is under Buttons, focus and the mouse.
 - **Esc.** Without `closeOnEscape` Esc only returns the keys and the pane stays. With it, Esc closes the pane while it holds the keys, and at an idle, empty prompt (`PaneOpenArgs.closeOnEscape`).
 - **Opening focused.** `$.ui.open({ focus: true })` inside `command.run` places the pane but does not focus it. The same call from `$.clock.after(1500)` after the command does focus it. Esc may close the pane in that time, so the late call first checks `$.ui.panes()` (d.ts:2499, this plugin's open panes) and opens nothing when the pane is gone.
 - **Large lists.** A tree draws at most 100,000 characters. Draw the visible part and use `$.ui.scroll`.
@@ -126,16 +130,33 @@ Line times: task notifications are delayed and often carry several lines, so the
 
 `Raster` (d.ts:9188) is a fixed grid of cells: `columns` 1 to 512, `rows` 1 to 256, and `cells`, standard padded base64 of little-endian u32 triplets `[codePoint, foreground, background]`. A code point is one printable width-1 BMP character, or the tree is refused naming the cell's index. A color is `0x00RRGGBB`, or `0x01000000` for the terminal's default. Rabe cuts every grid to that size before it draws (`clamp`), and `safe()` keeps only an allow list of width-1 characters (see the cell engine in architecture). The engine's own width table is not published: it refuses characters a deny list misses, such as `☰` (U+2630), and takes every character on the allow list, which a test checks against the pinned version. No bold, underline or italic. It is a leaf (no press, no focus), and only the terminal's element table has it.
 
-Tested in a live 2.1.295 session in tmux (a spike mod, 2026-10-08):
+Rabe now draws only the band as a Raster; the pane is lines of Text and plain Buttons (see Buttons, focus and the mouse). Tested in a live 2.1.295 session in tmux (a spike mod, 2026-10-08):
 
 1. A Raster draws in a docked pane and in the AbovePrompt band, with colored backgrounds, box drawing, blocks and the icons `◐ ▶ ✗ ◉ ⟳`. A Button row draws below a Raster.
 2. Size: `$.ui.open({ columns: 100 })` gave a dock of `bodyColumns` 72 at a 200-column terminal; the person can drag it wider. At 100 terminal columns the pane goes inline with `bodyColumns` 96. A Raster wider than the body is cut on the right, and the engine's `[-]` draws over its top row. So every Raster is sized from `bodyColumns` and `scroll.bodyRows` on every draw.
 3. `$.ui.blit` repaints only the changed cells (about 80 bytes a frame) and is refused after a size change ("a resize is a redraw"). Blit only between resizes, otherwise redraw.
 4. Default focus works: `autoFocus` on a Button, or `$.ui.focus({ requestId, key })` right after the open. `$.ui.focus` is refused while keys are still arriving.
-5. Button hotkeys `j`, `k`, `x` fire while the pane holds the keys. A letter no Button binds moves the focus to the prompt, and the next keys type into the composer. No hook can keep the keys: there is no `ui.key` event, and a focused Input takes every key and stops the hotkeys. So Rabe binds the common letters on Buttons and shows the hint.
+5. Button hotkeys such as `x` fire while the pane holds the keys. A letter no Button binds moves the focus to the prompt, and the next keys type into the composer. No hook can keep the keys: there is no `ui.key` event, and a focused Input takes every key and stops the hotkeys. So Rabe binds the common letters on Buttons and shows the hint.
 6. Under tmux the colors become 256-color codes.
 7. Text in Raster cells copies intact through terminal selection.
 8. On the desktop `$.ui.resolve` still returns a Raster constructor, but it draws an empty Box. The text fallback is chosen by `e.surface === 'terminal'`, not by checking for `Raster`.
+
+### Buttons, focus and the mouse
+
+Tested in a live 2.1.295 session in the fullscreen layout under tmux (a spike mod with a list of plain Buttons in keyed Boxes, 2026-10-09). Where these differ from the d.ts, these win:
+
+1. A `plain` Button draws its label without brackets. The focused one draws inverse over its label only; the row Box's `backgroundColor` still shows around it. A Button takes no color prop (`ButtonProps` has `dimColor` and `hover`, no `color` or `backgroundColor`), so the row's background comes from the Box around it.
+2. In a pane where all rows fit, ↓ and ↑ move the focus row by row and wrap; Tab and Shift+Tab move it too (Tab also stops on the engine's close mark). Home, End, PgUp and PgDn only scroll; ← and → do nothing. In a pane taller than its body, ↓ and ↑ scroll the pane instead (`ui.scroll` with `by` 1 or -1 and no `pointer`) and leave the focus where it is. A `ui.scroll` hook that answers such a move with `{}` and calls `$.ui.focus` on the next or previous row makes the arrows move row by row again, and the pane follows the focus. Rabe does this (see architecture).
+3. Enter presses the focused Button (`ui.press`, then `onPress`).
+4. A mouse click on a row presses it (`ui.press`, surface terminal). A click on a Button does not move the focus ring and does not take the keyboard from the prompt; a click on an empty part of the pane does. Hover is drawn by the engine from the `hover` props (bold, a color, inverse) and not reported to the mod. The wheel scrolls the pane (`ui.scroll` with a `pointer`). Claude Code turns on mouse reporting (`?1000h ?1002h ?1003h ?1006h`, SGR) only in the fullscreen layout (`/tui fullscreen`), so clicks reach a pane only there.
+5. Box and Text `backgroundColor`, `bold` and `color` draw. Under tmux a hex color for a Box or Text is reduced to 256 colors with a coarse formula: `#203020` and `#402040` both became 59. The engine passes `ansi256(n)` through unchanged (its color check takes `#rgb`, `#rrggbb`, `rgb(…)`, `ansi256(n)` and `ansi:<name>`), and its reduction of 24-bit codes, which Raster cells use, picks the nearest of the xterm cube and grey entries, so an exact entry stays itself. So Rabe uses only xterm-256 entries and names them `ansi256(n)` on the terminal.
+6. Drawing again every second for 10 minutes: no flicker, and the focus stays. When the rows reorder, the focus ring stays on the old index: Enter then presses another row, and no `ui.focus` fires. `$.ui.focus` on the old key afterwards does not move it back. So a list must not reorder while it holds the focus.
+7. Tab to a row out of view scrolls the pane to show it; with the arrow fix above, ↑ and ↓ do too.
+8. `$.ui.open({ focus: true })` works only while the composer is empty and no dialog is open, and `$.ui.focus` is refused while the pane does not hold the keyboard (from the design thread anthropics/claude-code#91870). On a desktop the first click on a pane that does not hold the keyboard only focuses it.
+
+Only Button and Markdown links take a press, so a row is one pressable thing, with no second control inside it. Other mods draw selectable lists the same way, one plain Button per row in a keyed Box (agentpane, pr-pulse, the github-issues picker of claude-code-mods, agent-flow). A `Select` is refused above 64 options. A `Client` would give ← → and pointer drags, but only after a click, and has no focus ring, hotkeys or Button styling, so Rabe does not use one.
+
+The test kit cannot answer a plugin's `$.ui.focus` (nothing beneath the plugins answers it, and a test hook on `ui.focus` is not reached), so the focus move of the arrow fix is checked only live.
 
 ### Claude Code's own count of background work
 
@@ -166,7 +187,8 @@ Tested: `$.fs.stat` and `$.fs.read` read files under `~/.codex/sessions` and `/t
 
 - Does Rabe's own turn line (`✻ Brewed for 5s`, one empty line above) sit where the engine's did, in every transcript layout?
 - Which words does the hint use for agents, workflows and teammates in its task part? `stripTasks` drops parts like `1 background agent`; others stay.
-- Is the grid's background readable in light terminal themes? Plain text and the background use the terminal's default; chips and the selected row use fixed dark backgrounds.
+- Is the pane readable in light terminal themes? Plain text and the background use the terminal's default; chips, panels and the selected row use fixed dark 256-color backgrounds.
+- A subagent's monitor ends from its output file only once Rabe knows some task output path (a shell's, or a monitor end notification's), since the Monitor result carries none. Does a subagent ever start a monitor before any such path is known?
 
 - Does `$.session.usage().cost` count the subagents' requests as well as the main thread's? Rabe labels it the session cost either way.
 - Does `CronList` also list `ScheduleWakeup` wakeups, and with which id?

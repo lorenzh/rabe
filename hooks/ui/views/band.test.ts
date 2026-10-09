@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import { cell, lines } from '../cells/grid'
 import { C, CHIP, DEFAULT } from '../cells/palette'
-import { ALL, babysit, dev, explore, NOW } from '../fixtures'
+import { ALL, babysit, dev, explore, gridOf, NOW } from '../fixtures'
 import { NO_SELECTION, type Size } from '../view'
 import { bandView } from './band'
 
@@ -13,7 +13,7 @@ const model = (items = ALL) => ({ items, turns: {}, lines: {}, now: NOW })
 const at = (shown: string[], y: number, text: string) => shown[y]?.indexOf(text) ?? -1
 
 test('each band row starts with a chip in its kind colors, padded to the longest label', () => {
-  const { grid } = bandView(model(), SIZE, NO_SELECTION)
+  const { grid } = gridOf(bandView(model(), SIZE, NO_SELECTION))
   const shown = lines(grid)
   expect(grid.columns).toBe(100)
   expect(grid.rows).toBe(8)
@@ -26,7 +26,7 @@ test('each band row starts with a chip in its kind colors, padded to the longest
 })
 
 test('names are plain, times dim, ports blue and the next cron run bright', () => {
-  const { grid } = bandView(model([explore, dev, babysit]), SIZE, NO_SELECTION)
+  const { grid } = gridOf(bandView(model([explore, dev, babysit]), SIZE, NO_SELECTION))
   const shown = lines(grid)
   expect(shown[0]).toBe(' ◐ claude 1  Explore verifyToken 1m')
   expect(cell(grid, at(shown, 0, 'Explore'), 0)[1]).toBe(DEFAULT)
@@ -38,7 +38,7 @@ test('names are plain, times dim, ports blue and the next cron run bright', () =
 })
 
 test('the cost row puts the dollar amount first and bright, the rest dim', () => {
-  const { grid } = bandView(model(), SIZE, NO_SELECTION)
+  const { grid } = gridOf(bandView(model(), SIZE, NO_SELECTION))
   const shown = lines(grid)
   expect(shown[7]).toBe(' $ cost        ≈ $0.25 · 91k tok · top: Explore verifyToken 41k')
   expect(cell(grid, at(shown, 7, '≈'), 7)[1]).toBe(C.bright)
@@ -46,12 +46,12 @@ test('the cost row puts the dollar amount first and bright, the rest dim', () =>
 })
 
 test('the cost row shows the session cost when Rabe knows it', () => {
-  const shown = lines(bandView({ ...model(), usd: 0.41 }, SIZE, NO_SELECTION).grid)
+  const shown = lines(gridOf(bandView({ ...model(), usd: 0.41 }, SIZE, NO_SELECTION)).grid)
   expect(shown[7]).toBe(' $ cost        ≈ $0.41 · 91k tok · top: Explore verifyToken 41k')
 })
 
 test('a band taller than maxRows becomes one line of count chips, failed first', () => {
-  const { grid } = bandView(model(), { ...SIZE, columns: 120, rows: 3 }, NO_SELECTION)
+  const { grid } = gridOf(bandView(model(), { ...SIZE, columns: 120, rows: 3 }, NO_SELECTION))
   const shown = lines(grid)
   expect(grid.rows).toBe(1)
   expect(shown[0]).toBe(

@@ -4,7 +4,7 @@ import type { RabeTurn } from '../../../types'
 import type { RabeItem } from '../../model'
 import { cell, lines } from '../cells/grid'
 import { C, CHIP } from '../cells/palette'
-import { ALL, dev, explore, NOW, plan } from '../fixtures'
+import { ALL, dev, explore, gridOf, NOW, plan } from '../fixtures'
 import { type Model, NO_SELECTION, type Size } from '../view'
 import { effectsView } from './effects'
 
@@ -63,7 +63,7 @@ const TURNS: Record<string, RabeTurn[]> = {
 const MODEL: Model = { items: ITEMS, turns: TURNS, lines: {}, now: NOW }
 
 test('a file edited by two agents in one tree heads the tab as a conflict', () => {
-  const { grid } = effectsView(MODEL, SIZE, NO_SELECTION)
+  const { grid } = gridOf(effectsView(MODEL, SIZE, NO_SELECTION))
   const shown = lines(grid)
   expect(shown[0]).toBe(
     ' ⚠ conflict  src/logger.ts is edited by Plan auth split and logger in api in the main tree',
@@ -73,7 +73,7 @@ test('a file edited by two agents in one tree heads the tab as a conflict', () =
 })
 
 test('files touched list each file with who edited it and how often, conflicts first', () => {
-  const { grid } = effectsView(MODEL, SIZE, NO_SELECTION)
+  const { grid } = gridOf(effectsView(MODEL, SIZE, NO_SELECTION))
   const shown = lines(grid)
   const head = shown.indexOf('FILES TOUCHED 4  from agent tool calls')
   expect(head).toBeGreaterThan(0)
@@ -88,7 +88,7 @@ test('files touched list each file with who edited it and how often, conflicts f
 })
 
 test('worktrees show the path, branch and agents, then the main tree', () => {
-  const shown = lines(effectsView(MODEL, SIZE, NO_SELECTION).grid)
+  const shown = lines(gridOf(effectsView(MODEL, SIZE, NO_SELECTION)).grid)
   const head = shown.indexOf('WORKTREES 1  from agent metadata, running agents included')
   expect(head).toBeGreaterThan(0)
   expect(shown[head + 1]).toMatch(
@@ -98,7 +98,7 @@ test('worktrees show the path, branch and agents, then the main tree', () => {
 })
 
 test('ports show the command and the ssh line; c copies the first', () => {
-  const drawn = effectsView(MODEL, SIZE, NO_SELECTION)
+  const drawn = gridOf(effectsView(MODEL, SIZE, NO_SELECTION))
   const shown = lines(drawn.grid)
   const head = shown.indexOf('PORTS 1  found in shell output, may miss some')
   expect(shown[head + 1]).toBe('  :5173  bun run dev')
@@ -115,7 +115,9 @@ test('ports show the command and the ssh line; c copies the first', () => {
 })
 
 test('with no edits, agents or ports each section says so', () => {
-  const drawn = effectsView({ items: [], turns: {}, lines: {}, now: NOW }, SIZE, NO_SELECTION)
+  const drawn = gridOf(
+    effectsView({ items: [], turns: {}, lines: {}, now: NOW }, SIZE, NO_SELECTION),
+  )
   const shown = lines(drawn.grid)
   expect(shown[0]).toBe('FILES TOUCHED 0  from agent tool calls')
   expect(shown).toContain('  No agent edited a file yet.')
@@ -127,7 +129,7 @@ test('with no edits, agents or ports each section says so', () => {
 test('a long file list is cut to the rows left, with the rest counted', () => {
   const many = Array.from({ length: 40 }, (_, i) => `/repo/f${i}.ts`)
   const model = { ...MODEL, items: [editing(api, [NOW, ...many]), dev], turns: {} }
-  const { grid } = effectsView(model, { ...SIZE, rows: 16 }, NO_SELECTION)
+  const { grid } = gridOf(effectsView(model, { ...SIZE, rows: 16 }, NO_SELECTION))
   const shown = lines(grid)
   expect(grid.rows).toBeLessThanOrEqual(16)
   expect(shown.some(line => /^ {2}… \d+ more$/.test(line))).toBe(true)

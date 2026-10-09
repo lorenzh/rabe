@@ -48,8 +48,9 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 
 | Key | What it does |
 |---|---|
-| `j` / `k` | Move down / up |
-| Enter | Open the selected item |
+| ↑ / ↓ | Move to the previous / next row |
+| Enter | Open the row that has the focus |
+| Tab / Shift+Tab | Move the focus through rows, tabs and buttons |
 | `b` | Go back to the list |
 | `1` to `4` | Switch tab |
 | `s` | Search |
@@ -61,6 +62,10 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | Esc | Close the pane |
 
 The buttons under the pane show the keys that work on the current tab. A letter with no button goes to the prompt.
+
+With the mouse, click a row to open it, a tab to switch to it, or a group name to fold the group. The wheel scrolls the pane. Mouse clicks work only in Claude Code's fullscreen layout (`/tui fullscreen`).
+
+The rows keep their order while the pane is open, so the row under the focus does not move. New items go to the end of their group. Type `/rabe` again to sort the lists.
 
 Commands:
 

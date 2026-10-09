@@ -1,8 +1,8 @@
 import type { RenderSurface } from 'claude-code'
 
-import type { RabeLines, RabePrevious, RabeTab, RabeTurn } from '../../types'
+import type { RabeLines, RabeOrder, RabePrevious, RabeTab, RabeTurn } from '../../types'
 import type { RabeItem } from '../model'
-import { type Grid, MAX_COLUMNS, MAX_ROWS } from './cells/grid'
+import { type Grid, MAX_COLUMNS, MAX_ROWS, type Span } from './cells/grid'
 
 // What every view reads: the sources' session values, never files. `usd` is
 // the session's cost as /cost totals it; `previous` is the last session in
@@ -37,19 +37,21 @@ export function bounded(size: Size): Size {
   }
 }
 
-// The person's place in the pane, kept in `$.state` (rabe.tab, rabe.selected, ...).
+// The person's place in the pane, kept in `$.state` (rabe.tab, rabe.selected,
+// ...). `selected` is the item whose row holds the focus; `order` the list
+// order taken when the pane opened (see `stable` in lists.ts).
 export type Selection = {
   tab: RabeTab
   query: string
   folded: string[]
   selected: string
   open: string
+  order?: RabeOrder
   isFocused: boolean
 }
 
 export type Action =
   | { type: 'tab'; tab: RabeTab }
-  | { type: 'select'; id: string }
   | { type: 'open'; id: string }
   | { type: 'fold'; group: string }
   | { type: 'query'; text: string }
@@ -59,8 +61,9 @@ export type Action =
   | { type: 'copy'; text: string }
   | { type: 'message'; id: string; text: string }
 
-// A Button under the grid. The label carries the key ("j: down"): the engine
-// does not draw hotkeys. Hotkeys are one digit or one lowercase letter.
+// A control under the body, drawn `[ label ]`. The label carries the key
+// ("x: stop"): the engine does not draw hotkeys. Hotkeys are one digit or one
+// lowercase letter.
 export type ViewButton = {
   key: string
   label: string
@@ -81,14 +84,38 @@ export type ViewInput = {
   action: (text: string) => Action
 }
 
-// A view's whole output. `rows` maps a grid row to what pressing it does: the
-// terminal cannot press a Raster cell, so only the text fallback draws such a
-// row as a Button (keyed `key`); the terminal reaches it through the Buttons.
+// A plain Button inside a line: the one pressable thing of a selectable row
+// (its name) or a tab. `key` is stable (`row:<item id>`, `group-<id>`,
+// `tab-<tab>`), so focus and the arrow keys find it again after a redraw.
+// A Button takes no color: `dim` draws it dim at rest and full under the
+// focus or the pointer, and `bg` is the background of the Box around it.
+export type Press = {
+  key: string
+  label: string
+  action: Action
+  hotkey?: string
+  autoFocus?: true
+  dim?: true
+  bg?: number
+}
+
+export type Part = Span | Press
+
+export const isPress = (part: Part): part is Press => !Array.isArray(part)
+
+// One row of the body: Text parts and at most one Press per row (a tab bar
+// holds one per tab), then a part aligned to the right end. `bg` fills the row.
+export type Line = { spans: Part[]; right?: Span[]; bg?: number }
+
+// What a body holds: lines, and charts nobody presses (a Raster on the
+// terminal, text elsewhere).
+export type Node = Line | { chart: Grid }
+
+// A view's whole output: the body, then the controls and the Inputs under it.
 export type Drawn = {
-  grid: Grid
+  nodes: Node[]
   buttons: ViewButton[]
   inputs?: ViewInput[]
-  rows?: Record<number, { key: string; action: Action }>
 }
 
 export type View = (model: Model, size: Size, selection: Selection) => Drawn
@@ -102,9 +129,27 @@ export const NO_SELECTION: Selection = {
   isFocused: false,
 }
 
-// Rows the controls under the grid take: wrapped Buttons ("[ label ]" and a
+// The item rows of a drawing in document order: what the arrow keys walk.
+export function rowKeys(drawn: Drawn): string[] {
+  return drawn.nodes.flatMap(node =>
+    'spans' in node
+      ? node.spans.flatMap(part => (isPress(part) && part.key.startsWith('row:') ? [part.key] : []))
+      : [],
+  )
+}
+
+// The row an arrow key moves the focus to from the row of item `selected`:
+// the first row when the focus is on none; undefined past either end.
+export function stepRow(keys: string[], selected: string, by: number): string | undefined {
+  const at = keys.indexOf(`row:${selected}`)
+  if (at === -1) return by > 0 ? keys[0] : undefined
+
+  return keys[at + by]
+}
+
+// Rows the controls under the body take: wrapped Buttons ("[ label ]" and a
 // gap) and one row per Input.
-export function controlRows(drawn: Omit<Drawn, 'grid'>, size: Size): number {
+export function controlRows(drawn: Omit<Drawn, 'nodes'>, size: Size): number {
   let rows = 0
   let used = Infinity
   for (const button of drawn.buttons) {
