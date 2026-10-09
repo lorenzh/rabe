@@ -10,7 +10,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Changed
 
-- The band above the prompt is always one line of counts and the cost, with an empty row above it so the status line does not touch it. ([#17](https://github.com/lorenzh/rabe/pull/17))
+- The band above the prompt is always one line of counts and the cost, with an empty row above it so the status line does not touch it; the empty row goes when the band has only one row. ([#17](https://github.com/lorenzh/rabe/pull/17))
 
 ### Fixed
 

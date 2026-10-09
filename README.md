@@ -17,15 +17,15 @@ Status: early development. See [releases](https://github.com/lorenzh/rabe/releas
 
 | Kind | In the band | In the pane |
 |---|---|---|
-| Claude subagents | Name and run time | Tokens, share of the session, the prompt it got, each turn with its tool calls |
-| Workflows | Current phase and agent count | Phases in order, the agents of each phase in start order with tokens and time; select an agent to open it |
-| Codex jobs (from the Codex plugin) | Name and run time | Model, effort and sandbox, tokens, the prompt, each message and command with its exit code |
-| Background shells | Command and the port it serves | Output lines, exit code, the guessed port |
-| Monitors | Name | Each line with the time Rabe received it |
-| Cron jobs and `/loop` wakeups | Prompt and the time of the next run (`due` for a wakeup that waits) | The next five runs |
+| Claude subagents | Count (`claude`) | Tokens, share of the session, the prompt it got, each turn with its tool calls |
+| Workflows | Count (`workflow`) | Phases in order, the agents of each phase in start order with tokens and time; select an agent to open it |
+| Codex jobs (from the Codex plugin) | Count (`codex`) | Model, effort and sandbox, tokens, the prompt, each message and command with its exit code |
+| Background shells | Count (`shell`) | Output lines, exit code, the guessed port |
+| Monitors | Count (`monitor`) | Each line with the time Rabe received it |
+| Cron jobs and `/loop` wakeups | Count (`cron`) | The next five runs |
 | Cost | Session cost and tokens of the background work | Cost tab: tokens per worker, workers that look stuck |
 
-The band is one line of counts, one chip per kind with failures from the last 10 minutes first, then the cost, under an empty row so the status line above does not touch it. The names are in the pane. When nothing runs, it draws nothing.
+The band is one line of counts, one chip per kind with failures from the last 10 minutes first, then the cost, under an empty row so the status line above does not touch it. When Claude Code gives the band only one row, the empty row goes. The names are in the pane. When nothing runs, it draws nothing.
 
 The pane has four tabs:
 

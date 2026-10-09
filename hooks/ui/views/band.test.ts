@@ -26,9 +26,22 @@ test('the band is one line of count chips under an empty row, failed first', () 
   expect(cell(grid, at(shown, 1, '91k'), 1)[1]).toBe(C.dim)
 })
 
-test('the band stays one line however little room maxRows gives', () => {
-  const { grid } = gridOf(bandView(model(), { ...SIZE, columns: 120, rows: 2 }, NO_SELECTION))
-  expect(grid.rows).toBe(2)
+test('the band drops the empty row when maxRows leaves room for one row only', () => {
+  for (const surface of ['terminal', 'desktop'] as const) {
+    for (const [rows, drawn] of [
+      [1, 1],
+      [2, 2],
+      [3, 2],
+    ] as const) {
+      const { grid } = gridOf(
+        bandView(model(), { ...SIZE, columns: 120, rows, surface }, NO_SELECTION),
+      )
+      const shown = lines(grid)
+      expect(grid.rows).toBe(drawn)
+      expect(shown.at(-1)).toContain('◐ 2 claude')
+      expect(shown.at(-1)).toContain('≈ $0.25')
+    }
+  }
 })
 
 test('the band shows the session cost when Rabe knows it', () => {
