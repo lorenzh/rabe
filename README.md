@@ -55,7 +55,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | `1` to `4` | Switch tab |
 | `s` | Search |
 | `x` | Stop the selected item |
-| `g` | Stop the whole group, or the workflow run of the selected run or workflow agent |
+| `g` | Stop the group the selected row is in (the rows the search shows), or the workflow run of the selected run or workflow agent |
 | `m` | Send a message to an agent |
 | `c` | Copy the command, the prompt or the `ssh -L` line |
 | `d` | Delete a cron job |

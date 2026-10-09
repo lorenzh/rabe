@@ -197,3 +197,22 @@ test('previousOf sums a session up: counts per kind, tokens, cost, failed titles
     failed: ['bun run lint'],
   })
 })
+
+test('a group absent when the pane opened holds its order too', () => {
+  const order = orderOf([explore])
+  const older: RabeItem = { ...dev, id: 'shell:a', startedAt: NOW - 9 * 60_000 }
+  const newer: RabeItem = { ...dev, id: 'shell:b', startedAt: NOW - 60_000 }
+  const watch: RabeItem = { ...ci, id: 'monitor:b', startedAt: NOW - 60_000 }
+  const ids = (items: RabeItem[], group: string) =>
+    grouped(items, order)
+      .find(g => g.id === group)
+      ?.items.map(item => item.id)
+  const running = [explore, older, newer, ci, watch]
+  expect(ids(running, 'shells')).toEqual([older.id, newer.id])
+  expect(ids(running, 'monitors')).toEqual([ci.id, watch.id])
+  const ended = running.map(item =>
+    item === newer || item === watch ? { ...item, status: 'done' as const, endedAt: NOW } : item,
+  )
+  expect(ids(ended, 'shells')).toEqual([older.id, newer.id])
+  expect(ids(ended, 'monitors')).toEqual([ci.id, watch.id])
+})

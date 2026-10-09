@@ -192,3 +192,19 @@ test('a long file list is cut to the rows left, with the rest counted', () => {
   expect(shown.some(line => /^ {2}… \d+ more$/.test(line))).toBe(true)
   expect(shown).toContain('  :5173  bun run dev')
 })
+
+test('a pane too short for every section scrolls to the ssh rows instead of losing them', () => {
+  const shells = [5173, 3000, 8080, 9229].map((port, i) => ({
+    ...dev,
+    id: `shell:p${i}`,
+    detail: { command: `serve ${port}`, taskId: `p${i}`, port },
+  })) as RabeItem[]
+  for (const [items, rows] of [
+    [[...ITEMS.filter(item => item.kind !== 'shell'), dev], 7],
+    [[...ITEMS.filter(item => item.kind !== 'shell'), ...shells], 13],
+  ] as const) {
+    const drawn = effectsView({ ...MODEL, items: [...items] }, { ...SIZE, rows }, NO_SELECTION)
+    const ssh = rowKeys(drawn).filter(key => key.startsWith('row:ssh:'))
+    expect(ssh).toHaveLength(items.filter(item => item.kind === 'shell').length)
+  }
+})

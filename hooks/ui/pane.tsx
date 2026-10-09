@@ -252,6 +252,9 @@ export function pane(on: On): void {
       rows: e.props.scroll?.bodyRows || 24,
       surface: e.surface,
       hasInput: 'Input' in ui,
+      ...(e.props.scroll && {
+        window: { top: e.props.scroll.offset, rows: e.props.scroll.bodyRows },
+      }),
     })
 
     return render(ui, e.surface, paneView(model, size, selection), (action, surface) => {

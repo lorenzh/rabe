@@ -156,6 +156,8 @@ Tested in a live 2.1.295 session in the fullscreen layout under tmux (a spike mo
 
 Only Button and Markdown links take a press, so a row is one pressable thing, with no second control inside it. Other mods draw selectable lists the same way, one plain Button per row in a keyed Box (agentpane, pr-pulse, the github-issues picker of claude-code-mods, agent-flow). A `Select` is refused above 64 options. A `Client` would give ← → and pointer drags, but only after a click, and has no focus ring, hotkeys or Button styling, so Rabe does not use one.
 
+Where the window stands comes from the Pane's `scroll.offset` (d.ts `SiteScroll`): the first row of the tree it showed when the hook was asked. A scroll through `ui.scroll` asks again; on the terminal the engine's own moves (following the focus, a clamp) do not, so a draw may read the offset from before the focus moved. Rabe adds what the engine does to keep the focused row in view (see the split in architecture).
+
 The test kit cannot answer a plugin's `$.ui.focus` (nothing beneath the plugins answers it, and a test hook on `ui.focus` is not reached), so the focus move of the arrow fix is checked only live.
 
 ### Claude Code's own count of background work

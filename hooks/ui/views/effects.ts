@@ -111,7 +111,8 @@ const sshLine = (port: number) => `ssh -L ${port}:localhost:${port} <your-host>`
 // files agents touched (each a row that opens the agent that edited it last),
 // the worktrees, and the ports of running shells, each with its ssh command
 // as a row that copies it (`c` the first). The files hold their order while
-// the pane is open (`stable`).
+// the pane is open (`stable`). The file list is cut to leave room for the
+// rest; what still does not fit makes the pane scroll, so no row is lost.
 export const effectsView: View = (model, size, sel): Drawn => {
   const files = stable(touched(model.items), sel.order?.files, byConflict)
   const ports = model.items.flatMap(item =>
@@ -168,5 +169,5 @@ export const effectsView: View = (model, size, sel): Drawn => {
     selected,
   )
 
-  return { nodes: lines.slice(0, size.rows).map(line => fitLine(line, size.columns)), buttons: [] }
+  return { nodes: lines.map(line => fitLine(line, size.columns)), buttons: [] }
 }

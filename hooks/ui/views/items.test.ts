@@ -2,10 +2,11 @@ import { expect, test } from 'claude-code/testing'
 import type { RabeItem, RabeItemOf } from '../../model'
 import { cell, lines } from '../cells/grid'
 import { C, DEFAULT } from '../cells/palette'
-import { ALL, ci, dev, explore, flow, gridOf, lint, NOW, verify } from '../fixtures'
-import { grouped } from '../lists'
+import { ALL, ci, dev, explore, flow, gridOf, lint, NOW, plan, review, verify } from '../fixtures'
+import { grouped, orderOf } from '../lists'
 import { type Drawn, isPress, NO_SELECTION, rowKeys, type Size } from '../view'
 import { itemsView } from './items'
+import { paneView } from './pane'
 
 const WIDE: Size = { columns: 100, rows: 24, surface: 'terminal', hasInput: true }
 const NARROW: Size = { ...WIDE, columns: 80, rows: 12 }
@@ -184,4 +185,107 @@ test('a workflow agent or a run offers g: stop run on the list', () => {
     expect(run?.action).toEqual({ type: 'stop', ids: [flow.id] })
     expect(buttons.find(one => one.hotkey === 'x')).toBeUndefined()
   }
+})
+
+const stopIds = (drawn: Drawn) => {
+  const action = drawn.buttons.find(one => one.key === 'stop-group')?.action
+  return action?.type === 'stop' ? action.ids : undefined
+}
+
+test('g stops the group the row is shown in, not the group its status names now', () => {
+  const failed = (item: RabeItem): RabeItem => ({ ...item, status: 'failed', endedAt: NOW })
+  const other: RabeItem = { ...explore, id: 'agent:a9', title: 'Explore other' }
+  const back: RabeItem = { ...review, id: 'codex:task-2', title: 'review cli.ts' }
+  const order = orderOf([failed(explore), failed(back), other])
+  const m = { ...model, items: [explore, back, other] }
+  const drawn = itemsView(m, WIDE, { ...NO_SELECTION, selected: explore.id, order })
+  expect(stopIds(drawn)).toEqual([explore.id, back.id])
+  const one = itemsView({ ...m, items: [explore, other] }, WIDE, {
+    ...NO_SELECTION,
+    selected: explore.id,
+    order: orderOf([failed(explore), other]),
+  })
+  expect(stopIds(one)).toBeUndefined()
+})
+
+test('g stops only the rows the search shows', () => {
+  const other: RabeItem = { ...explore, id: 'agent:a9', title: 'Explore other' }
+  const m = { ...model, items: [explore, other, review] }
+  const drawn = itemsView(m, WIDE, { ...NO_SELECTION, selected: explore.id, query: 'explore' })
+  expect(stopIds(drawn)).toEqual([explore.id, other.id])
+})
+
+const shellOf = (id: string, parentId?: string): RabeItem => ({
+  ...(dev as RabeItemOf<'shell'>),
+  id: `shell:${id}`,
+  title: id,
+  seenAt: NOW - 60_000,
+  ...(parentId && { parentId }),
+  detail: { command: id, taskId: id },
+})
+
+test('a held list adds an agent shell at the end, never above a row', () => {
+  const a1 = shellOf('a1', explore.id)
+  const b1 = shellOf('b1', plan.id)
+  const before = [explore, plan, a1, b1]
+  const order = orderOf(before)
+  const sel = { ...NO_SELECTION, selected: b1.id, order }
+  const a2 = shellOf('a2', explore.id)
+  const drawn = itemsView({ ...model, items: [...before, a2] }, NARROW, sel)
+  const shells = rowKeys(drawn).filter(key => key.startsWith('row:shell:'))
+  expect(shells).toEqual([`row:${a1.id}`, `row:${b1.id}`, `row:${a2.id}`])
+  const shown = lines(gridOf(drawn).grid).map(line => line.trimEnd())
+  expect(shown.filter(line => line === ' ◐ Explore verifyToken')).toHaveLength(2)
+  const main = shellOf('main')
+  const later = itemsView({ ...model, items: [...before, a2, main] }, NARROW, sel)
+  expect(rowKeys(later).filter(key => key.startsWith('row:shell:'))).toEqual([
+    `row:${a1.id}`,
+    `row:${b1.id}`,
+    `row:${a2.id}`,
+    `row:${main.id}`,
+  ])
+})
+
+test('a held order keeps the families as the list showed them when it opened', () => {
+  const sel = { ...NO_SELECTION, order: orderOf(families.items) }
+  expect(rowKeys(itemsView(families, NARROW, sel))).toEqual(
+    rowKeys(itemsView(families, NARROW, NO_SELECTION)),
+  )
+})
+
+const many = Array.from({ length: 30 }, (_, i) => shellOf(`s${String(i).padStart(2, '0')}`))
+const crowd = { ...model, items: many }
+const detailAt = (drawn: Drawn, title: string) =>
+  lines(gridOf(drawn).grid).findIndex(line => line.slice(44).startsWith(`▶ shell · ${title}`))
+const rowAt = (drawn: Drawn, id: string) =>
+  drawn.nodes.findIndex(
+    node => 'spans' in node && node.spans.some(p => isPress(p) && p.key === `row:${id}`),
+  )
+
+test('the split detail sits in the rows the pane shows, where the focus took them', () => {
+  const last = many.at(-1) as RabeItem
+  const sel = { ...NO_SELECTION, selected: last.id }
+  const tall = paneView(crowd, { ...WIDE, rows: 12, window: { top: 0, rows: 12 } }, sel)
+  const y = rowAt(tall, last.id)
+  expect(y).toBeGreaterThan(12)
+  expect(detailAt(tall, last.title)).toBe(y - 11)
+  const first = many[2] as RabeItem
+  const up = paneView(
+    crowd,
+    { ...WIDE, rows: 12, window: { top: 20, rows: 12 } },
+    {
+      ...sel,
+      selected: first.id,
+    },
+  )
+  expect(detailAt(up, first.title)).toBe(rowAt(up, first.id))
+  const still = paneView(
+    crowd,
+    { ...WIDE, rows: 12, window: { top: 5, rows: 12 } },
+    {
+      ...sel,
+      selected: (many[8] as RabeItem).id,
+    },
+  )
+  expect(detailAt(still, 's08')).toBe(5)
 })

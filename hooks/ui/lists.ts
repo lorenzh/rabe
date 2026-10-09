@@ -123,7 +123,8 @@ function heldGroup(item: RabeItem, order: RabeOrder): Group {
 }
 
 // The Items tab's groups, failed first. Without `order` each group sorts
-// running first, then the newest; with it, rows stay where `orderOf` put them.
+// running first, then the newest; with it, rows stay where `orderOf` put them,
+// and a group that was empty then lists its items in the order Rabe saw them.
 export function grouped(
   items: RabeItem[],
   order?: RabeOrder,
@@ -134,7 +135,7 @@ export function grouped(
     ...group,
     items: stable(
       items.filter(item => of(item) === group.id),
-      order?.[group.id],
+      order && (order[group.id] ?? []),
       sortItems,
     ),
   })).filter(group => group.items.length > 0)
@@ -198,14 +199,27 @@ export function byConflict(files: Touched[]): Touched[] {
   return files.toSorted((a, b) => Number(b.by.length > 1) - Number(a.by.length > 1) || b.at - a.at)
 }
 
-// The order the pane shows when it opens: each group sorted, the Cost tab by
+// Shells and monitors an agent started sit under that agent (see `byParent`).
+export const FAMILIES: Group[] = ['shells', 'monitors']
+
+// The order the pane shows when it opens: each group sorted (shells and
+// monitors in their families), the Cost tab by
 // tokens, the Timeline by start, the Effects files by `byConflict`. Held in
 // `rabe.order` until the next open.
 export function orderOf(items: RabeItem[]): RabeOrder {
   const ids = (list: RabeItem[]) => list.map(item => item.id)
 
   return {
-    ...Object.fromEntries(grouped(items).map(group => [group.id, ids(group.items)])),
+    ...Object.fromEntries(
+      grouped(items).map(group => [
+        group.id,
+        ids(
+          FAMILIES.includes(group.id)
+            ? byParent(group.items, items).flatMap(family => family.items)
+            : group.items,
+        ),
+      ]),
+    ),
     cost: ids(byTokens(items)),
     timeline: ids(byStart(items)),
     files: byConflict(touched(items)).map(file => file.id),
@@ -216,23 +230,25 @@ export type Family = { id: string; parent?: RabeItem; title: string; items: Rabe
 
 // Shells and monitors by who started them: the main session's first (title
 // ''), then one block per agent in the order of `list`. A workflow agent reads
-// "run › agent"; an agent Rabe no longer holds "agent n/a".
-export function byParent(list: RabeItem[], items: RabeItem[]): Family[] {
-  const blocks = new Map<string, Family>([['', { id: '', title: '', items: [] }]])
+// "run › agent"; an agent Rabe no longer holds "agent n/a". With `isHeld`
+// (a held list) a block takes only neighbours in `list`, so an item that
+// came later starts a block at the end, never one above a row on screen.
+export function byParent(list: RabeItem[], items: RabeItem[], isHeld = false): Family[] {
+  const blocks: Family[] = [{ id: '', title: '', items: [] }]
   for (const item of list) {
     const id = item.parentId ?? ''
-    let block = blocks.get(id)
-    if (!block) {
+    let block = isHeld ? blocks.at(-1) : blocks.find(one => one.id === id)
+    if (block?.id !== id) {
       const parent = items.find(one => one.id === id)
       const run = parent && items.find(one => one.id === parent.parentId && one.kind === 'workflow')
       const title = !parent ? 'agent n/a' : run ? `${run.title} › ${parent.title}` : parent.title
       block = { id, ...(parent && { parent }), title, items: [] }
-      blocks.set(id, block)
+      blocks.push(block)
     }
     block.items.push(item)
   }
 
-  return [...blocks.values()].filter(block => block.items.length > 0)
+  return blocks.filter(block => block.items.length > 0)
 }
 
 export function groupNote(id: Group, items: RabeItem[]): string {

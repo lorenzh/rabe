@@ -17,12 +17,16 @@ export type Model = {
 }
 
 // The cells a view may fill: `columns` from `bodyColumns`, `rows` from
-// `scroll.bodyRows` (pane) or `maxRows` (band). A view draws exactly this size.
+// `scroll.bodyRows` (pane) or `maxRows` (band). A view draws this size, or
+// more rows where a list does not fit: then the pane scrolls. `window` is the
+// part of the view's rows the pane shows: from `top` (below 0 while the rows
+// above the view show), `rows` high; the pane's `scroll`, where it has one.
 export type Size = {
   columns: number
   rows: number
   surface: RenderSurface
   hasInput: boolean
+  window?: { top: number; rows: number }
 }
 
 // The size a view lays out for: on the terminal no larger than one Raster, so

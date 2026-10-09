@@ -5,17 +5,18 @@ import { facts } from '../facts'
 import { tokens, usd } from '../format'
 import {
   byParent,
+  FAMILIES,
   type Family,
   type Group,
   glyph,
   grouped,
   groupNote,
-  groupOf,
   matches,
 } from '../lists'
 import {
   canStop,
   type Drawn,
+  isPress,
   isWorkflowAgent,
   type Line,
   type Model,
@@ -43,9 +44,6 @@ export function isSplit(size: Size): boolean {
   return size.columns >= SPLIT_COLUMNS
 }
 
-// Shells and monitors an agent started sit under that agent.
-const FAMILIES: Group[] = ['shells', 'monitors']
-
 // A header for an agent's shells or monitors: its glyph and name, not a row.
 function familyHead(family: Family): Line {
   const { parent } = family
@@ -65,6 +63,15 @@ const indent = (line: Line): Line => ({
   spans: [...line.spans.slice(0, 1), ['  '], ...line.spans.slice(1)],
 })
 
+// The first row the pane shows once it has followed the focus onto row `at`:
+// the engine scrolls no further than it must, and does not say where it went.
+function shownFrom(size: Size, at: number): number {
+  if (!size.window || at < 0) return 0
+  const { top, rows } = size.window
+
+  return Math.max(0, at - rows + 1, Math.min(top, at))
+}
+
 // The items in list order, groups folded or not, with the lines the list
 // shows: a header per group (a Button that folds it), a row per item, and in
 // SHELLS and MONITORS the rows of each agent indented under its name.
@@ -73,12 +80,12 @@ function listLines(
   model: Model,
   sel: Selection,
   rows: number,
-): { lines: Line[]; order: RabeItem[] } {
+): { lines: Line[]; order: RabeItem[]; shown: RabeItem[][] } {
   const visible = model.items.filter(item => matches(item, sel.query))
   const groups = grouped(visible, sel.order).map(group => ({
     ...group,
     families: FAMILIES.includes(group.id)
-      ? byParent(group.items, model.items)
+      ? byParent(group.items, model.items, sel.order !== undefined)
       : [{ id: '', title: '', items: group.items }],
   }))
   const order = groups.flatMap(group =>
@@ -112,7 +119,11 @@ function listLines(
   const spaced = blocks.flatMap((block, i) => (i > 0 ? [{ spans: [] }, ...block] : block))
   const lines = spaced.length <= rows ? spaced : blocks.flat()
 
-  return { lines: focusOn(lines, selected?.id ?? ''), order }
+  return {
+    lines: focusOn(lines, selected?.id ?? ''),
+    order,
+    shown: groups.map(group => group.items),
+  }
 }
 
 export function selectedItem(order: RabeItem[], sel: Selection): RabeItem | undefined {
@@ -140,9 +151,14 @@ function summaryLine(model: Model, item: RabeItem): Line {
 }
 
 // List keys under the list; the rows themselves take the arrows and Enter.
-// g stops the run of a workflow or its agent, else the group. Below the
-// split, s keeps only its letter.
-function listButtons(model: Model, size: Size, selected: RabeItem | undefined) {
+// g stops the run of a workflow or its agent, else the rows of the group the
+// selected row is shown in (`shown`). Below the split, s keeps only its letter.
+function listButtons(
+  model: Model,
+  size: Size,
+  selected: RabeItem | undefined,
+  shown: RabeItem[][],
+) {
   const buttons: ViewButton[] = []
   const run =
     selected?.kind === 'workflow'
@@ -158,11 +174,9 @@ function listButtons(model: Model, size: Size, selected: RabeItem | undefined) {
       action: { type: 'stop', ids: [selected.id] },
     })
   }
-  const group = selected
-    ? model.items
-        .filter(one => groupOf(one) === groupOf(selected) && canStop(one))
-        .map(one => one.id)
-    : []
+  const group = (shown.find(list => selected && list.includes(selected)) ?? [])
+    .filter(canStop)
+    .map(one => one.id)
   if (run && canStop(run)) {
     buttons.push({
       key: 'stop-run',
@@ -202,6 +216,8 @@ const search = (sel: Selection): ViewInput => ({
 
 // The Items tab: the grouped list, and beside it (split) or under it (one
 // line) the selected item. Enter on a row opens the full detail in place.
+// The split detail starts at the first row the pane shows, so it stays in
+// view while the focus walks a list longer than the pane.
 export const itemsView: View = (model, size, sel): Drawn => {
   const inputs = size.hasInput ? [search(sel)] : []
   const note = (value: string, buttons: ViewButton[] = []): Drawn => ({
@@ -211,14 +227,18 @@ export const itemsView: View = (model, size, sel): Drawn => {
   })
   if (model.items.length === 0) return note(' Nothing runs in the background.')
   const split = isSplit(size)
-  const { lines, order } = listLines(model, sel, split ? size.rows : size.rows - 2)
+  const { lines, order, shown } = listLines(model, sel, split ? size.rows : size.rows - 2)
   const selected = selectedItem(order, sel)
-  const buttons = listButtons(model, size, selected)
+  const buttons = listButtons(model, size, selected, shown)
   if (lines.length === 0) return note(` No item matches "${sel.query}".`, buttons)
   if (selected && split) {
     const listWidth = Math.min(48, Math.floor(size.columns * 0.42))
     const right = size.columns - listWidth - 2
-    const detail = summary(model, selected, size.rows, right, sel).map(plain)
+    const at = lines.findIndex(line => line.spans.some(part => isPress(part) && part.autoFocus))
+    const detail = [
+      ...Array.from({ length: shownFrom(size, at) }, () => ({ spans: [] })),
+      ...summary(model, selected, size.rows, right, sel).map(plain),
+    ]
     const rule: Span[] = [['│', { fg: C.rule }], [' ']]
     const rows = Math.max(lines.length, detail.length, size.rows)
     const left = [...lines, ...Array.from({ length: rows - lines.length }, () => ({ spans: [] }))]

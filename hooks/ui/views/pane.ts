@@ -84,7 +84,11 @@ export const paneView: View = (model, size, sel): Drawn => {
       ['─'.repeat(Math.max(0, size.columns - from - under)), { fg: C.rule }],
     ],
   }
-  const room = (rows: number): Size => ({ ...size, rows: Math.max(1, rows) })
+  const room = (rows: number): Size => ({
+    ...size,
+    rows: Math.max(1, rows),
+    ...(size.window && { window: { ...size.window, top: size.window.top - HEAD } }),
+  })
   const first = body(model, room(size.rows - HEAD - HINT), sel)
   const rows = size.rows - HEAD - HINT - controlRows(first, size)
   const inner = body(model, room(rows), sel)
