@@ -4,6 +4,14 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Added
+
+- The Effects tab shows the files Codex jobs changed (added, updated or deleted) and the files the main session changed, with who changed each file and how. ([#TBD](https://github.com/lorenzh/rabe/pull/TBD))
+
+### Fixed
+
+- The Effects tab shows files that agents write through shell commands (`cat > file <<'EOF'`, `>>`, `tee`, `sed -i`, `cp`, `mv`, `touch`), marked `via shell`, since Rabe guesses them from the command line. Before, it showed only `Edit` and `Write` calls, so a subagent that wrote its files through Bash left it empty. ([#TBD](https://github.com/lorenzh/rabe/pull/TBD), fixes [#9](https://github.com/lorenzh/rabe/issues/9))
+
 ## [0.2.0] - 2026-10-09
 
 ### Added

@@ -1,6 +1,7 @@
 import type { AgentSpawnInput, AgentStatus, On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
+import type { RabeEdit } from '../../types'
 import type { RabeItem, RabeItemOf, RabeTurn } from '../model'
 import { MAX_ENDED } from '../registry'
 import { core, memoryState } from '../testing'
@@ -30,13 +31,14 @@ const agent: RabeItem = {
 
 const turn = (index: number): RabeTurn => ({ index, at: index, text: `t${index}`, tools: [] })
 
-type Held = { items?: RabeItem[]; turns?: Record<string, RabeTurn[]> }
+type Held = { items?: RabeItem[]; turns?: Record<string, RabeTurn[]>; edits?: RabeEdit[] }
 
 function watch(on: On): Held {
   const held: Held = {}
   on('state.set', async (_$, e, next) => {
     if (e.plugin === 'rabe' && e.key === 'items') held.items = e.value as RabeItem[]
     if (e.plugin === 'rabe' && e.key === 'turns') held.turns = e.value as Held['turns']
+    if (e.plugin === 'rabe' && e.key === 'edits') held.edits = e.value as RabeEdit[]
 
     return next(e)
   })
@@ -309,9 +311,60 @@ test('an edit the engine ran is kept on its agent; a refused or failed one is no
   } as never)
   const item = held.items?.[0] as RabeItemOf<'agent'>
   expect(item.detail.edits).toEqual([
-    { path: '/repo/db.ts', at: 5000 },
-    { path: '/repo/new.ts', at: 5000 },
+    { path: '/repo/db.ts', at: 5000, via: 'edit' },
+    { path: '/repo/new.ts', at: 5000, via: 'write' },
   ])
+  expect(held.edits).toEqual([{ path: '/repo/main.ts', at: 5000, via: 'edit' }])
+})
+
+// A Bash call the engine ran: a result, no error, not moved to the background.
+function bash(on: On): void {
+  mock.env(on, { HOME: '/home/u' })
+  on('tool.call', { tool: 'Bash' }, async (_$, e) => {
+    const command = e.tool === 'Bash' ? e.command : ''
+    if (command.includes('fail'))
+      return { result: { stdout: '', stderr: 'x' } as never, isError: true }
+    if (command.includes('deny')) return { deny: 'no' }
+    if (command.includes('serve')) {
+      return { result: { stdout: '', stderr: '', backgroundTaskId: 'b1' } as never }
+    }
+
+    return { result: { stdout: '', stderr: '', interrupted: false } as never }
+  })
+}
+
+test('a background teammate writing files through Bash shows them as shell edits', async ($, on) => {
+  const held = engine(on, 'a1')
+  bash(on)
+  await $.agent.spawn({ ...SPAWN, workflow: undefined })
+  const run = (command: string, agentId?: string) =>
+    $.tool.call({ tool: 'Bash', command, agentId } as never)
+  await run("cat > ~/.agents/skills/demo/SKILL.md <<'EOF'\n# demo > x\nEOF\nrm /tmp/old.md", 'a1')
+  await run('echo x > /tmp/failed.md && fail', 'a1')
+  await run('echo x > /tmp/denied.md # deny', 'a1')
+  await run('echo x > /tmp/serve.log; serve', 'a1')
+  await run('git status', 'a1')
+  const item = held.items?.[0] as RabeItemOf<'agent'>
+  expect(item.detail.edits).toEqual([
+    { path: '/home/u/.agents/skills/demo/SKILL.md', at: 5000, via: 'shell' },
+    { path: '/tmp/old.md', at: 5000, via: 'shell', change: 'delete' },
+  ])
+})
+
+test('main session writes and shell writes are kept apart from agents', async ($, on) => {
+  const held = engine(on, 'a1')
+  bash(on)
+  on('tool.call', { tool: 'Write' }, async () => ({
+    result: { filePath: '/repo/plan.md' } as never,
+  }))
+  await $.tool.call({ tool: 'Write', file_path: '/repo/plan.md', content: '' } as never)
+  await $.tool.call({ tool: 'Bash', command: 'echo x >> notes.txt' } as never)
+  await $.tool.call({ tool: 'Bash', command: 'touch /tmp/a && fail' } as never)
+  expect(held.edits).toEqual([
+    { path: '/repo/plan.md', at: 5000, via: 'write' },
+    { path: 'notes.txt', at: 5000, via: 'shell' },
+  ])
+  expect(held.items ?? []).toEqual([])
 })
 
 test('a staged edit or write leaves the file unchanged and is not kept', async ($, on) => {
@@ -343,7 +396,7 @@ test('a staged edit or write leaves the file unchanged and is not kept', async (
     agentId: 'a1',
   } as never)
   const item = held.items?.[0] as RabeItemOf<'agent'>
-  expect(item.detail.edits).toEqual([{ path: '/repo/db.ts', at: 5000 }])
+  expect(item.detail.edits).toEqual([{ path: '/repo/db.ts', at: 5000, via: 'edit' }])
 })
 
 test('a step of a loop Rabe does not know writes nothing', async ($, on) => {

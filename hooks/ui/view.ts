@@ -1,12 +1,13 @@
 import type { RenderSurface } from 'claude-code'
 
-import type { RabeLines, RabeOrder, RabePrevious, RabeTab, RabeTurn } from '../../types'
+import type { RabeEdit, RabeLines, RabeOrder, RabePrevious, RabeTab, RabeTurn } from '../../types'
 import type { RabeItem } from '../model'
 import { type Grid, MAX_COLUMNS, MAX_ROWS, type Span } from './cells/grid'
 
 // What every view reads: the sources' session values, never files. `usd` is
 // the session's cost as /cost totals it; `previous` is the last session in
-// this project that had background work, from `$.store`.
+// this project that had background work, from `$.store`. `edits` are the
+// files the main session changed, `cwd` the session's folder.
 export type Model = {
   items: RabeItem[]
   turns: Record<string, RabeTurn[]>
@@ -14,6 +15,8 @@ export type Model = {
   now: number
   usd?: number
   previous?: RabePrevious
+  edits?: RabeEdit[]
+  cwd?: string
 }
 
 // The cells a view may fill: `columns` from `bodyColumns`, `rows` from

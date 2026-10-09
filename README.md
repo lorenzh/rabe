@@ -31,7 +31,7 @@ The pane has four tabs:
 
 - **Items**: all items grouped by kind, with a search field. Shells and monitors that an agent started show under the name of that agent. If the pane is 90 columns or wider, the selected item shows beside the list.
 - **Cost**: the session cost as `/cost` totals it, and a bar of tokens per agent and Codex job. Agents that look slow or stuck show under "Load".
-- **Effects**: files that agents edited, a warning when two agents edit the same file, worktrees, and open ports with the `ssh -L` command to reach them. Enter or a click on a file opens the agent that edited it last; on an `ssh -L` line it copies the line (`c` copies the first).
+- **Effects**: files that agents, Codex jobs and the main session changed, with who changed each and how (`edit`, `write`, `codex add`, `deleted`), a warning when two of them change the same file, worktrees, and open ports with the `ssh -L` command to reach them. Files written through shell commands (`cat > file <<'EOF'`, `>>`, `tee`, `sed -i`, `cp`, `mv`) show as `via shell`: Rabe guesses them from the command line, so a file a script writes on its own (Python's `open(…, 'w')`, a build tool) does not show. Enter or a click on a file opens the agent or Codex job that changed it last, or copies the path of a main-session file; on an `ssh -L` line it copies the line (`c` copies the first).
 - **Timeline**: a bar per item over the session, who started what, and a summary of the previous session in this project.
 
 ## Install

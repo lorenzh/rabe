@@ -8,7 +8,7 @@ import type {
   TurnUsage,
 } from 'claude-code'
 
-import type { RabeToolUse, RabeTurn } from '../../types'
+import type { RabeEdit, RabeToolUse, RabeTurn } from '../../types'
 import {
   clip,
   type EndStatus,
@@ -19,6 +19,7 @@ import {
   type RabeTokens,
 } from '../model'
 import { addItem, type Change, commit, endItem, pastEnd, prune, updateItem } from '../registry'
+import { shellWrites } from '../writes'
 
 type Turns = Record<string, RabeTurn[]>
 type AgentItem = RabeItemOf<'agent'>
@@ -101,11 +102,20 @@ export function changedFile(
   return typeof result.filePath === 'string' ? result.filePath : input
 }
 
-// An Edit or Write that changed a file for an agent; its newest MAX_EDITS are kept.
-function edited(items: RabeItem[], id: string, path: string, at: number): RabeItem[] {
+// A Bash call that ran to its end: a result, no error, not interrupted and not
+// moved to the background.
+export function ranBash(answer: { result?: unknown; isError?: boolean }): boolean {
+  if (answer.isError || !answer.result || typeof answer.result !== 'object') return false
+  const result = answer.result as { interrupted?: unknown; backgroundTaskId?: unknown }
+
+  return result.interrupted !== true && result.backgroundTaskId === undefined
+}
+
+// Changes to files of an agent; its newest MAX_EDITS are kept.
+function edited(items: RabeItem[], id: string, changes: RabeEdit[]): RabeItem[] {
   const agent = asAgent(items, id)
   if (!agent) return items
-  const edits = [...(agent.detail.edits ?? []), { path, at }].slice(-MAX_EDITS)
+  const edits = [...(agent.detail.edits ?? []), ...changes].slice(-MAX_EDITS)
 
   return updateItem(items, id, { detail: { edits } })
 }
@@ -240,6 +250,27 @@ async function writeTurns(
   }
 }
 
+// The main session's changes go to `rabe.edits`, an agent's to its item.
+async function record(
+  $: EngineInterface,
+  agentId: string | undefined,
+  changes: RabeEdit[],
+): Promise<void> {
+  if (changes.length === 0) return
+  if (agentId) {
+    const id = itemId('agent', agentId)
+    return write($, items => edited(items, id, changes))
+  }
+  for (;;) {
+    const { value = [], version } = await $.state.get({ plugin: 'rabe', key: 'edits' })
+    const next = [...value, ...changes].slice(-MAX_EDITS)
+    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'edits' }, next, {
+      ifVersion: version,
+    })
+    if (isSet) return
+  }
+}
+
 async function readMeta($: EngineInterface, id: string): Promise<void> {
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   const item = asAgent(items, id)
@@ -356,10 +387,32 @@ export function agents(on: On): void {
     const answer = await next(e)
     try {
       const path = (e.tool === 'Edit' || e.tool === 'Write') && changedFile(answer, e.file_path)
-      if (e.agentId && path) {
-        const id = itemId('agent', e.agentId)
-        const now = await $.clock.now()
-        await write($, items => edited(items, id, path, now))
+      if (path) {
+        const via = e.tool === 'Edit' ? 'edit' : 'write'
+        await record($, e.agentId, [{ path, at: await $.clock.now(), via }])
+      }
+    } catch {}
+
+    return answer
+  })
+
+  // The Bash call carries no cwd, so relative paths stay relative.
+  on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
+    const answer = await next(e)
+    try {
+      if (e.tool === 'Bash' && ranBash(answer)) {
+        const writes = shellWrites(e.command, undefined, await $.env.get('HOME'))
+        const at = await $.clock.now()
+        await record(
+          $,
+          e.agentId,
+          writes.map(({ path, isDeleted }) => ({
+            path,
+            at,
+            via: 'shell' as const,
+            ...(isDeleted && { change: 'delete' as const }),
+          })),
+        )
       }
     } catch {}
 

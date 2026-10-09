@@ -7,16 +7,16 @@ import type { Drawn, Line, Model, View } from '../view'
 import { fitLine, focusOn } from './lines'
 
 const dim = { fg: C.dim }
-const CHANGE = 8
+const CHANGE = 24
 
 const and = (names: string[]) =>
   names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : (names[0] ?? '')
 
 function conflictLines(files: Touched[]): Line[] {
-  const conflicts = files.filter(file => file.by.length > 1)
+  const conflicts = files.filter(file => file.isConflict)
   const [first] = conflicts
   if (!first) return []
-  const tree = first.by[0]?.detail.worktreePath
+  const tree = first.by[0]?.tree
   const where = tree ? ` in ${tree.split('/').filter(Boolean).at(-1)}` : ' in the main tree'
   const more = conflicts.length > 1 ? ` · +${conflicts.length - 1} more` : ''
 
@@ -27,7 +27,7 @@ function conflictLines(files: Touched[]): Line[] {
         [' ⚠ conflict ', { fg: C.red }],
         [` ${first.rel}`, { fg: C.bright }],
         [' is edited by '],
-        [and(first.by.map(agent => agent.title)), { fg: C.orange }],
+        [and(first.by.map(editor => editor.title)), { fg: C.orange }],
         [`${where}${more}`, dim],
       ],
     },
@@ -41,15 +41,31 @@ const mark = (isSelected: boolean): Span => [isSelected ? '▌' : ' ', { fg: C.o
 type Widths = { file: number; by: number }
 
 function widths(columns: number): Widths {
-  const inner = Math.max(2, columns - 2 - CHANGE - 2)
+  const inner = Math.max(2, columns - 2 - Math.min(CHANGE, Math.floor(columns / 4)) - 2)
   const file = Math.ceil(inner / 2)
 
   return { file, by: inner - file }
 }
 
+// The start of a long path is cut, so the file name stays.
+function head(path: string, width: number): string {
+  const chars = [...path]
+
+  return chars.length > width ? `…${chars.slice(chars.length - width + 1).join('')}` : path
+}
+
+// How the file changed; a shell write is a guess, and a relative one has no known cwd.
+function how(file: Touched): string {
+  const count = file.edits > 1 ? `${file.edits}× ` : ''
+  const where = file.path.startsWith('/') ? '' : ' · cwd n/a'
+
+  return `${count}${file.hows.join(', ')}${where}`
+}
+
 function fileRow(file: Touched, w: Widths, selected: string): Line {
   const isSelected = file.id === selected
-  const name = fit(file.rel, w.file).trimEnd()
+  const name = head(file.rel, w.file)
+  const gone = 'deleted · '
   return {
     spans: [
       mark(isSelected),
@@ -57,28 +73,31 @@ function fileRow(file: Touched, w: Widths, selected: string): Line {
       {
         key: `row:${file.id}`,
         label: name,
-        action: { type: 'open', id: file.last.id },
+        action: file.last.item
+          ? { type: 'open', id: file.last.item.id }
+          : { type: 'copy', text: file.path },
         ...(!isSelected && { dim: true }),
       },
       [' '.repeat(w.file - [...name].length)],
-      [` ${fit(file.by.map(agent => agent.title).join(', '), w.by)} `, dim],
-      [`${file.edits} edit${file.edits === 1 ? '' : 's'}`],
+      [` ${fit(file.by.map(editor => editor.title).join(', '), w.by)} `, dim],
+      ...(file.isDeleted ? [[gone, { fg: C.red }] as Span] : []),
+      [how(file)],
     ],
     ...(isSelected && { bg: C.selected }),
   }
 }
 
 function fileLines(files: Touched[], w: Widths, selected: string): Line[] {
-  const head: Line = {
+  const title: Line = {
     spans: [
       [`FILES TOUCHED ${files.length}`, { fg: C.orange }],
-      ['  from agent tool calls', dim],
+      ['  from edits, Codex and shell commands', dim],
     ],
   }
-  if (files.length === 0) return [head, { spans: [['  No agent edited a file yet.', dim]] }]
+  if (files.length === 0) return [title, { spans: [['  No file changed yet.', dim]] }]
 
   return [
-    head,
+    title,
     { spans: [[`  ${fit('FILE', w.file)} ${fit('BY', w.by)} CHANGE`, dim]] },
     ...files.map(file => fileRow(file, w, selected)),
   ]
@@ -180,7 +199,7 @@ type Found = { at: number } & ({ file: Touched } | { port: Port })
 // the end, in the order they were found: no row above another comes or goes.
 export const effectsView: View = (model, size, sel): Drawn => {
   const { order } = sel
-  const all = touched(model.items)
+  const all = touched(model.items, model.edits, model.cwd)
   const files = stable(
     order ? all.filter(file => order.files?.includes(file.id)) : all,
     order?.files,

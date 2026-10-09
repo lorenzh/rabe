@@ -1,6 +1,6 @@
 import type { EngineInterface, On } from 'claude-code'
 
-import type { RabeCodexStep, RabeTokens } from '../../types'
+import type { RabeCodexStep, RabeEdit, RabeTokens } from '../../types'
 import {
   clip,
   type EndStatus,
@@ -10,6 +10,7 @@ import {
   type RabeItemOf,
 } from '../model'
 import { addItem, type Change, commit, endItem, prune } from '../registry'
+import { shellWrites } from '../writes'
 
 const POLL_MS = 2000
 const CODEX_DATA = 'plugins/data/codex-openai-codex'
@@ -18,6 +19,8 @@ const MAX_READ = 4 * 1024 * 1024
 const TAIL_LINES = 200
 const MAX_STEPS = 50
 const MAX_TEXT = 300
+const MAX_EDITS = 100
+const CHANGES = ['add', 'update', 'delete'] as const
 const DAY = 24 * 60 * 60 * 1000
 
 type Rec = Record<string, unknown>
@@ -32,6 +35,7 @@ export type Rollout = {
   tokens?: RabeTokens
   commandCount: number
   steps: RabeCodexStep[]
+  edits?: RabeEdit[]
 }
 
 export type CodexSession = {
@@ -102,8 +106,22 @@ function lineCount(output: unknown): number | undefined {
   return text === undefined ? undefined : text.replace(/\n$/, '').split('\n').length
 }
 
-export function parseRollout(text: string): Rollout {
+// The files a completed FileChange changed; a moved file leaves its old path.
+function fileChanges(changes: unknown, at: number): RabeEdit[] {
+  return Object.entries(rec(changes)).flatMap(([path, value]) => {
+    const change = CHANGES.find(one => one === rec(value).type)
+    const moved = str(rec(value).move_path)
+    if (!change) return []
+    const edit = (one: string, kind: RabeEdit['change']) =>
+      ({ path: one, at, via: 'codex', change: kind }) as RabeEdit
+
+    return moved ? [edit(path, 'delete'), edit(moved, 'add')] : [edit(path, change)]
+  })
+}
+
+export function parseRollout(text: string, home?: string): Rollout {
   const out: Rollout = { commandCount: 0, steps: [] }
+  const edits: RabeEdit[] = []
   const pending = new Map<string, RabeCodexStep>()
   for (const raw of text.split('\n')) {
     const record = parseJson(raw)
@@ -123,7 +141,20 @@ export function parseRollout(text: string): Rollout {
       }
     } else if (record.type === 'event_msg' && payload.type === 'item_completed') {
       const item = rec(payload.item)
+      const at = num(payload.completed_at_ms) ?? (Date.parse(str(record.timestamp) ?? '') || 0)
       if (item.type === 'UserMessage') out.prompt ??= str(texts(item.content, 'text'))
+      if (item.type === 'FileChange' && item.status === 'completed') {
+        edits.push(...fileChanges(item.changes, at))
+      }
+      if (item.type === 'CommandExecution' && item.exit_code === 0) {
+        for (const { path, isDeleted } of shellWrites(
+          shellLine(item.command),
+          str(item.cwd),
+          home,
+        )) {
+          edits.push({ path, at, via: 'shell', ...(isDeleted && { change: 'delete' as const }) })
+        }
+      }
       if (item.type === 'CommandExecution') {
         out.commandCount += 1
         out.steps.push(
@@ -160,6 +191,7 @@ export function parseRollout(text: string): Rollout {
     }
   }
   out.steps = out.steps.slice(-MAX_STEPS)
+  if (edits.length) out.edits = edits.slice(-MAX_EDITS)
 
   return defined(out)
 }
@@ -204,6 +236,7 @@ export function codexItem(job: CodexJob, session: CodexSession | undefined): New
       isSessionPartial: session?.isPartial,
       commandCount: rollout?.commandCount,
       steps: rollout?.steps,
+      edits: rollout?.edits,
     }),
   })
 }
@@ -241,10 +274,11 @@ async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Pro
   }
 }
 
-async function homes($: EngineInterface): Promise<{ claude: string; codex: string }> {
+async function homes($: EngineInterface): Promise<{ home: string; claude: string; codex: string }> {
   const home = (await $.env.get('HOME')) ?? ''
 
   return {
+    home,
     claude: (await $.env.get('CLAUDE_CONFIG_DIR')) ?? `${home}/.claude`,
     codex: (await $.env.get('CODEX_HOME')) ?? `${home}/.codex`,
   }
@@ -283,10 +317,13 @@ async function readSession(
   const updatedAt = stat.mtimeMs
   if (updatedAt === held?.detail.sessionUpdatedAt) return { path, updatedAt }
   // no updatedAt on failure, so the next poll tries again
+  const home = await $.env.get('HOME')
   if (stat.size <= MAX_READ) {
     const text = await $.fs.read(path).catch(() => undefined)
 
-    return text === undefined ? { path } : { path, updatedAt, rollout: parseRollout(String(text)) }
+    return text === undefined
+      ? { path }
+      : { path, updatedAt, rollout: parseRollout(String(text), home) }
   }
   const head = await $.process
     .run(['grep', '-m', '2', '-E', '"type":"(turn_context|UserMessage)"', path])
@@ -298,7 +335,7 @@ async function readSession(
     path,
     updatedAt,
     isPartial: true,
-    rollout: parseRollout(`${head.stdout}\n${tail.stdout}`),
+    rollout: parseRollout(`${head.stdout}\n${tail.stdout}`, home),
   }
 }
 

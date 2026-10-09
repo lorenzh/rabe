@@ -75,6 +75,53 @@ test('a rollout gives model, effort, sandbox, prompt, tokens and steps', () => {
   })
 })
 
+// The shape of Codex's records; paths and content are made up.
+const change = (status: string, changes: object, at: number) =>
+  line('event_msg', {
+    type: 'item_completed',
+    completed_at_ms: at,
+    item: { type: 'FileChange', id: 'exec-1', changes, status, stdout: '', stderr: '' },
+  })
+const command = (script: string, exit_code: number, at: number) =>
+  line('event_msg', {
+    type: 'item_completed',
+    completed_at_ms: at,
+    item: {
+      type: 'CommandExecution',
+      command: ['/bin/bash', '-lc', script],
+      cwd: '/work',
+      status: exit_code === 0 ? 'completed' : 'failed',
+      exit_code,
+      aggregated_output: '',
+    },
+  })
+
+test('completed file changes and shell writes of a rollout are its edits', () => {
+  const rollout = [
+    change('completed', { '/work/new.cjs': { type: 'add', content: 'x' } }, 1000),
+    change(
+      'completed',
+      {
+        '/work/a.ts': { type: 'update', unified_diff: '', move_path: null },
+        '/work/old.ts': { type: 'update', unified_diff: '', move_path: '/work/moved.ts' },
+        '/work/gone.ts': { type: 'delete', content: 'x' },
+      },
+      2000,
+    ),
+    change('failed', { '/work/never.ts': { type: 'add', content: 'x' } }, 3000),
+    command("cat > notes.md <<'EOF'\nhi > there\nEOF", 0, 4000),
+    command('echo x > /work/broken.txt && false', 1, 5000),
+  ].join('\n')
+  expect(parseRollout(rollout, '/home/u').edits).toEqual([
+    { path: '/work/new.cjs', at: 1000, via: 'codex', change: 'add' },
+    { path: '/work/a.ts', at: 2000, via: 'codex', change: 'update' },
+    { path: '/work/old.ts', at: 2000, via: 'codex', change: 'delete' },
+    { path: '/work/moved.ts', at: 2000, via: 'codex', change: 'add' },
+    { path: '/work/gone.ts', at: 2000, via: 'codex', change: 'delete' },
+    { path: '/work/notes.md', at: 4000, via: 'shell' },
+  ])
+})
+
 test('an empty or broken rollout gives no fields', () => {
   expect(parseRollout('not json\n')).toEqual({ steps: [], commandCount: 0 })
 })
