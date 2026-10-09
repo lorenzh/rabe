@@ -128,7 +128,12 @@ function previousLines(model: Model, width: number): Line[] {
   return out.map(line => ({ ...line, bg: C.raised }))
 }
 
-// The time axis: three clock times between the start and `now`.
+const MIN = 60_000
+const STEPS = [1, 2, 5, 10, 15, 30, 60, 120, 180, 360, 720, 1440].map(one => one * MIN)
+
+// The time axis: round clock times, at most four, spaced for the window, then
+// `now`. A label that would repeat the one before it, run into it or into
+// `now` is left out.
 function axis(start: number, span: number, labelWidth: number, columns: number): string {
   const barWidth = columns - labelWidth
   const cells = Array<string>(columns).fill(' ')
@@ -137,9 +142,18 @@ function axis(start: number, span: number, labelWidth: number, columns: number):
       if (x + i >= 0 && x + i < columns) cells[x + i] = ch
     })
   }
-  for (const quarter of [1, 2, 3]) {
-    const x = labelWidth + Math.round((barWidth * quarter) / 4) - 2
-    put(x, clockTime(start + (span * quarter) / 4).slice(0, 5))
+  const step = STEPS.find(one => span / one <= 4) ?? (STEPS.at(-1) as number)
+  // Round in local time: the zone's offset from UTC at the start.
+  const offset = new Date(start).getTimezoneOffset() * MIN
+  let last = ''
+  let end = labelWidth
+  for (let at = Math.ceil((start - offset) / step) * step + offset; at < start + span; at += step) {
+    const label = clockTime(at).slice(0, 5)
+    const x = labelWidth + Math.round((barWidth * (at - start)) / span) - 2
+    if (label === last || x < end || x + label.length > columns - 4) continue
+    put(x, label)
+    last = label
+    end = x + label.length + 1
   }
   put(columns - 3, 'now')
 

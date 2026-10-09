@@ -29,8 +29,28 @@ test('the timeline heads with the window, a color legend and a time axis', () =>
   expect(shown[1]).toBe(' shell   claude   codex   monitor   cron run   done   failed')
   expect(cell(grid, 1, 1)).toEqual(['s'.codePointAt(0), CHIP.shell.fg, CHIP.shell.bg])
   expect(cell(grid, 9, 1)).toEqual(['c'.codePointAt(0), CHIP.agent.fg, CHIP.agent.bg])
-  expect(shown[3]).toMatch(/^ +10:22 +10:32 +10:42 +now$/)
+  expect(shown[3]).toMatch(/^ +10:20 +10:30 +10:40 +now$/)
   expect(shown[3]?.length).toBe(100)
+})
+
+// A short window drew the same minute twice (`14:44  14:44`): the labels
+// sit on round times spaced for the window, each one once.
+test('the time axis names each clock time once, in order, before now', () => {
+  for (const seconds of [61, 75, 90, 130, 200, 299, 600, 2400, 7300, 30_000]) {
+    for (const columns of [40, 60, 100, 160]) {
+      for (const at of [0, 5_000, 35_000]) {
+        const now = NOW + at
+        const items = [{ ...dev, startedAt: now - seconds * 1000 }]
+        const model = { ...MODEL, items, now }
+        const axis = lines(gridOf(timelineView(model, { ...SIZE, columns }, NO_SELECTION)).grid)[3]
+        const labels = axis?.match(/\d\d:\d\d/g) ?? []
+        const shown = [seconds, columns, at, axis]
+        expect([...shown, new Set(labels).size]).toEqual([...shown, labels.length])
+        expect([...shown, [...labels].sort()]).toEqual([...shown, labels])
+        expect([...shown, axis?.trimEnd().endsWith(' now')]).toEqual([...shown, true])
+      }
+    }
+  }
 })
 
 test('each item gets a bar over its run, colored by kind while it runs, then by its end', () => {
