@@ -372,90 +372,97 @@ test('the first element after the tabs never stops or deletes', () => {
   }
 })
 
-test('whatever changes while the pane is open, the focusable keys only grow at the end', () => {
-  const start = ALL.map(item =>
-    item.id === explore.id ? agentOf('a1', { edits: [{ path: PATHS[0] ?? '', at: NOW }] }) : item,
-  )
-  for (const surface of ['terminal', 'desktop'] as const) {
-    SCOPES.forEach((scope, s) => {
-      const pick = random(s + 1)
-      let items = start
-      const sel: Selection = { ...OPEN, order: orderOf(items), ...scope }
-      let size: Size = { ...SIZE, surface }
-      let last = draw(model(items), size, sel)
-      const targets = new Map<string, string>()
-      let seen: string[] = []
-      checkTargets(`${surface} ${JSON.stringify(scope)} start`, last.list, targets, seen)
-      // The pane's arming, fed as pane.tsx feeds it; the walk starts landed.
-      const drawnOf = (items: RabeItem[], size: Size) =>
-        ({
-          type: 'drawn',
-          fallback: fallbackOf(model(items), sel),
-          targets: targetsOf(paneView(model(items), size, sel)),
-          selected: sel.selected,
-        }) as const
-      let arming = arm(arm(DISARMED, drawnOf(items, size)), { type: 'landed', isMoved: true })
-      for (let n = 0; n < 80; n++) {
-        const what = pick(5)
-        if (what === 4) {
-          // The view changes: its hold starts anew, and the ring, which keeps
-          // its index, is moved; where it lands must not stop or delete.
-          const text = ['', 'serve', 'agent', 'zz'][pick(4)] ?? ''
-          const switches = actionsOf(last.list, text).filter(([, action]) =>
-            ['tab', 'open', 'fold', 'query'].includes(action.type),
-          )
-          const [, action] = switches[pick(switches.length)] ?? []
-          if (!action) continue
-          const was = sel.open
-          apply(sel, action)
-          last = draw(model(items), size, sel)
-          const actions = new Map(actionsOf(last.list))
-          const keys = landing(action, was)
-          const landed = keys.filter(key => actions.has(key)).at(-1)
-          const shown = `${surface} ${JSON.stringify(scope)} step ${n} ${JSON.stringify(action)}`
-          expect([shown, keys[0] && actions.has(keys[0])]).toEqual([shown, true])
-          const type = actions.get(landed ?? '')?.type ?? 'none'
-          expect([shown, type === 'stop' || type === 'delete']).toEqual([shown, false])
-          seen = []
-          checkTargets(shown, last.list, targets, seen)
-          arming = arm(arm(arm(arming, { type: 'reset' }), drawnOf(items, size)), {
-            type: 'landed',
-            isMoved: true,
-          })
-          continue
+// The walk takes about 4 s; the suite runs files side by side.
+test(
+  'whatever changes while the pane is open, the focusable keys only grow at the end',
+  { timeoutMs: 20_000 },
+  () => {
+    const start = ALL.map(item =>
+      item.id === explore.id ? agentOf('a1', { edits: [{ path: PATHS[0] ?? '', at: NOW }] }) : item,
+    )
+    for (const surface of ['terminal', 'desktop'] as const) {
+      SCOPES.forEach((scope, s) => {
+        const pick = random(s + 1)
+        let items = start
+        const sel: Selection = { ...OPEN, order: orderOf(items), ...scope }
+        let size: Size = { ...SIZE, surface }
+        let last = draw(model(items), size, sel)
+        const targets = new Map<string, string>()
+        let seen: string[] = []
+        checkTargets(`${surface} ${JSON.stringify(scope)} start`, last.list, targets, seen)
+        // The pane's arming, fed as pane.tsx feeds it; the walk starts landed.
+        const drawnOf = (items: RabeItem[], size: Size) =>
+          ({
+            type: 'drawn',
+            fallback: fallbackOf(model(items), sel),
+            targets: targetsOf(paneView(model(items), size, sel)),
+            selected: sel.selected,
+          }) as const
+        let arming = arm(arm(DISARMED, drawnOf(items, size)), { type: 'landed', isMoved: true })
+        for (let n = 0; n < 80; n++) {
+          const what = pick(5)
+          if (what === 4) {
+            // The view changes: its hold starts anew, and the ring, which keeps
+            // its index, is moved; where it lands must not stop or delete.
+            const text = ['', 'serve', 'agent', 'zz'][pick(4)] ?? ''
+            const switches = actionsOf(last.list, text).filter(([, action]) =>
+              ['tab', 'open', 'fold', 'query'].includes(action.type),
+            )
+            const [, action] = switches[pick(switches.length)] ?? []
+            if (!action) continue
+            const was = sel.open
+            apply(sel, action)
+            last = draw(model(items), size, sel)
+            const actions = new Map(actionsOf(last.list))
+            const keys = landing(action, was)
+            const landed = keys.filter(key => actions.has(key)).at(-1)
+            const shown = `${surface} ${JSON.stringify(scope)} step ${n} ${JSON.stringify(action)}`
+            expect([shown, keys[0] && actions.has(keys[0])]).toEqual([shown, true])
+            const type = actions.get(landed ?? '')?.type ?? 'none'
+            expect([shown, type === 'stop' || type === 'delete']).toEqual([shown, false])
+            seen = []
+            checkTargets(shown, last.list, targets, seen)
+            arming = arm(arm(arm(arming, { type: 'reset' }), drawnOf(items, size)), {
+              type: 'landed',
+              isMoved: true,
+            })
+            continue
+          }
+          if (what === 0) size = { ...size, columns: WIDTHS[pick(WIDTHS.length)] ?? 80 }
+          let isLive = false
+          if (what === 1) {
+            // The person focuses a row, a gone slot or a group header.
+            const stops = last.keys.filter(
+              key => key.startsWith('row:') || key.startsWith('group-'),
+            )
+            const key = stops[pick(Math.max(1, stops.length))] ?? ''
+            if (key.startsWith('row:')) sel.selected = key.slice(4)
+            isLive = isLiveRow(model(items), sel, key)
+            const was = arming.isListArmed
+            arming = arm(arming, { type: 'focus', byPerson: true, key, isLiveRow: isLive })
+            const arms = !isLive && !was && arming.isListArmed
+            expect([`${surface} ${JSON.stringify(scope)} step ${n}`, key, arms]).toEqual([
+              `${surface} ${JSON.stringify(scope)} step ${n}`,
+              key,
+              false,
+            ])
+          } else if (what !== 0) items = change(items, pick, n)
+          const next = draw(model(items), size, sel, last.held)
+          const shown = `${surface} ${JSON.stringify(scope)} step ${n}`
+          expect([shown, next.keys.slice(0, last.keys.length)]).toEqual([shown, last.keys])
+          arming = arm(arming, drawnOf(items, size))
+          const isListArmed = arming.isArmed && arming.isListArmed
+          // While the selection falls back, the list's x and g stay inert.
+          if (fallbackOf(model(items), sel).includes('selected:')) {
+            expect([shown, 'fallback armed', isListArmed]).toEqual([shown, 'fallback armed', false])
+          }
+          checkTargets(shown, next.list, targets, seen, isListArmed, isLive)
+          last = next
         }
-        if (what === 0) size = { ...size, columns: WIDTHS[pick(WIDTHS.length)] ?? 80 }
-        let isLive = false
-        if (what === 1) {
-          // The person focuses a row, a gone slot or a group header.
-          const stops = last.keys.filter(key => key.startsWith('row:') || key.startsWith('group-'))
-          const key = stops[pick(Math.max(1, stops.length))] ?? ''
-          if (key.startsWith('row:')) sel.selected = key.slice(4)
-          isLive = isLiveRow(model(items), sel, key)
-          const was = arming.isListArmed
-          arming = arm(arming, { type: 'focus', byPerson: true, key, isLiveRow: isLive })
-          const arms = !isLive && !was && arming.isListArmed
-          expect([`${surface} ${JSON.stringify(scope)} step ${n}`, key, arms]).toEqual([
-            `${surface} ${JSON.stringify(scope)} step ${n}`,
-            key,
-            false,
-          ])
-        } else if (what !== 0) items = change(items, pick, n)
-        const next = draw(model(items), size, sel, last.held)
-        const shown = `${surface} ${JSON.stringify(scope)} step ${n}`
-        expect([shown, next.keys.slice(0, last.keys.length)]).toEqual([shown, last.keys])
-        arming = arm(arming, drawnOf(items, size))
-        const isListArmed = arming.isArmed && arming.isListArmed
-        // While the selection falls back, the list's x and g stay inert.
-        if (fallbackOf(model(items), sel).includes('selected:')) {
-          expect([shown, 'fallback armed', isListArmed]).toEqual([shown, 'fallback armed', false])
-        }
-        checkTargets(shown, next.list, targets, seen, isListArmed, isLive)
-        last = next
-      }
-    })
-  }
-})
+      })
+    }
+  },
+)
 
 // The pane's arming as pane.tsx feeds it a drawing, and the list's x as the
 // person sees it.
