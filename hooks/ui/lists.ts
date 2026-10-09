@@ -501,12 +501,13 @@ const treeName = (path: string) =>
 // `worktreePath`, else its `cwd` when it changed no file in a worktree); an
 // agent's worktree git does not list keeps its row from the agent's metadata.
 // Without git, rows come from agent metadata alone: each agent worktree, then
-// the main tree for agents with a `cwd`. `unknown` counts agents whose tree
-// Rabe cannot tell.
+// the main tree for agents whose `cwd` is the session's (`cwd`). `unknown`
+// counts agents whose tree Rabe cannot tell.
 export function worktreeRows(
   items: RabeItem[],
   files: Touched[],
   trees?: RabeWorktree[],
+  cwd?: string,
 ): { rows: TreeRow[]; unknown: number } {
   const known = trees?.length ? trees : undefined
   const rows = new Map<string, TreeRow>()
@@ -526,17 +527,19 @@ export function worktreeRows(
   let unknown = 0
   const agents = items.flatMap(item => (item.kind === 'agent' ? [item] : []))
   for (const agent of agents) {
-    const { worktreePath, worktreeBranch, cwd } = agent.detail
+    const { worktreePath, worktreeBranch, cwd: at } = agent.detail
     const own = known?.find(tree => tree.path === worktreePath)
     if (own) add(own.path, gitRow(own), agent.title)
     else if (worktreePath) {
       const row = { name: treeName(worktreePath), branch: worktreeBranch ?? 'n/a' }
       add(`agent ${worktreePath}`, row, agent.title)
     } else if (known && files.some(file => file.tree && file.by.some(one => one.id === agent.id))) {
-    } else if (!cwd) unknown += 1
-    else if (!known) add('main', { name: 'main tree' }, agent.title)
-    else {
-      const tree = treeOf(cwd, known)
+    } else if (!at) unknown += 1
+    else if (!known) {
+      if (at === cwd) add('main', { name: 'main tree' }, agent.title)
+      else unknown += 1
+    } else {
+      const tree = treeOf(at, known)
       if (tree) add(tree.path, gitRow(tree), agent.title)
       else unknown += 1
     }

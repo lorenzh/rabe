@@ -436,13 +436,11 @@ export function agents(on: On): void {
   }).catch((_$, e, next) => next(e))
 
   on('classic.SubagentStart', { agent_id: /^/ }, async ($, e, next) => {
-    const cwd = await $.session.cwd().catch(() => e.cwd)
     const transcriptPath = agentTranscript(e.transcript_path, e.agent_id)
     const detail = {
       agentId: e.agent_id,
       ...(transcriptPath && { transcriptPath }),
       ...(e.cwd && { cwd: e.cwd }),
-      ...(e.cwd && e.cwd !== cwd && { worktreePath: e.cwd }),
     }
     const id = itemId('agent', e.agent_id)
     const now = await $.clock.now()

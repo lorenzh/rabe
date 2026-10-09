@@ -44,6 +44,8 @@ test('bare, quoted and relative entries are left out; nothing parses to nothing'
     'branch refs/heads/b',
   ].join('\n')
   expect(parseWorktrees(text)).toEqual([{ path: '/repo/b', branch: 'b' }])
+  // Git for Windows prints drive paths; Rabe compares paths as POSIX text.
+  expect(parseWorktrees('worktree C:/Users/me/repo\nbranch refs/heads/main\n')).toEqual([])
   expect(parseWorktrees('')).toEqual([])
   expect(parseWorktrees('{}')).toEqual([])
 })

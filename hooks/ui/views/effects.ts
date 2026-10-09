@@ -103,7 +103,7 @@ function fileLines(files: Touched[], w: Widths, selected: string): Line[] {
 }
 
 function treeLines(model: Model, files: Touched[]): Line[] {
-  const { rows, unknown } = worktreeRows(model.items, files, model.worktrees)
+  const { rows, unknown } = worktreeRows(model.items, files, model.worktrees, model.cwd)
   const width = Math.min(34, Math.max(9, ...rows.map(row => row.name.length)))
   const row = (label: string, rest: string): Line => ({
     spans: [['  '], ['⎇', { fg: C.purple }], [` ${fit(label, width)}  `], [rest, dim]],

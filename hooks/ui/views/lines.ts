@@ -110,7 +110,7 @@ export function itemLine(item: RabeItem, now: number, isSelected = false): Line 
 
 // An item's title, status word and fact lines, then an empty line.
 export function headLines(model: Model, item: RabeItem): Line[] {
-  const f = facts(item, model.now, model.items)
+  const f = facts(item, model.now, model.items, model.cwd)
 
   return [
     {

@@ -61,7 +61,7 @@ const TURNS: Record<string, RabeTurn[]> = {
   ],
 }
 
-const MODEL: Model = { items: ITEMS, turns: TURNS, lines: {}, now: NOW }
+const MODEL: Model = { items: ITEMS, turns: TURNS, lines: {}, now: NOW, cwd: '/repo' }
 
 test('a file edited by two agents in one tree heads the tab as a conflict', () => {
   const { grid } = gridOf(effectsView(MODEL, SIZE, NO_SELECTION))

@@ -29,7 +29,7 @@ function ran(item: RabeItem, now: number): string {
   return `ran ${span} · ${duration(end - item.startedAt)}`
 }
 
-export function facts(item: RabeItem, now: number, items: RabeItem[]): Facts {
+export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: string): Facts {
   const parent = items.find(one => one.id === item.parentId)
   const by = `started by ${parent ? `${KIND_LABEL[parent.kind]} ${parent.title}` : 'main session'}`
   const lines: string[] = []
@@ -38,7 +38,7 @@ export function facts(item: RabeItem, now: number, items: RabeItem[]): Facts {
       const d = item.detail
       const tree = d.worktreePath
         ? `worktree ${base(d.worktreePath)}`
-        : d.cwd
+        : d.cwd && d.cwd === cwd
           ? 'main tree'
           : 'tree n/a'
       lines.push(`${na(d.type)} · ${na(d.model)} · ${tree}`)

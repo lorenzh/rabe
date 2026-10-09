@@ -216,7 +216,7 @@ test('with git each file is relative to its worktree, also a main session file',
 })
 
 test('without git the worktrees come from agent metadata, the main tree counted', () => {
-  expect(worktreeRows(ALL, [])).toEqual({
+  expect(worktreeRows(ALL, [], undefined, '/repo')).toEqual({
     rows: [
       { name: '.claude/worktrees/pkg-db', branch: 'worktree-agent-a1', who: [explore.title] },
       { name: 'main tree', who: [plan.title] },
@@ -266,6 +266,25 @@ test('with git each worktree edited in lists its editors, the main session inclu
     { name: 'main tree', branch: 'main', who: ['main session'] },
   ])
   expect(worktreeRows([], [], TREES)).toEqual({ rows: [], unknown: 0 })
+})
+
+// The start event's cwd of an agent in a subfolder is no worktree: git places
+// it, and without git its tree is not known.
+test('an agent in a subfolder is placed in the worktree that holds it, never its own', () => {
+  const api = {
+    ...plan,
+    id: 'agent:s1',
+    title: 'api',
+    detail: { agentId: 's1', cwd: '/repo/packages/api' },
+  } as RabeItem
+  const edited = {
+    ...api,
+    detail: { ...api.detail, edits: [{ path: '/repo/packages/api/x.ts', at: NOW }] },
+  } as RabeItem
+  const one = { rows: [{ name: 'main tree', branch: 'main', who: ['api'] }], unknown: 0 }
+  expect(worktreeRows([edited], touched([edited], [], '/repo', TREES), TREES, '/repo')).toEqual(one)
+  expect(worktreeRows([api], [], TREES, '/repo')).toEqual(one)
+  expect(worktreeRows([api], [], undefined, '/repo')).toEqual({ rows: [], unknown: 1 })
 })
 
 test('previousOf sums a session up: counts per kind, tokens, cost, failed titles', () => {
