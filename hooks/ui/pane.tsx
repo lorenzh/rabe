@@ -1,7 +1,7 @@
 import type { EngineInterface, On, RenderSurface } from 'claude-code'
 
 import type { RabePrevious } from '../../types'
-import { KIND_LABEL, orderOf, previousOf } from './lists'
+import { KIND_LABEL, kept, matches, orderOf, previousOf } from './lists'
 import { type At, type Held, hold, isRowKey, render, shifts } from './render'
 import {
   type Action,
@@ -189,6 +189,28 @@ async function choose($: EngineInterface, id: string): Promise<boolean> {
   return true
 }
 
+// Hides ended items for the session: they stay in `rabe.items`, which polls
+// fill again, and the views leave them out (`kept`). An id stays even when
+// the cap drops its item, which a poll may find again.
+async function remove($: EngineInterface, action: Action & { type: 'remove' | 'clear' }) {
+  const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+  const { value: removed = [] } = await $.state.get({ plugin: 'rabe', key: 'removed' })
+  const { value: query = '' } = await $.state.get({ plugin: 'rabe', key: 'query' })
+  const gone = kept(items, removed).filter(
+    item =>
+      item.status !== 'running' &&
+      (action.type === 'remove' ? action.ids.includes(item.id) : matches(item, query)),
+  )
+  if (gone.length === 0) return
+  await $.state.set({ plugin: 'rabe', key: 'removed' }, [...removed, ...gone.map(item => item.id)])
+  const [one] = gone
+  $.ui.toast(
+    gone.length === 1 && one
+      ? `Removed ${KIND_LABEL[one.kind]} ${one.title}`
+      : `Removed ${gone.length} ended items`,
+  )
+}
+
 async function act($: EngineInterface, action: Action, surface: RenderSurface): Promise<void> {
   if (action.type === 'open' && (await choose($, action.id))) return
   if (landing(action, '').length > 0) feed($, { type: 'reset' })
@@ -224,6 +246,10 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       return
     case 'stop':
       await stop($, action.ids)
+      return
+    case 'remove':
+    case 'clear':
+      await remove($, action)
       return
     case 'delete': {
       const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
@@ -261,7 +287,9 @@ async function look(
   $: EngineInterface,
   isFocused: boolean,
 ): Promise<{ model: Model; selection: Selection }> {
-  const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+  const { value: all = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+  const { value: removed = [] } = await $.state.get({ plugin: 'rabe', key: 'removed' })
+  const items = kept(all, removed)
   const { value: turns = {} } = await $.state.get({ plugin: 'rabe', key: 'turns' })
   const { value: lines = {} } = await $.state.get({ plugin: 'rabe', key: 'lines' })
   const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
@@ -384,8 +412,9 @@ export function pane(on: On): void {
   // Each open sorts the lists once; then they hold their order (see `stable`).
   on('command.run', { command: 'rabe' }, async $ => {
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const { value: removed = [] } = await $.state.get({ plugin: 'rabe', key: 'removed' })
     const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
-    await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(items, edits))
+    await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(kept(items, removed), edits))
     holds.clear()
     feed($, { type: 'reset' })
     await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })

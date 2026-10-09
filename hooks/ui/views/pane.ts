@@ -44,7 +44,7 @@ function hint(sel: Selection, isOpen: boolean, inner: Drawn): string {
   if (isOpen) return 'b back · esc close'
   const move = hasRows(inner.nodes) ? ['↑↓ move', 'enter open'] : []
   const keys = inner.buttons.flatMap(one =>
-    one.hotkey === 'x' || one.hotkey === 'g' ? [one.label.replace(': ', ' ')] : [],
+    ['x', 'g', 'r', 'a'].includes(one.hotkey ?? '') ? [one.label.replace(': ', ' ')] : [],
   )
 
   return [...move, ...keys, 'esc close'].join(' · ')
@@ -165,9 +165,10 @@ export function selectsOnPress(model: Model, sel: Selection, id: string, ring?: 
   return order.some(item => item.id === id) && selectedItem(order, sel)?.id !== id
 }
 
-// Stop and delete drawn while the pane is disarmed: dim, no action, no hotkey.
+// Stop, delete and remove drawn while the pane is disarmed: dim, no action,
+// no hotkey.
 const disarmed = (one: ViewButton): ViewButton => {
-  if (one.action.type !== 'stop' && one.action.type !== 'delete') return one
+  if (!['stop', 'delete', 'remove', 'clear'].includes(one.action.type)) return one
   const { hotkey: _, ...rest } = one
 
   return { ...rest, action: NONE, dim: true }

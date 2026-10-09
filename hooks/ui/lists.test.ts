@@ -27,6 +27,7 @@ import {
   grouped,
   groupNote,
   joinFit,
+  kept,
   matches,
   nameSpans,
   nextAt,
@@ -228,4 +229,16 @@ test('items Rabe saw after the open go to the group of their kind, failed or not
     item === newer || item === watch ? { ...item, status: 'done' as const, endedAt: NOW } : item,
   )
   expect(ids(ended)).toEqual(ids(running))
+})
+
+// Issue #13: removed rows stay hidden for the session, also when a poll finds
+// them again; an item that runs again shows.
+test('kept hides removed items that ended and keeps running ones', () => {
+  const removed = [lint.id, plan.id, dev.id]
+  const ids = kept(ALL, removed).map(item => item.id)
+  expect(ids).not.toContain(lint.id)
+  expect(ids).not.toContain(plan.id)
+  expect(ids).toContain(dev.id)
+  expect(kept(ALL, [])).toEqual(ALL)
+  expect(kept(ALL)).toEqual(ALL)
 })

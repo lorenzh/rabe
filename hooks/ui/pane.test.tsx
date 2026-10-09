@@ -342,7 +342,13 @@ test('a narrow pane puts a one-line summary under the list and short key labels'
   const shown = await screen(ui)
   expect(shown).toContain('◐ review auth.ts · gpt-6.1-sol · ≈ $0.09 · 25k in · running')
   const buttons = (await ui.findAll({ type: 'Button' })).filter(one => !one.props.plain)
-  expect(buttons.map(one => one.props.label)).toEqual(['s', 'x: stop', 'g: stop group'])
+  expect(buttons.map(one => one.props.label)).toEqual([
+    's',
+    'x: stop',
+    'g: stop group',
+    'r: remove',
+    'a: remove ended',
+  ])
   await ui.unmount()
 })
 
@@ -620,7 +626,9 @@ test('g on a workflow agent stops its run on every surface', async ($, on) => {
     })
     const x = await ui.find({ type: 'Button', key: 'stop' })
     expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, undefined])
-    expect(await screen(ui)).toContain(' ↑↓ move · enter open · g stop run · esc close')
+    expect(await screen(ui)).toContain(
+      ' ↑↓ move · enter open · g stop run · a remove ended · esc close',
+    )
     await ui.press({ key: 'stop-group' })
     await ui.unmount()
   }
@@ -1105,4 +1113,53 @@ test('a click on a row still selects it while the pane does not hold the keys', 
   await ui.press({ key: `row:${a.id}` })
   expect(state.selected).toBe(a.id)
   await ui.unmount()
+})
+
+// Issue #13: r removes the selected row once it ended, a every ended row; a
+// removed row leaves a gone slot while the pane is open, and stays hidden for
+// the session, also from the band, though its item is still in rabe.items.
+const BAND = {
+  surface: 'terminal',
+  plugin: 'rabe',
+  component: 'AbovePrompt',
+  requestId: 'band',
+  props: { hasSurvey: false, isWorking: false, maxRows: 2, bodyColumns: 120, view: {} },
+} as const
+
+test('r and a remove ended rows for the session; running rows stay', async ($, on) => {
+  const state = hold(on, ALL, { selected: lint.id, order: orderOf(ALL) })
+  on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+  const bandText = async () => {
+    const band = await $.ui.mount(BAND as never)
+    const text = (await screen(band)).join('\n')
+    await band.unmount()
+    return text
+  }
+  expect(await bandText()).toContain('failed')
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: 'remove' })
+  await ui.press({ key: 'clear' })
+  expect(state.removed).toBeUndefined()
+  await arm($, `row:${lint.id}`)
+  await ui.redraw()
+  expect((await ui.find({ type: 'Button', key: 'remove' }))?.props.hotkey).toBe('r')
+  await ui.press({ key: 'remove' })
+  expect(state.removed).toEqual([lint.id])
+  expect(state.toasts).toEqual([`Removed shell ${lint.title}`])
+  await ui.redraw()
+  const slot = await ui.find({ type: 'Button', key: `row:${lint.id}` })
+  expect(slot?.props.dimColor).toBe(true)
+  await arm($, `row:${dev.id}`)
+  await ui.redraw()
+  await ui.press({ key: 'clear' })
+  const ended = ALL.filter(item => item.status !== 'running').map(item => item.id)
+  expect(new Set(state.removed as string[])).toEqual(new Set(ended))
+  await ui.unmount()
+  expect(await bandText()).not.toContain('failed')
+  await $.command.run({ command: 'rabe', args: '' } as never)
+  const again = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  const shown = (await screen(again)).join('\n')
+  expect(shown).not.toContain(lint.title)
+  expect(shown).toContain(dev.title)
+  await again.unmount()
 })

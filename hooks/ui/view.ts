@@ -69,6 +69,10 @@ export type Action =
   | { type: 'focus'; key: string }
   | { type: 'stop'; ids: string[] }
   | { type: 'delete'; id: string }
+  // Hide these ended items for the session.
+  | { type: 'remove'; ids: string[] }
+  // Hide every ended item the search shows, as the list holds them when pressed.
+  | { type: 'clear' }
   | { type: 'copy'; text: string }
   | { type: 'message'; id: string; text: string }
   | { type: 'none' }
@@ -254,7 +258,7 @@ export type ArmEvent =
   // A drawing.
   | ({ type: 'drawn' } & Shown)
 
-const DESTRUCTIVE = /^(stop|stop-group|stop-run|delete)(:|$)/
+const DESTRUCTIVE = /^(stop|stop-group|stop-run|delete|remove|clear)(:|$)/
 
 export const isDestructive = (key: string): boolean => DESTRUCTIVE.test(key)
 
@@ -320,8 +324,8 @@ export function landingOf(
   return last.received.element === undefined ? {} : { element: last.received.element }
 }
 
-// The list's x and g keep one key each and act on the selection.
-export const LIST_KEYS = ['stop', 'stop-group']
+// The list's x, g and r keep one key each and act on the selection.
+export const LIST_KEYS = ['stop', 'stop-group', 'remove']
 
 // What the list's x and g act on in a drawing: one entry per control and item.
 // Fewer entries (a row of the group ended, g can no longer act) stop less
@@ -330,7 +334,9 @@ export const targetsOf = (drawn: Drawn): string[] =>
   drawn.buttons
     .filter(one => LIST_KEYS.includes(one.key))
     .flatMap(({ key, label, action }) =>
-      action.type === 'stop' ? action.ids.map(id => JSON.stringify([key, label, id])) : [],
+      action.type === 'stop' || action.type === 'remove'
+        ? action.ids.map(id => JSON.stringify([key, label, id]))
+        : [],
     )
 
 // Rows the toolbar takes: wrapped Buttons ("[ label ]" and a

@@ -157,6 +157,8 @@ declare module 'claude-code' {
       order: RabeOrder
       // The files the main session changed (no agent), newest last.
       edits: RabeEdit[]
+      // The ids of ended items the person removed from the views this session.
+      removed: string[]
     }
   }
 }

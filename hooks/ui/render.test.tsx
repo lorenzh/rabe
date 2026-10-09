@@ -335,6 +335,10 @@ function targetOf(action: Action): string | undefined {
       return `stop ${action.ids.join(',')}`
     case 'delete':
       return `delete ${action.id}`
+    case 'remove':
+      return `remove ${action.ids.join(',')}`
+    case 'clear':
+      return 'clear'
     case 'message':
       return `message ${action.id}`
     case 'copy':
@@ -367,11 +371,12 @@ function checkTargets(
     if (target === undefined) return
     if (LIST_KEYS.includes(key)) {
       const was = (seen[i] ?? '').split(',')
-      const isGained = action.type === 'stop' && action.ids.some(id => !was.includes(id))
+      const ids = action.type === 'stop' || action.type === 'remove' ? action.ids : []
+      const isGained = ids.some(id => !was.includes(id))
       if (seen[i] !== undefined && isGained && !byPerson) {
         expect([shown, i, key, 'armed', isArmed]).toEqual([shown, i, key, 'armed', false])
       }
-      seen[i] = action.type === 'stop' ? action.ids.join(',') : ''
+      seen[i] = ids.join(',')
       return
     }
     const was = keys.get(key) ?? target
@@ -678,5 +683,6 @@ test('walking the list keeps exactly one x and one g', () => {
   }
   expect(last.keys.filter(key => key === 'stop')).toHaveLength(1)
   expect(last.keys.filter(key => key === 'stop-group')).toHaveLength(1)
+  expect(last.keys.filter(key => key === 'remove')).toHaveLength(1)
   expect(last.tree.filter(one => String(one.props.label).startsWith('x:'))).toHaveLength(1)
 })

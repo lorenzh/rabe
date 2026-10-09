@@ -68,8 +68,14 @@ test('each row is a plain Button keyed by its item that opens it; the selected o
   expect(own?.dim).toBeUndefined()
   expect(rows.filter(one => one.autoFocus)).toHaveLength(1)
   expect(rows.find(one => one.key === `row:${dev.id}`)?.dim).toBe(true)
-  expect(keys(drawn.buttons)).toEqual(['s: search', 'x: stop', 'g: stop group'])
-  expect(drawn.buttons.map(one => one.hotkey)).toEqual(['s', 'x', 'g'])
+  expect(keys(drawn.buttons)).toEqual([
+    's: search',
+    'x: stop',
+    'g: stop group',
+    'r: remove',
+    'a: remove ended',
+  ])
+  expect(drawn.buttons.map(one => one.hotkey)).toEqual(['s', 'x', 'g', undefined, 'a'])
 })
 
 test('a group header is a Button that folds it; with nothing selected the first row has the focus', () => {
@@ -99,7 +105,7 @@ test('below 90 columns the list fills the width, drops the gaps and ends with on
   expect(cell(grid, 0, end).slice(1)).toEqual([C.yellow, C.panel])
   expect(cell(grid, 79, end)[2]).toBe(C.panel)
   expect(cell(grid, at(shown, end, '≈'), end)[1]).toBe(C.bright)
-  expect(keys(buttons)).toEqual(['s', 'x: stop', 'g: stop group'])
+  expect(keys(buttons)).toEqual(['s', 'x: stop', 'g: stop group', 'r: remove', 'a: remove ended'])
 })
 
 test('below 90 columns a list that fits keeps the gaps between groups', () => {
@@ -336,10 +342,15 @@ test('a disarmed pane draws its stops and deletes dim, without action or hotkey'
   expect(cron.buttons.find(one => one.key.startsWith('delete:'))?.action).toEqual(NONE)
   expect(cron.buttons.find(one => one.key.startsWith('copy:'))?.action.type).toBe('copy')
   const hint = (drawn: Drawn) => lines(gridOf(drawn).grid).at(-1)?.trim()
-  expect(hint(armed)).toBe('↑↓ move · enter open · x stop · g stop group · esc close')
+  expect(hint(armed)).toBe(
+    '↑↓ move · enter open · x stop · g stop group · a remove ended · esc close',
+  )
   expect(hint(disarmed)).toBe('↑↓ move · enter open · esc close')
+  // a acts on every ended row, not on the selection: the ring alone arms it.
   const list = paneView(model, WIDE, { ...sel, isArmed: true })
-  expect(list.buttons).toEqual(disarmed.buttons)
+  const notClear = (drawn: Drawn) => drawn.buttons.filter(one => one.key !== 'clear')
+  expect(notClear(list)).toEqual(notClear(disarmed))
+  expect(list.buttons.find(one => one.key === 'clear')?.action).toEqual({ type: 'clear' })
   const detail = paneView(model, WIDE, { ...sel, open: babysit.id, isArmed: true })
   expect(detail.buttons.find(one => one.key.startsWith('delete:'))?.action.type).toBe('delete')
 })
@@ -366,4 +377,31 @@ test('a row is live where the list draws it, not as a gone slot, a header or a c
   for (const key of ['group-shells', 'tab-items', 'stop', explore.id]) {
     expect([key, isLiveRow(model, sel, key)]).toEqual([key, false])
   }
+})
+
+// Issue #13: r removes the selected row once it ended, a every ended row the
+// search shows; running items stay. Both keep their slots while they cannot act.
+test('r removes the selected ended row and a every ended row; neither touches a running one', () => {
+  const sel = { ...NO_SELECTION, selected: lint.id }
+  const buttons = itemsView(model, WIDE, sel).buttons
+  expect(buttons.map(one => one.label)).toEqual([
+    's: search',
+    'x: stop',
+    'g: stop group',
+    'r: remove',
+    'a: remove ended',
+  ])
+  expect(buttons[3]).toMatchObject({
+    key: 'remove',
+    hotkey: 'r',
+    action: { type: 'remove', ids: [lint.id] },
+  })
+  expect(buttons[4]).toMatchObject({ key: 'clear', hotkey: 'a', action: { type: 'clear' } })
+  const running = itemsView(model, WIDE, { ...sel, selected: explore.id }).buttons
+  expect(running[3]).toMatchObject({ key: 'remove', action: NONE, dim: true })
+  const live = ALL.map(item => ({ ...item, status: 'running' as const, endedAt: undefined }))
+  const none = itemsView({ ...model, items: live }, WIDE, sel).buttons
+  expect(none[4]).toMatchObject({ key: 'clear', action: NONE, dim: true })
+  const narrow = itemsView(model, NARROW, sel).buttons
+  expect(controlRows({ buttons: narrow }, NARROW)).toBe(1)
 })

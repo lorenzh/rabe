@@ -93,6 +93,14 @@ function kindGroupOf(item: RabeItem): Group {
   return 'agents'
 }
 
+// The items the views show: the person removed the others this session
+// (`rabe.removed`). An item that runs again shows, since nothing running is
+// ever hidden.
+export const kept = (items: RabeItem[], removed: readonly string[] = []): RabeItem[] =>
+  removed.length === 0
+    ? items
+    : items.filter(item => item.status === 'running' || !removed.includes(item.id))
+
 export function matches(item: RabeItem, query: string): boolean {
   const q = query.trim().toLowerCase()
   if (!q) return true
