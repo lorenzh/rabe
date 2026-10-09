@@ -10,7 +10,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
-- The Effects tab shows files that agents write through shell commands (`cat > file <<'EOF'`, `>>`, `tee`, `sed -i`, `cp`, `mv`, `touch`), marked `via shell`. Rabe takes the files named on the command line and checks each on disk: it lists a file only when it appeared, went away, or changed size or modification time while the command ran, so `touch -c`, `rm -f` of a missing file and failed copies show nothing, and `cp src dir` shows `dir/src`. Before, it showed only `Edit` and `Write` calls, so a subagent that wrote its files through Bash left it empty. (#TBD, fixes [#9](https://github.com/lorenzh/rabe/issues/9))
+- The Effects tab shows files that agents write through shell commands (`cat > file <<'EOF'`, `>>`, `tee`, `sed -i`, `cp`, `mv`, `touch`), marked `via shell`. Rabe takes the files named on the command line and checks each on disk: it lists a file only when it appeared, went away, or changed size or modification time while the command ran, so `touch -c`, `rm -f` of a missing file and failed copies show nothing, and `cp src dir` shows `dir/src`. Before, it showed only `Edit` and `Write` calls, so a subagent that wrote its files through Bash left it empty. ([#16](https://github.com/lorenzh/rabe/pull/16), fixes [#9](https://github.com/lorenzh/rabe/issues/9))
 
 ## [0.2.0] - 2026-10-09
 
