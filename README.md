@@ -9,7 +9,7 @@
 
 Rabe (German for raven) is a Claude Code mod. It shows your subagents, Codex jobs, background shells, monitors, cron jobs and workflows in one place. A short band above the prompt shows what runs now. The `/rabe` command opens a pane with the full detail.
 
-![Rabe in a Claude Code session: the band above the prompt lists two agents, two shells, a monitor, a cron job and the cost; /rabe opens the pane with the list beside the selected agent, j and k move, Enter opens the agent's detail, then the Cost and Timeline tabs show, and Esc closes the pane](docs/assets/demo.gif)
+![Rabe in a Claude Code session: the band above the prompt lists two agents, three shells (one of them started by an agent), a monitor, a cron job and the cost; /rabe opens the pane, the arrow keys move through the list and the detail beside it follows, a click on the agent's shell opens it, then the Cost and Timeline tabs show, and Esc closes the pane](docs/assets/demo.gif)
 
 Status: early development. Version 0.1.0.
 
@@ -48,8 +48,8 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 
 | Key | What it does |
 |---|---|
-| ↑ / ↓ | Move to the previous / next row |
-| Enter | Open the row that has the focus |
+| ↑ / ↓ | Move to the previous / next row; the detail beside the list follows |
+| Enter or a click | Open the row that has the focus, or the row you click |
 | Tab / Shift+Tab | Move the focus through rows, tabs and buttons |
 | `b` | Go back to the list |
 | `1` to `4` | Switch tab |
@@ -59,11 +59,12 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | `m` | Send a message to an agent |
 | `c` | Copy the command, the prompt or the `ssh -L` line |
 | `d` | Delete a cron job |
+| Mouse wheel | Scroll the pane |
 | Esc | Close the pane |
 
 The buttons under the pane show the keys that work on the current tab. A letter with no button goes to the prompt.
 
-With the mouse, click a row to open it, a tab to switch to it, or a group name to fold the group. The wheel scrolls the pane. Mouse clicks work only in Claude Code's fullscreen layout (`/tui fullscreen`).
+With the mouse, click a row to open it, a tab to switch to it, or a group name to fold the group. The wheel scrolls the pane. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
 
 The rows keep their order while the pane is open, so the row under the focus does not move. New items go to the end of their group. Type `/rabe` again to sort the lists.
 
