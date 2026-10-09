@@ -314,6 +314,38 @@ test('an edit the engine ran is kept on its agent; a refused or failed one is no
   ])
 })
 
+test('a staged edit or write leaves the file unchanged and is not kept', async ($, on) => {
+  const held = engine(on, 'a1')
+  on('tool.call', { tool: ['Edit', 'Write'] }, async (_$, e) => {
+    const filePath = e.tool === 'Edit' || e.tool === 'Write' ? e.file_path : ''
+
+    return { result: { filePath, staged: filePath.includes('staged') } as never }
+  })
+  await $.agent.spawn(SPAWN)
+  await $.tool.call({
+    tool: 'Edit',
+    file_path: '/repo/staged.ts',
+    old_string: 'a',
+    new_string: 'b',
+    agentId: 'a1',
+  } as never)
+  await $.tool.call({
+    tool: 'Write',
+    file_path: '/repo/staged-new.ts',
+    content: '',
+    agentId: 'a1',
+  } as never)
+  await $.tool.call({
+    tool: 'Edit',
+    file_path: '/repo/db.ts',
+    old_string: 'a',
+    new_string: 'b',
+    agentId: 'a1',
+  } as never)
+  const item = held.items?.[0] as RabeItemOf<'agent'>
+  expect(item.detail.edits).toEqual([{ path: '/repo/db.ts', at: 5000 }])
+})
+
 test('a step of a loop Rabe does not know writes nothing', async ($, on) => {
   const held = watch(on)
   // biome-ignore lint/correctness/useYield: the engine's stand-in answers without chunks

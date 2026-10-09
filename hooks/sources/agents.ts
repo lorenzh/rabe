@@ -88,7 +88,20 @@ export function agentTranscript(path: string, agentId: string): string | undefin
   return `${path.slice(0, -'.jsonl'.length)}/subagents/agent-${agentId}.jsonl`
 }
 
-// An Edit or Write the engine ran for an agent; its newest MAX_EDITS are kept.
+// The file an Edit or Write changed: the engine ran it (a result, no error) and
+// did not only stage it for review. The path comes from the result when it has one.
+export function changedFile(
+  answer: { result?: unknown; isError?: boolean },
+  input: string,
+): string | undefined {
+  if (answer.isError || !answer.result || typeof answer.result !== 'object') return undefined
+  const result = answer.result as { filePath?: unknown; staged?: unknown }
+  if (result.staged === true) return undefined
+
+  return typeof result.filePath === 'string' ? result.filePath : input
+}
+
+// An Edit or Write that changed a file for an agent; its newest MAX_EDITS are kept.
 function edited(items: RabeItem[], id: string, path: string, at: number): RabeItem[] {
   const agent = asAgent(items, id)
   if (!agent) return items
@@ -303,15 +316,11 @@ export function agents(on: On): void {
   on('tool.call', { tool: ['Edit', 'Write'] }, async ($, e, next) => {
     const answer = await next(e)
     try {
-      if (
-        (e.tool === 'Edit' || e.tool === 'Write') &&
-        e.agentId &&
-        answer.result &&
-        !answer.isError
-      ) {
+      const path = (e.tool === 'Edit' || e.tool === 'Write') && changedFile(answer, e.file_path)
+      if (e.agentId && path) {
         const id = itemId('agent', e.agentId)
         const now = await $.clock.now()
-        await write($, items => edited(items, id, e.file_path, now))
+        await write($, items => edited(items, id, path, now))
       }
     } catch {}
 
