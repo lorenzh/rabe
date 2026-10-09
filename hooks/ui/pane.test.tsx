@@ -406,7 +406,7 @@ test('cost, effects and timeline tabs draw their sections on every surface', asy
     expect(await ui.find({ type: 'Button', key: `row:${explore.id}` })).toBeDefined()
     await ui.press({ key: 'tab-effects' })
     shown = await screen(ui)
-    expect(shown).toContain('WORKTREES 1  from agent metadata, running agents included')
+    expect(shown).toContain('WORKTREES 2  from agent metadata, running agents included')
     expect(shown).toContain('  :5173  bun run dev')
     expect((await ui.find({ type: 'Button', key: 'row:ssh:5173' }))?.props).toMatchObject({
       plain: true,

@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Fixed
+
+- The Effects tab lists every git worktree files changed in, with its branch and who changed files there, the main session included, and shows each file relative to its worktree. Before, it knew only the worktrees of isolated agents, so a worktree the main session or a plain agent edited by its full path was missing and its files showed with their full path. The WORKTREES count now matches its rows. Rabe reads the worktrees with `git worktree list`; without Git it works as before. (fixes [#19](https://github.com/lorenzh/rabe/issues/19))
+
 ### Removed
 
 - Code nobody reached: the Effects tab's ` · cwd n/a` mark (every file path Rabe records is absolute) and the names the band built for each kind but no longer draws. Nothing changes on screen. (fixes [#22](https://github.com/lorenzh/rabe/issues/22))

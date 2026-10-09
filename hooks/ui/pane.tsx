@@ -233,6 +233,7 @@ async function look(
   const { value: selected = '' } = await $.state.get({ plugin: 'rabe', key: 'selected' })
   const { value: open = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
   const { value: order } = await $.state.get({ plugin: 'rabe', key: 'order' })
+  const { value: worktrees } = await $.state.get({ plugin: 'rabe', key: 'worktrees' })
   const usage = await $.session.usage().catch(() => undefined)
   const model = {
     items,
@@ -243,6 +244,7 @@ async function look(
     previous: await previous($).catch(() => undefined),
     edits,
     cwd: await $.session.cwd().catch(() => undefined),
+    ...(worktrees && { worktrees }),
   }
 
   const selection = {

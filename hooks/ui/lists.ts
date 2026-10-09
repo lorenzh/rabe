@@ -1,4 +1,4 @@
-import type { RabeEdit, RabeOrder, RabePrevious } from '../../types'
+import type { RabeEdit, RabeOrder, RabePrevious, RabeWorktree } from '../../types'
 import type { RabeItem, RabeItemKind } from '../model'
 import { nextRuns } from '../schedule'
 import type { Span } from './cells/grid'
@@ -165,11 +165,21 @@ export type Touched = {
   hows: string[]
   isDeleted: boolean
   isConflict: boolean
+  // The git worktree that holds the file; absent without git or outside them.
+  tree?: RabeWorktree
 }
 
-function relative(path: string, editor: Editor): string {
-  const { root } = editor
+// The worktree whose path is the longest prefix of `path`.
+export function treeOf(path: string, trees: RabeWorktree[]): RabeWorktree | undefined {
+  return trees
+    .filter(tree => path === tree.path || path.startsWith(`${tree.path}/`))
+    .reduce<RabeWorktree | undefined>(
+      (best, tree) => (best && best.path.length >= tree.path.length ? best : tree),
+      undefined,
+    )
+}
 
+function relative(path: string, root?: string): string {
   return root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
 }
 
@@ -211,18 +221,26 @@ function editorsOf(items: RabeItem[], main: RabeEdit[], cwd?: string): Edits[] {
 // first changed. `by` lists the editors in the order they first changed it,
 // `last` the latest one, `hows` how, `first` and `at` the first and the latest
 // change times. Two editors of one absolute path are a conflict; a relative
-// path (a shell write whose cwd is not known) is none.
-export function touched(items: RabeItem[], main: RabeEdit[] = [], cwd?: string): Touched[] {
+// path is none. With git's worktrees (`trees`) each file is shown relative to
+// the worktree that holds it; else relative to its first editor's folder.
+export function touched(
+  items: RabeItem[],
+  main: RabeEdit[] = [],
+  cwd?: string,
+  trees?: RabeWorktree[],
+): Touched[] {
   const edits = editorsOf(items, main, cwd)
     .flatMap(({ editor, edits: list }) => list.map(edit => ({ editor, edit })))
     .toSorted((a, b) => a.edit.at - b.edit.at)
   const files = new Map<string, Touched>()
   for (const { editor, edit } of edits) {
     const { path, at } = edit
+    const tree = trees && treeOf(path, trees)
     const file = files.get(path) ?? {
       id: `file:${path}`,
       path,
-      rel: relative(path, editor),
+      rel: relative(path, tree ? tree.path : editor.root),
+      ...(tree && { tree }),
       by: [],
       last: editor,
       edits: 0,
@@ -470,25 +488,70 @@ export function bar(from: number, to: number, start: number, end: number, width:
   return `${' '.repeat(a)}${'█'.repeat(b - a)}${' '.repeat(width - b)}`
 }
 
-export function worktrees(
-  items: RabeItem[],
-): { name: string; branch: string; items: RabeItem[] }[] {
-  const out = new Map<string, { name: string; branch: string; items: RabeItem[] }>()
-  for (const item of items) {
-    if (item.kind !== 'agent' || !item.detail.worktreePath) continue
-    const path = item.detail.worktreePath
-    const entry = out.get(path) ?? {
-      name: path.includes('/.claude/')
-        ? path.slice(path.indexOf('.claude/'))
-        : (path.split('/').filter(Boolean).at(-1) ?? path),
-      branch: item.detail.worktreeBranch ?? 'n/a',
-      items: [],
-    }
-    entry.items.push(item)
-    out.set(path, entry)
-  }
+export type TreeRow = { name: string; branch?: string; who: string[] }
 
-  return [...out.values()]
+const treeName = (path: string) =>
+  path.includes('/.claude/')
+    ? path.slice(path.indexOf('.claude/'))
+    : (path.split('/').filter(Boolean).at(-1) ?? path)
+
+// The WORKTREES section: one row per worktree in use, each with who works
+// there. With git (`trees`) a worktree is in use when a file in it changed
+// (its editors, the main session included) or an agent runs in it (its
+// `worktreePath`, else its `cwd` when it changed no file in a worktree); an
+// agent's worktree git does not list keeps its row from the agent's metadata.
+// Without git, rows come from agent metadata alone: each agent worktree, then
+// the main tree for agents with a `cwd`. `unknown` counts agents whose tree
+// Rabe cannot tell.
+export function worktreeRows(
+  items: RabeItem[],
+  files: Touched[],
+  trees?: RabeWorktree[],
+): { rows: TreeRow[]; unknown: number } {
+  const known = trees?.length ? trees : undefined
+  const rows = new Map<string, TreeRow>()
+  const add = (key: string, row: Omit<TreeRow, 'who'>, title: string) => {
+    const one = rows.get(key) ?? { ...row, who: [] }
+    if (!one.who.includes(title)) one.who.push(title)
+    rows.set(key, one)
+  }
+  const gitRow = (tree: RabeWorktree) => ({
+    name: tree.isMain ? 'main tree' : treeName(tree.path),
+    branch: tree.branch ?? (tree.isDetached ? 'detached' : 'n/a'),
+  })
+  for (const file of known ? files : []) {
+    if (!file.tree) continue
+    for (const editor of file.by) add(file.tree.path, gitRow(file.tree), editor.title)
+  }
+  let unknown = 0
+  const agents = items.flatMap(item => (item.kind === 'agent' ? [item] : []))
+  for (const agent of agents) {
+    const { worktreePath, worktreeBranch, cwd } = agent.detail
+    const own = known?.find(tree => tree.path === worktreePath)
+    if (own) add(own.path, gitRow(own), agent.title)
+    else if (worktreePath) {
+      const row = { name: treeName(worktreePath), branch: worktreeBranch ?? 'n/a' }
+      add(`agent ${worktreePath}`, row, agent.title)
+    } else if (known && files.some(file => file.tree && file.by.some(one => one.id === agent.id))) {
+    } else if (!cwd) unknown += 1
+    else if (!known) add('main', { name: 'main tree' }, agent.title)
+    else {
+      const tree = treeOf(cwd, known)
+      if (tree) add(tree.path, gitRow(tree), agent.title)
+      else unknown += 1
+    }
+  }
+  const order = [...(known ?? []).map(tree => tree.path)]
+  const rank = (key: string) => (order.includes(key) ? order.indexOf(key) : order.length)
+  const keys = [...rows.keys()]
+  const sorted = keys.toSorted(
+    (a, b) =>
+      Number(a === 'main') - Number(b === 'main') ||
+      rank(a) - rank(b) ||
+      keys.indexOf(a) - keys.indexOf(b),
+  )
+
+  return { rows: sorted.map(key => rows.get(key) as TreeRow), unknown }
 }
 
 // What the next session in this project shows of this one.

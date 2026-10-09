@@ -402,7 +402,8 @@ test('a session file over 4 MiB is read with grep and tail', async ($, on) => {
   })
   w.files.set(ROLLOUT_PATH, { text: '', mtimeMs: 5000, size: 5 * 1024 * 1024 })
   const runs: string[][] = []
-  on('process.run', async (_$, e) => {
+  on('process.run', async (_$, e, next) => {
+    if (e.argv[0] === 'git') return next(e)
     runs.push([...e.argv])
     const [head, tail] = ROLLOUT.split('\n').reduce<[string[], string[]]>(
       ([h, t], one, n) => (n < 3 ? [[...h, one], t] : [h, [...t, one]]),
@@ -433,7 +434,8 @@ test('/rabe-stop cancels the job through the companion script', async ($, on) =>
     },
   })
   const runs: { argv: string[]; env?: Record<string, string> }[] = []
-  on('process.run', async (_$, e) => {
+  on('process.run', async (_$, e, next) => {
+    if (e.argv[0] === 'git') return next(e)
     runs.push({ argv: [...e.argv], env: e.init?.env })
     return { value: { exitCode: 0, stdout: '{}', stderr: '' } } as never
   })

@@ -143,6 +143,15 @@ export type RabePrevious = {
   failed: string[]
 }
 
+// A git worktree from `git worktree list --porcelain`: the first one listed
+// is the main worktree (`isMain`); bare entries are left out.
+export type RabeWorktree = {
+  path: string
+  branch?: string
+  isDetached?: boolean
+  isMain?: boolean
+}
+
 declare module 'claude-code' {
   interface PluginState {
     rabe: {
@@ -157,6 +166,8 @@ declare module 'claude-code' {
       order: RabeOrder
       // The files the main session changed (no agent), newest last.
       edits: RabeEdit[]
+      // The repository's git worktrees; absent without git.
+      worktrees: RabeWorktree[]
     }
   }
 }
