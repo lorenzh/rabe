@@ -1,4 +1,4 @@
-import type { EngineInterface, On } from 'claude-code'
+import type { EngineInterface, FsStat, On } from 'claude-code'
 
 import type { RabeCodexStep, RabeEdit, RabeTokens } from '../../types'
 import {
@@ -24,6 +24,7 @@ const CHANGES = ['add', 'update', 'delete'] as const
 const DAY = 24 * 60 * 60 * 1000
 const MAX_CHECKS = 20
 const LATE_MS = 2000
+const LOOK_MS = 1000
 
 type Rec = Record<string, unknown>
 
@@ -111,7 +112,7 @@ function folder(cwd: unknown): string | undefined {
   const text = str(cwd)
   if (!text?.startsWith('file://')) return text
   try {
-    return decodeURI(text.slice('file://'.length))
+    return text.slice('file://'.length).split('/').map(decodeURIComponent).join('/')
   } catch {
     return undefined
   }
@@ -324,18 +325,42 @@ async function findRollout(
   return undefined
 }
 
+// One poll's shell checks: each path is statted once, and all share one deadline.
+type Looks = {
+  asked: Map<string, Promise<void>>
+  known: Map<string, FsStat>
+  late?: Promise<void>
+  stop: AbortController
+}
+
+function statOnce($: EngineInterface, looks: Looks, path: string): Promise<void> {
+  let asked = looks.asked.get(path)
+  if (!asked) {
+    asked = $.fs.stat(path).then(
+      stat => {
+        looks.known.set(path, stat)
+      },
+      () => undefined,
+    )
+    looks.asked.set(path, asked)
+  }
+
+  return asked
+}
+
 // A shell write counts when its file was changed while the command ran; a
 // delete leaves nothing to look at, so only FileChange records give those.
-async function confirmed($: EngineInterface, rollout: Rollout): Promise<Rollout> {
+async function confirmed($: EngineInterface, rollout: Rollout, looks: Looks): Promise<Rollout> {
   const { checks, ...rest } = rollout
   if (!checks) return rollout
-  const written: RabeEdit[] = []
-  for (const { path, from, to } of checks) {
-    const stat = await $.fs.stat(path).catch(() => undefined)
-    if (stat?.kind === 'file' && stat.mtimeMs >= from && stat.mtimeMs <= to + LATE_MS) {
-      written.push({ path, at: to, via: 'shell' })
-    }
-  }
+  looks.late ??= $.clock.sleep(LOOK_MS, { signal: looks.stop.signal }).catch(() => undefined)
+  await Promise.race([Promise.all(checks.map(one => statOnce($, looks, one.path))), looks.late])
+  const written = checks.flatMap(({ path, from, to }): RabeEdit[] => {
+    const stat = looks.known.get(path)
+    const isWritten = stat?.kind === 'file' && stat.mtimeMs >= from && stat.mtimeMs <= to + LATE_MS
+
+    return isWritten ? [{ path, at: to, via: 'shell' }] : []
+  })
   const edits = [...(rest.edits ?? []), ...written].sort((a, b) => a.at - b.at).slice(-MAX_EDITS)
 
   return edits.length ? { ...rest, edits } : rest
@@ -346,6 +371,7 @@ async function readSession(
   codexHome: string,
   job: CodexJob,
   held: RabeItemOf<'codex'> | undefined,
+  looks: Looks,
 ): Promise<CodexSession | undefined> {
   const threadId = str(job.threadId)
   if (!threadId) return undefined
@@ -363,7 +389,7 @@ async function readSession(
 
     return text === undefined
       ? { path }
-      : { path, updatedAt, rollout: await confirmed($, parseRollout(String(text), home)) }
+      : { path, updatedAt, rollout: await confirmed($, parseRollout(String(text), home), looks) }
   }
   const head = await $.process
     .run(['grep', '-m', '2', '-E', '"type":"(turn_context|UserMessage)"', path])
@@ -375,7 +401,7 @@ async function readSession(
     path,
     updatedAt,
     isPartial: true,
-    rollout: await confirmed($, parseRollout(`${head.stdout}\n${tail.stdout}`, home)),
+    rollout: await confirmed($, parseRollout(`${head.stdout}\n${tail.stdout}`, home), looks),
   }
 }
 
@@ -386,6 +412,7 @@ async function refresh(
   jobPath: string,
   entry: CodexJob,
   items: RabeItem[],
+  looks: Looks,
 ): Promise<void> {
   const file = parseJson(String(await $.fs.read(jobPath).catch(() => '')))
   const job: CodexJob = { ...entry, ...file, id: entry.id }
@@ -401,7 +428,7 @@ async function refresh(
   const held = items.find((one): one is RabeItemOf<'codex'> => one.id === itemId('codex', job.id))
   // a finished job the cap would drop again: its session file is not read
   if (!held && commit(items, change(codexItem(job, undefined))) === undefined) return
-  const session = await readSession($, codexHome, job, held)
+  const session = await readSession($, codexHome, job, held, looks)
   await write($, change(codexItem(job, session)))
 }
 
@@ -411,6 +438,7 @@ async function poll($: EngineInterface): Promise<void> {
   const sessionId = await $.session.id()
   const { startedAt: since } = await $.session.usage()
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+  const looks: Looks = { asked: new Map(), known: new Map(), stop: new AbortController() }
   // ponytail: one stat per workspace folder per poll; keep a folder list in $.state if there are hundreds
   for (const dir of await $.fs.list(stateRoot).catch(() => [])) {
     if (dir.kind !== 'dir') continue
@@ -431,9 +459,11 @@ async function poll($: EngineInterface): Promise<void> {
         `${stateRoot}/${dir.name}/jobs/${id}.json`,
         { ...entry, id },
         items,
+        looks,
       ).catch(() => undefined)
     }
   }
+  looks.stop.abort()
 }
 
 function firstLine(text: string): string {
@@ -480,8 +510,15 @@ export function codex(on: On): void {
       argumentHint: '<item id>',
       immediate: true,
     })
+    let isPolling = false
     $.clock.every(POLL_MS, () => {
-      poll($).catch(() => undefined)
+      if (isPolling) return
+      isPolling = true
+      poll($)
+        .catch(() => undefined)
+        .finally(() => {
+          isPolling = false
+        })
     })
 
     return started

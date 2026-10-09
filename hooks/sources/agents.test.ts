@@ -322,6 +322,8 @@ type Effect = (disk: Disk) => void
 
 const file = (size: number, mtimeMs = 1): FsStat => ({ kind: 'file', size, mtimeMs, isLink: false })
 const dir: FsStat = { kind: 'dir', size: 0, mtimeMs: 1, isLink: false }
+// A file whose folder the command made unreadable: its stat fails with EACCES.
+const LOCKED = file(-1)
 
 // A fake shell on a fake disk: each command changes the disk as `effects` says.
 // A Bash call the engine ran has a result, no error and is not in the background.
@@ -331,12 +333,13 @@ function shell(on: On, effects: Record<string, Effect> = {}): { disk: Disk; stat
   const stats: string[] = []
   on('fs.stat', async (_$, e) => {
     stats.push(e.path)
-    if (e.path.includes('locked')) return { deny: 'EACCES' }
-    if (e.path.includes('hang')) return new Promise<never>(() => {})
     const found = disk.get(e.path)
+    if (e.path.includes('locked') || found === LOCKED) return { deny: 'EACCES' }
+    if (e.path.includes('hang')) return new Promise<never>(() => {})
     return found ? { value: found } : { deny: 'ENOENT' }
   })
-  on('fs.exists', async (_$, e) => ({ value: disk.has(e.path) || e.path.includes('locked') }))
+  // the runtime answers false for a path it may not look at
+  on('fs.exists', async (_$, e) => ({ value: disk.has(e.path) && disk.get(e.path) !== LOCKED }))
   on('tool.call', { tool: 'Bash' }, async (_$, e) => {
     const command = e.tool === 'Bash' ? e.command : ''
     effects[command]?.(disk)
@@ -412,19 +415,25 @@ test('too many candidates, stat errors and slow stats record nothing for those f
   const clock = mock.clock(on, { now: 5000 })
   const held = watch(on)
   const many = Array.from({ length: 21 }, (_, n) => `/tmp/f${n}`).join(' ')
-  const { stats } = shell(on, {
+  const { disk, stats } = shell(on, {
     [`touch ${many}`]: one => {
       for (let n = 0; n < 21; n++) one.set(`/tmp/f${n}`, file(0))
     },
     'touch /tmp/locked /tmp/ok': one => one.set('/tmp/ok', file(0)),
     'touch /tmp/hang /tmp/slow': one => one.set('/tmp/slow', file(0)),
+    'touch /tmp/private/f; chmod 000 /tmp/private': one => one.set('/tmp/private/f', LOCKED),
   })
+  disk.set('/tmp/private/f', file(3))
   await $.tool.call({ tool: 'Bash', command: `touch ${many}` } as never)
   expect(stats).toEqual([])
   await $.tool.call({ tool: 'Bash', command: 'touch /tmp/locked /tmp/ok' } as never)
   const slow = $.tool.call({ tool: 'Bash', command: 'touch /tmp/hang /tmp/slow' } as never)
   await clock.advance(1000)
   await slow
+  await $.tool.call({
+    tool: 'Bash',
+    command: 'touch /tmp/private/f; chmod 000 /tmp/private',
+  } as never)
   expect(held.edits).toEqual([{ path: '/tmp/ok', at: 5000, via: 'shell' }])
 })
 

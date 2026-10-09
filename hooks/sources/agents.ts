@@ -273,6 +273,12 @@ async function record(
   }
 }
 
+// Only a stat that failed with ENOENT or ENOTDIR says a path is absent;
+// `$.fs.exists` also answers false for a folder it may not read.
+function isMissing(error: unknown): boolean {
+  return /\b(ENOENT|ENOTDIR)$/.test(error instanceof Error ? error.message : String(error))
+}
+
 // What is on disk at each path, or undefined when the looks outlast LOOK_MS.
 async function look($: EngineInterface, paths: string[]): Promise<Seen[] | undefined> {
   const stop = new AbortController()
@@ -284,11 +290,7 @@ async function look($: EngineInterface, paths: string[]): Promise<Seen[] | undef
     paths.map(path =>
       $.fs.stat(path).then(
         (stat): Seen => stat,
-        () =>
-          $.fs.exists(path).then(
-            (is): Seen => (is ? undefined : 'none'),
-            () => undefined,
-          ),
+        (error: unknown): Seen => (isMissing(error) ? 'none' : undefined),
       ),
     ),
   )
