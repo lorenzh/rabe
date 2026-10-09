@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
 import type { RabeItem } from '../model'
-import { ALL, dev, NOW, screen } from './fixtures'
+import { ALL, dev, NOW, PRICED, screen } from './fixtures'
 
 const SURFACES = ['terminal', 'desktop'] as const
 
@@ -42,7 +42,7 @@ test('the band draws nothing while nothing runs on every surface', async ($, on)
 })
 
 test('the band is one line of count chips and the cost under an empty row on every surface', async ($, on) => {
-  holdItems(on, ALL)
+  holdItems(on, PRICED)
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...BAND } as never)
     const shown = await screen(ui)

@@ -400,7 +400,9 @@ test('cost, effects and timeline tabs draw their sections on every surface', asy
     const ui = await $.ui.mount({ surface, ...PANE } as never)
     await ui.press({ key: 'tab-cost' })
     let shown = await screen(ui)
-    expect(shown.some(line => line.includes('≈ $0.41 session  claude ≈ $0.22'))).toBe(true)
+    expect(shown.some(line => line.includes('≈ $0.41 session  claude n/a  codex ≈ $0.09'))).toBe(
+      true,
+    )
     expect(shown.some(line => /◐ Explore verifyToken .* 41k +≈ \$0\.16 +1m$/.test(line))).toBe(true)
     expect(shown).toContain(' ↑↓ move · enter open · esc close')
     expect(await ui.find({ type: 'Button', key: `row:${explore.id}` })).toBeDefined()

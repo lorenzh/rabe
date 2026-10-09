@@ -6,7 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Added
 
-- The Cost tab, the detail and the band show an estimate in dollars (`≈ $0.16`) per Claude agent and per Codex job: the tokens of each model request times the list price of its model in `data/prices.csv`, with cache reads and writes, long-context rates and Codex cached input. A model Rabe does not know, an agent that started before Rabe loaded, or a Codex session file over 4 MiB shows `n/a`, and so does a total that would leave such a worker out. The option `pricesFile` names your own price table in the same format, whose rows come first. (fixes [#15](https://github.com/lorenzh/rabe/issues/15))
+- The Cost tab, the detail and the band show an estimate in dollars (`≈ $0.16`) per Claude agent and per Codex job: the tokens of each model request times the list price of its model in `data/prices.csv`, with cache reads and writes, long-context rates and Codex cached input. A model Rabe does not know, an agent that started before Rabe loaded, or a Codex session file over 4 MiB, gone or unreadable shows `n/a`, and so does a total with any worker that has no estimate, also one without token data. The option `pricesFile` names your own price table in the same format, whose rows come first; a row for a model also prices that model's aliases in Rabe's table. (fixes [#15](https://github.com/lorenzh/rabe/issues/15))
 
 ## [0.3.0] - 2026-10-09
 

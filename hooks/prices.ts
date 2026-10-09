@@ -80,8 +80,21 @@ export function parsePrices(text: string): Prices {
   return out
 }
 
-// The user's rows are searched first, so they win over a built-in row and its aliases.
-export const withOverride = (base: Prices, over: Prices): Prices => [...over, ...base]
+const names = (one: Price) => [one.model, ...one.aliases]
+const isSame = (a: Price, b: Price) =>
+  a.provider === b.provider && names(a).some(name => names(b).includes(name))
+
+// A user's row replaces each built-in row it names by ID or alias, and takes
+// that row's other names, so an override of a model also prices its aliases.
+export function withOverride(base: Prices, over: Prices): Prices {
+  return [
+    ...over.map(one => ({
+      ...one,
+      aliases: [...one.aliases, ...base.filter(row => isSame(one, row)).flatMap(names)],
+    })),
+    ...base.filter(row => !over.some(one => isSame(one, row))),
+  ]
+}
 
 export function findPrice(prices: Prices, provider: string, model?: string): Price | undefined {
   if (!model) return undefined

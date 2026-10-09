@@ -77,6 +77,19 @@ test('override rows come first, also over an alias of a built-in row', () => {
   expect(claudeUsd(both, claude(M, 0, 0, 0), 'claude-opus-5-5')).toBe(4)
 })
 
+test('an override of a model also prices the built-in aliases of that model', () => {
+  const byId = parsePrices(`${HEAD}\nclaude,claude-opus-4-5-20251101,,1,1,,,,,,,,,,,,,\n`)
+  const both = withOverride(prices, byId)
+  expect(claudeUsd(both, claude(M, 0, 0, 0), 'claude-opus-4-5')).toBe(1)
+  expect(claudeUsd(both, claude(M, 0, 0, 0), 'claude-opus-4-5-20251101')).toBe(1)
+  // an override by the alias also prices the built-in model ID
+  const byAlias = withOverride(prices, parsePrices(`${HEAD}\nclaude,claude-opus-4-5,,1,1\n`))
+  expect(claudeUsd(byAlias, claude(M, 0, 0, 0), 'claude-opus-4-5-20251101')).toBe(1)
+  // within its provider only
+  const other = withOverride(prices, parsePrices(`${HEAD}\nopenai,claude-opus-4-5,,1,1\n`))
+  expect(claudeUsd(other, claude(M, 0, 0, 0), 'claude-opus-4-5-20251101')).toBe(5)
+})
+
 test('a Claude request bills uncached input, cache reads, cache writes at 5m and output', () => {
   // 1M uncached at 4, 2M read at 0.2, 1M written at 5, 1M out at 20
   expect(r(claudeUsd(prices, claude(M, 2 * M, M, M), 'claude-opus-5-5'))).toBe(r(29.4))

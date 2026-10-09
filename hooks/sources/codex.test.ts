@@ -422,6 +422,50 @@ test('a job costs its requests at the price of their model', async ($, on) => {
   expect(writes.at(-1)?.[0]?.costUsd).toBe((7000 * 2 + 18000 * 0.1 + 3000 * 10) / 1e6)
 })
 
+test('a job whose session file is gone by its end has no cost, not the last one seen', async ($, on) => {
+  const writes = watchItems(on)
+  prices(on)
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: ROLLOUT,
+  })
+  await startAndTick($, w)
+  expect(writes.at(-1)?.[0]?.costUsd).toBeDefined()
+  w.files.delete(ROLLOUT_PATH)
+  w.files.set(`${WS}/jobs/task-1.json`, {
+    text: JSON.stringify(job({ status: 'completed', completedAt: '1970-01-01T00:00:09.000Z' })),
+    mtimeMs: 6000,
+  })
+  await w.clock.advance(2000)
+  expect(writes.at(-1)?.[0]).toMatchObject({ status: 'done', detail: { isSessionMissing: true } })
+  expect(writes.at(-1)?.[0]?.costUsd).toBeUndefined()
+})
+
+test('a running job whose session file goes away or cannot be read loses its cost', async ($, on) => {
+  const writes = watchItems(on)
+  prices(on)
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: ROLLOUT,
+  })
+  await startAndTick($, w)
+  expect(writes.at(-1)?.[0]?.costUsd).toBeDefined()
+  w.files.delete(ROLLOUT_PATH)
+  await w.clock.advance(2000)
+  expect(writes.at(-1)?.[0]?.status).toBe('running')
+  expect(writes.at(-1)?.[0]?.costUsd).toBeUndefined()
+  // back with new requests: priced again
+  w.files.set(ROLLOUT_PATH, { text: ROLLOUT, mtimeMs: 6000 })
+  await w.clock.advance(2000)
+  expect(writes.at(-1)?.[0]?.costUsd).toBeDefined()
+  // grown past 4 MiB and the tail fails: the file cannot be read
+  w.files.set(ROLLOUT_PATH, { text: ROLLOUT, mtimeMs: 7000, size: 5 * 1024 * 1024 })
+  await w.clock.advance(2000)
+  expect(writes.at(-1)?.[0]?.costUsd).toBeUndefined()
+})
+
 test('an unchanged session file causes no second write', async ($, on) => {
   const writes = watchItems(on)
   const w = world(on, {

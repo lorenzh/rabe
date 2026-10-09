@@ -291,8 +291,10 @@ export function codexItem(job: CodexJob, session: CodexSession | undefined): New
     }),
   })
 
-  // a parsed file sets the cost, also to unknown, so an older sum never stays
-  return rollout ? { ...item, costUsd: session?.usd } : item
+  // only an unchanged file keeps the cost; a parse, a gone or unreadable file sets it, also to unknown
+  const isUnchanged = session?.updatedAt !== undefined && !rollout
+
+  return session && !isUnchanged ? { ...item, costUsd: session.usd } : item
 }
 
 async function write($: Pick<EngineInterface, 'state'>, change: Change): Promise<void> {
@@ -422,7 +424,12 @@ async function readSession(
     held?.detail.sessionPath ??
     (await findRollout($, codexHome, threadId, jobStart(job) ?? (await $.clock.now())))
   const stat = path ? await $.fs.stat(path).catch(() => undefined) : undefined
-  if (!path || !stat) return jobEnd(job.status) ? { isMissing: true } : undefined
+  if (!path || !stat) {
+    if (jobEnd(job.status)) return { isMissing: true }
+
+    // a file seen before and gone now: no new fields, but the cost is no longer known
+    return held?.detail.sessionPath ? { path } : undefined
+  }
   const updatedAt = stat.mtimeMs
   if (updatedAt === held?.detail.sessionUpdatedAt) return { path, updatedAt }
   // no updatedAt on failure, so the next poll tries again

@@ -16,9 +16,7 @@ const row = (shown: string[], pattern: RegExp) => shown.findIndex(line => patter
 test('the cost tab heads with the session cost, the totals and the running count', () => {
   const { grid } = gridOf(costView(MODEL, SIZE, NO_SELECTION))
   const shown = lines(grid)
-  expect(shown[0]).toBe(
-    ' ≈ $0.41 session  claude ≈ $0.22  codex ≈ $0.09  tokens 91k  running 7  2 n/a',
-  )
+  expect(shown[0]).toBe(' ≈ $0.41 session  claude n/a  codex ≈ $0.09  tokens 91k  running 7  2 n/a')
   expect(cell(grid, 1, 0)).toEqual(['≈'.codePointAt(0), C.bright, C.panel])
   expect(cell(grid, 79, 0)[2]).toBe(C.panel)
   expect(shown[2]).toBe('by worker · sorted by tokens')

@@ -3,12 +3,12 @@ import { expect, test } from 'claude-code/testing'
 import type { RabeItem } from '../../model'
 import { cell, lines } from '../cells/grid'
 import { C, CHIP } from '../cells/palette'
-import { ALL, ci, dev, explore, flow, gridOf, NOW, verify } from '../fixtures'
+import { ci, dev, explore, flow, gridOf, NOW, PRICED, verify } from '../fixtures'
 import { NO_SELECTION, type Size } from '../view'
 import { bandView } from './band'
 
 const SIZE: Size = { columns: 100, rows: 10, surface: 'terminal', hasInput: false }
-const model = (items = ALL) => ({ items, turns: {}, lines: {}, now: NOW })
+const model = (items = PRICED) => ({ items, turns: {}, lines: {}, now: NOW })
 
 // The column where `text` starts in row `y`: every cell holds one character.
 const at = (shown: string[], y: number, text: string) => shown[y]?.indexOf(text) ?? -1

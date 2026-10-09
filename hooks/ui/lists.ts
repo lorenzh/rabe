@@ -383,13 +383,13 @@ export function totals(items: RabeItem[]): Totals {
     if (!item.tokens) out.unknown += 1
     out.tokens += item.tokens ? item.tokens.input + item.tokens.output : 0
     if (item.costUsd === undefined) {
-      if (item.tokens) unpriced.add(side)
+      unpriced.add(side)
       continue
     }
     out.usd = plus(out.usd, item.costUsd)
     out[side] = plus(out[side], item.costUsd)
   }
-  // a worker that spent tokens Rabe cannot price makes its sum unknown, not smaller
+  // a worker without a dollar amount makes its sum unknown, not smaller
   for (const side of unpriced) delete out[side]
   if (unpriced.size) delete out.usd
 

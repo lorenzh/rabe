@@ -158,6 +158,9 @@ export const ALL: RabeItem[] = [
   reviewed,
 ]
 
+// ALL without the agents that ended without token data, whose spend is unknown.
+export const PRICED: RabeItem[] = ALL.filter(item => item !== plan && item !== reviewed)
+
 type Drawing = { type: string; props?: Record<string, unknown>; children?: unknown[] }
 type Mount = { drawn: () => Promise<unknown> }
 
