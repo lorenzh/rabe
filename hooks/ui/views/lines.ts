@@ -1,0 +1,86 @@
+import type { RabeItem } from '../../model'
+import { type Grid, type Span, spans, wrap } from '../cells/grid'
+import { C, type Style, tone } from '../cells/palette'
+import { facts } from '../facts'
+import { glyph, nameSpans, timeLabel } from '../lists'
+import type { Action, Model, ViewButton } from '../view'
+
+export type Line = {
+  spans: Span[]
+  right?: Span[]
+  bg?: number
+  action?: { key: string; action: Action }
+}
+
+// Draws lines from row `y`, each cut to `width`, a right part aligned to the end.
+export function draw(g: Grid, x: number, y: number, width: number, list: Line[]): void {
+  list.forEach((line, i) => {
+    if (line.bg !== undefined) spans(g, x, y + i, [[' '.repeat(width), { bg: line.bg }]], width)
+    const right = (line.right ?? []).reduce((n, [text]) => n + [...text].length, 0)
+    const end = spans(g, x, y + i, line.spans, Math.max(0, width - (right ? right + 1 : 0)))
+    if (right) spans(g, Math.max(end + 1, x + width - right), y + i, line.right ?? [], right)
+  })
+}
+
+export function text(value: string, width: number, style: Style = {}, indent = ''): Line[] {
+  return wrap(value, Math.max(1, width - indent.length)).map(one => ({
+    spans: [[`${indent}${one}`, style]],
+  }))
+}
+
+export function itemLine(item: RabeItem, now: number, isSelected = false): Line {
+  const time = timeLabel(item, now)
+  const right = item.status === 'running' ? time : `${item.status} ${time}`
+
+  const fg = isSelected ? C.bright : item.status === 'running' ? C.text : C.dim
+
+  return {
+    spans: [
+      [isSelected ? '▌' : ' ', { fg: C.orange }],
+      [glyph(item), { fg: tone(item) }],
+      [' '],
+      ...nameSpans(item, { fg }),
+    ],
+    right: [[`${right} `, { fg: isSelected ? C.text : C.dim }]],
+    ...(isSelected && { bg: C.selected }),
+    action: { key: `row:${item.id}`, action: { type: 'open', id: item.id } },
+  }
+}
+
+// An item's title, status word and fact lines, then an empty line.
+export function headLines(model: Model, item: RabeItem): Line[] {
+  const f = facts(item, model.now, model.items)
+
+  return [
+    {
+      spans: [
+        [`${glyph(item)} `, { fg: tone(item) }],
+        [f.title, { fg: C.bright }],
+      ],
+      right: [[f.status.slice(2), { fg: tone(item) }]],
+    },
+    ...f.lines.map(line => ({ spans: [[line, { fg: C.dim }]] as Span[] })),
+    { spans: [] },
+  ]
+}
+
+// j, k and Enter over a list the view draws: Enter (focused) opens the
+// selected item in the Items tab. j and k stay bound at the ends of the list,
+// so the keys never fall through to the prompt.
+export function moveButtons(order: RabeItem[], selected: RabeItem | undefined): ViewButton[] {
+  if (!selected) return []
+  const at = order.indexOf(selected)
+  const next = order[Math.min(at + 1, order.length - 1)] ?? selected
+  const prev = order[Math.max(at - 1, 0)] ?? selected
+
+  return [
+    { key: 'down', label: 'j: down', hotkey: 'j', action: { type: 'select', id: next.id } },
+    { key: 'up', label: 'k: up', hotkey: 'k', action: { type: 'select', id: prev.id } },
+    { key: 'open', label: 'open', autoFocus: true, action: { type: 'open', id: selected.id } },
+  ]
+}
+
+// The first index of a window of `rows` that keeps index `at` in view.
+export function windowStart(length: number, at: number, rows: number): number {
+  return Math.max(0, Math.min(at - rows + 2, length - rows))
+}

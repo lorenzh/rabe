@@ -1,0 +1,519 @@
+import type { AgentSpawnInput, AgentStatus, On } from 'claude-code'
+import { expect, mock, test } from 'claude-code/testing'
+
+import type { RabeItem, RabeItemOf, RabeTurn } from '../model'
+import { MAX_ENDED } from '../registry'
+import { core, memoryState } from '../testing'
+import { addTurn, agentTranscript, metaPatch, metaPath, toolSummary } from './agents'
+
+const SPAWN: AgentSpawnInput = {
+  tool_use_id: 'toolu_1',
+  prompt: 'Verify the pool',
+  description: 'verify:db.ts',
+  subagentType: 'general-purpose',
+  provider: { plugin: 'engine', tier: 'core' },
+  parentModel: 'claude-opus-5-5',
+  background: true,
+  fork: false,
+  workflow: { runId: 'wf_1', agentIndex: 5 },
+}
+
+const agent: RabeItem = {
+  id: 'agent:a1',
+  kind: 'agent',
+  title: 'verify:db.ts',
+  status: 'running',
+  seenAt: 5000,
+  startedAt: 5000,
+  detail: { agentId: 'a1' },
+}
+
+const turn = (index: number): RabeTurn => ({ index, at: index, text: `t${index}`, tools: [] })
+
+type Held = { items?: RabeItem[]; turns?: Record<string, RabeTurn[]> }
+
+function watch(on: On): Held {
+  const held: Held = {}
+  on('state.set', async (_$, e, next) => {
+    if (e.plugin === 'rabe' && e.key === 'items') held.items = e.value as RabeItem[]
+    if (e.plugin === 'rabe' && e.key === 'turns') held.turns = e.value as Held['turns']
+
+    return next(e)
+  })
+
+  return held
+}
+
+function engine(on: On, agentId: string): Held {
+  mock.clock(on, { now: 5000 })
+  on('agent.spawn', async () => ({ model: 'claude-opus-5-5', agentId }))
+  on('classic.SubagentStart', async () => ({}))
+  on('turn.complete', async () => ({ text: '' }))
+
+  return watch(on)
+}
+
+test('the tool summary is the first useful argument on one short line', () => {
+  expect(toolSummary({ file_path: 'src/db.ts' })).toBe('src/db.ts')
+  expect(toolSummary({ command: 'bun test\necho done' })).toBe('bun test')
+  expect(toolSummary({ pattern: 'release\\(', path: 'src/' })).toBe('release\\(')
+  expect(toolSummary({ command: 'x'.repeat(200) })).toHaveLength(80)
+  const long = `/home/me/app/${'deep/'.repeat(20)}a.ts`
+  expect(toolSummary({ file_path: long })).toBe(long)
+  expect(toolSummary({ other: 1 })).toBeUndefined()
+  expect(toolSummary(null)).toBeUndefined()
+})
+
+test('the meta file gives worktree, branch and phase, and bad text gives nothing', () => {
+  const text = JSON.stringify({
+    worktreePath: '/wt/a1',
+    worktreeBranch: 'agent-a1',
+    workflowPhase: 'Verify',
+    agentType: 'workflow-subagent',
+    cwd: '/wt/a1',
+  })
+  expect(metaPatch(text)).toEqual({
+    cwd: '/wt/a1',
+    worktreePath: '/wt/a1',
+    worktreeBranch: 'agent-a1',
+    workflowPhase: 'Verify',
+  })
+  expect(metaPatch('{"spawnDepth":1}')).toEqual({})
+  expect(metaPatch('not json')).toBeUndefined()
+})
+
+test('the meta path comes from the transcript or the parent workflow folder', () => {
+  const withTranscript = {
+    ...agent,
+    detail: { agentId: 'a1', transcriptPath: '/s/agent-a1.jsonl' },
+  }
+  expect(metaPath(withTranscript, [])).toBe('/s/agent-a1.meta.json')
+
+  const run: RabeItem = {
+    id: 'workflow:wf_1',
+    kind: 'workflow',
+    title: 'review',
+    status: 'running',
+    seenAt: 1,
+    detail: { runId: 'wf_1', transcriptDir: '/s/subagents/workflows/wf_1' },
+  }
+  const child = { ...agent, parentId: 'workflow:wf_1' }
+  expect(metaPath(child, [run])).toBe('/s/subagents/workflows/wf_1/agent-a1.meta.json')
+  expect(metaPath(agent, [run])).toBeUndefined()
+})
+
+test('the agent transcript sits in the session folder unless the hook names it', () => {
+  expect(agentTranscript('/p/s1.jsonl', 'a1')).toBe('/p/s1/subagents/agent-a1.jsonl')
+  expect(agentTranscript('/p/s1/subagents/agent-a1.jsonl', 'a1')).toBe(
+    '/p/s1/subagents/agent-a1.jsonl',
+  )
+  expect(agentTranscript('', 'a1')).toBeUndefined()
+})
+
+test('turns keep the newest per item', () => {
+  let turns: Record<string, RabeTurn[]> = { 'agent:a2': [turn(1)] }
+  for (let index = 1; index <= 32; index++) turns = addTurn(turns, 'agent:a1', turn(index))
+  expect(Object.keys(turns)).toEqual(['agent:a2', 'agent:a1'])
+  expect(turns['agent:a1']).toHaveLength(30)
+  expect(turns['agent:a1']?.[0]?.index).toBe(3)
+})
+
+test('a spawn adds a running agent under its workflow', async ($, on) => {
+  const held = engine(on, 'a1')
+  await $.agent.spawn(SPAWN)
+  expect(held.items).toEqual([
+    {
+      ...agent,
+      parentId: 'workflow:wf_1',
+      detail: {
+        agentId: 'a1',
+        type: 'general-purpose',
+        model: 'claude-opus-5-5',
+        description: 'verify:db.ts',
+        prompt: 'Verify the pool',
+        workflowIndex: 5,
+      },
+    },
+  ])
+})
+
+test('a long answer is kept cut with an ellipsis', async ($, on) => {
+  const held = engine(on, 'a1')
+  // biome-ignore lint/correctness/useYield: the engine's stand-in answers without chunks
+  on('turn.step', async function* (_$, e) {
+    return {
+      turnId: e.turnId,
+      index: e.index,
+      answer: 'word '.repeat(100),
+      toolUses: [],
+      stopReason: 'end_turn' as const,
+      usage: {
+        input_tokens: 1,
+        output_tokens: 1,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        model: 'claude-opus-5-5',
+      },
+    }
+  })
+  await $.agent.spawn(SPAWN)
+  const stream = $.turn.step({ turnId: 't1', index: 0, model: 'm', messageCount: 1, agentId: 'a1' })
+  for await (const _ of stream);
+  const text = held.turns?.['agent:a1']?.[0]?.text ?? ''
+  expect(text.length).toBe(300)
+  expect(text.endsWith('…')).toBe(true)
+})
+
+test('a spawn from another agent names that agent as parent', async ($, on) => {
+  const held = engine(on, 'a2')
+  await $.agent.spawn({ ...SPAWN, workflow: undefined, parentAgentId: 'a1' })
+  expect(held.items?.[0]?.parentId).toBe('agent:a1')
+})
+
+test('a refused spawn adds nothing', async ($, on) => {
+  const held = watch(on)
+  on('agent.spawn', async () => ({ deny: 'no' }))
+  await $.agent.spawn(SPAWN).catch(() => undefined)
+  expect(held.items).toBeUndefined()
+})
+
+test('subagent start sets the transcript and a worktree outside the session folder', async ($, on) => {
+  const held = engine(on, 'a1')
+  on('session.cwd', async () => ({ value: '/repo' }))
+  await $.agent.spawn(SPAWN)
+  await $.classic.SubagentStart({
+    agent_id: 'a1',
+    agent_type: 'general-purpose',
+    cwd: '/repo/.claude/worktrees/a1',
+    transcript_path: '/p/s1.jsonl',
+  })
+  expect(held.items?.[0]?.detail).toMatchObject({
+    transcriptPath: '/p/s1/subagents/agent-a1.jsonl',
+    worktreePath: '/repo/.claude/worktrees/a1',
+    cwd: '/repo/.claude/worktrees/a1',
+  })
+})
+
+test('SubagentStart during the spawn keeps the transcript once the spawn adds the item', async ($, on) => {
+  const held = watch(on)
+  mock.clock(on, { now: 5000 })
+  on('session.cwd', async () => ({ value: '/repo' }))
+  on('classic.SubagentStart', async () => ({}))
+  on('agent.spawn', async () => {
+    await $.classic.SubagentStart({
+      agent_id: 'a1',
+      agent_type: 'general-purpose',
+      cwd: '/repo',
+      transcript_path: '/p/s1.jsonl',
+    })
+
+    return { model: 'claude-opus-5-5', agentId: 'a1' }
+  })
+  await $.agent.spawn(SPAWN)
+  expect(held.items).toHaveLength(1)
+  expect(held.items?.[0]).toMatchObject({
+    title: 'verify:db.ts',
+    detail: { agentId: 'a1', transcriptPath: '/p/s1/subagents/agent-a1.jsonl', cwd: '/repo' },
+  })
+})
+
+test('a step adds tokens, tools and a turn; the end of the run ends the agent', async ($, on) => {
+  const held = engine(on, 'a1')
+  // biome-ignore lint/correctness/useYield: the engine's stand-in answers without chunks
+  on('turn.step', async function* (_$, e) {
+    return {
+      turnId: e.turnId,
+      index: e.index,
+      answer: 'Reading the pool.',
+      toolUses: [{ name: 'Read', input: { file_path: 'src/db.ts' } }],
+      stopReason: 'tool_use' as const,
+      usage: {
+        input_tokens: 100,
+        output_tokens: 20,
+        cache_read_input_tokens: 50,
+        cache_creation_input_tokens: 10,
+        model: 'claude-opus-5-5',
+      },
+    }
+  })
+  await $.agent.spawn(SPAWN)
+  for (let step = 0; step < 2; step++) {
+    const stream = $.turn.step({
+      turnId: 't1',
+      index: step,
+      model: 'm',
+      messageCount: 1,
+      agentId: 'a1',
+    })
+    for await (const _ of stream);
+  }
+  await $.turn.complete({
+    answer: 'done',
+    durationMs: 10,
+    isAborted: false,
+    turnId: 't1',
+    agentId: 'a1',
+    reason: 'answer',
+  })
+
+  const [item] = held.items ?? []
+  expect(item).toMatchObject({
+    status: 'done',
+    endedAt: 5000,
+    tokens: { input: 320, output: 40, cached: 100 },
+    detail: { toolCount: 2, lastTool: 'Read', lastToolAt: 5000 },
+  })
+  expect(held.turns?.['agent:a1']).toEqual([
+    {
+      index: 1,
+      at: 5000,
+      text: 'Reading the pool.',
+      tools: [{ name: 'Read', summary: 'src/db.ts' }],
+    },
+    {
+      index: 2,
+      at: 5000,
+      text: 'Reading the pool.',
+      tools: [{ name: 'Read', summary: 'src/db.ts' }],
+    },
+  ])
+})
+
+test('an edit the engine ran is kept on its agent; a refused or failed one is not', async ($, on) => {
+  const held = engine(on, 'a1')
+  on('tool.call', { tool: ['Edit', 'Write'] }, async (_$, e) => {
+    if (e.tool === 'Edit' && e.file_path.endsWith('denied.ts')) return { deny: 'no' }
+    if (e.tool === 'Write' && e.file_path.endsWith('failed.ts')) {
+      return { result: { error: 'x' } as never, isError: true }
+    }
+
+    return { result: {} as never }
+  })
+  await $.agent.spawn(SPAWN)
+  const edit = (file_path: string, agentId?: string) =>
+    $.tool.call({ tool: 'Edit', file_path, old_string: 'a', new_string: 'b', agentId } as never)
+  await edit('/repo/db.ts', 'a1')
+  await edit('/repo/denied.ts', 'a1')
+  await edit('/repo/main.ts')
+  await $.tool.call({
+    tool: 'Write',
+    file_path: '/repo/failed.ts',
+    content: '',
+    agentId: 'a1',
+  } as never)
+  await $.tool.call({
+    tool: 'Write',
+    file_path: '/repo/new.ts',
+    content: '',
+    agentId: 'a1',
+  } as never)
+  const item = held.items?.[0] as RabeItemOf<'agent'>
+  expect(item.detail.edits).toEqual([
+    { path: '/repo/db.ts', at: 5000 },
+    { path: '/repo/new.ts', at: 5000 },
+  ])
+})
+
+test('a staged edit or write leaves the file unchanged and is not kept', async ($, on) => {
+  const held = engine(on, 'a1')
+  on('tool.call', { tool: ['Edit', 'Write'] }, async (_$, e) => {
+    const filePath = e.tool === 'Edit' || e.tool === 'Write' ? e.file_path : ''
+
+    return { result: { filePath, staged: filePath.includes('staged') } as never }
+  })
+  await $.agent.spawn(SPAWN)
+  await $.tool.call({
+    tool: 'Edit',
+    file_path: '/repo/staged.ts',
+    old_string: 'a',
+    new_string: 'b',
+    agentId: 'a1',
+  } as never)
+  await $.tool.call({
+    tool: 'Write',
+    file_path: '/repo/staged-new.ts',
+    content: '',
+    agentId: 'a1',
+  } as never)
+  await $.tool.call({
+    tool: 'Edit',
+    file_path: '/repo/db.ts',
+    old_string: 'a',
+    new_string: 'b',
+    agentId: 'a1',
+  } as never)
+  const item = held.items?.[0] as RabeItemOf<'agent'>
+  expect(item.detail.edits).toEqual([{ path: '/repo/db.ts', at: 5000 }])
+})
+
+test('a step of a loop Rabe does not know writes nothing', async ($, on) => {
+  const held = watch(on)
+  // biome-ignore lint/correctness/useYield: the engine's stand-in answers without chunks
+  on('turn.step', async function* (_$, e) {
+    return {
+      turnId: e.turnId,
+      index: e.index,
+      answer: 'x',
+      toolUses: [],
+      stopReason: null,
+      usage: null,
+    }
+  })
+  for await (const _ of $.turn.step({
+    turnId: 't',
+    index: 0,
+    model: 'm',
+    messageCount: 1,
+    agentId: 'fork',
+  }));
+  expect(held.items).toBeUndefined()
+})
+
+test('the poll adds listed agents and reads the meta file of running ones', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const held = watch(on)
+  on('session.start', async () => ({ cwd: '/p' }))
+  on('command.register', async () => ({ value: { command: 'rabe' } }))
+  on('classic.SubagentStart', async () => ({}))
+  on('agent.list', async () => ({
+    value: [
+      { id: 'a1', description: 'migrate logger', type: 'Explore', status: 'running' as const },
+      { id: 'a2', description: 'plan', type: 'Plan', status: 'completed' as const, parentId: 'a1' },
+    ],
+  }))
+  on('fs.read', async (_$, e) =>
+    e.path === '/p/s1/subagents/agent-a1.meta.json'
+      ? { value: '{"worktreePath":"/wt/a1","worktreeBranch":"wt-a1"}' }
+      : { deny: 'missing' },
+  )
+  on('session.cwd', async () => ({ value: '/p' }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await $.classic.SubagentStart({
+    agent_id: 'a1',
+    agent_type: 'Explore',
+    transcript_path: '/p/s1.jsonl',
+  })
+  await clock.advance(3000)
+
+  const list = held.items ?? []
+  expect(list.map(one => [one.id, one.status, one.parentId])).toEqual([
+    ['agent:a1', 'running', undefined],
+    ['agent:a2', 'done', 'agent:a1'],
+  ])
+  expect(list[0]?.detail).toMatchObject({ worktreePath: '/wt/a1', worktreeBranch: 'wt-a1' })
+})
+
+function completed(count: number) {
+  return Array.from({ length: count }, (_, n) => ({
+    id: `a${n}`,
+    description: `a${n}`,
+    type: 'Explore',
+    status: 'completed' as const,
+  }))
+}
+
+function ended(count: number, from = 0): RabeItem[] {
+  return Array.from({ length: count }, (_, n) => ({
+    id: `agent:w${n + from}`,
+    kind: 'agent',
+    title: `w${n + from}`,
+    status: 'done',
+    seenAt: 10 + n,
+    endedAt: 10 + n,
+    detail: { agentId: `w${n + from}` },
+  }))
+}
+
+for (const count of [MAX_ENDED + 1, 1201, 5000]) {
+  test(`an unchanged poll of ${count} completed agents writes nothing after the first`, async ($, on) => {
+    const clock = mock.clock(on, { now: 1000 })
+    const state = memoryState(on)
+    core(on)
+    on('agent.list', async () => ({ value: completed(count) }))
+    await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+    const first = state['rabe.items']
+    expect(first?.version).toBe(1)
+    expect(first?.value).toHaveLength(MAX_ENDED)
+
+    await clock.advance(3000)
+    await clock.advance(3000)
+    expect(state['rabe.items']).toBe(first)
+  })
+}
+
+test('listed agents Rabe did not watch never push out the history it watched', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  state['rabe.items'] = { value: ended(MAX_ENDED - 50), version: 1 }
+  core(on)
+  on('agent.list', async () => ({ value: completed(1201) }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items.slice(0, MAX_ENDED - 50)).toEqual(ended(MAX_ENDED - 50))
+  expect(items.slice(MAX_ENDED - 50).map(item => item.id)).toEqual(
+    completed(50).map(one => `agent:${one.id}`),
+  )
+  const first = state['rabe.items']
+  await clock.advance(3000)
+  expect(state['rabe.items']).toBe(first)
+})
+
+test('a poll that ends an agent drops the turns and lines of what the cap pushes out', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const running: RabeItem = { ...agent, id: 'agent:r', detail: { agentId: 'r' } }
+  state['rabe.items'] = { value: [...ended(MAX_ENDED), running], version: 1 }
+  const lines = { seen: 1, lines: [{ at: 1, text: 'ready' }] }
+  state['rabe.lines'] = { value: { 'agent:w0': lines, 'agent:w1': lines }, version: 1 }
+  state['rabe.turns'] = { value: { 'agent:w0': [turn(1)], 'agent:w1': [turn(1)] }, version: 1 }
+  core(on)
+  let listed: { id: string; description: string; type: string; status: AgentStatus }[] = []
+  on('agent.list', async () => ({ value: listed }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+
+  // The timer's poll ends agent r: the oldest ended agent, w0, leaves with its state.
+  listed = [{ id: 'r', description: 'r', type: 'Explore', status: 'completed' }]
+  await clock.advance(3000)
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items.some(item => item.id === 'agent:w0')).toBe(false)
+  expect(state['rabe.turns']?.value).toEqual({ 'agent:w1': [turn(1)] })
+  expect(state['rabe.lines']?.value).toEqual({ 'agent:w1': lines })
+})
+
+test('a poll that lists an ended agent as running again puts it back to running', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const done: RabeItem = { ...agent, status: 'done', endedAt: 900 }
+  state['rabe.items'] = { value: [done], version: 1 }
+  core(on)
+  let status: AgentStatus = 'idle'
+  on('agent.list', async () => ({
+    value: [{ id: 'a1', description: 'verify:db.ts', type: 'Explore', status }],
+  }))
+  // A teammate is idle after each turn, which already ended its item.
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  expect(state['rabe.items']?.value).toEqual([done])
+
+  status = 'running'
+  await clock.advance(3000)
+  expect(state['rabe.items']?.value).toEqual([{ ...agent, status: 'running' }])
+})
+
+test('an agent the cap dropped comes back when the list shows it running', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  core(on)
+  let listed: { id: string; description: string; type: string; status: AgentStatus }[] =
+    completed(5000)
+  on('agent.list', async () => ({ value: listed }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  expect((state['rabe.items']?.value as RabeItem[]).some(item => item.id === 'agent:a4000')).toBe(
+    false,
+  )
+
+  listed = listed.map(one => (one.id === 'a4000' ? { ...one, status: 'running' } : one))
+  await clock.advance(3000)
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items.find(item => item.id === 'agent:a4000')?.status).toBe('running')
+  expect(items).toHaveLength(MAX_ENDED + 1)
+})

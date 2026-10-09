@@ -18,28 +18,34 @@
 ## TDD
 - Write the failing test first, then the code.
 - Tests live next to the module as `*.test.ts` or `*.test.tsx` and import from `claude-code/testing`.
-- `bun run test` runs every test; there is no single-file filter, and the suite takes under a second.
+- `bun run test` runs every test; there is no single-file filter, and the suite takes about 11 seconds.
 - UI tests mount on `terminal` and `desktop` and find elements by type and text; `Text` keeps no `key`.
 - Logic that needs no `$` (parsers, formatting, the next cron run) lives in plain functions with their own tests.
+- A test's `$` has no `state` noun: watch writes with a test hook on `state.set`. A test needs `mock.clock(on)` when the code reads the clock.
 
 ## Code Layout
-- `hooks/register.tsx`: entry point; registers hooks and delegates to modules.
-- `hooks/sources/<kind>.ts`: one module per source (agents, codex, shells, monitors, crons, workflows) that turns events and files into items.
-- `hooks/ui/`: band and pane drawing.
+- `hooks/register.tsx`: entry point; calls `sources(on)`, `band(on)`, `pane(on)` and, unless the option `hideBuiltinTasks` is false, `builtin(on)`; nothing else.
+- `hooks/model.ts`: the item types and pure item helpers. `hooks/registry.ts`: pure changes to the item list.
+- `hooks/sources/<kind>.ts`: one module per source (agents, codex, shells, monitors, crons, workflows) that turns events and files into items; `hooks/sources/index.ts` calls each one. Each file's `write($, change)` caps the list and drops the per-item state of the items it removed; a timer's write skips the plugin's own `state.set` hooks.
+- `hooks/tasks.ts`, `hooks/schedule.ts`: pure parsers for task notifications, task output files and cron schedules. Views read session state only, never files.
+- `hooks/testing.ts`: test helpers (`memoryState`, `files`, `core`); the test's `$` has no `state` noun.
+- `hooks/ui/`: band and pane drawing. Only `band.tsx`, `pane.tsx` and `builtin.tsx` touch `$`. Views are pure `View` functions in `hooks/ui/views/` that return a cell grid and their Buttons; `render.tsx` draws them; the cell engine is `hooks/ui/cells/` (see `docs/architecture.md`).
 - `$.state` keys: declare each in `types/index.d.ts` and name that file as `"types"` in `.claude-plugin/plugin.json`.
 - `types/claude-code.d.ts`: API types written by Claude Code. Do not edit; replace it when the pinned Claude Code version changes.
 
 ## Key Conventions
 - Get data from the mod API first, then from files on disk, then from the Claude Code or Codex source. Record each new source in `docs/feasibility.md`.
 - Hooks pass on with `next(e)` unless they answer on purpose.
-- Helpers that take `$` are top-level function declarations; `claude plugin validate` refuses closures inside `register` that receive `$`.
+- Give each hook in a source a matcher: an event may have only one hook without a matcher in the whole module, or the module does not load. `pane.tsx` owns the plain `session.start` (see `docs/architecture.md`).
+- Helpers that take `$` are top-level function declarations in the same file as the hook; `claude plugin validate` refuses closures inside `register` that receive `$`, and the scan never follows `$` across an import. Shared code is pure; see `docs/architecture.md`.
+- A `$.state` reference or atom is written in the file that uses it, with literal `plugin` and `key`.
 - Files on disk are undocumented: a missing file or field shows `n/a`. Never throw from a hook.
 - Take file paths from tool results; build a path only when no result carries it.
 - `$.fs` rejects reads over 4 MiB: read large files with `tail` or `jq` through `$.process.run`.
 - Module variables reset on every reload. Keep session values in `$.state` and values across sessions in `$.store`.
 - Poll with `$.clock.every`, and write state only when a value changed.
 - Keys: focusable Buttons and lowercase letter hotkeys only. `X`, `/`, space and `←→` cannot be bindings.
-- UI text: sentence case, plain words, no emoji. Status always has a word, never only a colour.
+- UI text: sentence case, plain words, no emoji. Status always has a word, never only a colour. Raster cells take width-1 BMP characters only; `safe()` replaces the rest.
 - Workflows: pin actions to full SHAs, least-privilege `permissions`.
 
 ## Documentation
