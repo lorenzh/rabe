@@ -25,6 +25,7 @@ import {
   targetsOf,
 } from './view'
 import { fallbackOf, isLiveRow, paneView, seatsRows, selectsOnPress } from './views/pane'
+import { widen, windowOf } from './views/timeline'
 
 const PROBE = {
   surface: 'terminal',
@@ -126,6 +127,7 @@ const actionsOf = (list: Piece[], text = ''): [string, Action][] =>
 function apply(sel: Selection, action: Action): void {
   if (action.type === 'tab') sel.tab = action.tab
   if (action.type === 'query') sel.query = action.text
+  if (action.type === 'window') sel.window = widen(sel.window ?? windowOf(4, NOW), NOW)
   if (action.type === 'fold') {
     const { group } = action
     sel.folded = sel.folded.includes(group)
@@ -404,6 +406,7 @@ const SCOPES: Partial<Selection>[] = [
   { tab: 'cost' },
   { tab: 'effects' },
   { tab: 'timeline' },
+  { tab: 'timeline', window: windowOf(4, NOW) },
   { open: flow.id },
   { open: explore.id },
   { open: dev.id },
@@ -467,7 +470,7 @@ test(
             // its index, is moved; where it lands must not stop or delete.
             const text = ['', 'serve', 'agent', 'zz'][pick(4)] ?? ''
             const switches = actionsOf(last.list, text).filter(([, action]) =>
-              ['tab', 'open', 'fold', 'query'].includes(action.type),
+              ['tab', 'open', 'fold', 'query', 'window'].includes(action.type),
             )
             const [pressed, action] = switches[pick(switches.length)] ?? []
             if (!action) continue

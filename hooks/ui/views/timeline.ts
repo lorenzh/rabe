@@ -1,10 +1,11 @@
+import type { RabeWindow } from '../../../types'
 import type { RabeItem } from '../../model'
 import { nextRun } from '../../schedule'
 import { fit } from '../cells/grid'
 import { C, CHIP, type Style, tone } from '../cells/palette'
 import { clockTime, day, duration, tokens, usd } from '../format'
 import { bar, byStart, glyph, KIND_LABEL, nameSpans, shown, stable, tree } from '../lists'
-import type { Drawn, Line, Model, View } from '../view'
+import type { Drawn, Line, Model, View, ViewButton } from '../view'
 import { resumeButton } from './detail'
 import { beside, fitLine, focusOn, text } from './lines'
 
@@ -40,7 +41,14 @@ function color(item: RabeItem): number {
 
 // One cell per slice of the window: a bar over the run, or for a cron job a
 // tick at each run its schedule had since Rabe saw it (jitter not counted).
+// What began before the window starts with `◂` at the left edge.
 function track(item: RabeItem, start: number, now: number, width: number): string {
+  const out = cells(item, start, now, width)
+
+  return (item.startedAt ?? item.seenAt) < start ? `◂${out.slice(1)}` : out
+}
+
+function cells(item: RabeItem, start: number, now: number, width: number): string {
   if (item.kind !== 'cron') {
     return bar(item.startedAt ?? item.seenAt, item.endedAt ?? now, start, now, width)
   }
@@ -57,7 +65,7 @@ function track(item: RabeItem, start: number, now: number, width: number): strin
   return cells.join('')
 }
 
-function treeLines(model: Model): Line[] {
+function treeLines(items: RabeItem[]): Line[] {
   return [
     {
       spans: [
@@ -66,7 +74,7 @@ function treeLines(model: Model): Line[] {
       ],
     },
     { spans: [['main session']] },
-    ...tree(model.items).map(
+    ...tree(items).map(
       (line): Line => ({
         spans: [
           [line.prefix, dim],
@@ -162,13 +170,57 @@ function axis(start: number, span: number, labelWidth: number, columns: number):
   return cells.join('')
 }
 
-// The Timeline tab: a bar per item over the session with a legend and a time
+const HOUR = 3_600_000
+const DEFAULT_HOURS = 4
+const WIDE_HOURS = 12
+
+// The option `timelineHours`: hours, 0 for no limit; anything else the default.
+export function hoursOf(value: unknown): number {
+  const hours = typeof value === 'string' && value.trim() ? Number(value) : value
+  return typeof hours === 'number' && Number.isFinite(hours) && hours >= 0 ? hours : DEFAULT_HOURS
+}
+
+// The window `/rabe` opens with: the last `base` hours, or the whole session.
+export const windowOf = (base: number, now: number): RabeWindow => ({
+  base,
+  hours: base,
+  since: base > 0 ? now - base * HOUR : 0,
+})
+
+const steps = (base: number) => [base, ...(base < WIDE_HOURS ? [WIDE_HOURS] : []), 0]
+
+const next = (w: RabeWindow) => {
+  const list = steps(w.base)
+  return list[(list.indexOf(w.hours) + 1) % list.length] ?? 0
+}
+
+// The next window `w` steps to: base hours, 12 hours, the whole session, then
+// base again. A wider one never starts later than the one before.
+export function widen(w: RabeWindow, now: number): RabeWindow {
+  const hours = next(w)
+  if (hours === 0) return { ...w, hours, since: 0 }
+  const since = now - hours * HOUR
+
+  return { ...w, hours, since: w.hours === 0 || hours < w.hours ? since : Math.min(w.since, since) }
+}
+
+const spanText = (ms: number) => (ms < 2 * HOUR ? `${Math.round(ms / 60_000)} min` : duration(ms))
+
+// The Timeline tab: a bar per item over the window with a legend and a time
 // axis, then the tree of who started what beside (or above) the previous
 // session in this project. The rows keep the order the pane opened with.
+// Items that ended before the window (`sel.window`) fold into one line of
+// plain text, so the rows' focus order stays; `w` widens the window.
 export const timelineView: View = (model, size, sel): Drawn => {
-  const list = stable(shown(model.items), sel.order?.timeline, byStart)
+  const since = sel.window?.since ?? 0
+  const all = stable(shown(model.items), sel.order?.timeline, byStart)
+  const list = all.filter(item => item.status === 'running' || (item.endedAt ?? since) >= since)
+  const folded = all.length - list.length
   const selected = list.find(item => item.id === sel.selected) ?? list[0]
-  const start = Math.min(model.now - 60_000, ...list.map(item => item.startedAt ?? item.seenAt))
+  const start = Math.max(
+    since,
+    Math.min(model.now - 60_000, ...list.map(item => item.startedAt ?? item.seenAt)),
+  )
   const span = model.now - start
   const labelWidth = Math.min(24, Math.floor(size.columns / 3))
   const barWidth = size.columns - labelWidth
@@ -196,8 +248,22 @@ export const timelineView: View = (model, size, sel): Drawn => {
           ...(item === selected && { bg: C.selected }),
         }
       })
-    : [{ spans: [[' Nothing ran yet.', dim]] }]
-  const who = treeLines(model)
+    : folded
+      ? []
+      : [{ spans: [[' Nothing ran yet.', dim]] }]
+  const fold: Line[] = folded
+    ? [
+        {
+          spans: [
+            [
+              ` +${folded} older item${folded === 1 ? '' : 's'}, ended before ${day(since, model.now).replace(/^today /, '')}`,
+              dim,
+            ],
+          ],
+        },
+      ]
+    : []
+  const who = treeLines(model.items.filter(item => list.includes(item)))
   const prev = previousLines(model, isSide ? BOX : size.columns)
   const below = isSide
     ? beside(who, size.columns - BOX - 2, [['  ']], prev, BOX)
@@ -206,18 +272,31 @@ export const timelineView: View = (model, size, sel): Drawn => {
     {
       spans: [
         ['WHEN DID THINGS RUN?', { fg: C.bright }],
-        [`  this session, last ${Math.round(span / 60_000)} min`, dim],
+        [`  this session, last ${spanText(span)}`, dim],
       ],
     },
     { spans: LEGEND.flatMap(([label, chip]) => [[` ${label} `, chip], [' ']]) },
     { spans: [] },
     { spans: [[axis(start, span, labelWidth, size.columns), dim]] },
+    ...fold,
     ...focusOn(bars, selected?.id ?? ''),
     { spans: [] },
   ]
+  const w = sel.window
+  const buttons: ViewButton[] =
+    w && w.base > 0
+      ? [
+          {
+            key: 'window',
+            label: `w: show ${next(w) ? `${next(w)} h` : 'all'}`,
+            hotkey: 'w',
+            action: { type: 'window' },
+          },
+        ]
+      : []
 
   const id = model.previous?.sessionId
-  const buttons = id ? [resumeButton(`claude --resume ${id}`, id)] : []
+  if (id) buttons.push(resumeButton(`claude --resume ${id}`, id))
 
   return { nodes: [...lines.map(line => fitLine(line, size.columns)), ...below], buttons }
 }

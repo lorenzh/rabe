@@ -19,6 +19,13 @@
       "title": "Your own price table",
       "default": "",
       "description": "A CSV file in the format of Rabe's data/prices.csv (an absolute path, or one that starts with ~/). Its rows come before Rabe's, for the same model or one Rabe does not know. Empty: Rabe's table only. A file that cannot be read makes every cost n/a."
+    },
+    "timelineHours": {
+      "type": "number",
+      "title": "Hours the Timeline tab shows",
+      "default": 4,
+      "min": 0,
+      "description": "The Timeline tab shows the last this many hours; older finished items fold into one line. 0 shows the whole session. A key on the tab widens the window for the open pane."
     }
   }
 }

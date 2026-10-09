@@ -18,7 +18,7 @@ test('agent facts show type, model, worktree and start; spend is in the detail',
 })
 
 test('missing data shows n/a', () => {
-  expect(facts(plan, NOW, ALL).lines).toContain('Plan · n/a · main tree')
+  expect(facts(plan, NOW, ALL, '/repo').lines).toContain('Plan · n/a · main tree')
   expect(facts(dev, NOW, ALL).lines).toContain('started before Rabe loaded · start time not known')
   expect(facts(verify, NOW, ALL).lines[0]).toBe('n/a · n/a · tree n/a')
 })
@@ -37,4 +37,12 @@ test('shell, monitor and cron facts', () => {
   expect(facts(ci, NOW, ALL).lines).toContain('timeout 30m00s · 22m00s left')
   expect(facts(babysit, NOW, ALL).status).toBe('⟳ next 10:55')
   expect(facts(babysit, NOW, ALL).lines[0]).toBe('schedule */5 * * * * · every 5 minutes')
+})
+
+// Only the meta file names a worktree: a cwd that is not the session's may be
+// a worktree or a subfolder, so its tree is not known.
+test('an agent outside the session folder without a worktree shows tree n/a', () => {
+  const sub = { ...plan, detail: { ...plan.detail, cwd: '/repo/packages/api' } } as typeof plan
+  expect(facts(sub, NOW, ALL, '/repo').lines[0]).toBe('Plan · n/a · tree n/a')
+  expect(facts(plan, NOW, ALL).lines[0]).toBe('Plan · n/a · tree n/a')
 })

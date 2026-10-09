@@ -438,6 +438,7 @@ test('cost, effects and timeline tabs draw their sections on every surface', asy
     expect(await ui.find({ type: 'Button', key: `row:${explore.id}` })).toBeDefined()
     await ui.press({ key: 'tab-effects' })
     shown = await screen(ui)
+    // The session runs in /p, so the agent in /repo is in no known tree.
     expect(shown).toContain('WORKTREES 1  from agent metadata, running agents included')
     expect(shown).toContain('  :5173  bun run dev')
     expect((await ui.find({ type: 'Button', key: 'row:ssh:5173' }))?.props).toMatchObject({
@@ -707,6 +708,29 @@ test('/rabe sorts the lists once; until the next open they hold that order', asy
   on('ui.panes', async () => ({ value: [] }))
   await $.command.run({ command: 'rabe', args: '' } as never)
   expect(state.order).toEqual(orderOf(ALL))
+})
+
+// Issue 20: the Timeline opens on the last 4 hours, and w widens the window
+// for the open pane; the change of the view lands the ring on the tab first.
+test('/rabe opens the timeline on the last 4 hours; w widens it to 12 h, then all', async ($, on) => {
+  const state = hold(on, ALL, { tab: 'timeline' })
+  on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+  on('ui.panes', async () => ({ value: [] }))
+  await $.command.run({ command: 'rabe', args: '' } as never)
+  const H = 3_600_000
+  expect(state.window).toEqual({ base: 4, hours: 4, since: NOW - 4 * H })
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    expect((await ui.find({ type: 'Button', key: 'window' }))?.props.hotkey).toBe('w')
+    expect((await screen(ui)).some(line => line.includes('w: show 12 h'))).toBe(true)
+    await ui.press({ key: 'window' })
+    expect(state.window).toEqual({ base: 4, hours: 12, since: NOW - 12 * H })
+    expect((await screen(ui)).some(line => line.includes('w: show all'))).toBe(true)
+    await ui.press({ key: 'window' })
+    expect(state.window).toEqual({ base: 4, hours: 0, since: 0 })
+    await ui.press({ key: 'window' })
+    await ui.unmount()
+  }
 })
 
 const ARROW = {

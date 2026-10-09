@@ -111,7 +111,7 @@ export function itemLine(item: RabeItem, now: number, isSelected = false): Line 
 // An item's title, status word and fact lines, then an empty line. The long
 // fact is cut into lines of `columns` cells, so none of it is lost.
 export function headLines(model: Model, item: RabeItem, columns: number): Line[] {
-  const f = facts(item, model.now, model.items)
+  const f = facts(item, model.now, model.items, model.cwd)
   const chars = [...safe(f.long ?? '')]
   const n = Math.max(1, columns)
   const long = Array.from({ length: Math.ceil(chars.length / n) }, (_, i) =>

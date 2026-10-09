@@ -31,8 +31,8 @@ The pane has four tabs:
 
 - **Items**: all items grouped by kind, with a search field. Shells and monitors that an agent started show under the name of that agent. A Codex job shows under the agent that started it. The Codex plugin starts its jobs through a Claude agent that only passes the request on (`codex:codex-rescue`); that agent has no row of its own, and its tokens count toward the job. Rabe links the two only when the evidence fits one job: the agent's command named the job, or the job started while the command ran and has its prompt or its thread. A link made by the prompt is checked again when the command returns: if it names another job or thread, the link moves to that job, and while two jobs fit, neither is linked. In the job's detail, `f` opens the agent, with its turns, id and transcript. If the pane is 90 columns or wider, the selected item shows beside the list.
 - **Cost**: the session cost as `/cost` totals it, this session's id (`c` copies `claude --resume <id>`), the estimated dollars of the Claude agents and of the Codex jobs, and per agent and Codex job a bar of tokens and its estimate. Agents that look slow or stuck show under "Load".
-- **Effects**: files that agents, Codex jobs and the main session changed, with who changed each and how (`edit`, `write`, `codex add`, `deleted`), a warning when two of them change the same file, worktrees, and open ports with the `ssh -L` command to reach them. Files written through shell commands (`cat > file <<'EOF'`, `>>`, `tee`, `sed -i`, `cp`, `mv`, `touch`, `rm`) show as `via shell`, checked on disk: Rabe takes the files named on the command line and lists one only when its size or modification time changed, or it appeared or went away, while the command ran. Claude Code does not tell Rabe the folder a Bash command runs in, so only absolute paths count (or paths after a `cd /absolute/folder` in the same command): `cat > notes.md` shows nothing. A command after `||`, inside `if` or a loop, in the background, or with a glob or `$var` in its path shows nothing, and neither does a file a script writes on its own (Python's `open(…, 'w')`, a build tool). Enter or a click on a file opens the agent or Codex job that changed it last, or copies the path of a main-session file; on an `ssh -L` line it copies the line (`c` copies the first).
-- **Timeline**: a bar per item over the session, who started what, and a summary of the previous session in this project with its id (`c` copies `claude --resume <id>`; a summary saved by Rabe 0.3 or older shows `n/a`).
+- **Effects**: files that agents, Codex jobs and the main session changed, with who changed each and how (`edit`, `write`, `codex add`, `deleted`), a warning when two of them change the same file, the git worktrees files changed in with their branch and who worked there (the main session included), and open ports with the `ssh -L` command to reach them. Files written through shell commands (`cat > file <<'EOF'`, `>>`, `tee`, `sed -i`, `cp`, `mv`, `touch`, `rm`) show as `via shell`, checked on disk: Rabe takes the files named on the command line and lists one only when its size or modification time changed, or it appeared or went away, while the command ran. Claude Code does not tell Rabe the folder a Bash command runs in, so only absolute paths count (or paths after a `cd /absolute/folder` in the same command): `cat > notes.md` shows nothing. A command after `||`, inside `if` or a loop, in the background, or with a glob or `$var` in its path shows nothing, and neither does a file a script writes on its own (Python's `open(…, 'w')`, a build tool). Enter or a click on a file opens the agent or Codex job that changed it last, or copies the path of a main-session file; on an `ssh -L` line it copies the line (`c` copies the first). In a Git repository each file shows relative to the worktree that holds it; Rabe reads the worktrees with `git worktree list` in the terminal, and without Git it shows the worktrees of agents only.
+- **Timeline**: a bar per item over the last 4 hours, who started what, and a summary of the previous session in this project with its id (`c` copies `claude --resume <id>`; a summary saved by Rabe 0.3 or older shows `n/a`). Items that ended before the window fold into one line (`+37 older items, ended before 10:20`); a bar that started earlier is cut at the left edge with `◂`. `w` widens the window for the open pane, from 4 hours to 12 hours to the whole session. The option `timelineHours` in `/plugin` sets the hours; `0` shows the whole session.
 
 ## Install
 
@@ -65,6 +65,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | `f` | Open the Claude agent that forwarded a Codex job (it has no row of its own); `b` then goes back to the job's row |
 | `c` | Copy the command, the prompt, the `ssh -L` line, an agent's id, or the command that resumes a session or a Codex thread. If the clipboard cannot be reached (for example over SSH in a terminal without OSC 52), a message shows the text to select |
 | `d` | Delete a cron job |
+| `w` | On the Timeline tab: show more time (4 h, 12 h, the whole session, then 4 h again) |
 | Mouse wheel | Scroll the pane |
 | Esc | Close the pane |
 
@@ -105,6 +106,8 @@ claude,claude-opus-5-5,,3.2,16,0.16,4
 
 Rabe hides Claude Code's own count of background work, because the band shows it. That is the `2 shells, 1 monitor · ↓ to manage` part under the prompt, and `still running` at the end of a turn. To keep them, turn off the option `hideBuiltinTasks` in `/plugin`. Rabe cannot hide the agent list under the prompt.
 
+The option `timelineHours` (default 4) sets how many hours the Timeline tab shows when the pane opens; `0` shows the whole session.
+
 ## Where the data comes from
 
 Rabe gets most data from the mod API: hooks for tool calls, agent starts, agent steps and task notifications. The rest comes from files that Claude Code and Codex write while they work. These files have no documentation and can change in any release. A value that Rabe cannot read shows as `n/a`.
@@ -133,7 +136,7 @@ Rabe reads these files:
 - Its own price table `data/prices.csv`, and the file the option `pricesFile` names.
 - The size and modification time of the files a shell command names, before and after the command, to see which ones it wrote. Rabe does not read their content.
 
-Rabe keeps its items in the session state of Claude Code. When a session ends, Rabe keeps a short summary for the next session in the same project. The summary holds the session id, counts per kind, tokens, cost and the names of failed items. It runs `tail` and `grep` to read files over 4 MiB. When you stop a Codex job, it runs the Codex plugin's own cancel script.
+Rabe keeps its items in the session state of Claude Code. When a session ends, Rabe keeps a short summary for the next session in the same project. The summary holds the session id, counts per kind, tokens, cost and the names of failed items. It runs `tail` and `grep` to read files over 4 MiB, and `git worktree list` every 10 seconds in the session's folder to know the worktrees. When you stop a Codex job, it runs the Codex plugin's own cancel script.
 
 ## Requirements
 

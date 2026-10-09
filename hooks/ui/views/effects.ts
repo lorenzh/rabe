@@ -2,7 +2,7 @@ import type { RabeOrder } from '../../../types'
 import type { RabeItemOf } from '../../model'
 import { fit, type Span } from '../cells/grid'
 import { C, CHIP } from '../cells/palette'
-import { byConflict, stable, type Touched, touched, worktrees } from '../lists'
+import { byConflict, stable, type Touched, touched, worktreeRows } from '../lists'
 import type { Drawn, Line, Model, View } from '../view'
 import { fitLine, focusOn } from './lines'
 
@@ -16,7 +16,7 @@ function conflictLines(files: Touched[]): Line[] {
   const conflicts = files.filter(file => file.isConflict)
   const [first] = conflicts
   if (!first) return []
-  const tree = first.by[0]?.tree
+  const tree = first.tree ? (first.tree.isMain ? undefined : first.tree.path) : first.by[0]?.tree
   const where = tree ? ` in ${tree.split('/').filter(Boolean).at(-1)}` : ' in the main tree'
   const more = conflicts.length > 1 ? ` · +${conflicts.length - 1} more` : ''
 
@@ -54,12 +54,11 @@ function head(path: string, width: number): string {
   return chars.length > width ? `…${chars.slice(chars.length - width + 1).join('')}` : path
 }
 
-// How the file changed; a shell write is a guess, and a relative one has no known cwd.
+// How the file changed; a shell write is a guess.
 function how(file: Touched): string {
   const count = file.edits > 1 ? `${file.edits}× ` : ''
-  const where = file.path.startsWith('/') ? '' : ' · cwd n/a'
 
-  return `${count}${file.hows.join(', ')}${where}`
+  return `${count}${file.hows.join(', ')}`
 }
 
 function fileRow(file: Touched, w: Widths, selected: string): Line {
@@ -103,30 +102,30 @@ function fileLines(files: Touched[], w: Widths, selected: string): Line[] {
   ]
 }
 
-function treeLines(model: Model): Line[] {
-  const trees = worktrees(model.items)
-  const agents = model.items.flatMap(item => (item.kind === 'agent' ? [item] : []))
-  const plain = agents.filter(agent => !agent.detail.worktreePath)
-  const main = plain.filter(agent => agent.detail.cwd)
-  const unknown = plain.length - main.length
-  const width = Math.min(34, Math.max(9, ...trees.map(tree => tree.name.length)))
+function treeLines(model: Model, files: Touched[]): Line[] {
+  const { rows, unknown } = worktreeRows(model.items, files, model.worktrees, model.cwd)
+  const width = Math.min(34, Math.max(9, ...rows.map(row => row.name.length)))
   const row = (label: string, rest: string): Line => ({
     spans: [['  '], ['⎇', { fg: C.purple }], [` ${fit(label, width)}  `], [rest, dim]],
   })
+  const isGit = (model.worktrees?.length ?? 0) > 0
+  const empty = isGit ? '  No worktree in use yet.' : '  No agents yet.'
 
   return [
     {
       spans: [
-        [`WORKTREES ${trees.length}`, { fg: C.purple }],
-        ['  from agent metadata, running agents included', dim],
+        [`WORKTREES ${rows.length}`, { fg: C.purple }],
+        [
+          isGit
+            ? '  from git and agent metadata'
+            : '  from agent metadata, running agents included',
+          dim,
+        ],
       ],
     },
-    ...trees.map(tree =>
-      row(tree.name, `${tree.branch} · ${tree.items.map(item => item.title).join(', ')}`),
-    ),
-    ...(main.length ? [row('main tree', main.map(agent => agent.title).join(', '))] : []),
+    ...rows.map(one => row(one.name, [one.branch, one.who.join(', ')].filter(Boolean).join(' · '))),
     ...(unknown ? [row('n/a', `${unknown} agent${unknown === 1 ? '' : 's'}: tree n/a`)] : []),
-    ...(agents.length ? [] : [{ spans: [['  No agents yet.', dim]] as Span[] }]),
+    ...(rows.length || unknown ? [] : [{ spans: [[empty, dim]] as Span[] }]),
   ]
 }
 
@@ -199,7 +198,7 @@ function portRows({ item, port }: Port, hasHotkey: boolean, selected: string): L
 // them in their section, in the order they were found.
 export const effectsView: View = (model, size, sel): Drawn => {
   const { order } = sel
-  const all = touched(model.items, model.edits, model.cwd)
+  const all = touched(model.items, model.edits, model.cwd, model.worktrees)
   const files = stable(all, order?.files, byConflict)
   const ports = portsOf(model, order)
   const shown = [...ports.held, ...ports.fresh]
@@ -222,7 +221,7 @@ export const effectsView: View = (model, size, sel): Drawn => {
       ...conflictLines(byConflict(all)),
       ...fileLines(files, w, selected),
       { spans: [] },
-      ...treeLines(model),
+      ...treeLines(model, all),
       { spans: [] },
       ...portLines,
     ],

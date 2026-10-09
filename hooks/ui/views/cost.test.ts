@@ -124,5 +124,5 @@ test('an agent that only forwarded to Codex adds its tokens to the job and has n
   const drawn = costView({ ...MODEL, items: [forwarder, job] }, SIZE, NO_SELECTION)
   expect(rowKeys(drawn)).toEqual([`row:${job.id}`])
   const shown = lines(gridOf(drawn).grid)
-  expect(shown[row(shown, /review auth\.ts/)]).toMatch(/ 33k +\$0\.25/)
+  expect(shown[row(shown, /review auth\.ts/)]).toMatch(/ 33k +≈ \$0\.25/)
 })

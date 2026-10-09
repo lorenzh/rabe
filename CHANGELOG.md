@@ -14,6 +14,15 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 - While the pane is open, an item that starts goes straight into the group of its kind in the Items list (AGENTS, SHELLS, MONITORS or CRON; a shell or monitor under the agent that started it) instead of a NEW group at the end; on the Effects tab, a new file or port goes into FILES or PORTS instead of a NEW section. When it comes above the focused row, Rabe moves the focus back onto that row, and Enter does nothing until it has. (fixes [#24](https://github.com/lorenzh/rabe/issues/24))
 - A Codex job started through the Codex plugin's forwarding agent (`codex:codex-rescue`) shows as one row: the agent that only passed the request on has no row of its own, and its tokens count toward the job. A job started by an agent that also did other work shows indented under that agent. Rabe links them only when the evidence fits one job: the agent's command names the job, or the job started while the command ran and has its prompt or its thread. A link the prompt made moves when the command returns another job or thread, and goes while two jobs fit. In the job's detail, `f` opens the agent with its turns, id and transcript. (fixes [#14](https://github.com/lorenzh/rabe/issues/14))
+- The Timeline tab shows the last 4 hours. Items that ended before fold into one line, and a bar that started earlier is cut at the left edge with `◂`, so a long session stays readable. `w` widens the window for the open pane (4 h, 12 h, the whole session). The new option `timelineHours` sets the hours; `0` shows the whole session as before. (fixes [#20](https://github.com/lorenzh/rabe/issues/20))
+
+### Fixed
+
+- The Effects tab lists every git worktree files changed in, with its branch and who changed files there, the main session included, and shows each file relative to its worktree. Before, it knew only the worktrees of isolated agents, so a worktree the main session or a plain agent edited by its full path was missing and its files showed with their full path. An agent started in a subfolder shows in the worktree that holds the folder, not as a worktree of its own, and its tree reads `n/a` when Rabe cannot tell it. The WORKTREES count now matches its rows. Rabe reads the worktrees with `git worktree list`; without Git it works as before. (fixes [#19](https://github.com/lorenzh/rabe/issues/19))
+
+### Removed
+
+- Code nobody reached: the Effects tab's ` · cwd n/a` mark (every file path Rabe records is absolute) and the names the band built for each kind but no longer draws. Nothing changes on screen. (fixes [#22](https://github.com/lorenzh/rabe/issues/22))
 
 ## [0.3.0] - 2026-10-09
 

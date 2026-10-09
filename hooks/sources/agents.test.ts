@@ -179,21 +179,25 @@ test('a refused spawn adds nothing', async ($, on) => {
   expect(held.items).toBeUndefined()
 })
 
-test('subagent start sets the transcript and a worktree outside the session folder', async ($, on) => {
+// Another cwd may be a worktree or a plain subfolder; only the meta file or
+// git tells, so the start event gives the cwd alone.
+test('subagent start sets the transcript and the cwd, never a worktree', async ($, on) => {
   const held = engine(on, 'a1')
   on('session.cwd', async () => ({ value: '/repo' }))
   await $.agent.spawn(SPAWN)
-  await $.classic.SubagentStart({
-    agent_id: 'a1',
-    agent_type: 'general-purpose',
-    cwd: '/repo/.claude/worktrees/a1',
-    transcript_path: '/p/s1.jsonl',
-  })
-  expect(held.items?.[0]?.detail).toMatchObject({
-    transcriptPath: '/p/s1/subagents/agent-a1.jsonl',
-    worktreePath: '/repo/.claude/worktrees/a1',
-    cwd: '/repo/.claude/worktrees/a1',
-  })
+  for (const cwd of ['/repo/.claude/worktrees/a1', '/repo/packages/api']) {
+    await $.classic.SubagentStart({
+      agent_id: 'a1',
+      agent_type: 'general-purpose',
+      cwd,
+      transcript_path: '/p/s1.jsonl',
+    })
+    expect(held.items?.[0]?.detail).toMatchObject({
+      transcriptPath: '/p/s1/subagents/agent-a1.jsonl',
+      cwd,
+    })
+    expect(held.items?.[0]?.detail).not.toHaveProperty('worktreePath')
+  }
 })
 
 test('SubagentStart during the spawn keeps the transcript once the spawn adds the item', async ($, on) => {

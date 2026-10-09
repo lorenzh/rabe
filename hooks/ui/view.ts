@@ -1,14 +1,24 @@
 import type { RenderSurface } from 'claude-code'
 
-import type { RabeEdit, RabeLines, RabeOrder, RabePrevious, RabeTab, RabeTurn } from '../../types'
+import type {
+  RabeEdit,
+  RabeLines,
+  RabeOrder,
+  RabePrevious,
+  RabeTab,
+  RabeTurn,
+  RabeWindow,
+  RabeWorktree,
+} from '../../types'
 import type { RabeItem } from '../model'
 import { type Grid, MAX_COLUMNS, MAX_ROWS, type Span } from './cells/grid'
 
 // What every view reads: the sources' session values, never files. `usd` is
 // the session's cost as /cost totals it; `previous` is the last session in
 // this project that had background work, from `$.store`. `edits` are the
-// files the main session changed, `cwd` the session's folder, `sessionId`
-// what `claude --resume` takes to come back to this session. `removed` are
+// files the main session changed, `cwd` the session's folder, `worktrees`
+// git's worktrees of it (absent without git), `sessionId` what
+// `claude --resume` takes to come back to this session. `removed` are
 // the ids the person removed (`rabe.removed`): only the list and the band's
 // chips leave them out (`kept`); summaries and the other tabs count them.
 export type Model = {
@@ -22,6 +32,7 @@ export type Model = {
   edits?: RabeEdit[]
   cwd?: string
   sessionId?: string
+  worktrees?: RabeWorktree[]
 }
 
 // The cells a view may fill: `columns` from `bodyColumns`, `rows` from
@@ -64,6 +75,8 @@ export type Selection = {
   isArmed: boolean
   // The list's x and g act only while this holds too (`arm`).
   isListArmed: boolean
+  // The Timeline's window; absent: the whole session, no key to widen it.
+  window?: RabeWindow
 }
 
 export type Action =
@@ -71,6 +84,8 @@ export type Action =
   | { type: 'open'; id: string }
   | { type: 'fold'; group: string }
   | { type: 'query'; text: string }
+  // Widen the Timeline's window (`widen` in views/timeline.ts).
+  | { type: 'window' }
   | { type: 'focus'; key: string }
   | { type: 'stop'; ids: string[] }
   | { type: 'delete'; id: string }
@@ -212,6 +227,8 @@ export function landing(action: Action, open: string): string[] {
       return ['tab-items', `group-${action.group}`]
     case 'query':
       return ['search']
+    case 'window':
+      return ['tab-timeline', 'window']
     default:
       return []
   }

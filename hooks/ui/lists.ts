@@ -1,4 +1,4 @@
-import type { RabeEdit, RabeOrder, RabePrevious } from '../../types'
+import type { RabeEdit, RabeOrder, RabePrevious, RabeWorktree } from '../../types'
 import type { RabeItem, RabeItemKind } from '../model'
 import { nextRuns } from '../schedule'
 import type { Span } from './cells/grid'
@@ -241,11 +241,21 @@ export type Touched = {
   hows: string[]
   isDeleted: boolean
   isConflict: boolean
+  // The git worktree that holds the file; absent without git or outside them.
+  tree?: RabeWorktree
 }
 
-function relative(path: string, editor: Editor): string {
-  const { root } = editor
+// The worktree whose path is the longest prefix of `path`.
+export function treeOf(path: string, trees: RabeWorktree[]): RabeWorktree | undefined {
+  return trees
+    .filter(tree => path === tree.path || path.startsWith(`${tree.path}/`))
+    .reduce<RabeWorktree | undefined>(
+      (best, tree) => (best && best.path.length >= tree.path.length ? best : tree),
+      undefined,
+    )
+}
 
+function relative(path: string, root?: string): string {
   return root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
 }
 
@@ -287,18 +297,26 @@ function editorsOf(items: RabeItem[], main: RabeEdit[], cwd?: string): Edits[] {
 // first changed. `by` lists the editors in the order they first changed it,
 // `last` the latest one, `hows` how, `first` and `at` the first and the latest
 // change times. Two editors of one absolute path are a conflict; a relative
-// path (a shell write whose cwd is not known) is none.
-export function touched(items: RabeItem[], main: RabeEdit[] = [], cwd?: string): Touched[] {
+// path is none. With git's worktrees (`trees`) each file is shown relative to
+// the worktree that holds it; else relative to its first editor's folder.
+export function touched(
+  items: RabeItem[],
+  main: RabeEdit[] = [],
+  cwd?: string,
+  trees?: RabeWorktree[],
+): Touched[] {
   const edits = editorsOf(items, main, cwd)
     .flatMap(({ editor, edits: list }) => list.map(edit => ({ editor, edit })))
     .toSorted((a, b) => a.edit.at - b.edit.at)
   const files = new Map<string, Touched>()
   for (const { editor, edit } of edits) {
     const { path, at } = edit
+    const tree = trees && treeOf(path, trees)
     const file = files.get(path) ?? {
       id: `file:${path}`,
       path,
-      rel: relative(path, editor),
+      rel: relative(path, tree ? tree.path : editor.root),
+      ...(tree && { tree }),
       by: [],
       last: editor,
       edits: 0,
@@ -505,98 +523,25 @@ export function costLine(items: RabeItem[], session?: number): string | undefine
   return `${dollars} · ${tokens(sum.tokens)} tok${topText}`
 }
 
-export type BandRow = {
-  glyph: string
-  kind: RabeItemKind | 'failed'
-  label: string
-  names: Span[][]
-}
+export type BandRow = { glyph: string; kind: RabeItemKind | 'failed'; count: number }
 
-const isRunning = (kind: RabeItemKind) => (item: RabeItem) =>
-  item.kind === kind && item.status === 'running'
-
-// Running shells or monitors as the Items tab groups them: the main
-// session's first, then each agent's after its dim name.
-function familyNames(items: RabeItem[], kind: 'shell' | 'monitor'): Span[][] {
-  return byParent(items.filter(isRunning(kind)), items).flatMap(family =>
-    family.items.map((item): Span[] =>
-      family.id === ''
-        ? nameSpans(item)
-        : [[`${family.title} › `, { fg: C.dim }], ...nameSpans(item)],
-    ),
-  )
-}
-
+// What the band counts per kind, failed (in the last 10 minutes) first.
 export function bandRows(items: RabeItem[], now: number): BandRow[] {
-  const dim = { fg: C.dim }
-  const run = (item: RabeItem): Span[] => [
-    [item.title],
-    [item.startedAt === undefined ? '' : ` ${short(now - item.startedAt)}`, dim],
-  ]
+  const running = (kind: RabeItemKind) =>
+    shown(items).filter(item => item.kind === kind && item.status === 'running').length
   const failed = items.filter(
     item => item.status === 'failed' && now - (item.endedAt ?? item.seenAt) < 10 * 60_000,
-  )
+  ).length
   const rows: BandRow[] = [
-    { glyph: '✗', kind: 'failed', label: 'failed', names: failed.map(item => nameSpans(item)) },
-    {
-      glyph: '◐',
-      kind: 'agent',
-      label: 'claude',
-      names: shown(items).filter(isRunning('agent')).map(run),
-    },
-    { glyph: '◐', kind: 'codex', label: 'codex', names: items.filter(isRunning('codex')).map(run) },
-    {
-      glyph: '⧉',
-      kind: 'workflow',
-      label: 'workflow',
-      names: items
-        .filter(isRunning('workflow'))
-        .map(flow => [
-          [flow.title],
-          [` · ${phaseProgress(items, flow)} · ${children(items, flow.id).length} agents`, dim],
-        ]),
-    },
-    {
-      glyph: '▶',
-      kind: 'shell',
-      label: 'shells',
-      names: familyNames(items, 'shell'),
-    },
-    {
-      glyph: '◉',
-      kind: 'monitor',
-      label: 'watch',
-      names: familyNames(items, 'monitor'),
-    },
-    {
-      glyph: '⟳',
-      kind: 'cron',
-      label: 'cron',
-      names: items
-        .filter(isRunning('cron'))
-        .map(item => [[item.title], [' · next ', dim], [nextAt(item, now), { fg: C.bright }]]),
-    },
+    { glyph: '✗', kind: 'failed', count: failed },
+    ...(['agent', 'codex', 'workflow', 'shell', 'monitor', 'cron'] as const).map(kind => ({
+      glyph: RUNNING_GLYPH[kind],
+      kind,
+      count: running(kind),
+    })),
   ]
 
-  return rows.filter(row => row.names.length > 0)
-}
-
-const width = (list: Span[]) => list.reduce((n, [text]) => n + text.length, 0)
-
-// Names joined with a dim " · " until `width`, then a dim "+N" for the rest.
-export function joinFit(names: Span[][], max: number): Span[] {
-  const sep: Span = [' · ', { fg: C.dim }]
-  let out: Span[] = []
-  for (const [i, one] of names.entries()) {
-    const next = i === 0 ? one : [...out, sep, ...one]
-    const rest = names.length - i - 1
-    if (i > 0 && width(next) + (rest ? ` +${rest}`.length : 0) > max) {
-      return [...out, [` +${names.length - i}`, { fg: C.dim }]]
-    }
-    out = next
-  }
-
-  return out
+  return rows.filter(row => row.count > 0)
 }
 
 export type TreeLine = { prefix: string; item: RabeItem }
@@ -627,25 +572,73 @@ export function bar(from: number, to: number, start: number, end: number, width:
   return `${' '.repeat(a)}${'█'.repeat(b - a)}${' '.repeat(width - b)}`
 }
 
-export function worktrees(
-  items: RabeItem[],
-): { name: string; branch: string; items: RabeItem[] }[] {
-  const out = new Map<string, { name: string; branch: string; items: RabeItem[] }>()
-  for (const item of items) {
-    if (item.kind !== 'agent' || !item.detail.worktreePath) continue
-    const path = item.detail.worktreePath
-    const entry = out.get(path) ?? {
-      name: path.includes('/.claude/')
-        ? path.slice(path.indexOf('.claude/'))
-        : (path.split('/').filter(Boolean).at(-1) ?? path),
-      branch: item.detail.worktreeBranch ?? 'n/a',
-      items: [],
-    }
-    entry.items.push(item)
-    out.set(path, entry)
-  }
+export type TreeRow = { name: string; branch?: string; who: string[] }
 
-  return [...out.values()]
+const treeName = (path: string) =>
+  path.includes('/.claude/')
+    ? path.slice(path.indexOf('.claude/'))
+    : (path.split('/').filter(Boolean).at(-1) ?? path)
+
+// The WORKTREES section: one row per worktree in use, each with who works
+// there. With git (`trees`) a worktree is in use when a file in it changed
+// (its editors, the main session included) or an agent runs in it (its
+// `worktreePath`, else its `cwd` when it changed no file in a worktree); an
+// agent's worktree git does not list keeps its row from the agent's metadata.
+// Without git, rows come from agent metadata alone: each agent worktree, then
+// the main tree for agents whose `cwd` is the session's (`cwd`). `unknown`
+// counts agents whose tree Rabe cannot tell.
+export function worktreeRows(
+  items: RabeItem[],
+  files: Touched[],
+  trees?: RabeWorktree[],
+  cwd?: string,
+): { rows: TreeRow[]; unknown: number } {
+  const known = trees?.length ? trees : undefined
+  const rows = new Map<string, TreeRow>()
+  const add = (key: string, row: Omit<TreeRow, 'who'>, title: string) => {
+    const one = rows.get(key) ?? { ...row, who: [] }
+    if (!one.who.includes(title)) one.who.push(title)
+    rows.set(key, one)
+  }
+  const gitRow = (tree: RabeWorktree) => ({
+    name: tree.isMain ? 'main tree' : treeName(tree.path),
+    branch: tree.branch ?? (tree.isDetached ? 'detached' : 'n/a'),
+  })
+  for (const file of known ? files : []) {
+    if (!file.tree) continue
+    for (const editor of file.by) add(file.tree.path, gitRow(file.tree), editor.title)
+  }
+  let unknown = 0
+  const agents = items.flatMap(item => (item.kind === 'agent' ? [item] : []))
+  for (const agent of agents) {
+    const { worktreePath, worktreeBranch, cwd: at } = agent.detail
+    const own = known?.find(tree => tree.path === worktreePath)
+    if (own) add(own.path, gitRow(own), agent.title)
+    else if (worktreePath) {
+      const row = { name: treeName(worktreePath), branch: worktreeBranch ?? 'n/a' }
+      add(`agent ${worktreePath}`, row, agent.title)
+    } else if (known && files.some(file => file.tree && file.by.some(one => one.id === agent.id))) {
+    } else if (!at) unknown += 1
+    else if (!known) {
+      if (at === cwd) add('main', { name: 'main tree' }, agent.title)
+      else unknown += 1
+    } else {
+      const tree = treeOf(at, known)
+      if (tree) add(tree.path, gitRow(tree), agent.title)
+      else unknown += 1
+    }
+  }
+  const order = [...(known ?? []).map(tree => tree.path)]
+  const rank = (key: string) => (order.includes(key) ? order.indexOf(key) : order.length)
+  const keys = [...rows.keys()]
+  const sorted = keys.toSorted(
+    (a, b) =>
+      Number(a === 'main') - Number(b === 'main') ||
+      rank(a) - rank(b) ||
+      keys.indexOf(a) - keys.indexOf(b),
+  )
+
+  return { rows: sorted.map(key => rows.get(key) as TreeRow), unknown }
 }
 
 // What the next session in this project shows of this one.

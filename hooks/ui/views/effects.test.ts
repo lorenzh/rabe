@@ -61,7 +61,7 @@ const TURNS: Record<string, RabeTurn[]> = {
   ],
 }
 
-const MODEL: Model = { items: ITEMS, turns: TURNS, lines: {}, now: NOW }
+const MODEL: Model = { items: ITEMS, turns: TURNS, lines: {}, now: NOW, cwd: '/repo' }
 
 test('a file edited by two agents in one tree heads the tab as a conflict', () => {
   const { grid } = gridOf(effectsView(MODEL, SIZE, NO_SELECTION))
@@ -87,9 +87,9 @@ test('files touched list each file with who edited it and how often, conflicts f
   expect(shown.some(line => line.includes('x.ts') || line.includes('denied.ts'))).toBe(false)
 })
 
-test('worktrees show the path, branch and agents, then the main tree', () => {
+test('worktrees show the path, branch and agents, then the main tree, each counted', () => {
   const shown = lines(gridOf(effectsView(MODEL, SIZE, NO_SELECTION)).grid)
-  const head = shown.indexOf('WORKTREES 1  from agent metadata, running agents included')
+  const head = shown.indexOf('WORKTREES 2  from agent metadata, running agents included')
   expect(head).toBeGreaterThan(0)
   expect(shown[head + 1]).toMatch(
     /^ {2}⎇ \.claude\/worktrees\/pkg-db +worktree-agent-a1 · Explore verifyToken$/,
@@ -340,7 +340,7 @@ test('files from Codex jobs, the main session and shell commands show who and ho
   )
   expect(row('src/old.ts')).toMatch(/src\/old\.ts +review auth\.ts +deleted · codex delete$/)
   expect(row('SKILL.md')).toMatch(/ …[^ ]*\/skills\/demo\/SKILL\.md +Plan auth split +via shell$/)
-  expect(row('notes.md')).toMatch(/ out\/notes\.md +Plan auth split +via shell · cwd n\/a$/)
+  expect(row('notes.md')).toMatch(/ out\/notes\.md +Plan auth split +via shell$/)
   expect(row('plan.md')).toMatch(/^ {2}plan\.md +main session +write$/)
   expect(shown[0]).toBe(
     ' ⚠ conflict  src/gen.ts is edited by review auth.ts and main session in the main tree',
@@ -379,4 +379,45 @@ test('a main session file found after the open goes after the held files', () =>
   const held = rowKeys(effectsView(OTHERS, SIZE, { ...NO_SELECTION, order }))
   const files = held.filter(key => key.startsWith('row:file:')).length
   expect(keys).toEqual([...held.slice(0, files), 'row:file:/repo/late.md', ...held.slice(files)])
+})
+
+// Issue 19: the main session edits a file in a second worktree by its full
+// path; git's worktree list places it there.
+test('with git a file shows relative to its worktree, and the worktree lists the main session', () => {
+  const trees = [
+    { path: '/repo', branch: 'main', isMain: true },
+    { path: '/repo/.worktrees/fix', branch: 'fix/login' },
+  ]
+  const edits: RabeEdit[] = [{ path: '/repo/.worktrees/fix/src/login.ts', at: NOW, via: 'edit' }]
+  const model: Model = { items: [], turns: {}, lines: {}, now: NOW, edits, cwd: '/repo' }
+  const before = lines(gridOf(effectsView(model, SIZE, NO_SELECTION)).grid)
+  expect(before.some(line => line.includes('.worktrees/fix/src/login.ts'))).toBe(true)
+  expect(before).toContain('WORKTREES 0  from agent metadata, running agents included')
+  const shown = lines(gridOf(effectsView({ ...model, worktrees: trees }, SIZE, NO_SELECTION)).grid)
+  expect(shown.find(line => line.includes('login.ts'))).toMatch(
+    /^▌ src\/login\.ts +main session +edit$/,
+  )
+  const head = shown.indexOf('WORKTREES 1  from git and agent metadata')
+  expect(head).toBeGreaterThan(0)
+  expect(shown[head + 1]).toMatch(/^ {2}⎇ fix +fix\/login · main session$/)
+})
+
+test('a conflict in a git worktree names that worktree', () => {
+  const trees = [
+    { path: '/repo', branch: 'main', isMain: true },
+    { path: '/repo/.worktrees/fix', branch: 'fix/login' },
+  ]
+  const path = '/repo/.worktrees/fix/a.ts'
+  const agent = { ...plan, detail: { agentId: 'a2', cwd: '/repo', edits: [{ path, at: NOW }] } }
+  const model: Model = {
+    items: [agent as RabeItem],
+    turns: {},
+    lines: {},
+    now: NOW,
+    edits: [{ path, at: NOW + 1 }],
+    cwd: '/repo',
+    worktrees: trees,
+  }
+  const shown = lines(gridOf(effectsView(model, SIZE, NO_SELECTION)).grid)
+  expect(shown[0]).toBe(' ⚠ conflict  a.ts is edited by Plan auth split and main session in fix')
 })

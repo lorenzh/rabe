@@ -1,7 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { RabeItem } from '../model'
-import type { Span } from './cells/grid'
 import { C } from './cells/palette'
 
 import {
@@ -27,7 +26,6 @@ import {
   forwarderOf,
   grouped,
   groupNote,
-  joinFit,
   kept,
   matches,
   nameSpans,
@@ -41,9 +39,11 @@ import {
   stable,
   timeLabel,
   totals,
+  touched,
   tree,
+  treeOf,
   withForwarder,
-  worktrees,
+  worktreeRows,
 } from './lists'
 
 test('groups put failed first and running before ended', () => {
@@ -138,29 +138,18 @@ test('search matches title, kind and command', () => {
   expect(matches(ci, 'nope')).toBe(false)
 })
 
-test('the band has one row per kind with running names, failed first', () => {
+test('the band counts each kind that runs, failed first', () => {
   const rows = bandRows(ALL, NOW)
-  expect(rows.map(row => row.label)).toEqual([
-    'failed',
-    'claude',
-    'codex',
-    'workflow',
-    'shells',
-    'watch',
-    'cron',
+  expect(rows.map(row => [row.kind, row.glyph, row.count])).toEqual([
+    ['failed', '✗', 1],
+    ['agent', '◐', 2],
+    ['codex', '◐', 1],
+    ['workflow', '⧉', 1],
+    ['shell', '▶', 1],
+    ['monitor', '◉', 1],
+    ['cron', '⟳', 1],
   ])
-  const text = (names: Span[][] = []) => names.map(one => one.map(([t]) => t).join(''))
-  expect(text(rows[1]?.names)).toEqual(['Explore verifyToken 1m', 'verify:db.ts 40s'])
-  expect(text(rows[3]?.names)).toEqual(['review-changes · Verify 2/3 · 2 agents'])
-  expect(text(rows[6]?.names)).toEqual(['/babysit-prs · next 10:55'])
   expect(bandRows([{ ...lint, endedAt: NOW - 11 * 60_000 }], NOW)).toEqual([])
-})
-
-test('joinFit stops at the width and counts the rest', () => {
-  const names: Span[][] = [[['aaa']], [['bbb']], [['ccc']]]
-  const text = (list: Span[]) => list.map(([t]) => t).join('')
-  expect(text(joinFit(names, 20))).toBe('aaa · bbb · ccc')
-  expect(joinFit(names, 10)).toEqual([['aaa'], [' +2', { fg: C.dim }]])
 })
 
 test('cost totals sum tokens and dollars and count unknowns', () => {
@@ -217,10 +206,111 @@ test('a bar marks the part of the window an item ran', () => {
   expect(bar(99, 100, 0, 100, 4)).toBe('   █')
 })
 
-test('worktrees list each folder with its agents', () => {
-  expect(worktrees(ALL)).toEqual([
-    { name: '.claude/worktrees/pkg-db', branch: 'worktree-agent-a1', items: [explore] },
+const TREES = [
+  { path: '/repo', branch: 'main', isMain: true },
+  { path: '/repo/.worktrees/fix', branch: 'fix/login' },
+  { path: '/repo/.worktrees/fix/inner', isDetached: true },
+]
+
+test('a path belongs to the worktree with the longest matching prefix', () => {
+  expect(treeOf('/repo/src/a.ts', TREES)?.path).toBe('/repo')
+  expect(treeOf('/repo/.worktrees/fix/src/a.ts', TREES)?.path).toBe('/repo/.worktrees/fix')
+  expect(treeOf('/repo/.worktrees/fix/inner/a.ts', TREES)?.path).toBe('/repo/.worktrees/fix/inner')
+  expect(treeOf('/repo/.worktrees/fixed/a.ts', TREES)?.path).toBe('/repo')
+  expect(treeOf('/repo/.worktrees/fix', TREES)?.path).toBe('/repo/.worktrees/fix')
+  expect(treeOf('/tmp/a.ts', TREES)).toBeUndefined()
+  expect(treeOf('src/a.ts', TREES)).toBeUndefined()
+})
+
+test('with git each file is relative to its worktree, also a main session file', () => {
+  const main = [
+    { path: '/repo/.worktrees/fix/src/login.ts', at: NOW },
+    { path: '/repo/src/app.ts', at: NOW + 1 },
+    { path: '/tmp/out.txt', at: NOW + 2 },
+  ]
+  const files = touched([], main, '/repo', TREES)
+  expect(files.map(file => [file.rel, file.tree?.path])).toEqual([
+    ['src/login.ts', '/repo/.worktrees/fix'],
+    ['src/app.ts', '/repo'],
+    ['/tmp/out.txt', undefined],
   ])
+  expect(touched([], main, '/repo').map(file => file.rel)).toEqual([
+    '.worktrees/fix/src/login.ts',
+    'src/app.ts',
+    '/tmp/out.txt',
+  ])
+})
+
+test('without git the worktrees come from agent metadata, the main tree counted', () => {
+  expect(worktreeRows(ALL, [], undefined, '/repo')).toEqual({
+    rows: [
+      { name: '.claude/worktrees/pkg-db', branch: 'worktree-agent-a1', who: [explore.title] },
+      { name: 'main tree', who: [plan.title] },
+    ],
+    unknown: ALL.filter(
+      item => item.kind === 'agent' && !item.detail.cwd && !item.detail.worktreePath,
+    ).length,
+  })
+  expect(worktreeRows([], [])).toEqual({ rows: [], unknown: 0 })
+})
+
+test('with git each worktree edited in lists its editors, the main session included', () => {
+  const inFix = {
+    ...plan,
+    id: 'agent:f1',
+    title: 'fixer',
+    detail: {
+      agentId: 'f1',
+      cwd: '/repo',
+      edits: [{ path: '/repo/.worktrees/fix/a.ts', at: NOW }],
+    },
+  } as RabeItem
+  const idle = {
+    ...plan,
+    id: 'agent:i1',
+    title: 'idle',
+    detail: { agentId: 'i1', cwd: '/repo/.worktrees/fix' },
+  } as RabeItem
+  const away = {
+    ...plan,
+    id: 'agent:o1',
+    title: 'away',
+    detail: { agentId: 'o1', cwd: '/elsewhere' },
+  } as RabeItem
+  const main = [{ path: '/repo/.worktrees/fix/b.ts', at: NOW }]
+  const items = [explore, inFix, idle, away]
+  const files = touched(items, main, '/repo', TREES)
+  expect(worktreeRows(items, files, TREES)).toEqual({
+    rows: [
+      { name: 'fix', branch: 'fix/login', who: ['fixer', 'main session', 'idle'] },
+      { name: '.claude/worktrees/pkg-db', branch: 'worktree-agent-a1', who: [explore.title] },
+    ],
+    unknown: 1,
+  })
+  const own = touched([], [{ path: '/repo/x.ts', at: NOW }], '/repo', TREES)
+  expect(worktreeRows([], own, TREES).rows).toEqual([
+    { name: 'main tree', branch: 'main', who: ['main session'] },
+  ])
+  expect(worktreeRows([], [], TREES)).toEqual({ rows: [], unknown: 0 })
+})
+
+// The start event's cwd of an agent in a subfolder is no worktree: git places
+// it, and without git its tree is not known.
+test('an agent in a subfolder is placed in the worktree that holds it, never its own', () => {
+  const api = {
+    ...plan,
+    id: 'agent:s1',
+    title: 'api',
+    detail: { agentId: 's1', cwd: '/repo/packages/api' },
+  } as RabeItem
+  const edited = {
+    ...api,
+    detail: { ...api.detail, edits: [{ path: '/repo/packages/api/x.ts', at: NOW }] },
+  } as RabeItem
+  const one = { rows: [{ name: 'main tree', branch: 'main', who: ['api'] }], unknown: 0 }
+  expect(worktreeRows([edited], touched([edited], [], '/repo', TREES), TREES, '/repo')).toEqual(one)
+  expect(worktreeRows([api], [], TREES, '/repo')).toEqual(one)
+  expect(worktreeRows([api], [], undefined, '/repo')).toEqual({ rows: [], unknown: 1 })
 })
 
 test('previousOf sums a session up: counts per kind, tokens, cost, failed titles', () => {
@@ -289,7 +379,7 @@ test('a forwarder folds into its Codex job, which counts its tokens', () => {
   expect(Math.round((sum.costUsd ?? 0) * 100)).toBe(10)
   expect(withForwarder(explore, items)).toBe(explore)
   expect(orderOf(items).agents).toEqual([job.id, explore.id])
-  expect(bandRows(items, NOW).find(row => row.kind === 'agent')?.names).toHaveLength(1)
+  expect(bandRows(items, NOW).find(row => row.kind === 'agent')?.count).toBe(1)
   // a job not linked, an agent that also did other work, or one whose tool count is not known
   const unlinked = [forwarder, review]
   const busy = { ...forwarder, detail: { ...forwarder.detail, toolCount: 3 } } as RabeItem
