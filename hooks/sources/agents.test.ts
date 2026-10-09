@@ -108,11 +108,10 @@ test('the agent transcript sits in the session folder unless the hook names it',
   expect(agentTranscript('', 'a1')).toBeUndefined()
 })
 
-test('turns keep the newest per item and drop items that are gone', () => {
-  let turns: Record<string, RabeTurn[]> = { 'agent:gone': [turn(1)] }
-  for (let index = 1; index <= 32; index++)
-    turns = addTurn(turns, 'agent:a1', turn(index), ['agent:a1'])
-  expect(Object.keys(turns)).toEqual(['agent:a1'])
+test('turns keep the newest per item', () => {
+  let turns: Record<string, RabeTurn[]> = { 'agent:a2': [turn(1)] }
+  for (let index = 1; index <= 32; index++) turns = addTurn(turns, 'agent:a1', turn(index))
+  expect(Object.keys(turns)).toEqual(['agent:a2', 'agent:a1'])
   expect(turns['agent:a1']).toHaveLength(30)
   expect(turns['agent:a1']?.[0]?.index).toBe(3)
 })

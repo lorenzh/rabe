@@ -26,7 +26,7 @@
 ## Code Layout
 - `hooks/register.tsx`: entry point; calls `sources(on)`, `band(on)`, `pane(on)` and, unless the option `hideBuiltinTasks` is false, `builtin(on)`; nothing else.
 - `hooks/model.ts`: the item types and pure item helpers. `hooks/registry.ts`: pure changes to the item list.
-- `hooks/sources/<kind>.ts`: one module per source (agents, codex, shells, monitors, crons, workflows) that turns events and files into items; `hooks/sources/index.ts` calls each one.
+- `hooks/sources/<kind>.ts`: one module per source (agents, codex, shells, monitors, crons, workflows) that turns events and files into items; `hooks/sources/index.ts` calls each one, and `cleanup.ts`, which drops the per-item state of items a write removed.
 - `hooks/tasks.ts`, `hooks/schedule.ts`: pure parsers for task notifications, task output files and cron schedules. Views read session state only, never files.
 - `hooks/testing.ts`: test helpers (`memoryState`, `files`, `core`); the test's `$` has no `state` noun.
 - `hooks/ui/`: band and pane drawing. Only `band.tsx`, `pane.tsx` and `builtin.tsx` touch `$`. Views are pure `View` functions in `hooks/ui/views/` that return a cell grid and their Buttons; `render.tsx` draws them; the cell engine is `hooks/ui/cells/` (see `docs/architecture.md`).

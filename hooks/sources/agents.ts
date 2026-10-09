@@ -97,12 +97,8 @@ function edited(items: RabeItem[], id: string, path: string, at: number): RabeIt
   return updateItem(items, id, { detail: { edits } })
 }
 
-export function addTurn(turns: Turns, id: string, turn: RabeTurn, keep: string[]): Turns {
-  const next: Turns = {}
-  for (const key of keep) if (turns[key]) next[key] = turns[key]
-  next[id] = [...(turns[id] ?? []), turn].slice(-MAX_TURNS)
-
-  return next
+export function addTurn(turns: Turns, id: string, turn: RabeTurn): Turns {
+  return { ...turns, [id]: [...(turns[id] ?? []), turn].slice(-MAX_TURNS) }
 }
 
 function addUsage(tokens: RabeTokens | undefined, usage: TurnUsage): RabeTokens {
@@ -221,12 +217,11 @@ async function recordStep($: EngineInterface, agentId: string, result: TurnStepR
   const tools = result.toolUses.map(use => ({ name: use.name, summary: toolSummary(use.input) }))
   await write($, list => stepped(list, id, result, tools, now))
   if (!result.answer && tools.length === 0) return
-  const ids = items.map(one => one.id)
   await writeTurns($, turns => {
     const index = (turns[id]?.at(-1)?.index ?? 0) + 1
     const turn = { index, at: now, text: clip(result.answer, MAX_TEXT), tools }
 
-    return addTurn(turns, id, turn, ids)
+    return addTurn(turns, id, turn)
   })
 }
 

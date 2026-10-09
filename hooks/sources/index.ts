@@ -1,6 +1,7 @@
 import type { On } from 'claude-code'
 
 import { agents } from './agents'
+import { cleanup } from './cleanup'
 import { codex } from './codex'
 import { crons } from './crons'
 import { monitors } from './monitors'
@@ -16,4 +17,5 @@ export function sources(on: On): void {
   shells(on)
   monitors(on)
   crons(on)
+  cleanup(on)
 }

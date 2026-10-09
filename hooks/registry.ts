@@ -57,3 +57,29 @@ export function commit(held: RabeItem[] | undefined, change: Change): RabeItem[]
 
   return same ? undefined : next
 }
+
+export const MAX_EVICTED = 1000
+
+// The entries of a per-item record whose key is still an item id; the same
+// record when it holds none of another id.
+export function keepItems<T>(record: Record<string, T>, items: RabeItem[]): Record<string, T> {
+  const ids = new Set(items.map(item => item.id))
+  if (Object.keys(record).every(id => ids.has(id))) return record
+
+  return Object.fromEntries(Object.entries(record).filter(([id]) => ids.has(id)))
+}
+
+// The ids a write dropped, appended to the newest `max` evicted ids; the same
+// list when the write dropped none.
+export function evict(
+  evicted: string[],
+  before: RabeItem[],
+  after: RabeItem[],
+  max = MAX_EVICTED,
+): string[] {
+  const kept = new Set(after.map(item => item.id))
+  const dropped = before.filter(item => !kept.has(item.id)).map(item => item.id)
+  if (dropped.length === 0) return evicted
+
+  return [...evicted.filter(id => !dropped.includes(id)), ...dropped].slice(-max)
+}

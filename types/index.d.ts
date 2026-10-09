@@ -134,6 +134,7 @@ declare module 'claude-code' {
       tab: RabeTab
       turns: Record<string, RabeTurn[]>
       lines: Record<string, RabeLines>
+      evicted: string[]
       query: string
       folded: string[]
       selected: string
