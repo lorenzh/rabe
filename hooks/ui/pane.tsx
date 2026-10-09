@@ -11,6 +11,7 @@ import {
   bounded,
   DISARMED,
   landing,
+  landingOf,
   layout,
   type Model,
   rowKeys,
@@ -19,7 +20,7 @@ import {
   targetsOf,
   taskIdOf,
 } from './view'
-import { fallbackOf, isLiveRow, paneView } from './views/pane'
+import { fallbackOf, isLiveRow, paneView, selectsOnPress } from './views/pane'
 
 const PANE = 'rabe'
 
@@ -108,9 +109,11 @@ let arming: Arming = DISARMED
 let landedOn: string | undefined
 
 function feed($: EngineInterface, event: ArmEvent): void {
-  const was = arming.isArmed
+  const was = arming
   arming = arm(arming, event)
-  if (arming.isArmed !== was) $.ui.invalidate('ui.render')
+  if (arming.isArmed !== was.isArmed || arming.isListArmed !== was.isListArmed) {
+    $.ui.invalidate('ui.render')
+  }
 }
 
 // Moves the ring onto one of the pane's safe elements. Refused while the pane
@@ -131,7 +134,19 @@ async function land($: EngineInterface, keys: string[]): Promise<void> {
   for (const key of keys) if (!(await focusOn($, key))) return
 }
 
+// A press on another live row of the Items list selects it: a click moves no
+// ring, so the press is the person's choice of that row. The selected row opens.
+async function choose($: EngineInterface, id: string): Promise<boolean> {
+  const { model, selection } = await look($, true)
+  if (!selectsOnPress(model, selection, id)) return false
+  await $.state.set({ plugin: 'rabe', key: 'selected' }, id)
+  feed($, { type: 'press' })
+
+  return true
+}
+
 async function act($: EngineInterface, action: Action, surface: RenderSurface): Promise<void> {
+  if (action.type === 'open' && (await choose($, action.id))) return
   if (landing(action, '').length > 0) feed($, { type: 'reset' })
   switch (action.type) {
     case 'tab':
@@ -248,6 +263,28 @@ const holds = new Map<string, { scope: string; keys: Held[] }>()
 // drawing. A move between dock and inline takes the keys from the pane.
 const seats = new Map<string, { placement: string; isFocused: boolean }>()
 
+// The press under way: the Button's closure, which runs beneath the pane's
+// `ui.press` hook, leaves its action here, and the hook carries it out.
+let pressed: { action: Action; surface: RenderSurface } | undefined
+
+function taken(): typeof pressed {
+  const press = pressed
+  pressed = undefined
+
+  return press
+}
+
+// Runs a press or an Input's change beneath the hook (the closure leaves its
+// action in `pressed`), then carries the action out with the hook's `$`.
+async function carry<R>($: EngineInterface, run: () => Promise<R>): Promise<R> {
+  taken()
+  const result = await run()
+  const press = taken()
+  if (press) await act($, press.action, press.surface)
+
+  return result
+}
+
 const heldOf = (surface: RenderSurface, sel: Selection): Held[] | undefined => {
   const mine = holds.get(surface)
   return mine?.scope === scopeOf(sel) ? mine.keys : undefined
@@ -302,19 +339,21 @@ export function pane(on: On): void {
     return next(e)
   }).catch((_$, e, next) => next(e))
 
-  // A move no hook refused puts the ring where the last link beneath passed
-  // it on (`next.trace`), maybe not `e.element`; the selection follows it.
+  // The ring lands where the engine's link received the move (`landingOf`),
+  // maybe not `e.element`; the selection follows it. A move that never
+  // reached the engine left the ring where it was, so the pane disarms.
   on('ui.focus', { requestId: PANE }, async ($, e, next) => {
     const { value: before = '' } = await $.state.get({ plugin: 'rabe', key: 'selected' })
     const asked = e.element?.startsWith('row:') ? e.element.slice(4) : before
     if (asked !== before) await $.state.set({ plugin: 'rabe', key: 'selected' }, asked)
     const result = await next(e)
-    const isDenied = 'deny' in result && result.deny
-    const landed = isDenied ? undefined : next.trace.at(-1)?.received.element
+    const landing = landingOf(next.trace, 'deny' in result && !!result.deny)
+    const landed = landing?.element
     const selected = landed?.startsWith('row:') ? landed.slice(4) : before
     if (selected !== asked) await $.state.set({ plugin: 'rabe', key: 'selected' }, selected)
     landedOn = landed
-    if (landed) {
+    if (!landing) feed($, { type: 'landed', isMoved: false })
+    else if (landed) {
       const { model, selection } = await look($, true)
       feed($, {
         type: 'focus',
@@ -328,6 +367,15 @@ export function pane(on: On): void {
 
     return result
   }).catch((_$, e, next) => next(e))
+
+  // Rabe's own `$.ui.focus` from a Button's or Input's closure reaches no
+  // hook of Rabe's, so its landings would never count; calls from these do.
+  on('ui.press', { requestId: PANE }, ($, e, next) => carry($, () => next(e))).catch(
+    (_$, e, next) => next(e),
+  )
+  on('ui.input', { requestId: PANE }, ($, e, next) => carry($, () => next(e))).catch(
+    (_$, e, next) => next(e),
+  )
 
   on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
     if (e.pointer || Math.abs(e.by) !== 1) return next(e)
@@ -369,7 +417,7 @@ export function pane(on: On): void {
     holds.set(e.surface, { scope: scopeOf(selection), keys: out.held })
 
     return render(ui, e.surface, out.list, (action, surface) => {
-      void act($, action, surface)
+      pressed = { action, surface }
     })
   })
 }

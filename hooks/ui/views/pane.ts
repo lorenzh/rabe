@@ -18,7 +18,7 @@ import {
 import { costView } from './cost'
 import { detailView } from './detail'
 import { effectsView } from './effects'
-import { isSplit, itemsView, listOrder } from './items'
+import { isSplit, itemsView, listOrder, selectedItem } from './items'
 import { fitLine } from './lines'
 import { timelineView } from './timeline'
 
@@ -146,6 +146,16 @@ export function fallbackOf(model: Model, sel: Selection): string {
 // Whether `key` is a row the Items list draws, not a gone slot of one.
 export const isLiveRow = (model: Model, sel: Selection, key: string): boolean =>
   key.startsWith('row:') && listOrder(model, sel).some(item => `row:${item.id}` === key)
+
+// Whether a press on the row of item `id` selects it instead of opening it:
+// a live row of the Items list that is not the selected one. Enter presses
+// the focused row, which the focus already selected, so it opens.
+export function selectsOnPress(model: Model, sel: Selection, id: string): boolean {
+  if (sel.tab !== 'items' || model.items.some(item => item.id === sel.open)) return false
+  const order = listOrder(model, sel)
+
+  return order.some(item => item.id === id) && selectedItem(order, sel)?.id !== id
+}
 
 // Stop and delete drawn while the pane is disarmed: dim, no action, no hotkey.
 const disarmed = (one: ViewButton): ViewButton => {

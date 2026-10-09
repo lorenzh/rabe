@@ -1,6 +1,8 @@
 import { expect, test } from 'claude-code/testing'
 
-import { arm, DISARMED, isDestructive, landing, stepRow } from './view'
+import { ALL, ci, dev, explore, NOW } from './fixtures'
+import { arm, DISARMED, isDestructive, landing, landingOf, NO_SELECTION, stepRow } from './view'
+import { selectsOnPress } from './views/pane'
 
 const KEYS = ['row:a', 'row:b', 'row:c']
 
@@ -174,4 +176,44 @@ test('the keys of destructive controls are known by their prefix', () => {
     false,
     false,
   ])
+})
+
+// GPT review round 10: a hook beneath Rabe's that answers `{}` without `next`
+// keeps the ring where it was. Only a trace that ends at Claude Code's own
+// link, which settled, says where the ring landed.
+test('a focus lands only where its trace reaches the engine', () => {
+  const link = (tier: string, element?: string, outcome = 'returned') =>
+    ({ tier, outcome, received: element === undefined ? {} : { element } }) as const
+  expect(landingOf([link('core', 'row:b')], false)).toEqual({ element: 'row:b' })
+  expect(landingOf([link('append', 'row:b'), link('builtin', 'row:c')], false)).toEqual({
+    element: 'row:c',
+  })
+  expect(landingOf([link('core')], false)).toEqual({})
+  for (const tier of ['prepend', 'user', 'append']) {
+    expect([tier, landingOf([link(tier, 'row:b')], false)]).toEqual([tier, undefined])
+  }
+  expect(landingOf([link('core', 'row:b', 'rejected')], false)).toBeUndefined()
+  expect(landingOf([link('core', 'row:b')], true)).toBeUndefined()
+  expect(landingOf([], false)).toBeUndefined()
+})
+
+// A click on a row presses it and moves no ring: the press is the person's
+// choice of that row, so x and g follow it.
+test('a press that selects a live row arms x and g, but never the ring', () => {
+  const landed = arm(DISARMED, { type: 'landed', isMoved: true })
+  const pressed = arm(landed, { type: 'press' })
+  expect([pressed.isArmed, pressed.isListArmed]).toEqual([true, true])
+  const cold = arm(DISARMED, { type: 'press' })
+  expect([cold.isArmed, cold.isListArmed]).toEqual([false, true])
+})
+
+test('a press on another live row of the Items list selects it; on the selected row it opens', () => {
+  const model = { items: ALL, turns: {}, lines: {}, now: NOW }
+  const sel = { ...NO_SELECTION, selected: dev.id }
+  expect(selectsOnPress(model, sel, ci.id)).toBe(true)
+  expect(selectsOnPress(model, sel, dev.id)).toBe(false)
+  expect(selectsOnPress(model, { ...sel, tab: 'cost' }, ci.id)).toBe(false)
+  expect(selectsOnPress(model, { ...sel, open: explore.id }, ci.id)).toBe(false)
+  expect(selectsOnPress(model, { ...sel, open: 'agent:gone' }, ci.id)).toBe(true)
+  expect(selectsOnPress(model, { ...sel, query: 'dev' }, ci.id)).toBe(false)
 })

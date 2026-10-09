@@ -6,6 +6,7 @@ import type { RabeItem, RabeItemOf } from '../model'
 import {
   ALL,
   babysit,
+  ci,
   dev,
   explore,
   flow,
@@ -212,7 +213,7 @@ test('the items tab groups items, failed first, with status words, the same on e
 })
 
 test('enter on a row opens it, and b goes back to the list', async ($, on) => {
-  const state = hold(on, ALL)
+  const state = hold(on, ALL, { selected: dev.id })
   const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
   await ui.press({ key: `row:${dev.id}` })
   expect(state).toMatchObject({ open: dev.id, selected: dev.id, tab: 'items' })
@@ -582,13 +583,16 @@ const child: RabeItem = {
 }
 
 test('the shells of an agent sit under its name on every surface, and their row opens them', async ($, on) => {
-  const state = hold(on, [...ALL, child])
+  const state = hold(on, [...ALL, child], { selected: '' })
   for (const surface of SURFACES) {
+    delete state.selected
     const ui = await $.ui.mount({ surface, ...PANE } as never)
     const shown = await screen(ui)
     const at = shown.indexOf(' ◐ Explore verifyToken')
     expect(at).toBeGreaterThan(0)
     expect(shown[at + 1]).toMatch(/^[ ▌] {2}▶ bun test +≥ 40m$/)
+    await ui.press({ key: `row:${child.id}` })
+    expect(state).toMatchObject({ selected: child.id })
     await ui.press({ key: `row:${child.id}` })
     expect(state).toMatchObject({ open: child.id, selected: child.id })
     await ui.press({ key: 'back' })
@@ -890,5 +894,64 @@ test('a person focus on a gone slot or a group header leaves x and g inert', asy
   await arm($, `row:${explore.id}`)
   await ui.redraw()
   expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBe('x')
+  await ui.unmount()
+})
+
+// GPT review round 10: a plugin beneath Rabe answers `{}` without `next`, so
+// the ring stays where it was. Without a trace that reaches the engine the
+// move counts as refused: the selection stays and the pane disarms.
+const swallower = {
+  name: 'swallower',
+  tier: 'append',
+  register(on: On) {
+    on('ui.focus', { requestId: 'rabe' }, async (_$, e, next) =>
+      e.element === 'row:agent:a1' ? {} : next(e),
+    )
+  },
+} as const
+
+test(
+  'a focus a plugin beneath swallows keeps the selection and disarms the pane',
+  { plugins: [swallower] },
+  async ($, on) => {
+    expect(explore.id).toBe('agent:a1')
+    const state = hold(on, ALL, { selected: dev.id })
+    const stopped = stops(on)
+    await arm($, `row:${dev.id}`)
+    const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBe('x')
+    await arm($, `row:${explore.id}`)
+    expect(state.selected).toBe(dev.id)
+    await ui.redraw()
+    for (const key of ['stop', 'stop-group']) {
+      const one = await ui.find({ type: 'Button', key })
+      expect([key, one?.props.hotkey]).toEqual([key, undefined])
+    }
+    await ui.press({ key: 'stop' })
+    expect(stopped).toEqual([])
+    await arm($, `row:${dev.id}`)
+    await ui.redraw()
+    expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBe('x')
+    await ui.unmount()
+  },
+)
+
+// A click on a row presses it and moves no ring. The press is the person's
+// choice of that row: it selects the row and arms x and g for it; a press on
+// the selected row (Enter on the focused one) opens it.
+test('a press on another row selects it and arms x for it; on the selected row it opens', async ($, on) => {
+  const state = hold(on, ALL, { selected: dev.id })
+  const stopped = stops(on)
+  await arm($)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBeUndefined()
+  await ui.press({ key: `row:${ci.id}` })
+  expect([state.selected, state.open]).toEqual([ci.id, undefined])
+  await ui.redraw()
+  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBe('x')
+  await ui.press({ key: 'stop' })
+  expect(stopped).toEqual(['bg_4'])
+  await ui.press({ key: `row:${ci.id}` })
+  expect(state.open).toBe(ci.id)
   await ui.unmount()
 })

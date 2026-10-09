@@ -245,6 +245,9 @@ export type ArmEvent =
       isLiveRow: boolean
       selected: string
     }
+  // The person's press on a live row of the Items list selected it. Only a
+  // surface raises `ui.press` (a plugin's `$` has no press).
+  | { type: 'press' }
   // A drawing.
   | ({ type: 'drawn' } & Shown)
 
@@ -273,6 +276,8 @@ export function arm(state: Arming, event: ArmEvent): Arming {
       const isChosen = event.isLiveRow && event.key === `row:${event.selected}`
       return { ...rest, isArmed, isListArmed: isRow ? isChosen : state.isListArmed }
     }
+    case 'press':
+      return { ...state, isListArmed: true }
     case 'drawn': {
       const { fallback, targets, selected } = event
       const was = state.shown
@@ -288,6 +293,28 @@ export function arm(state: Arming, event: ArmEvent): Arming {
       }
     }
   }
+}
+
+// The tiers no person or administrator installs into: the engine's own link
+// and the plugins bundled in the binary, where the test kit's own hooks stand
+// in for the engine.
+const isEngine = (tier: string): boolean => tier === 'core' || tier === 'builtin'
+
+// One link of a `ui.focus` trace, as `next.trace` lists it.
+type Link = { tier: string; outcome: string; received: { element?: string } }
+
+// Where a `ui.focus` landed, from its `next.trace`: the element the engine's
+// link received (absent: one of the engine's own stops). Undefined when the
+// move was refused or a link above the engine answered without `next`, which
+// keeps the ring where it was.
+export function landingOf(
+  trace: readonly Link[],
+  isDenied: boolean,
+): { element?: string } | undefined {
+  const last = trace.at(-1)
+  if (isDenied || !last || !isEngine(last.tier) || last.outcome !== 'returned') return undefined
+
+  return last.received.element === undefined ? {} : { element: last.received.element }
 }
 
 // The list's x and g keep one key each and act on the selection.

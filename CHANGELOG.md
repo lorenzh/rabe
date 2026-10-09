@@ -6,7 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Added
 
-- The arrow keys and the mouse work in the pane: ↑ and ↓ move from row to row, Enter or a click opens a row, and the tabs and controls are buttons. (#TBD)
+- The arrow keys and the mouse work in the pane: ↑ and ↓ move from row to row, Enter opens a row, a click on a list row selects it and a second click opens it, and the tabs and controls are buttons. (#TBD)
 - The detail beside the list follows the focus, without Enter. (#TBD)
 - Shells and monitors an agent started show under that agent in the Items tab and in the band. (#TBD)
 - Workflow agents can be walked and opened from the run's detail, and Effects files and `ssh -L` lines are rows you can press. (#TBD)
@@ -22,6 +22,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - After a change of the tab, the search, a fold or the open item, the focus moves to a safe place, so Enter never presses a button that came to the old place. Rows found while the pane is open go to the end. (#TBD)
 - Stop and delete stay dim until Rabe knows where the focus is. On the list, `x` and `g` act only after you move the focus onto a row that is still there; a `gone` row or a group heading does not count, nor a move another plugin sends to another row. (#TBD)
 - The Timeline axis names each clock time once. (#TBD)
+- With the mouse you can stop things: a click on a row arms `x` and `g` for that row, and the stop in an item you opened is no longer dim after the open. (#TBD)
+- A focus move that another plugin swallows (it answers without passing the move on) no longer selects the row or arms `x` and `g`: the pane keeps its selection and disarms. (#TBD)
 
 ## [0.1.0] - 2026-10-09
 

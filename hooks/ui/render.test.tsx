@@ -13,6 +13,7 @@ import {
   isPress,
   LIST_KEYS,
   landing,
+  landingOf,
   layout,
   type Model,
   NO_SELECTION,
@@ -23,7 +24,7 @@ import {
   stepRow,
   targetsOf,
 } from './view'
-import { fallbackOf, isLiveRow, paneView } from './views/pane'
+import { fallbackOf, isLiveRow, paneView, selectsOnPress } from './views/pane'
 
 const PROBE = {
   surface: 'terminal',
@@ -401,8 +402,14 @@ test(
             selected: sel.selected,
           }) as const
         let arming = arm(arm(DISARMED, drawnOf(items, size)), { type: 'landed', isMoved: true })
+        // A move's trace as the pane's focus hook reads it (`landingOf`): the
+        // engine's link, or a plugin's beneath Rabe that answered without next.
+        const traced = (element: string, isSwallowed: boolean) => [
+          { tier: isSwallowed ? 'append' : 'core', outcome: 'returned', received: { element } },
+        ]
         for (let n = 0; n < 80; n++) {
           const what = pick(6)
+          let isLive = false
           if (what === 4) {
             // The view changes: its hold starts anew, and the ring, which keeps
             // its index, is moved; where it lands must not stop or delete.
@@ -410,28 +417,36 @@ test(
             const switches = actionsOf(last.list, text).filter(([, action]) =>
               ['tab', 'open', 'fold', 'query'].includes(action.type),
             )
-            const [, action] = switches[pick(switches.length)] ?? []
+            const [pressed, action] = switches[pick(switches.length)] ?? []
             if (!action) continue
-            const was = sel.open
-            apply(sel, action)
-            last = draw(model(items), size, sel)
-            const actions = new Map(actionsOf(last.list))
-            const keys = landing(action, was)
-            const landed = keys.filter(key => actions.has(key)).at(-1)
-            const shown = `${surface} ${JSON.stringify(scope)} step ${n} ${JSON.stringify(action)}`
-            expect([shown, keys[0] && actions.has(keys[0])]).toEqual([shown, true])
-            const type = actions.get(landed ?? '')?.type ?? 'none'
-            expect([shown, type === 'stop' || type === 'delete']).toEqual([shown, false])
-            seen = []
-            checkTargets(shown, last.list, targets, seen)
-            arming = arm(arm(arm(arming, { type: 'reset' }), drawnOf(items, size)), {
-              type: 'landed',
-              isMoved: true,
-            })
-            continue
+            if (action.type === 'open' && selectsOnPress(model(items), sel, action.id)) {
+              // A press on another live row of the list only selects it, as a
+              // click does, and arms x and g for it.
+              expect(pressed).toBe(`row:${action.id}`)
+              sel.selected = action.id
+              arming = arm(arming, { type: 'press' })
+              isLive = true
+            } else {
+              const was = sel.open
+              apply(sel, action)
+              last = draw(model(items), size, sel)
+              const actions = new Map(actionsOf(last.list))
+              const keys = landing(action, was)
+              const landed = keys.filter(key => actions.has(key)).at(-1)
+              const shown = `${surface} ${JSON.stringify(scope)} step ${n} ${JSON.stringify(action)}`
+              expect([shown, keys[0] && actions.has(keys[0])]).toEqual([shown, true])
+              const type = actions.get(landed ?? '')?.type ?? 'none'
+              expect([shown, type === 'stop' || type === 'delete']).toEqual([shown, false])
+              seen = []
+              checkTargets(shown, last.list, targets, seen)
+              arming = arm(arm(arm(arming, { type: 'reset' }), drawnOf(items, size)), {
+                type: 'landed',
+                isMoved: true,
+              })
+              continue
+            }
           }
           if (what === 0) size = { ...size, columns: WIDTHS[pick(WIDTHS.length)] ?? 80 }
-          let isLive = false
           const stops = last.keys.filter(key => key.startsWith('row:') || key.startsWith('group-'))
           // A focus the pane's hook feeds: where the ring landed and what was asked.
           const focused = (key: string, byPerson: boolean, requested: string) =>
@@ -444,40 +459,59 @@ test(
               selected: sel.selected,
             }) as const
           if (what === 1) {
-            // The person focuses a row, a gone slot or a group header.
-            // A hook beneath Rabe's may send it onto another one.
+            // The person focuses a row, a gone slot or a group header. A hook
+            // beneath Rabe's may send it onto another one, refuse it, or answer
+            // without next: then the ring stays, and so does the selection.
             const requested = stops[pick(Math.max(1, stops.length))] ?? ''
-            const key = pick(4) === 0 ? (stops[pick(Math.max(1, stops.length))] ?? '') : requested
-            if (key.startsWith('row:')) sel.selected = key.slice(4)
-            isLive = key === requested && isLiveRow(model(items), sel, key)
-            const was = arming.isListArmed
-            arming = arm(arming, focused(key, true, requested))
-            const arms = !isLive && (key !== requested || !was) && arming.isListArmed
-            expect([`${surface} ${JSON.stringify(scope)} step ${n}`, key, arms]).toEqual([
-              `${surface} ${JSON.stringify(scope)} step ${n}`,
-              key,
-              false,
-            ])
+            const fate = pick(6)
+            const sent = fate === 0 ? (stops[pick(Math.max(1, stops.length))] ?? '') : requested
+            const key = landingOf(traced(sent, fate === 1), fate === 2)?.element
+            const shown = `${surface} ${JSON.stringify(scope)} step ${n}`
+            const kept = [sel.selected, false, false]
+            if (key === undefined) arming = arm(arming, { type: 'landed', isMoved: false })
+            else {
+              if (key.startsWith('row:')) sel.selected = key.slice(4)
+              isLive = key === requested && isLiveRow(model(items), sel, key)
+              const was = arming.isListArmed
+              arming = arm(arming, focused(key, true, requested))
+              const arms = !isLive && (key !== requested || !was) && arming.isListArmed
+              expect([shown, key, arms]).toEqual([shown, key, false])
+            }
+            // Refused or swallowed, the ring stays: so do the selection, and the
+            // pane disarms.
+            if (fate === 1 || fate === 2) {
+              const now = [sel.selected, arming.isArmed, arming.isListArmed]
+              expect([shown, 'kept', sent, ...now]).toEqual([shown, 'kept', sent, ...kept])
+            }
           } else if (what === 5) {
             // The person presses an arrow in a pane taller than its body: Rabe
             // moves the ring with its own $.ui.focus, which the engine may
-            // refuse or a hook beneath may send elsewhere; a row may go before
-            // the move lands.
+            // refuse, a hook beneath may send elsewhere or answer without next;
+            // a row may go before the move lands.
             const requested = stepRow(rowKeys(last.list), sel.selected, pick(2) ? 1 : -1)
             if (requested) {
-              const isMoved = pick(4) > 0
+              const fate = pick(6)
+              const kept = [sel.selected, false, false]
               if (pick(4) === 0) items = change(items, pick, n)
-              const key =
-                isMoved && pick(4) === 0 ? (stops[pick(stops.length)] ?? requested) : requested
-              if (isMoved && key.startsWith('row:')) sel.selected = key.slice(4)
-              isLive = isMoved && key === requested && isLiveRow(model(items), sel, key)
+              const sent = fate === 0 ? (stops[pick(stops.length)] ?? requested) : requested
+              const key = landingOf(traced(sent, fate === 1), fate === 2)?.element
               arming = arm(arming, { type: 'step', key: requested })
-              if (isMoved) arming = arm(arming, focused(key, false, requested))
-              arming = arm(arming, { type: 'landed', isMoved: isMoved && key === requested })
-              const shown = `${surface} ${JSON.stringify(scope)} step ${n} arrow ${key}`
+              if (key === undefined) arming = arm(arming, { type: 'landed', isMoved: false })
+              else {
+                if (key.startsWith('row:')) sel.selected = key.slice(4)
+                arming = arm(arming, focused(key, false, requested))
+              }
+              // `focusOn` counts the call as moved only where the hook saw it land.
+              arming = arm(arming, { type: 'landed', isMoved: key === requested })
+              isLive = key === requested && isLiveRow(model(items), sel, key)
+              const shown = `${surface} ${JSON.stringify(scope)} step ${n} arrow ${sent} ${fate}`
               expect([shown, arming.isListArmed]).toEqual([shown, isLive])
+              if (fate === 1 || fate === 2) {
+                const now = [sel.selected, arming.isArmed, arming.isListArmed]
+                expect([shown, ...now]).toEqual([shown, ...kept])
+              }
             }
-          } else if (what !== 0) items = change(items, pick, n)
+          } else if (what !== 0 && what !== 4) items = change(items, pick, n)
           const next = draw(model(items), size, sel, last.held)
           const shown = `${surface} ${JSON.stringify(scope)} step ${n}`
           expect([shown, next.keys.slice(0, last.keys.length)]).toEqual([shown, last.keys])
