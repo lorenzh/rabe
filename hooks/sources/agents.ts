@@ -279,8 +279,9 @@ type Listings = Map<string, Promise<Set<string> | undefined>>
 // or that folder is missing itself; error text is never read.
 function hasName(names: Set<string>, name: string): boolean {
   if (names.has(name)) return true
-  const lower = name.toLowerCase()
-  for (const one of names) if (one.toLowerCase() === lower) return true
+  const fold = (one: string) => one.normalize('NFC').toLowerCase()
+  const wanted = fold(name)
+  for (const one of names) if (fold(one) === wanted) return true
 
   return false
 }
@@ -298,7 +299,7 @@ async function isMissing($: EngineInterface, path: string, lists: Listings): Pro
     lists.set(folder, names)
   }
   const listed = await names
-  // A name the folder lists in another case may be this file on a case-insensitive disk.
+  // A name the folder lists in another case or Unicode form may be this file (macOS, Windows).
   if (listed) return !hasName(listed, path.slice(cut + 1))
 
   return folder !== '/' && isMissing($, folder, lists)

@@ -511,6 +511,23 @@ test('a name the folder lists in another case is unknown, not missing', async ($
   expect(held.edits ?? []).toEqual([])
 })
 
+test('a name the folder lists in another Unicode form is unknown, not missing', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const held = watch(on)
+  const composed = '/tmp/box/caf\u00e9.txt'
+  const decomposed = '/tmp/box/cafe\u0301.txt'
+  const { disk } = shell(on, {
+    // the disk keeps the decomposed name; stat may no longer look at it
+    [`chmod 600 /tmp/box; rm ${composed}`]: one => {
+      one.delete(composed)
+      one.set(decomposed, UNREAD)
+    },
+  })
+  disk.set(composed, file(3))
+  await $.tool.call({ tool: 'Bash', command: `chmod 600 /tmp/box; rm ${composed}` } as never)
+  expect(held.edits ?? []).toEqual([])
+})
+
 test('main session writes and shell writes are kept apart from agents', async ($, on) => {
   const held = engine(on, 'a1')
   shell(on, {
