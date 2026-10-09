@@ -1,8 +1,9 @@
 import type { RabeItem } from '../../model'
-import { grid, spans, vline } from '../cells/grid'
-import { C } from '../cells/palette'
+import { grid, type Span, spans, vline } from '../cells/grid'
+import { C, type Style, tone } from '../cells/palette'
 import { facts } from '../facts'
-import { type Group, grouped, groupNote, groupOf, matches } from '../lists'
+import { tokens, usd } from '../format'
+import { type Group, glyph, grouped, groupNote, groupOf, matches, timeLabel } from '../lists'
 import {
   canStop,
   type Drawn,
@@ -31,30 +32,59 @@ export function isSplit(size: Size): boolean {
   return size.surface === 'terminal' && size.columns >= SPLIT_COLUMNS
 }
 
+const plainLine = (item: RabeItem, now: number): Line => {
+  const d = item.detail as Record<string, unknown>
+  const time = timeLabel(item, now)
+  const parts = [
+    `${glyph(item)} ${item.title}`,
+    d.port !== undefined && `:${d.port}`,
+    item.status === 'failed' && d.exitCode !== undefined && `exit ${d.exitCode}`,
+    item.status === 'running' ? time : `${item.status} ${time}`,
+  ]
+
+  return {
+    spans: [[parts.filter(Boolean).join(' · ')]],
+    action: { key: `row:${item.id}`, action: { type: 'open', id: item.id } },
+  }
+}
+
 // The items in list order, groups folded or not, with the ones the list shows.
-function listLines(model: Model, sel: Selection): { lines: Line[]; order: RabeItem[] } {
+// Off the terminal each line is plain text, since the renderer draws it as a
+// Button. Gaps between groups only where the whole list fits in `rows`.
+function listLines(
+  model: Model,
+  sel: Selection,
+  size: Size,
+  rows: number,
+): { lines: Line[]; order: RabeItem[] } {
+  const isTerminal = size.surface === 'terminal'
   const visible = model.items.filter(item => matches(item, sel.query))
   const groups = grouped(visible)
   const order = groups.flatMap(group => (sel.folded.includes(group.id) ? [] : group.items))
   const selected = selectedItem(order, sel)
-  const lines: Line[] = []
-  for (const group of groups) {
+  const blocks = groups.map(group => {
     const isFolded = sel.folded.includes(group.id)
-    if (lines.length > 0) lines.push({ spans: [] })
-    lines.push({
-      spans: [
-        [`${isFolded ? '▸' : '▾'} ${group.label.toUpperCase()}`, { fg: GROUP_COLOR[group.id] }],
-        [` ${group.items.length}`, { fg: C.dim }],
-        [
-          groupNote(group.id, group.items) ? `  ${groupNote(group.id, group.items)}` : '',
-          { fg: C.dim },
-        ],
-      ],
-      action: { key: `group-${group.id}`, action: { type: 'fold', group: group.id } },
-    })
-    if (isFolded) continue
-    for (const item of group.items) lines.push(itemLine(item, model.now, item === selected))
-  }
+    const action = { key: `group-${group.id}`, action: { type: 'fold', group: group.id } as const }
+    const count = String(group.items.length)
+    const head: Line = isTerminal
+      ? {
+          spans: [
+            [`${isFolded ? '▸' : '▾'} ${group.label.toUpperCase()}`, { fg: GROUP_COLOR[group.id] }],
+            [` ${groupNote(group.id, group.items) || count}`, { fg: C.dim }],
+          ],
+          action,
+        }
+      : { spans: [[`${group.label} ${count}${isFolded ? ' · folded' : ''}`]], action }
+    const items = isFolded ? [] : group.items
+    return [
+      head,
+      ...items.map(item =>
+        isTerminal ? itemLine(item, model.now, item === selected) : plainLine(item, model.now),
+      ),
+    ]
+  })
+  const spaced = blocks.flatMap((block, i) => (i > 0 ? [{ spans: [] }, ...block] : block))
+  const lines = isTerminal && spaced.length <= rows ? spaced : blocks.flat()
 
   return { lines, order }
 }
@@ -77,32 +107,45 @@ export function summary(model: Model, item: RabeItem, rows: number, width: numbe
   return [...head, ...bodyLines(model, item, width).slice(-Math.max(0, rows - head.length))]
 }
 
+// The selected item in one line under a list too narrow for the split.
+function summaryLine(model: Model, item: RabeItem): Line {
+  const d = item.detail as Record<string, unknown>
+  const dim = { fg: C.dim }
+  const parts: Span[] = []
+  const add = (text: string, style: Style = dim) => parts.push([' · ', dim], [text, style])
+  if (d.port !== undefined) add(`:${d.port}`, { fg: C.blue })
+  if (typeof d.model === 'string') add(d.model)
+  if (item.costUsd !== undefined) add(`≈ ${usd(item.costUsd)}`, { fg: C.bright })
+  if (item.tokens) add(`${tokens(item.tokens.input)} in`)
+  add(facts(item, model.now, model.items).status.slice(2), { fg: tone(item) })
+
+  return {
+    spans: [[glyph(item), { fg: tone(item) }], [' '], [item.title, { fg: C.bright }], ...parts],
+    bg: C.panel,
+  }
+}
+
+// List keys. j and k stay bound at the ends: a letter no Button binds moves
+// the keys to the prompt. Below the split, j, k and s keep only their letter.
 function listButtons(model: Model, size: Size, selected: RabeItem | undefined, order: RabeItem[]) {
+  const isTerminal = size.surface === 'terminal'
+  const short = isTerminal && !isSplit(size)
+  const label = (key: string, word: string) => (short ? key : `${key}: ${word}`)
   const buttons: ViewButton[] = []
   const at = selected ? order.indexOf(selected) : -1
-  const next = order[at + 1]
-  const prev = order[at - 1]
-  if (next)
-    buttons.push({
-      key: 'down',
-      label: 'j: down',
-      hotkey: 'j',
-      action: { type: 'select', id: next.id },
-    })
-  if (prev)
-    buttons.push({
-      key: 'up',
-      label: 'k: up',
-      hotkey: 'k',
-      action: { type: 'select', id: prev.id },
-    })
-  if (selected) {
-    buttons.push({
-      key: 'open',
-      label: 'enter: open',
-      autoFocus: true,
-      action: { type: 'open', id: selected.id },
-    })
+  const next = order[Math.min(at + 1, order.length - 1)]
+  const prev = order[Math.max(at - 1, 0)]
+  if (isTerminal && selected && next && prev) {
+    buttons.push(
+      {
+        key: 'down',
+        label: label('j', 'down'),
+        hotkey: 'j',
+        action: { type: 'select', id: next.id },
+      },
+      { key: 'up', label: label('k', 'up'), hotkey: 'k', action: { type: 'select', id: prev.id } },
+      { key: 'open', label: 'open', autoFocus: true, action: { type: 'open', id: selected.id } },
+    )
   }
   if (selected && canStop(selected)) {
     buttons.push({
@@ -128,7 +171,7 @@ function listButtons(model: Model, size: Size, selected: RabeItem | undefined, o
   if (size.hasInput) {
     buttons.push({
       key: 'find',
-      label: 's: search',
+      label: label('s', 'search'),
       hotkey: 's',
       action: { type: 'focus', key: 'search' },
     })
@@ -150,33 +193,33 @@ const search = (sel: Selection): ViewInput => ({
 // The Items tab: the grouped list, and beside it (split) or under it (one
 // line) the selected item. Enter opens the full detail in place.
 export const itemsView: View = (model, size, sel): Drawn => {
-  const g = grid(size.columns, size.rows)
+  let g = grid(size.columns, size.rows)
   const inputs = size.hasInput ? [search(sel)] : []
   if (model.items.length === 0) {
     spans(g, 1, 0, [['Nothing runs in the background.', { fg: C.dim }]])
     return { grid: g, buttons: [], inputs }
   }
-  const { lines, order } = listLines(model, sel)
+  const split = isSplit(size)
+  const hasSummary = size.surface === 'terminal' && !split
+  const listRows = hasSummary ? Math.max(1, size.rows - 2) : size.rows
+  const { lines, order } = listLines(model, sel, size, listRows)
   const selected = selectedItem(order, sel)
   const buttons = listButtons(model, size, selected, order)
   if (lines.length === 0) {
     spans(g, 1, 0, [[`No item matches "${sel.query}".`, { fg: C.dim }]])
     return { grid: g, buttons, inputs }
   }
-  const split = isSplit(size)
   const listWidth = split ? Math.min(48, Math.floor(size.columns * 0.42)) : size.columns
-  const listRows = split || !selected ? size.rows : size.rows - 1
-  const shown = windowed(lines, listRows)
+  const shown = windowed(lines, selected ? listRows : size.rows)
+  // Off the terminal each row is a Text or a Button, so the grid ends with the list.
+  if (size.surface !== 'terminal') g = grid(size.columns, shown.length)
   draw(g, 0, 0, listWidth, shown)
   if (selected && split) {
     vline(g, listWidth, 0, size.rows, { fg: C.rule })
     const x = listWidth + 2
     draw(g, x, 0, size.columns - x, summary(model, selected, size.rows, size.columns - x))
-  } else if (selected) {
-    const f = facts(selected, model.now, model.items)
-    spans(g, 1, size.rows - 1, [
-      [[selected.title, f.lines[0], f.status].join(' · '), { fg: C.dim }],
-    ])
+  } else if (selected && hasSummary) {
+    draw(g, 0, size.rows - 1, size.columns, [summaryLine(model, selected)])
   }
   const rows: Drawn['rows'] = {}
   shown.forEach((line, y) => {

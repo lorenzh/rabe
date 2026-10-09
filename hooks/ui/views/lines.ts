@@ -2,7 +2,7 @@ import type { RabeItem } from '../../model'
 import { type Grid, type Span, spans, wrap } from '../cells/grid'
 import { C, type Style, tone } from '../cells/palette'
 import { facts } from '../facts'
-import { glyph, name, timeLabel } from '../lists'
+import { glyph, nameSpans, timeLabel } from '../lists'
 import type { Action, Model } from '../view'
 
 export type Line = {
@@ -32,13 +32,16 @@ export function itemLine(item: RabeItem, now: number, isSelected = false): Line 
   const time = timeLabel(item, now)
   const right = item.status === 'running' ? time : `${item.status} ${time}`
 
+  const fg = isSelected ? C.bright : item.status === 'running' ? C.text : C.dim
+
   return {
     spans: [
       [isSelected ? '▌' : ' ', { fg: C.orange }],
       [glyph(item), { fg: tone(item) }],
-      [` ${name(item)}`, { fg: item.status === 'running' ? C.text : C.dim }],
+      [' '],
+      ...nameSpans(item, { fg }),
     ],
-    right: [[`${right} `, { fg: C.dim }]],
+    right: [[`${right} `, { fg: isSelected ? C.text : C.dim }]],
     ...(isSelected && { bg: C.selected }),
     action: { key: `row:${item.id}`, action: { type: 'open', id: item.id } },
   }
