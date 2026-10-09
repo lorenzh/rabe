@@ -508,10 +508,34 @@ test('moving the focus onto a cost or effects row selects it on every surface', 
 test('the session end keeps a summary for the next session in this project', async ($, on) => {
   hold(on, ALL)
   const store = session(on)
-  await $.session.end({ reason: 'exit', sessionId: 's1' } as never)
+  await $.session.end({ reason: 'exit', sessionId: 's1', resume: { id: 's1-resume' } } as never)
   expect(store['previous:/p']).toEqual(
-    previousOf(ALL, NOW, { startedAt: USAGE.startedAt, usd: USAGE.cost.usd }),
+    previousOf(ALL, NOW, { startedAt: USAGE.startedAt, usd: USAGE.cost.usd }, 's1-resume'),
   )
+})
+
+test('the cost tab names this session and copies its resume command, or shows it on failure', async ($, on) => {
+  const state = hold(on, ALL, { tab: 'cost' })
+  session(on)
+  on('session.id', async () => ({ value: 'sess-9' }))
+  on('ui.copy', async () => ({
+    value: { isCopied: false as const, reason: 'no-clipboard' as const },
+  }))
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  expect(await screen(ui)).toContain(' session sess-9')
+  await ui.press({ key: 'resume:sess-9' })
+  expect(state.toasts).toContain('Copy failed: no-clipboard. Select it: claude --resume sess-9')
+  await ui.unmount()
+})
+
+test('a summary from an older Rabe or of another shape shows no session id', async ($, on) => {
+  hold(on, ALL, { tab: 'timeline' })
+  const store = session(on)
+  store['previous:/p'] = { ...PREVIOUS, sessionId: 42 }
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  expect((await screen(ui)).some(line => line.endsWith(' id n/a'))).toBe(true)
+  expect(await ui.find({ type: 'Button', key: 'resume:42' })).toBeUndefined()
+  await ui.unmount()
 })
 
 test('a session without background work keeps the previous summary', async ($, on) => {

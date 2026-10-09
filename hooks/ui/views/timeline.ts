@@ -3,8 +3,9 @@ import { nextRun } from '../../schedule'
 import { fit } from '../cells/grid'
 import { C, CHIP, type Style, tone } from '../cells/palette'
 import { clockTime, day, duration, tokens, usd } from '../format'
-import { bar, byStart, glyph, KIND_LABEL, nameSpans, stable, tree } from '../lists'
+import { bar, byStart, glyph, KIND_LABEL, nameSpans, shown, stable, tree } from '../lists'
 import type { Drawn, Line, Model, View } from '../view'
+import { resumeButton } from './detail'
 import { beside, fitLine, focusOn, text } from './lines'
 
 const dim = { fg: C.dim }
@@ -123,6 +124,7 @@ function previousLines(model: Model, width: number): Line[] {
           } as Line,
         ]
       : []),
+    { spans: [[` id ${prev.sessionId ?? 'n/a'}`, dim]] },
   ]
 
   return out.map(line => ({ ...line, bg: C.raised }))
@@ -164,7 +166,7 @@ function axis(start: number, span: number, labelWidth: number, columns: number):
 // axis, then the tree of who started what beside (or above) the previous
 // session in this project. The rows keep the order the pane opened with.
 export const timelineView: View = (model, size, sel): Drawn => {
-  const list = stable(model.items, sel.order?.timeline, byStart)
+  const list = stable(shown(model.items), sel.order?.timeline, byStart)
   const selected = list.find(item => item.id === sel.selected) ?? list[0]
   const start = Math.min(model.now - 60_000, ...list.map(item => item.startedAt ?? item.seenAt))
   const span = model.now - start
@@ -214,5 +216,8 @@ export const timelineView: View = (model, size, sel): Drawn => {
     { spans: [] },
   ]
 
-  return { nodes: [...lines.map(line => fitLine(line, size.columns)), ...below], buttons: [] }
+  const id = model.previous?.sessionId
+  const buttons = id ? [resumeButton(`claude --resume ${id}`, id)] : []
+
+  return { nodes: [...lines.map(line => fitLine(line, size.columns)), ...below], buttons }
 }

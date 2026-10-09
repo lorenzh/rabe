@@ -8,7 +8,8 @@ import type {
   TurnUsage,
 } from 'claude-code'
 
-import type { RabeEdit, RabeToolUse, RabeTurn } from '../../types'
+import type { RabeCodexCall, RabeEdit, RabeToolUse, RabeTurn } from '../../types'
+import { companionCall, companionOutput } from '../forwarders'
 import {
   clip,
   type EndStatus,
@@ -27,6 +28,7 @@ type AgentItem = RabeItemOf<'agent'>
 const POLL_MS = 3000
 const MAX_TURNS = 30
 const MAX_EDITS = 100
+const MAX_CALLS = 10
 const MAX_CHECKS = 20
 const LOOK_MS = 1000
 const MAX_TEXT = 300
@@ -120,6 +122,32 @@ function edited(items: RabeItem[], id: string, changes: RabeEdit[]): RabeItem[] 
   const edits = [...(agent.detail.edits ?? []), ...changes].slice(-MAX_EDITS)
 
   return updateItem(items, id, { detail: { edits } })
+}
+
+// The companion calls of an agent: a new one, or what its answer told.
+function called(
+  items: RabeItem[],
+  id: string,
+  at: number,
+  patch: Partial<RabeCodexCall>,
+): RabeItem[] {
+  const agent = asAgent(items, id)
+  if (!agent) return items
+  const calls = agent.detail.codexCalls ?? []
+  const codexCalls = calls.some(one => one.at === at)
+    ? calls.map(one => (one.at === at ? { ...one, ...patch } : one))
+    : [...calls, { at, ...patch } as RabeCodexCall].slice(-MAX_CALLS)
+
+  return updateItem(items, id, { detail: { codexCalls } })
+}
+
+// A call that went to the background still runs: it keeps no end. A failed
+// run still printed its thread.
+function answered(answer: { result?: unknown }, now: number): Partial<RabeCodexCall> {
+  const result = (answer.result ?? {}) as Record<string, unknown>
+  if (result.backgroundTaskId) return {}
+
+  return { endedAt: now, ...companionOutput(`${result.stdout ?? ''}\n${result.stderr ?? ''}`) }
 }
 
 export function addTurn(turns: Turns, id: string, turn: RabeTurn): Turns {
@@ -480,10 +508,24 @@ export function agents(on: On): void {
   })
 
   // The command line proposes files; a look on disk before and after decides.
+  // A call of the Codex companion is kept on its agent, so the Codex source can
+  // link the job it starts (see forwarders.ts).
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const before =
       e.tool === 'Bash' ? await beforeBash($, e.command).catch(() => undefined) : undefined
+    const call = e.tool === 'Bash' && e.agentId ? companionCall(e.command) : undefined
+    const id = itemId('agent', e.agentId ?? '')
+    const at = call && (await $.clock.now().catch(() => undefined))
+    if (call && at !== undefined) {
+      await write($, items => called(items, id, at, call)).catch(() => undefined)
+    }
     const answer = await next(e)
+    try {
+      if (at !== undefined) {
+        const patch = answered(answer, await $.clock.now())
+        await write($, items => called(items, id, at, patch))
+      }
+    } catch {}
     try {
       if (before && ranBash(answer)) await afterBash($, e.agentId, before)
     } catch {}

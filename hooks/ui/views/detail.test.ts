@@ -13,6 +13,7 @@ import {
   gridOf,
   lint,
   NOW,
+  plan,
   review,
   verify,
 } from '../fixtures'
@@ -129,7 +130,7 @@ test('a codex job shows its steps with the running command raised and an x: stop
   const { grid: g, buttons } = open(model([job]), job.id)
   const shown = lines(g)
   expect(shown).toContain('model gpt-6.1-sol · effort high · sandbox read-only')
-  expect(shown).toContain('job task-1 · session file read')
+  expect(shown).toContain('job task-1 · thread n/a · session file read')
   expect(shown).toContain(' ≈ $0.09   in 25k  out 3k  cached 18k')
   expect(shown.some(line => line.startsWith(' 2 commands  100% of session'))).toBe(true)
   expect(shown.some(line => line.endsWith('active 20s ago'))).toBe(true)
@@ -155,7 +156,7 @@ test('a codex job whose session file is gone says so', () => {
     detail: { jobId: 'task-9', isSessionMissing: true },
   } as RabeItem
   const { grid: g, buttons } = open(model([job]), job.id)
-  expect(lines(g)).toContain('job task-9 · session file gone')
+  expect(lines(g)).toContain('job task-9 · thread n/a · session file gone')
   expect(buttons.find(b => b.key === `stop:${job.id}`)).toMatchObject({
     dim: true,
     action: { type: 'none' },
@@ -353,16 +354,60 @@ test('every control of a detail that acts on an item names it in its key', () =>
   }
   expect(keysOf(explore.id)).toEqual([
     'back',
+    `copy:${explore.id}`,
     `message-agent:${explore.id}`,
     `stop:${explore.id}`,
     `message:${explore.id}`,
   ])
   expect(keysOf(dev.id)).toEqual(['back', `copy:${dev.id}`, `stop:${dev.id}`])
   expect(keysOf(babysit.id)).toEqual(['back', `copy:${babysit.id}`, `delete:${babysit.id}`])
-  expect(keysOf(verify.id)).toEqual(['back', `stop-run:${flow.id}`])
+  expect(keysOf(verify.id)).toEqual(['back', `copy:${verify.id}`, `stop-run:${flow.id}`])
   const drawn = detailView(model(), size, { ...NO_SELECTION, open: explore.id })
   expect(drawn.buttons.find(one => one.hotkey === 'm')?.action).toEqual({
     type: 'focus',
     key: `message:${explore.id}`,
   })
+})
+
+test('an agent shows its id and transcript, and c copies the id', () => {
+  const { grid: g, buttons } = open(model([explore]), explore.id)
+  expect(lines(g)).toContain('agent a1 · transcript /t/agent-a1.jsonl')
+  expect(buttons.find(b => b.key === `copy:${explore.id}`)).toMatchObject({
+    label: 'c: copy id',
+    hotkey: 'c',
+    action: { type: 'copy', text: 'a1' },
+  })
+  const bare = { ...plan, detail: { agentId: 'a2' } } as RabeItem
+  expect(lines(open(model([bare]), bare.id).grid)).toContain('agent a2 · transcript n/a')
+})
+
+test('a codex job shows its thread, and c copies the command that resumes it', () => {
+  const job = { ...review, detail: { ...review.detail, threadId: 'th-1' } } as RabeItem
+  const { grid: g, buttons } = open(model([job]), job.id)
+  expect(lines(g)).toContain('job task-1 · thread th-1 · session file read')
+  expect(buttons.find(b => b.hotkey === 'c')).toEqual({
+    key: 'resume:th-1',
+    label: 'c: copy resume',
+    hotkey: 'c',
+    action: { type: 'copy', text: 'codex resume th-1' },
+  })
+  const { grid: none, buttons: without } = open(model([review]), review.id)
+  expect(lines(none)).toContain('job task-1 · thread n/a · session file read')
+  expect(without.some(b => b.hotkey === 'c' || b.key.startsWith('resume:'))).toBe(false)
+})
+
+test('a codex job counts the tokens of the agent that only forwarded it', () => {
+  const call = { at: NOW - 60_000, command: 'task' as const, text: 'codex-companion.mjs task' }
+  const forwarder = {
+    ...explore,
+    id: 'agent:f1',
+    title: 'Codex rescue',
+    tokens: { input: 4_000, output: 1_000 },
+    costUsd: 0.01,
+    detail: { agentId: 'f1', toolCount: 1, codexCalls: [call] },
+  } as RabeItem
+  const job = { ...review, parentId: forwarder.id } as RabeItem
+  const shown = lines(open(model([forwarder, job]), job.id).grid)
+  expect(shown).toContain('forwarded by claude Codex rescue · its tokens count here')
+  expect(shown).toContain(' ≈ $0.10   in 29k  out 4k  cached 18k')
 })

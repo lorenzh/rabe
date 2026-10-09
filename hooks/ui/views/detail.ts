@@ -3,7 +3,16 @@ import { nextRuns } from '../../schedule'
 import { type Span, wrap } from '../cells/grid'
 import { C, type Style } from '../cells/palette'
 import { ago, clockTime, countdown, tokens, usd } from '../format'
-import { byStart, children, phases, share, stable, timeLabel, tokenSum } from '../lists'
+import {
+  byStart,
+  children,
+  phases,
+  share,
+  stable,
+  timeLabel,
+  tokenSum,
+  withForwarder,
+} from '../lists'
 import {
   type Action,
   canStop,
@@ -37,8 +46,10 @@ function lead(first: Span[], value: string, columns: number, style: Style = {}):
 const raise = (lines: Line[]): Line[] => lines.map(line => ({ ...line, bg: C.raised }))
 
 // Spend and activity on a panel: agents and Codex jobs their own, a workflow its agents'.
-function costBox(model: Model, item: RabeItem): Line[] {
-  if (item.kind !== 'agent' && item.kind !== 'codex' && item.kind !== 'workflow') return []
+// A Codex job counts the agent that only forwarded it.
+function costBox(model: Model, own: RabeItem): Line[] {
+  if (own.kind !== 'agent' && own.kind !== 'codex' && own.kind !== 'workflow') return []
+  const item = withForwarder(own, model.items)
   const list = item.kind === 'workflow' ? children(model.items, item.id) : [item]
   const known = list.filter(one => one.tokens)
   const sum = (key: 'input' | 'output' | 'cached') =>
@@ -278,6 +289,16 @@ export function detailLines(
   return [...top, ...body].slice(0, rows)
 }
 
+// A control that copies the command resuming `id`; its key names the id.
+export function resumeButton(command: string, id: string): ViewButton {
+  return {
+    key: `resume:${id}`,
+    label: 'c: copy resume',
+    hotkey: 'c',
+    action: { type: 'copy', text: command },
+  }
+}
+
 function detailButtons(
   item: RabeItem,
   hasInput: boolean,
@@ -307,6 +328,18 @@ function detailButtons(
       hotkey: 'c',
       action: { type: 'copy', text: copy },
     })
+  }
+  if (item.kind === 'agent') {
+    buttons.push({
+      key: `copy:${item.id}`,
+      label: 'c: copy id',
+      hotkey: 'c',
+      action: { type: 'copy', text: item.detail.agentId },
+    })
+  }
+  // The key names the thread it resumes; without a thread there is no key.
+  if (item.kind === 'codex' && item.detail.threadId) {
+    buttons.push(resumeButton(`codex resume ${item.detail.threadId}`, item.detail.threadId))
   }
   if (item.kind === 'cron' && item.detail.scheduledFor === undefined) {
     buttons.push({

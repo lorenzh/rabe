@@ -99,6 +99,63 @@ export function matches(item: RabeItem, query: string): boolean {
   return words.some(word => typeof word === 'string' && word.toLowerCase().includes(q))
 }
 
+// A Claude agent that only forwarded work to the Codex companion: each tool
+// call it made ran the companion, and Rabe linked a job to it. Its row folds
+// into the job; an agent that did more, or whose tool count is not known, stays.
+export function isForwarder(item: RabeItem, items: readonly RabeItem[]): boolean {
+  if (item.kind !== 'agent') return false
+  const calls = item.detail.codexCalls?.length ?? 0
+
+  return (
+    calls > 0 &&
+    item.detail.toolCount === calls &&
+    items.some(one => one.kind === 'codex' && one.parentId === item.id)
+  )
+}
+
+// The items lists show: forwarders fold into their Codex jobs.
+export const shown = (items: RabeItem[]): RabeItem[] =>
+  items.filter(item => !isForwarder(item, items))
+
+// The forwarder folded into a Codex job: only its first job counts it.
+export function forwarderOf(job: RabeItem, items: readonly RabeItem[]): RabeItem | undefined {
+  if (job.kind !== 'codex' || !job.parentId) return undefined
+  const parent = items.find(one => one.id === job.parentId)
+  const first = items.find(one => one.kind === 'codex' && one.parentId === job.parentId)
+
+  return parent && first === job && isForwarder(parent, items) ? parent : undefined
+}
+
+const add = (a?: number, b?: number) =>
+  a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0)
+
+// A Codex job's spend with its forwarder's: one piece of work, one cost line.
+export function withForwarder(item: RabeItem, items: readonly RabeItem[]): RabeItem {
+  const by = forwarderOf(item, items)
+  if (!by?.tokens && by?.costUsd === undefined) return item
+  const [a, b] = [item.tokens, by.tokens]
+  const tokens =
+    a && b
+      ? {
+          input: a.input + b.input,
+          output: a.output + b.output,
+          ...((a.cached ?? b.cached) !== undefined && { cached: add(a.cached, b.cached) }),
+        }
+      : (a ?? b)
+
+  return { ...item, tokens, costUsd: add(item.costUsd, by.costUsd) } as RabeItem
+}
+
+// Codex jobs follow the agent that started them.
+export function nest(list: RabeItem[]): RabeItem[] {
+  const isChild = (item: RabeItem) =>
+    item.kind === 'codex' && list.some(one => one.kind === 'agent' && one.id === item.parentId)
+
+  return list
+    .filter(item => !isChild(item))
+    .flatMap(item => [item, ...list.filter(one => isChild(one) && one.parentId === item.id)])
+}
+
 const recency = (item: RabeItem) => item.endedAt ?? item.startedAt ?? item.seenAt
 
 export function sortItems(items: RabeItem[]): RabeItem[] {
@@ -139,7 +196,7 @@ export function grouped(
     items: stable(
       items.filter(item => of(item) === group.id),
       order && (order[group.id] ?? []),
-      sortItems,
+      group.id === 'agents' ? list => nest(sortItems(list)) : sortItems,
     ),
   })).filter(group => group.items.length > 0)
 }
@@ -258,8 +315,9 @@ export const FAMILIES: Group[] = ['shells', 'monitors']
 // monitors in their families), the Cost tab by tokens, the Timeline by start,
 // the Effects files by `byConflict` and its ports (the shells that run with
 // one). Held in `rabe.order` until the next open.
-export function orderOf(items: RabeItem[], edits: RabeEdit[] = []): RabeOrder {
+export function orderOf(all: RabeItem[], edits: RabeEdit[] = []): RabeOrder {
   const ids = (list: RabeItem[]) => list.map(item => item.id)
+  const items = shown(all)
 
   return {
     ports: ids(
@@ -278,9 +336,9 @@ export function orderOf(items: RabeItem[], edits: RabeEdit[] = []): RabeOrder {
         ),
       ]),
     ),
-    cost: ids(byTokens(items)),
+    cost: ids(byTokens(items.map(item => withForwarder(item, all)))),
     timeline: ids(byStart(items)),
-    files: byConflict(touched(items, edits)).map(file => file.id),
+    files: byConflict(touched(all, edits)).map(file => file.id),
   }
 }
 
@@ -458,7 +516,7 @@ export function bandRows(items: RabeItem[], now: number): BandRow[] {
       glyph: '◐',
       kind: 'agent',
       label: 'claude',
-      names: items.filter(isRunning('agent')).map(run),
+      names: shown(items).filter(isRunning('agent')).map(run),
     },
     { glyph: '◐', kind: 'codex', label: 'codex', names: items.filter(isRunning('codex')).map(run) },
     {
@@ -569,11 +627,13 @@ export function previousOf(
   items: RabeItem[],
   endedAt: number,
   usage: { startedAt?: number; usd?: number },
+  sessionId?: string,
 ): RabePrevious {
   const counts: RabePrevious['counts'] = {}
   for (const item of items) counts[item.kind] = (counts[item.kind] ?? 0) + 1
 
   return {
+    ...(sessionId && { sessionId }),
     endedAt,
     startedAt: usage.startedAt,
     counts,

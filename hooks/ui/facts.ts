@@ -1,6 +1,6 @@
 import type { RabeItem } from '../model'
 import { clockTime, duration } from './format'
-import { children, glyph, KIND_LABEL, nextAt } from './lists'
+import { children, forwarderOf, glyph, KIND_LABEL, nextAt } from './lists'
 
 export type Facts = { title: string; status: string; lines: string[] }
 
@@ -44,7 +44,7 @@ export function facts(item: RabeItem, now: number, items: RabeItem[]): Facts {
       lines.push(`${na(d.type)} · ${na(d.model)} · ${tree}`)
       if (d.worktreeBranch) lines.push(`branch ${d.worktreeBranch}`)
       if (d.workflowPhase) lines.push(`phase ${d.workflowPhase}`)
-      lines.push(by, ran(item, now))
+      lines.push(`agent ${d.agentId} · transcript ${na(d.transcriptPath)}`, by, ran(item, now))
       break
     }
     case 'codex': {
@@ -57,7 +57,12 @@ export function facts(item: RabeItem, now: number, items: RabeItem[]): Facts {
             ? 'read'
             : 'n/a'
       lines.push(`model ${na(d.model)} · effort ${na(d.effort)} · sandbox ${na(d.sandbox)}`)
-      lines.push(`job ${d.jobId} · session file ${file}`, by, ran(item, now))
+      const forwarder = forwarderOf(item, items)
+      lines.push(
+        `job ${d.jobId} · thread ${na(d.threadId)} · session file ${file}`,
+        forwarder ? `forwarded by claude ${forwarder.title} · its tokens count here` : by,
+        ran(item, now),
+      )
       break
     }
     case 'workflow': {

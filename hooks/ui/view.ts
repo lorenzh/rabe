@@ -7,7 +7,8 @@ import { type Grid, MAX_COLUMNS, MAX_ROWS, type Span } from './cells/grid'
 // What every view reads: the sources' session values, never files. `usd` is
 // the session's cost as /cost totals it; `previous` is the last session in
 // this project that had background work, from `$.store`. `edits` are the
-// files the main session changed, `cwd` the session's folder.
+// files the main session changed, `cwd` the session's folder, `sessionId`
+// what `claude --resume` takes to come back to this session.
 export type Model = {
   items: RabeItem[]
   turns: Record<string, RabeTurn[]>
@@ -17,6 +18,7 @@ export type Model = {
   previous?: RabePrevious
   edits?: RabeEdit[]
   cwd?: string
+  sessionId?: string
 }
 
 // The cells a view may fill: `columns` from `bodyColumns`, `rows` from

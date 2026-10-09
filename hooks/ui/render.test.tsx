@@ -261,7 +261,7 @@ const PATHS = ['/repo/a.ts', '/repo/b.ts', '/repo/c.ts', '/repo/d.ts']
 function change(items: RabeItem[], pick: (n: number) => number, n: number): RabeItem[] {
   const one = items[pick(Math.max(1, items.length))]
   const with_ = (next: RabeItem) => items.map(item => (item === one ? next : item))
-  switch (pick(7)) {
+  switch (pick(8)) {
     case 0: {
       const kind = pick(4)
       if (kind === 0) return [...items, agentOf(`n${n}`)]
@@ -289,6 +289,16 @@ function change(items: RabeItem[], pick: (n: number) => number, n: number): Rabe
       return one?.kind === 'shell' && one.detail.port === undefined
         ? with_({ ...one, detail: { ...one.detail, port: 3000 + pick(4), portAt: NOW + n } })
         : items
+    case 6: {
+      // A Codex job gets linked to an agent that only forwarded it (its row
+      // folds into the job) or that did more (the job sits under it), and
+      // learns its thread (a copy key appears).
+      if (one?.kind !== 'codex' || one.parentId) return items
+      const call = { at: NOW, command: 'task' as const, text: 'codex-companion.mjs task' }
+      const by = agentOf(`f${n}`, { toolCount: pick(2) ? 1 : 3, codexCalls: [call] })
+      const job = { ...one, parentId: by.id, detail: { ...one.detail, threadId: `th${n}` } }
+      return [...with_(job), by]
+    }
     default:
       return items
   }

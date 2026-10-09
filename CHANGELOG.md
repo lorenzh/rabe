@@ -4,6 +4,14 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Added
+
+- The pane shows the ids you need to pick work up again, and `c` copies the command: this session's id on the Cost tab and the previous session's id on the Timeline tab (`claude --resume <id>`), a Codex job's thread (`codex resume <thread id>`), and an agent's id and transcript. When the clipboard cannot be reached, a message shows the text to select. (fixes [#23](https://github.com/lorenzh/rabe/issues/23))
+
+### Changed
+
+- A Codex job started through the Codex plugin's forwarding agent (`codex:codex-rescue`) shows as one row: the agent that only passed the request on has no row of its own, and its tokens count toward the job. A job started by an agent that also did other work shows indented under that agent. Rabe links them only when the agent's command names the job, or the job started while the command ran and has its prompt or its thread. (fixes [#14](https://github.com/lorenzh/rabe/issues/14))
+
 ## [0.3.0] - 2026-10-09
 
 ### Added

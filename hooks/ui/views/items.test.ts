@@ -365,3 +365,34 @@ test('a row is live where the list draws it, not as a gone slot, a header or a c
     expect([key, isLiveRow(model, sel, key)]).toEqual([key, false])
   }
 })
+
+const call = { at: NOW - 60_000, command: 'task' as const, text: 'codex-companion.mjs task' }
+const forwarder = {
+  ...explore,
+  id: 'agent:f1',
+  title: 'Codex rescue',
+  detail: { agentId: 'f1', toolCount: 1, codexCalls: [call] },
+} as RabeItem
+const busy = {
+  ...forwarder,
+  title: 'Port the parser',
+  detail: { agentId: 'f1', toolCount: 4, codexCalls: [call] },
+} as RabeItem
+const child = { ...review, parentId: forwarder.id, startedAt: NOW - 1000 } as RabeItem
+
+test('an agent that only forwarded to Codex has no row: its job stands for both', () => {
+  const drawn = itemsView({ ...model, items: [plan, forwarder, child] }, NARROW, NO_SELECTION)
+  expect(rowKeys(drawn)).toEqual([`row:${child.id}`, `row:${plan.id}`])
+  expect(lines(gridOf(drawn).grid)[0]).toBe('▾ AGENTS 1 claude · 1 codex')
+})
+
+test('a Codex job sits indented under the agent that started it and did other work', () => {
+  const drawn = itemsView({ ...model, items: [plan, busy, child] }, NARROW, NO_SELECTION)
+  expect(rowKeys(drawn)).toEqual([`row:${busy.id}`, `row:${child.id}`, `row:${plan.id}`])
+  const shown = lines(gridOf(drawn).grid).map(line => line.slice(0, 24).trimEnd())
+  expect(shown.slice(1, 4)).toEqual([
+    '▌◐ Port the parser',
+    '   ◐ review auth.ts',
+    ' ✓ Plan auth split',
+  ])
+})

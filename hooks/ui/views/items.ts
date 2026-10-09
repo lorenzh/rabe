@@ -12,6 +12,7 @@ import {
   grouped,
   groupNote,
   matches,
+  shown,
 } from '../lists'
 import {
   canStop,
@@ -65,6 +66,20 @@ const indent = (line: Line): Line => ({
   spans: [...line.spans.slice(0, 1), ['  '], ...line.spans.slice(1)],
 })
 
+const same = (line: Line) => line
+
+// In AGENTS, a Codex job right under the agent that started it, or under that
+// agent's job before it; NEW stays flat.
+function isUnder(item: RabeItem, before: RabeItem[]): boolean {
+  const last = before.at(-1)
+
+  return (
+    item.kind === 'codex' &&
+    item.parentId !== undefined &&
+    (last?.id === item.parentId || (last?.kind === 'codex' && last.parentId === item.parentId))
+  )
+}
+
 // The first row the pane shows once it has followed the focus onto row `at`:
 // the engine scrolls no further than it must, and does not say where it went.
 function shownFrom(size: Size, at: number): number {
@@ -79,7 +94,7 @@ function shownFrom(size: Size, at: number): number {
 // SHELLS and MONITORS the rows of each agent indented under its name.
 // Gaps between groups only where the whole list fits in `rows`.
 function groupsOf(model: Model, sel: Selection) {
-  const visible = model.items.filter(item => matches(item, sel.query))
+  const visible = shown(model.items).filter(item => matches(item, sel.query))
 
   return grouped(visible, sel.order).map(group => ({
     ...group,
@@ -125,7 +140,11 @@ function listLines(
       head,
       ...group.families.flatMap(family =>
         family.id === ''
-          ? family.items.map(row)
+          ? family.items.map((item, i) =>
+              (group.id === 'agents' && isUnder(item, family.items.slice(0, i)) ? indent : same)(
+                row(item),
+              ),
+            )
           : [familyHead(family), ...family.items.map(item => indent(row(item)))],
       ),
     ]

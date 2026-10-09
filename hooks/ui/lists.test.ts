@@ -24,6 +24,7 @@ import {
   byParent,
   byTokens,
   costLine,
+  forwarderOf,
   grouped,
   groupNote,
   joinFit,
@@ -35,10 +36,12 @@ import {
   phases,
   previousOf,
   share,
+  shown,
   stable,
   timeLabel,
   totals,
   tree,
+  withForwarder,
   worktrees,
 } from './lists'
 
@@ -207,6 +210,7 @@ test('previousOf sums a session up: counts per kind, tokens, cost, failed titles
     usd: 0.32,
     failed: ['bun run lint'],
   })
+  expect(previousOf([], NOW, {}, 'sess-1').sessionId).toBe('sess-1')
 })
 
 test('items Rabe saw after the open hold their order in NEW, under every held row', () => {
@@ -228,4 +232,51 @@ test('items Rabe saw after the open hold their order in NEW, under every held ro
   expect(ids(ended)).toEqual(ids(running))
   expect(grouped(running).some(g => g.id === 'new')).toBe(false)
   expect(orderOf(running).new).toBeUndefined()
+})
+
+const call = { at: NOW - 60_000, command: 'task' as const, text: 'codex-companion.mjs task x' }
+
+// A Claude agent that only forwarded to the Codex companion, and its job.
+const forwarder = {
+  ...explore,
+  id: 'agent:f1',
+  title: 'Codex rescue',
+  tokens: { input: 4_000, output: 1_000, cached: 3_000 },
+  costUsd: 0.01,
+  detail: { agentId: 'f1', toolCount: 1, codexCalls: [call] },
+} as RabeItem
+const job: RabeItem = { ...review, parentId: forwarder.id }
+
+test('a forwarder folds into its Codex job, which counts its tokens', () => {
+  const items = [explore, forwarder, job]
+  expect(shown(items)).toEqual([explore, job])
+  expect(forwarderOf(job, items)).toBe(forwarder)
+  const sum = withForwarder(job, items)
+  expect(sum.tokens).toEqual({ input: 29_000, output: 4_000, cached: 21_000 })
+  expect(Math.round((sum.costUsd ?? 0) * 100)).toBe(10)
+  expect(withForwarder(explore, items)).toBe(explore)
+  expect(orderOf(items).agents).toEqual([job.id, explore.id])
+  expect(bandRows(items, NOW).find(row => row.kind === 'agent')?.names).toHaveLength(1)
+  // a job not linked, an agent that also did other work, or one whose tool count is not known
+  const unlinked = [forwarder, review]
+  const busy = { ...forwarder, detail: { ...forwarder.detail, toolCount: 3 } } as RabeItem
+  const unknown = {
+    ...forwarder,
+    detail: { ...forwarder.detail, toolCount: undefined },
+  } as RabeItem
+  for (const list of [unlinked, [busy, job], [unknown, job]]) {
+    expect(shown(list)).toEqual(list)
+    expect(withForwarder(list[1] as RabeItem, list)).toBe(list[1])
+  }
+})
+
+test('a Codex job sorts under the agent that started it and also did other work', () => {
+  const busy = { ...forwarder, detail: { ...forwarder.detail, toolCount: 3 } } as RabeItem
+  const child = { ...job, startedAt: NOW - 1000 } as RabeItem
+  const items = [busy, explore, plan, child]
+  const agents = grouped(items)
+    .find(g => g.id === 'agents')
+    ?.items.map(i => i.id)
+  expect(agents?.indexOf(child.id)).toBe((agents?.indexOf(busy.id) ?? 0) + 1)
+  expect(orderOf(items).agents).toEqual(agents)
 })

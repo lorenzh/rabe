@@ -17,9 +17,9 @@ Status: early development. See [releases](https://github.com/lorenzh/rabe/releas
 
 | Kind | In the band | In the pane |
 |---|---|---|
-| Claude subagents | Count (`claude`) | Tokens, share of the session, the prompt it got, each turn with its tool calls |
+| Claude subagents | Count (`claude`) | Tokens, share of the session, the prompt it got, each turn with its tool calls, the agent id (`c` copies it) and its transcript |
 | Workflows | Count (`workflow`) | Phases in order, the agents of each phase in start order with tokens and time; select an agent to open it |
-| Codex jobs (from the Codex plugin) | Count (`codex`) | Model, effort and sandbox, tokens, the prompt, each message and command with its exit code |
+| Codex jobs (from the Codex plugin) | Count (`codex`) | Model, effort and sandbox, tokens, the prompt, each message and command with its exit code, the thread id (`c` copies `codex resume <thread id>`) |
 | Background shells | Count (`shell`) | Output lines, exit code, the guessed port |
 | Monitors | Count (`monitor`) | Each line with the time Rabe received it |
 | Cron jobs and `/loop` wakeups | Count (`cron`) | The next five runs |
@@ -29,10 +29,10 @@ The band is one line of counts, one chip per kind with failures from the last 10
 
 The pane has four tabs:
 
-- **Items**: all items grouped by kind, with a search field. Shells and monitors that an agent started show under the name of that agent. If the pane is 90 columns or wider, the selected item shows beside the list.
-- **Cost**: the session cost as `/cost` totals it, and a bar of tokens per agent and Codex job. Agents that look slow or stuck show under "Load".
+- **Items**: all items grouped by kind, with a search field. Shells and monitors that an agent started show under the name of that agent. A Codex job shows under the agent that started it. The Codex plugin starts its jobs through a Claude agent that only passes the request on (`codex:codex-rescue`); that agent has no row of its own, and its tokens count toward the job. Rabe links the two only when it is sure: the agent's command named the job, or the job started while the command ran and has its prompt or its thread. If the pane is 90 columns or wider, the selected item shows beside the list.
+- **Cost**: the session cost as `/cost` totals it, this session's id (`c` copies `claude --resume <id>`), and a bar of tokens per agent and Codex job. Agents that look slow or stuck show under "Load".
 - **Effects**: files that agents, Codex jobs and the main session changed, with who changed each and how (`edit`, `write`, `codex add`, `deleted`), a warning when two of them change the same file, worktrees, and open ports with the `ssh -L` command to reach them. Files written through shell commands (`cat > file <<'EOF'`, `>>`, `tee`, `sed -i`, `cp`, `mv`, `touch`, `rm`) show as `via shell`, checked on disk: Rabe takes the files named on the command line and lists one only when its size or modification time changed, or it appeared or went away, while the command ran. Claude Code does not tell Rabe the folder a Bash command runs in, so only absolute paths count (or paths after a `cd /absolute/folder` in the same command): `cat > notes.md` shows nothing. A command after `||`, inside `if` or a loop, in the background, or with a glob or `$var` in its path shows nothing, and neither does a file a script writes on its own (Python's `open(…, 'w')`, a build tool). Enter or a click on a file opens the agent or Codex job that changed it last, or copies the path of a main-session file; on an `ssh -L` line it copies the line (`c` copies the first).
-- **Timeline**: a bar per item over the session, who started what, and a summary of the previous session in this project.
+- **Timeline**: a bar per item over the session, who started what, and a summary of the previous session in this project with its id (`c` copies `claude --resume <id>`; a summary saved by Rabe 0.3 or older shows `n/a`).
 
 ## Install
 
@@ -60,7 +60,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | `x` | Stop the selected item |
 | `g` | Stop the group the selected row is in (the rows the search shows), or the workflow run of the selected run or workflow agent |
 | `m` | Send a message to an agent |
-| `c` | Copy the command, the prompt or the `ssh -L` line |
+| `c` | Copy the command, the prompt, the `ssh -L` line, an agent's id, or the command that resumes a session or a Codex thread. If the clipboard cannot be reached (for example over SSH in a terminal without OSC 52), a message shows the text to select |
 | `d` | Delete a cron job |
 | Mouse wheel | Scroll the pane |
 | Esc | Close the pane |
@@ -111,7 +111,7 @@ Rabe reads these files:
 - Codex session files under `~/.codex/sessions/` (or `CODEX_HOME`).
 - The size and modification time of the files a shell command names, before and after the command, to see which ones it wrote. Rabe does not read their content.
 
-Rabe keeps its items in the session state of Claude Code. When a session ends, Rabe keeps a short summary for the next session in the same project. The summary holds counts per kind, tokens, cost and the names of failed items. It runs `tail` and `grep` to read files over 4 MiB. When you stop a Codex job, it runs the Codex plugin's own cancel script.
+Rabe keeps its items in the session state of Claude Code. When a session ends, Rabe keeps a short summary for the next session in the same project. The summary holds the session id, counts per kind, tokens, cost and the names of failed items. It runs `tail` and `grep` to read files over 4 MiB. When you stop a Codex job, it runs the Codex plugin's own cancel script.
 
 ## Requirements
 

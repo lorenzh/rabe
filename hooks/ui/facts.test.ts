@@ -10,6 +10,7 @@ test('agent facts show type, model, worktree and start; spend is in the detail',
   expect(lines).toEqual([
     'Explore · opus-5-5 · worktree pkg-db',
     'branch worktree-agent-a1',
+    'agent a1 · transcript /t/agent-a1.jsonl',
     'started by main session',
     'ran 10:50:48 → now · 1m12s',
   ])
@@ -24,7 +25,7 @@ test('missing data shows n/a', () => {
 test('codex facts show model, effort, sandbox, job and the session file', () => {
   expect(facts(review, NOW, ALL).lines.slice(0, 2)).toEqual([
     'model gpt-6.1-sol · effort high · sandbox n/a',
-    'job task-1 · session file read',
+    'job task-1 · thread n/a · session file read',
   ])
 })
 
