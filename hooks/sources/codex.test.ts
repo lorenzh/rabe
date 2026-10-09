@@ -296,6 +296,24 @@ test('a resumed thread counts only the turns after the job started', () => {
   })
 })
 
+test('a finished job counts nothing after its end, even when its thread ran on', () => {
+  const later = [
+    ...RESUMED,
+    timed(1130, change('completed', { '/work/b.ts': { type: 'add' } }, 1130)),
+  ]
+  const own = parseRollout(later.join('\n'), undefined, 50, 500)
+  expect(own.requests).toEqual([
+    { model: 'gpt-6.1-sol', input: 10, cached: 0, write: 0, output: 1 },
+  ])
+  expect(own.tokens).toEqual({ input: 10, output: 1, cached: 0 })
+  expect(own.prompt).toBe('Job A')
+  expect(own.commandCount).toBe(1)
+  expect(own.model).toBe('gpt-6.1-sol')
+  expect(own.edits).toBeUndefined()
+  // no end yet (a running job): the thread so far counts
+  expect(parseRollout(later.join('\n'), undefined, 50).edits).toHaveLength(1)
+})
+
 test('an empty or broken rollout gives no fields', () => {
   expect(parseRollout('not json\n')).toEqual({ requests: [], steps: [], commandCount: 0 })
 })
@@ -495,6 +513,31 @@ test('a job that resumed a thread costs only its own requests', async ($, on) =>
   await startAndTick($, w)
   // 20 input at 2 and 1 output at 10 per million: the first job's request is not counted
   expect(Math.round((writes.at(-1)?.[0]?.costUsd ?? 0) * 1e6)).toBe(20 * 2 + 10)
+})
+
+test('a finished job found after a later job resumed its thread keeps only its own turns', async ($, on) => {
+  const writes = watchItems(on)
+  prices(on)
+  const resumed = [
+    ...RESUMED.map(one => one.replace('gpt-6-luna', 'gpt-6.1-sol')),
+    timed(1130, change('completed', { '/work/b.ts': { type: 'add' } }, 1130)),
+  ].join('\n')
+  const done = job({
+    status: 'completed',
+    startedAt: '1970-01-01T00:00:00.050Z',
+    completedAt: '1970-01-01T00:00:00.500Z',
+  })
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [done] },
+    [`${WS}/jobs/task-1.json`]: done,
+    [ROLLOUT_PATH]: resumed,
+  })
+  await startAndTick($, w)
+  const item = writes.at(-1)?.[0]
+  expect(item?.tokens).toEqual({ input: 10, output: 1, cached: 0 })
+  // 10 input at 2 and 1 output at 10 per million
+  expect(Math.round((item?.costUsd ?? 0) * 1e6)).toBe(10 * 2 + 10)
+  expect(item?.detail).not.toHaveProperty('edits')
 })
 
 test('a job whose session file is gone by its end has no cost, not the last one seen', async ($, on) => {

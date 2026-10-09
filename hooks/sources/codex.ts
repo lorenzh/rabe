@@ -167,8 +167,10 @@ function request(value: unknown, model: string | undefined): CodexRequest {
 }
 
 // `since` is the job's start: a job that resumed a thread finds the turns of
-// the jobs before it in the same file, and counts none of them.
-export function parseRollout(text: string, home?: string, since?: number): Rollout {
+// the jobs before it in the same file, and counts none of them. `until` is a
+// finished job's end: the turns of jobs that resumed the thread later count
+// nothing either.
+export function parseRollout(text: string, home?: string, since?: number, until?: number): Rollout {
   const out: Rollout = { requests: [], commandCount: 0, steps: [] }
   let total = ''
   // the thread's total when the job started; undefined while none was seen
@@ -181,6 +183,7 @@ export function parseRollout(text: string, home?: string, since?: number): Rollo
     const record = parseJson(raw)
     if (!record) continue
     const payload = rec(record.payload)
+    if (until !== undefined && Date.parse(str(record.timestamp) ?? '') > until) continue
     if (record.type === 'turn_context') {
       const settings = rec(rec(payload.collaboration_mode).settings)
       out.model = str(payload.model) ?? str(settings.model) ?? out.model
@@ -277,6 +280,11 @@ export function jobEnd(status: unknown): EndStatus | undefined {
 
 function jobStart(job: CodexJob): number | undefined {
   return Date.parse(str(job.startedAt) ?? str(job.createdAt) ?? '') || undefined
+}
+
+// a running job, or a finished one without its time, has no end to cut at
+function jobStop(job: CodexJob): number | undefined {
+  return (jobEnd(job.status) && Date.parse(str(job.completedAt) ?? '')) || undefined
 }
 
 export function codexItem(job: CodexJob, session: CodexSession | undefined): NewItem {
@@ -457,7 +465,11 @@ async function readSession(
   if (stat.size <= MAX_READ) {
     const text = await $.fs.read(path).catch(() => undefined)
     if (text === undefined) return { path }
-    const rollout = await confirmed($, parseRollout(String(text), home, jobStart(job)), looks)
+    const rollout = await confirmed(
+      $,
+      parseRollout(String(text), home, jobStart(job), jobStop(job)),
+      looks,
+    )
 
     return { path, updatedAt, rollout, usd: codexUsd(await prices($, file), rollout.requests) }
   }
@@ -474,7 +486,7 @@ async function readSession(
     isPartial: true,
     rollout: await confirmed(
       $,
-      parseRollout(`${head.stdout}\n${tail.stdout}`, home, jobStart(job)),
+      parseRollout(`${head.stdout}\n${tail.stdout}`, home, jobStart(job), jobStop(job)),
       looks,
     ),
   }
