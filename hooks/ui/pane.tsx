@@ -1,6 +1,6 @@
 import type { EngineInterface, On, RenderSurface } from 'claude-code'
 
-import type { RabePrevious } from '../../types'
+import type { RabeItem, RabePrevious } from '../../types'
 import { KIND_LABEL, kept, matches, orderOf, previousOf, rowOf } from './lists'
 import { type At, type Held, hold, isRowKey, render, shifts } from './render'
 import {
@@ -205,15 +205,22 @@ async function choose($: EngineInterface, id: string): Promise<boolean> {
 // the cap drops its item, which a poll may find again.
 async function remove($: EngineInterface, action: Action & { type: 'remove' | 'clear' }) {
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
-  const { value: removed = [] } = await $.state.get({ plugin: 'rabe', key: 'removed' })
   const { value: query = '' } = await $.state.get({ plugin: 'rabe', key: 'query' })
-  const gone = kept(items, removed).filter(
-    item =>
-      item.status !== 'running' &&
-      (action.type === 'remove' ? action.ids.includes(item.id) : matches(item, query)),
-  )
-  if (gone.length === 0) return
-  await $.state.set({ plugin: 'rabe', key: 'removed' }, [...removed, ...gone.map(item => item.id)])
+  let gone: RabeItem[] = []
+  for (;;) {
+    const { value: removed = [], version } = await $.state.get({ plugin: 'rabe', key: 'removed' })
+    gone = kept(items, removed).filter(
+      item =>
+        item.status !== 'running' &&
+        (action.type === 'remove' ? action.ids.includes(item.id) : matches(item, query)),
+    )
+    if (gone.length === 0) return
+    const next = [...removed, ...gone.map(item => item.id)]
+    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'removed' }, next, {
+      ifVersion: version,
+    })
+    if (isSet) break
+  }
   const [one] = gone
   $.ui.toast(
     gone.length === 1 && one

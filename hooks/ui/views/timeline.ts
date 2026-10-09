@@ -4,7 +4,7 @@ import { nextRun } from '../../schedule'
 import { fit } from '../cells/grid'
 import { C, CHIP, type Style, tone } from '../cells/palette'
 import { clockTime, day, duration, tokens, usd } from '../format'
-import { bar, byStart, glyph, KIND_LABEL, nameSpans, shown, stable, tree } from '../lists'
+import { bar, byStart, glyph, KIND_LABEL, kept, nameSpans, shown, stable, tree } from '../lists'
 import type { Drawn, Line, Model, View, ViewButton } from '../view'
 import { resumeButton } from './detail'
 import { beside, fitLine, focusOn, text } from './lines'
@@ -213,7 +213,7 @@ const spanText = (ms: number) => (ms < 2 * HOUR ? `${Math.round(ms / 60_000)} mi
 // plain text, so the rows' focus order stays; `w` widens the window.
 export const timelineView: View = (model, size, sel): Drawn => {
   const since = sel.window?.since ?? 0
-  const all = stable(shown(model.items), sel.order?.timeline, byStart)
+  const all = stable(kept(shown(model.items), model.removed), sel.order?.timeline, byStart)
   const list = all.filter(item => item.status === 'running' || (item.endedAt ?? since) >= since)
   const folded = all.length - list.length
   const selected = list.find(item => item.id === sel.selected) ?? list[0]

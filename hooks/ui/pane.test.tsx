@@ -1235,8 +1235,30 @@ test('r and a remove ended rows for the session; running rows stay', async ($, o
   await again.unmount()
 })
 
-// Removing hides rows on the list only: a removed workflow agent still counts
-// in its run's phases and tokens, and a removed item still counts in the cost.
+// Two removes in flight read the same value: the second write must not drop
+// the id the first one added.
+test('a remove that loses the race to another write keeps both ids', async ($, on) => {
+  const state = hold(on, ALL, { selected: lint.id, order: orderOf(ALL) })
+  on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+  let isRacing = true
+  // another write lands between the pane's read and its write
+  on('state.set', { key: 'removed' }, async (_$, e, next) => {
+    if (isRacing) {
+      isRacing = false
+      await next({ ...e, value: [plan.id] })
+    }
+    return next(e)
+  })
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await arm($, `row:${lint.id}`)
+  await ui.redraw()
+  await ui.press({ key: 'remove' })
+  expect(new Set(state.removed as string[])).toEqual(new Set([plan.id, lint.id]))
+  await ui.unmount()
+})
+
+// Removing hides rows only: a removed workflow agent has no row in its run,
+// but still counts in its phases and tokens, and a removed item in the cost.
 test('a removed workflow agent still counts in its run and the cost', async ($, on) => {
   const done = { ...reviewed, tokens: { input: 30_000, output: 2_000 } }
   const items = ALL.map(item => (item.id === reviewed.id ? done : item))
@@ -1244,8 +1266,9 @@ test('a removed workflow agent still counts in its run and the cost', async ($, 
   const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
   const detail = (await screen(ui)).join('\n')
   expect(detail).toContain('✓ Review → ◐ Verify')
-  expect(detail).toMatch(/review:bugs +32k/)
-  expect(detail).not.toContain('REVIEW not started')
+  expect(detail).toContain('in 49k')
+  expect(detail).toContain('REVIEW 1 done')
+  expect(detail).not.toContain('review:bugs')
   await ui.press({ key: 'back' })
   const shown = (await screen(ui)).join('\n')
   expect(shown).toContain(`Items ${items.length - 1}`)

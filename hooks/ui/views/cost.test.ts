@@ -126,3 +126,13 @@ test('an agent that only forwarded to Codex adds its tokens to the job and has n
   const shown = lines(gridOf(drawn).grid)
   expect(shown[row(shown, /review auth\.ts/)]).toMatch(/ 33k +≈ \$0\.25/)
 })
+
+// Issue #13: a removed worker has no row, but the totals still count it; a
+// running one is never hidden.
+test('a removed worker has no row on the cost tab; the totals keep it', () => {
+  const drawn = gridOf(costView({ ...MODEL, removed: [plan.id, review.id] }, SIZE, NO_SELECTION))
+  expect(rowKeys(drawn)).not.toContain(`row:${plan.id}`)
+  expect(rowKeys(drawn)).toContain(`row:${review.id}`)
+  expect(rowKeys(drawn)).toContain(`row:${explore.id}`)
+  expect(lines(drawn.grid)[0]).toContain('codex ≈ $0.09  tokens 91k')
+})

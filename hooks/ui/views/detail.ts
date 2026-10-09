@@ -7,6 +7,7 @@ import {
   byStart,
   children,
   forwarderOf,
+  kept,
   phases,
   share,
   stable,
@@ -215,7 +216,7 @@ function workflowLines(model: Model, item: RabeItem, columns: number, sel?: Sele
         [` ${note || 'not started'}`, dim],
       ],
     })
-    for (const agent of stable(p.agents, sel?.order?.timeline, byStart)) {
+    for (const agent of stable(kept(p.agents, model.removed), sel?.order?.timeline, byStart)) {
       const tok = tokenSum(agent)
       out.push({
         ...itemLine(agent, model.now, agent.id === sel?.selected),

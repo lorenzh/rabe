@@ -77,7 +77,7 @@ On the list, the stop keys `x` and `g` and the remove key `r` work only after yo
 
 While the pane is open, rows and buttons keep their places, so Enter acts on what you see under the focus. An item that starts after you open the pane goes into the group of its kind, after the rows already there; on the Effects tab, a new file or port goes into its section the same way. When it comes above the focused row, Rabe moves the focus back onto that row; until then, Enter on a row does nothing. A row that is gone stays as a dim `gone` slot. Type `/rabe` again to sort the lists.
 
-Removed rows stay off the list and out of the band's counts for the rest of the session. They still count in a workflow's phases and tokens, in the cost and on the other tabs, so a summary never loses work that ran. Running items are never removed; an item that runs again shows again. While the pane is open, a removed row stays as a dim `gone` slot; when it was the selected row, the keys go dim until you move onto a row again.
+Removed rows stay off the list, the Cost and Timeline tabs, a workflow's agent rows and the band's counts for the rest of the session. They still count in a workflow's phases and tokens, in the cost totals and on the Effects tab, so a summary never loses work that ran. Running items are never removed; an item that runs again shows again. While the pane is open, a removed row stays as a dim `gone` slot; when it was the selected row, the keys go dim until you move onto a row again.
 
 Commands:
 
