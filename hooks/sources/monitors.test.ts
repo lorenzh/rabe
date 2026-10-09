@@ -143,6 +143,34 @@ test('an event notification without a status ends nothing', async ($, on) => {
   expect(state['rabe.items']?.value).toEqual([watching])
 })
 
+// The end notification of a subagent's monitor reaches only the subagent.
+test('a subagent monitor ends from the exit line of its output file; the main Stop leaves it running', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const held: Record<string, string> = { [OUT]: 'tick 1\n' }
+  files(on, held)
+  tools(on)
+  core(on)
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'bun run dev', run_in_background: true })
+  await $.tool.call({
+    tool: 'Monitor',
+    description: 'CI run 482',
+    command: 'gh run watch 482 --exit-status',
+    timeout_ms: 1_800_000,
+    agentId: 'a1',
+  } as never)
+  await $.classic.Stop({ stop_hook_active: false, background_tasks: [] })
+  const monitor = () =>
+    (state['rabe.items']?.value as { id: string; status: string; parentId?: string }[]).find(
+      one => one.id === 'monitor:m1',
+    )
+  expect(monitor()).toMatchObject({ status: 'running', parentId: 'agent:a1' })
+  held[OUT] += '\n[exited with code 0]\n'
+  await clock.advance(2000)
+  expect(monitor()).toMatchObject({ status: 'done', endedAt: 3000 })
+})
+
 test('at Stop a monitor no longer in flight ends; one Rabe never saw is added', async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const state = memoryState(on)

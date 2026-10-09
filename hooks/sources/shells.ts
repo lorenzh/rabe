@@ -151,6 +151,9 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
   const now = await $.clock.now()
   for (const item of runningShells(items)) {
     if (!item.detail.taskId || inFlight.has(item.detail.taskId)) continue
+    // A subagent's task may be missing from the main session's list; the poll
+    // ends it from the exit line of its output file.
+    if (item.parentId?.startsWith('agent:')) continue
     const text = item.detail.outputPath && (await readOutput($, item.detail.outputPath))
     const { exitCode, ended = 'stopped' } = parseOutput(text || '')
     await write($, held =>
