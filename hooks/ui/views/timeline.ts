@@ -4,7 +4,18 @@ import { nextRun } from '../../schedule'
 import { fit } from '../cells/grid'
 import { C, CHIP, type Style, tone } from '../cells/palette'
 import { clockTime, day, duration, tokens, usd } from '../format'
-import { bar, byStart, glyph, KIND_LABEL, kept, nameSpans, shown, stable, tree } from '../lists'
+import {
+  bar,
+  byStart,
+  forwarderOf,
+  glyph,
+  KIND_LABEL,
+  kept,
+  nameSpans,
+  shown,
+  stable,
+  tree,
+} from '../lists'
 import type { Drawn, Line, Model, View, ViewButton } from '../view'
 import { resumeButton } from './detail'
 import { beside, fitLine, focusOn, text } from './lines'
@@ -263,7 +274,12 @@ export const timelineView: View = (model, size, sel): Drawn => {
         },
       ]
     : []
-  const who = treeLines(model.items.filter(item => list.includes(item)))
+  // a forwarder has no row, but stays in the tree above its job
+  const who = treeLines(
+    model.items.filter(
+      item => list.includes(item) || list.some(one => forwarderOf(one, model.items) === item),
+    ),
+  )
   const prev = previousLines(model, isSide ? BOX : size.columns)
   const below = isSide
     ? beside(who, size.columns - BOX - 2, [['  ']], prev, BOX)

@@ -4,7 +4,7 @@ import type { RabePrevious } from '../../../types'
 import type { RabeItem } from '../../model'
 import { cell, lines } from '../cells/grid'
 import { C, CHIP } from '../cells/palette'
-import { ALL, babysit, dev, gridOf, lint, NOW, plan } from '../fixtures'
+import { ALL, babysit, dev, gridOf, lint, NOW, plan, review } from '../fixtures'
 import { isPress, type Model, NO_SELECTION, rowKeys, type Size } from '../view'
 import { hoursOf, timelineView, widen, windowOf } from './timeline'
 
@@ -228,4 +228,23 @@ test('a removed item has no row on the timeline', () => {
   expect(rowKeys(drawn)).not.toContain(`row:${plan.id}`)
   expect(rowKeys(drawn)).toContain(`row:${dev.id}`)
   expect(lines(drawn.grid).some(line => line.includes(plan.title))).toBe(false)
+})
+
+// The rows fold a forwarder into its Codex job, but who started what keeps
+// it, with its job under it.
+test('who started what keeps a forwarder above its Codex job', () => {
+  const call = { at: NOW - 60_000, command: 'task' as const, text: 'codex-companion.mjs task' }
+  const forwarder = {
+    ...plan,
+    id: 'agent:f1',
+    title: 'Codex rescue',
+    detail: { agentId: 'f1', toolCount: 1, codexCalls: [call] },
+  } as RabeItem
+  const job = { ...review, parentId: forwarder.id } as RabeItem
+  const drawn = gridOf(timelineView({ ...MODEL, items: [forwarder, job] }, SIZE, NO_SELECTION))
+  expect(rowKeys(drawn)).toEqual([`row:${job.id}`])
+  const shown = lines(drawn.grid)
+  const at = find(shown, '└─ ✓ Codex rescue')
+  expect(at).toBeGreaterThan(0)
+  expect(shown[at + 1]).toMatch(/^ {3}└─ ◐ review auth\.ts \(codex\)/)
 })
