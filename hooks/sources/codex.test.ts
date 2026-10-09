@@ -2,6 +2,7 @@ import type { On } from 'claude-code'
 import { type Engine, expect, type MockClock, mock, test } from 'claude-code/testing'
 
 import type { RabeItem } from '../model'
+import { memoryState } from '../testing'
 import { codexItem, jobEnd, parseRollout } from './codex'
 
 const line = (type: string, payload: object) => JSON.stringify({ type, payload })
@@ -346,4 +347,24 @@ test('a session file that cannot be read still lets the job end', async ($, on) 
   })
   await startAndTick($, w)
   expect(writes.at(-1)?.[0]).toMatchObject({ status: 'done', endedAt: 9000 })
+})
+
+test('a finished job the cap dropped is not read or added again', async ($, on) => {
+  const state = memoryState(on)
+  state['rabe.evicted'] = { value: ['codex:task-1'], version: 1 }
+  const reads: string[] = []
+  on('fs.read', { path: /\/jobs\// }, async (_$, e, next) => {
+    reads.push(e.path)
+    return next(e)
+  })
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [{ id: 'task-1', status: 'completed' }, job({ id: 'task-2' })] },
+    [`${WS}/jobs/task-1.json`]: job({ status: 'completed' }),
+    [`${WS}/jobs/task-2.json`]: job({ id: 'task-2' }),
+    [ROLLOUT_PATH]: ROLLOUT,
+  })
+  await startAndTick($, w)
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items.map(item => item.id)).toEqual(['codex:task-2'])
+  expect(reads).toEqual([`${WS}/jobs/task-2.json`])
 })

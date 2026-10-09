@@ -310,6 +310,7 @@ async function poll($: EngineInterface): Promise<void> {
   const sessionId = await $.session.id()
   const { startedAt: since } = await $.session.usage()
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+  const { value: evicted = [] } = await $.state.get({ plugin: 'rabe', key: 'evicted' })
   // ponytail: one stat per workspace folder per poll; keep a folder list in $.state if there are hundreds
   for (const dir of await $.fs.list(stateRoot).catch(() => [])) {
     if (dir.kind !== 'dir') continue
@@ -323,6 +324,8 @@ async function poll($: EngineInterface): Promise<void> {
       if (!id || (entry.sessionId !== undefined && entry.sessionId !== sessionId)) continue
       const held = items.find((one): one is RabeItemOf<'codex'> => one.id === itemId('codex', id))
       if (held && held.status !== 'running') continue
+      // an ended job the cap dropped is not read or added again
+      if (!held && evicted.includes(itemId('codex', id)) && jobEnd(entry.status)) continue
       await refresh(
         $,
         sessionId,

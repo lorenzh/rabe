@@ -49,13 +49,16 @@ export function capEnded(items: RabeItem[], max = MAX_ENDED): RabeItem[] {
   return items.filter(item => !dropped.has(item))
 }
 
+// The changed list, or `undefined` when the capped list is the held one. The
+// cleanup hook applies the cap as the list is written, so it sees what the cap drops.
 export function commit(held: RabeItem[] | undefined, change: Change): RabeItem[] | undefined {
   const items = held ?? []
-  const next = capEnded(change(items))
+  const changed = change(items)
+  const next = capEnded(changed)
 
   const same = next.length === items.length && next.every((item, i) => item === items[i])
 
-  return same ? undefined : next
+  return same ? undefined : changed
 }
 
 export const MAX_EVICTED = 1000
@@ -69,16 +72,16 @@ export function keepItems<T>(record: Record<string, T>, items: RabeItem[]): Reco
   return Object.fromEntries(Object.entries(record).filter(([id]) => ids.has(id)))
 }
 
-// The ids a write dropped, appended to the newest `max` evicted ids; the same
-// list when the write dropped none.
+// The ids of `seen` missing from `kept`, appended to the newest `max` evicted
+// ids; the same list when none is missing.
 export function evict(
   evicted: string[],
-  before: RabeItem[],
-  after: RabeItem[],
+  seen: RabeItem[],
+  kept: RabeItem[],
   max = MAX_EVICTED,
 ): string[] {
-  const kept = new Set(after.map(item => item.id))
-  const dropped = before.filter(item => !kept.has(item.id)).map(item => item.id)
+  const ids = new Set(kept.map(item => item.id))
+  const dropped = [...new Set(seen.map(item => item.id))].filter(id => !ids.has(id))
   if (dropped.length === 0) return evicted
 
   return [...evicted.filter(id => !dropped.includes(id)), ...dropped].slice(-max)

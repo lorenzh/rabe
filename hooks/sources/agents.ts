@@ -119,10 +119,12 @@ function asAgent(items: RabeItem[], id: string): AgentItem | undefined {
   return item?.kind === 'agent' ? item : undefined
 }
 
-function listed(items: RabeItem[], info: AgentInfo, now: number): RabeItem[] {
+// An ended agent the cap dropped (`evicted`) is not added back.
+function listed(items: RabeItem[], info: AgentInfo, now: number, evicted: string[]): RabeItem[] {
   const id = itemId('agent', info.id)
   const status = LISTED[info.status] ?? 'running'
   if (!asAgent(items, id)) {
+    if (status !== 'running' && evicted.includes(id)) return items
     return addItem(
       items,
       {
@@ -202,7 +204,8 @@ async function readMeta($: EngineInterface, id: string): Promise<void> {
 async function refresh($: EngineInterface): Promise<void> {
   const agents = await $.agent.list().catch(() => [])
   const now = await $.clock.now()
-  await write($, items => agents.reduce((list, info) => listed(list, info, now), items))
+  const { value: evicted = [] } = await $.state.get({ plugin: 'rabe', key: 'evicted' })
+  await write($, items => agents.reduce((list, info) => listed(list, info, now, evicted), items))
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   for (const item of items) {
     if (item.kind === 'agent' && item.status === 'running') await readMeta($, item.id)

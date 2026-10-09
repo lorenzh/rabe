@@ -63,7 +63,7 @@ test('cap drops the oldest ended items and keeps every running one', () => {
   expect(capEnded(items, 3)).toBe(items)
 })
 
-test('commit answers undefined when nothing changed, else the capped list', () => {
+test('commit answers undefined when nothing changed, else the changed list for the hook to cap', () => {
   const items = [{ ...shell, seenAt: 500 }]
   expect(commit(items, held => updateItem(held, shell.id, { title: shell.title }))).toBeUndefined()
   expect(commit(undefined, held => addItem(held, shell, 500))).toEqual(items)
@@ -73,7 +73,7 @@ test('commit answers undefined when nothing changed, else the capped list', () =
     seenAt: n,
     status: 'done' as const,
   }))
-  expect(commit(many, held => held.slice())).toHaveLength(MAX_ENDED)
+  expect(commit(many, held => held.slice())).toHaveLength(MAX_ENDED + 1)
 })
 
 test('commit answers undefined when the cap drops what the change added', () => {

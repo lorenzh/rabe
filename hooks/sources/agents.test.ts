@@ -2,6 +2,8 @@ import type { AgentSpawnInput, On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
 import type { RabeItem, RabeItemOf, RabeTurn } from '../model'
+import { MAX_ENDED } from '../registry'
+import { core, memoryState } from '../testing'
 import { addTurn, agentTranscript, metaPatch, metaPath, toolSummary } from './agents'
 
 const SPAWN: AgentSpawnInput = {
@@ -367,4 +369,33 @@ test('the poll adds listed agents and reads the meta file of running ones', asyn
     ['agent:a2', 'done', 'agent:a1'],
   ])
   expect(list[0]?.detail).toMatchObject({ worktreePath: '/wt/a1', worktreeBranch: 'wt-a1' })
+})
+
+test('a poll never adds back an ended agent the cap dropped; one running again comes back', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  core(on)
+  const done = Array.from({ length: MAX_ENDED + 1 }, (_, n) => ({
+    id: `a${n}`,
+    description: `a${n}`,
+    type: 'Explore',
+    status: 'completed' as const,
+  }))
+  let listed = done
+  on('agent.list', async () => ({ value: listed }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  const first = state['rabe.items']
+  expect(first?.value).toHaveLength(MAX_ENDED)
+  expect(state['rabe.evicted']?.value).toEqual(['agent:a0'])
+
+  // The next polls list the same agents: nothing is added back, nothing written.
+  await clock.advance(3000)
+  await clock.advance(3000)
+  expect(state['rabe.items']).toBe(first)
+
+  // A dropped agent that runs again (a message resumed it) is added back.
+  listed = [{ ...done[0], status: 'running' } as never]
+  await clock.advance(3000)
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items.find(item => item.id === 'agent:a0')?.status).toBe('running')
 })
