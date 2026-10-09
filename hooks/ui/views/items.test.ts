@@ -444,9 +444,11 @@ test('below 90 columns the summary of a folded job counts its forwarder, and onl
     )
     return shown[shown.length - 1]
   }
-  expect(end([plan, forwarder, child])).toBe(
-    '◐ review auth.ts · gpt-6.1-sol · ≈ $0.25 · 61k in · running',
+  const job = { ...child, costUsd: 2 } as RabeItem
+  const cheap = { ...forwarder, costUsd: 0.01 } as RabeItem
+  expect(end([plan, cheap, job])).toBe(
+    '◐ review auth.ts · gpt-6.1-sol · ≈ $2.01 · 61k in · running',
   )
   const blind = { ...forwarder, costUsd: undefined, tokens: undefined } as RabeItem
-  expect(end([plan, blind, child])).toBe('◐ review auth.ts · gpt-6.1-sol · running')
+  expect(end([plan, blind, job])).toBe('◐ review auth.ts · gpt-6.1-sol · cost n/a · running')
 })

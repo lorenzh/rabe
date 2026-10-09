@@ -167,7 +167,7 @@ export function selectedItem(order: RabeItem[], sel: Selection): RabeItem | unde
 export const summary = detailLines
 
 // The selected item in one line under a list too narrow for the split. A
-// folded job's spend is its forwarder's too, as in the detail.
+// folded job's spend is its forwarder's too, and n/a as in the detail.
 function summaryLine(model: Model, item: RabeItem): Line {
   const d = item.detail as Record<string, unknown>
   const spend = withForwarder(item, model.items)
@@ -177,6 +177,7 @@ function summaryLine(model: Model, item: RabeItem): Line {
   if (d.port !== undefined) add(`:${d.port}`, { fg: C.blue })
   if (typeof d.model === 'string') add(d.model)
   if (spend.costUsd !== undefined) add(`≈ ${usd(spend.costUsd)}`, { fg: C.bright })
+  else if (item.kind === 'agent' || item.kind === 'codex') add('cost n/a')
   if (spend.tokens) add(`${tokens(spend.tokens.input)} in`)
   add(facts(item, model.now, model.items).status.slice(2), { fg: tone(item) })
 
