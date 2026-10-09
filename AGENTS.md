@@ -24,7 +24,7 @@
 - A test's `$` has no `state` noun: watch writes with a test hook on `state.set`. A test needs `mock.clock(on)` when the code reads the clock.
 
 ## Code Layout
-- `hooks/register.tsx`: entry point; calls `sources(on)`, `band(on)`, `pane(on)` and, unless the option `hideBuiltinTasks` is false, `builtin(on)`; nothing else.
+- `hooks/register.tsx`: entry point; calls `sources(on)`, `band(on)`, `pane(on, hours)` (the option `timelineHours`) and, unless the option `hideBuiltinTasks` is false, `builtin(on)`; nothing else.
 - `hooks/model.ts`: the item types and pure item helpers. `hooks/registry.ts`: pure changes to the item list.
 - `hooks/sources/<kind>.ts`: one module per source (agents, codex, shells, monitors, crons, workflows) that turns events and files into items, and `worktrees.ts`, which keeps the git worktrees in `rabe.worktrees`; `hooks/sources/index.ts` calls each one. Each file's `write($, change)` caps the list and drops the per-item state of the items it removed; a timer's write skips the plugin's own `state.set` hooks.
 - `hooks/tasks.ts`, `hooks/schedule.ts`: pure parsers for task notifications, task output files and cron schedules. `hooks/writes.ts`: pure, the files a shell command line may write (candidates the sources check on disk). Views read session state only, never files.

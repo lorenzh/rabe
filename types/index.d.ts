@@ -152,6 +152,12 @@ export type RabeWorktree = {
   isMain?: boolean
 }
 
+// The Timeline tab's window for the open pane: `base` hours from the option
+// `timelineHours`, `hours` the step shown now (0: the whole session) and
+// `since` its start in ms (0: none). `since` stays put while the pane is
+// open, so no row folds away under the focus.
+export type RabeWindow = { base: number; hours: number; since: number }
+
 declare module 'claude-code' {
   interface PluginState {
     rabe: {
@@ -168,6 +174,7 @@ declare module 'claude-code' {
       edits: RabeEdit[]
       // The repository's git worktrees; absent without git.
       worktrees: RabeWorktree[]
+      window: RabeWindow
     }
   }
 }

@@ -7,6 +7,7 @@ import type {
   RabePrevious,
   RabeTab,
   RabeTurn,
+  RabeWindow,
   RabeWorktree,
 } from '../../types'
 import type { RabeItem } from '../model'
@@ -69,6 +70,8 @@ export type Selection = {
   isArmed: boolean
   // The list's x and g act only while this holds too (`arm`).
   isListArmed: boolean
+  // The Timeline's window; absent: the whole session, no key to widen it.
+  window?: RabeWindow
 }
 
 export type Action =
@@ -76,6 +79,8 @@ export type Action =
   | { type: 'open'; id: string }
   | { type: 'fold'; group: string }
   | { type: 'query'; text: string }
+  // Widen the Timeline's window (`widen` in views/timeline.ts).
+  | { type: 'window' }
   | { type: 'focus'; key: string }
   | { type: 'stop'; ids: string[] }
   | { type: 'delete'; id: string }
@@ -213,6 +218,8 @@ export function landing(action: Action, open: string): string[] {
       return ['tab-items', `group-${action.group}`]
     case 'query':
       return ['search']
+    case 'window':
+      return ['tab-timeline', 'window']
     default:
       return []
   }

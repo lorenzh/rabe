@@ -21,8 +21,13 @@ import {
   taskIdOf,
 } from './view'
 import { fallbackOf, isLiveRow, paneView, selectsOnPress } from './views/pane'
+import { widen, windowOf } from './views/timeline'
 
 const PANE = 'rabe'
+
+// The option `timelineHours`, set by `pane(on, hours)`: the Timeline's window
+// when the pane opens.
+let baseHours = 4
 
 // Esc may have closed the pane before the delayed focus call.
 async function refocus($: EngineInterface): Promise<void> {
@@ -181,6 +186,15 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
     case 'query':
       await $.state.set({ plugin: 'rabe', key: 'query' }, action.text)
       return land($, landing(action, ''))
+    case 'window': {
+      const now = await $.clock.now()
+      const { value = windowOf(baseHours, now) } = await $.state.get({
+        plugin: 'rabe',
+        key: 'window',
+      })
+      await $.state.set({ plugin: 'rabe', key: 'window' }, widen(value, now))
+      return land($, landing(action, ''))
+    }
     case 'focus':
       await focusOn($, action.key)
       return
@@ -234,12 +248,14 @@ async function look(
   const { value: open = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
   const { value: order } = await $.state.get({ plugin: 'rabe', key: 'order' })
   const { value: worktrees } = await $.state.get({ plugin: 'rabe', key: 'worktrees' })
+  const { value: window } = await $.state.get({ plugin: 'rabe', key: 'window' })
+  const now = await $.clock.now()
   const usage = await $.session.usage().catch(() => undefined)
   const model = {
     items,
     turns,
     lines,
-    now: await $.clock.now(),
+    now,
     usd: usage?.cost?.usd,
     previous: await previous($).catch(() => undefined),
     edits,
@@ -256,6 +272,7 @@ async function look(
     isFocused,
     isArmed: arming.isArmed,
     isListArmed: arming.isListArmed,
+    window: window ?? windowOf(baseHours, now),
     ...(order && { order }),
   }
 
@@ -263,7 +280,8 @@ async function look(
 }
 
 // The view the person chose. A change of it is theirs, so its hold starts anew.
-const scopeOf = (sel: Selection) => JSON.stringify([sel.tab, sel.open, sel.query, sel.folded])
+const scopeOf = (sel: Selection) =>
+  JSON.stringify([sel.tab, sel.open, sel.query, sel.folded, sel.window?.hours])
 
 // Per surface, the focusable keys the pane drew since it opened, for one view
 // (`scope`). A render hook may not write `$.state` (drawing is pure), so this
@@ -333,7 +351,8 @@ async function arrow($: EngineInterface, by: number, bodyRows: number): Promise<
   return true
 }
 
-export function pane(on: On): void {
+export function pane(on: On, hours = baseHours): void {
+  baseHours = hours
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'rabe',
@@ -350,6 +369,7 @@ export function pane(on: On): void {
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
     await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(items, edits))
+    await $.state.set({ plugin: 'rabe', key: 'window' }, windowOf(baseHours, await $.clock.now()))
     holds.clear()
     feed($, { type: 'reset' })
     await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })

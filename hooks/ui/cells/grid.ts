@@ -26,7 +26,7 @@ const WIDTH_1: [number, number][] = [
 ]
 
 // The glyphs Rabe draws outside those ranges.
-const GLYPHS = '≈≥⎇⎿■▶▸▾◉●◐◷⚠✓✗✻⟳⧉'
+const GLYPHS = '≈≥⎇⎿■▶▸▾◂◉●◐◷⚠✓✗✻⟳⧉'
 const OWN = new Set([...GLYPHS].map(ch => ch.codePointAt(0)))
 
 // Unassigned code points, marks and format and control characters take no cell.

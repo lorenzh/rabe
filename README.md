@@ -32,7 +32,7 @@ The pane has four tabs:
 - **Items**: all items grouped by kind, with a search field. Shells and monitors that an agent started show under the name of that agent. If the pane is 90 columns or wider, the selected item shows beside the list.
 - **Cost**: the session cost as `/cost` totals it, and a bar of tokens per agent and Codex job. Agents that look slow or stuck show under "Load".
 - **Effects**: files that agents, Codex jobs and the main session changed, with who changed each and how (`edit`, `write`, `codex add`, `deleted`), a warning when two of them change the same file, the git worktrees files changed in with their branch and who worked there (the main session included), and open ports with the `ssh -L` command to reach them. Files written through shell commands (`cat > file <<'EOF'`, `>>`, `tee`, `sed -i`, `cp`, `mv`, `touch`, `rm`) show as `via shell`, checked on disk: Rabe takes the files named on the command line and lists one only when its size or modification time changed, or it appeared or went away, while the command ran. Claude Code does not tell Rabe the folder a Bash command runs in, so only absolute paths count (or paths after a `cd /absolute/folder` in the same command): `cat > notes.md` shows nothing. A command after `||`, inside `if` or a loop, in the background, or with a glob or `$var` in its path shows nothing, and neither does a file a script writes on its own (Python's `open(…, 'w')`, a build tool). Enter or a click on a file opens the agent or Codex job that changed it last, or copies the path of a main-session file; on an `ssh -L` line it copies the line (`c` copies the first). In a Git repository each file shows relative to the worktree that holds it; Rabe reads the worktrees with `git worktree list` in the terminal, and without Git it shows the worktrees of agents only.
-- **Timeline**: a bar per item over the session, who started what, and a summary of the previous session in this project.
+- **Timeline**: a bar per item over the last 4 hours, who started what, and a summary of the previous session in this project. Items that ended before the window fold into one line (`+37 older items, ended before 10:20`); a bar that started earlier is cut at the left edge with `◂`. `w` widens the window for the open pane, from 4 hours to 12 hours to the whole session. The option `timelineHours` in `/plugin` sets the hours; `0` shows the whole session.
 
 ## Install
 
@@ -62,6 +62,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | `m` | Send a message to an agent |
 | `c` | Copy the command, the prompt or the `ssh -L` line |
 | `d` | Delete a cron job |
+| `w` | On the Timeline tab: show more time (4 h, 12 h, the whole session, then 4 h again) |
 | Mouse wheel | Scroll the pane |
 | Esc | Close the pane |
 
@@ -83,6 +84,8 @@ Commands:
 The two report commands show you a draft first. They create a public GitHub issue only after you say yes. Without the `gh` CLI they give you a link to open instead.
 
 Rabe hides Claude Code's own count of background work, because the band shows it. That is the `2 shells, 1 monitor · ↓ to manage` part under the prompt, and `still running` at the end of a turn. To keep them, turn off the option `hideBuiltinTasks` in `/plugin`. Rabe cannot hide the agent list under the prompt.
+
+The option `timelineHours` (default 4) sets how many hours the Timeline tab shows when the pane opens; `0` shows the whole session.
 
 ## Where the data comes from
 

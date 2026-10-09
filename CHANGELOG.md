@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Added
+
+- The Timeline tab shows the last 4 hours. Items that ended before fold into one line, and a bar that started earlier is cut at the left edge with `◂`, so a long session stays readable. `w` widens the window for the open pane (4 h, 12 h, the whole session). The new option `timelineHours` sets the hours; `0` shows the whole session as before. (fixes [#20](https://github.com/lorenzh/rabe/issues/20))
+
 ### Fixed
 
 - The Effects tab lists every git worktree files changed in, with its branch and who changed files there, the main session included, and shows each file relative to its worktree. Before, it knew only the worktrees of isolated agents, so a worktree the main session or a plain agent edited by its full path was missing and its files showed with their full path. The WORKTREES count now matches its rows. Rabe reads the worktrees with `git worktree list`; without Git it works as before. (fixes [#19](https://github.com/lorenzh/rabe/issues/19))
