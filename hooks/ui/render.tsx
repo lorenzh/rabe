@@ -30,7 +30,10 @@ export type Ui = {
   Raster?: ElementConstructor<RasterProps>
 }
 
-export type Act = (action: Action, surface: RenderSurface) => void
+// Where a press or an Input event came from: its surface and the element's key.
+export type At = { surface: RenderSurface; element: string }
+
+export type Act = (action: Action, at: At) => void
 
 // A focusable element drawn since the pane opened: its key, its latest label,
 // and whether it is a control (an Input too) rather than a row Button.
@@ -129,8 +132,8 @@ export function render(
   const color = (rgb: number | undefined) => paint(rgb, surface)
   const run =
     (action: Action) =>
-    (press: { surface: RenderSurface }): void => {
-      if (action.type !== 'none') act(action, press.surface)
+    (press: At): void => {
+      if (action.type !== 'none') act(action, press)
     }
 
   const part = (one: Part, hasScope: boolean) =>
@@ -233,8 +236,8 @@ export function render(
                   placeholder={input.placeholder}
                   value={input.value}
                   submitLabel={input.submitLabel}
-                  onInput={input.isLive ? text => act(input.action(text), surface) : undefined}
-                  onSubmit={text => act(input.action(text), surface)}
+                  onInput={input.isLive ? (text, at) => act(input.action(text), at) : undefined}
+                  onSubmit={(text, at) => act(input.action(text), at)}
                 />,
               ]
             : []

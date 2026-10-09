@@ -24,6 +24,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - The Timeline axis names each clock time once. (#TBD)
 - With the mouse you can stop things: a click on a row arms `x` and `g` for that row, and the stop in an item you opened is no longer dim after the open. (#TBD)
 - A focus move that another plugin swallows (it answers without passing the move on) no longer selects the row or arms `x` and `g`: the pane keeps its selection and disarms. (#TBD)
+- Enter opens the row that has the focus, also after a click selected another row. A press and a search edit at the same time each do their own action. (#TBD)
 
 ## [0.1.0] - 2026-10-09
 

@@ -955,3 +955,103 @@ test('a press on another row selects it and arms x for it; on the selected row i
   expect(state.open).toBe(ci.id)
   await ui.unmount()
 })
+
+// GPT review round 11: the ring and the selection part when a click selects
+// another row. Enter presses the row that holds the ring and opens it; a press
+// on a row away from the ring, which only a pointer makes, selects it first.
+test('Enter after a click on another row opens the focused row; a second click opens the clicked row', async ($, on) => {
+  const state = hold(on, ALL, { selected: dev.id })
+  await arm($, `row:${dev.id}`)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: `row:${ci.id}` })
+  expect([state.selected, state.open]).toEqual([ci.id, undefined])
+  await ui.press({ key: `row:${dev.id}` })
+  expect([state.selected, state.open]).toEqual([dev.id, dev.id])
+  await ui.press({ key: 'back' })
+  await ui.press({ key: `row:${ci.id}` })
+  expect([state.selected, state.open]).toEqual([ci.id, ''])
+  await ui.press({ key: `row:${ci.id}` })
+  expect([state.selected, state.open]).toEqual([ci.id, ci.id])
+  await ui.unmount()
+})
+
+// GPT review round 11: a plugin beneath Rabe holds each press and Input event
+// open after its closure ran. A test plugin shares no memory with the test, so
+// it waits on a store read that the test answers when it lets the event go.
+const gate = {
+  name: 'gate',
+  tier: 'append',
+  register(on: On) {
+    on('ui.press', { requestId: 'rabe' }, async ($, e, next) => {
+      const result = await next(e)
+      await $.store.get(`gate:${e.element}`)
+      return result
+    })
+    on('ui.input', { requestId: 'rabe' }, async ($, e, next) => {
+      const result = await next(e)
+      await $.store.get(`gate:${e.element}`)
+      return result
+    })
+  },
+} as const
+
+// Waits until the event on `element` is held, and answers what lets it go.
+function gates(on: On): (element: string) => Promise<() => void> {
+  const doors = new Map<string, () => void>()
+  const waits = new Map<string, (go: () => void) => void>()
+  on('store.get', async (_$, e, next) => {
+    if (!e.key.startsWith('gate:')) return next(e)
+    const element = e.key.slice(5)
+    await new Promise<void>(go => {
+      const wait = waits.get(element)
+      waits.delete(element)
+      if (wait) wait(go)
+      else doors.set(element, go)
+    })
+    return { value: undefined }
+  })
+
+  return element =>
+    new Promise(resolve => {
+      const go = doors.get(element)
+      doors.delete(element)
+      if (go) resolve(go)
+      else waits.set(element, resolve)
+    })
+}
+
+const OVERLAPS = [
+  ['two presses', `row:${explore.id}`, { open: explore.id }],
+  ['a press and an Input change', 'search', { query: 'verify' }],
+] as const
+
+for (const [name, element, wrote] of OVERLAPS) {
+  for (const order of ['first', 'second'] as const) {
+    test(
+      `${name} in flight at once each run their own action, the ${order} let go first`,
+      { plugins: [gate] },
+      async ($, on) => {
+        const state = hold(on, ALL, { selected: explore.id })
+        const gated = gates(on)
+        const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+        const fold = ui.press({ key: 'group-shells' })
+        const goFold = await gated('group-shells')
+        const other =
+          element === 'search'
+            ? ui.input({ key: 'search', text: 'verify', kind: 'change' })
+            : ui.press({ key: element })
+        const goOther = await gated(element)
+        const runs = [
+          [goFold, fold],
+          [goOther, other],
+        ] as const
+        for (const [go, done] of order === 'first' ? runs : [...runs].reverse()) {
+          go()
+          await done
+        }
+        expect(state).toMatchObject({ folded: ['shells'], ...wrote })
+        await ui.unmount()
+      },
+    )
+  }
+}

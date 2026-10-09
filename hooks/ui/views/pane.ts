@@ -148,10 +148,12 @@ export const isLiveRow = (model: Model, sel: Selection, key: string): boolean =>
   key.startsWith('row:') && listOrder(model, sel).some(item => `row:${item.id}` === key)
 
 // Whether a press on the row of item `id` selects it instead of opening it:
-// a live row of the Items list that is not the selected one. Enter presses
-// the focused row, which the focus already selected, so it opens.
-export function selectsOnPress(model: Model, sel: Selection, id: string): boolean {
+// a live row of the Items list that is neither the selected one nor the one
+// that holds the focus ring (`ring`, its key). Enter presses the ring's row
+// and opens it; only a pointer presses a row away from the ring.
+export function selectsOnPress(model: Model, sel: Selection, id: string, ring?: string): boolean {
   if (sel.tab !== 'items' || model.items.some(item => item.id === sel.open)) return false
+  if (ring === `row:${id}`) return false
   const order = listOrder(model, sel)
 
   return order.some(item => item.id === id) && selectedItem(order, sel)?.id !== id

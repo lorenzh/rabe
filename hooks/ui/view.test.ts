@@ -216,4 +216,6 @@ test('a press on another live row of the Items list selects it; on the selected 
   expect(selectsOnPress(model, { ...sel, open: explore.id }, ci.id)).toBe(false)
   expect(selectsOnPress(model, { ...sel, open: 'agent:gone' }, ci.id)).toBe(true)
   expect(selectsOnPress(model, { ...sel, query: 'dev' }, ci.id)).toBe(false)
+  expect(selectsOnPress(model, sel, ci.id, `row:${ci.id}`)).toBe(false)
+  expect(selectsOnPress(model, sel, ci.id, `row:${dev.id}`)).toBe(true)
 })
