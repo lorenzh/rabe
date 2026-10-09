@@ -31,7 +31,7 @@ The pane has four tabs:
 
 - **Items**: all items grouped by kind, with a search field. If the pane is 90 columns or wider, the selected item shows beside the list.
 - **Cost**: the session cost as `/cost` totals it, and a bar of tokens per agent and Codex job. Agents that look slow or stuck show under "Load".
-- **Effects**: files that agents edited, a warning when two agents edit the same file, worktrees, and open ports with the `ssh -L` command to reach them.
+- **Effects**: files that agents edited, a warning when two agents edit the same file, worktrees, and open ports with the `ssh -L` command to reach them. Enter or a click on a file opens the agent that edited it last; on an `ssh -L` line it copies the line (`c` copies the first).
 - **Timeline**: a bar per item over the session, who started what, and a summary of the previous session in this project.
 
 ## Install
