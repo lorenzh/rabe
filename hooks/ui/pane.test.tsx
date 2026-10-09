@@ -810,6 +810,47 @@ test('a change of the view disarms until the ring lands; a failed landing keeps 
   await ui.unmount()
 })
 
+// GPT review round 9: a plugin beneath Rabe sends the move onto another row,
+// or refuses it. The selection follows where the ring lands, and x and g stay
+// inert: the person chose neither row.
+const sender = {
+  name: 'sender',
+  tier: 'append',
+  register(on: On) {
+    on('ui.focus', { requestId: 'rabe' }, async (_$, e, next) => {
+      if (e.element === 'row:agent:a1') return next({ ...e, element: 'row:shell:bg_2' })
+      if (e.element === 'row:codex:task-1') return { deny: 'not now' }
+      return next(e)
+    })
+  },
+} as const
+
+test(
+  'a focus another plugin sends elsewhere selects where it lands and leaves x and g inert',
+  { plugins: [sender] },
+  async ($, on) => {
+    expect([explore.id, review.id, dev.id]).toEqual(['agent:a1', 'codex:task-1', 'shell:bg_2'])
+    const state = hold(on, ALL, { selected: dev.id })
+    const stopped = stops(on)
+    await arm($, `row:${dev.id}`)
+    await arm($, `row:${review.id}`)
+    expect(state.selected).toBe(dev.id)
+    await arm($, `row:${explore.id}`)
+    expect(state.selected).toBe(dev.id)
+    const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    for (const key of ['stop', 'stop-group']) {
+      const one = await ui.find({ type: 'Button', key })
+      expect([key, one?.props.hotkey]).toEqual([key, undefined])
+    }
+    await ui.press({ key: 'stop' })
+    expect(stopped).toEqual([])
+    await arm($, `row:${dev.id}`)
+    await ui.redraw()
+    expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBe('x')
+    await ui.unmount()
+  },
+)
+
 test('a selected row that is gone disarms x and g; the next focus by the person re-arms them', async ($, on) => {
   const items = ALL.filter(item => item !== lint)
   hold(on, items, { selected: dev.id })

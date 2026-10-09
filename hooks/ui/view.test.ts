@@ -32,8 +32,14 @@ test('a change of the view lands the focus ring on the active tab, then where it
 
 // Destructive controls act only while the ring is known to sit on a safe
 // element (see arming in docs/architecture.md).
-const focus = (key: string, byPerson = true, isLiveRow = key.startsWith('row:')) =>
-  ({ type: 'focus', byPerson, key, isLiveRow }) as const
+// `requested`: the element the move asked for; `key`: where the ring landed.
+const focus = (
+  key: string,
+  byPerson = true,
+  isLiveRow = key.startsWith('row:'),
+  requested = key,
+  selected = key.startsWith('row:') ? key.slice(4) : 'a',
+) => ({ type: 'focus', byPerson, key, requested, isLiveRow, selected }) as const
 
 test('the pane starts disarmed, and only evidence of a safe ring arms it', () => {
   expect(DISARMED.isArmed).toBe(false)
@@ -89,6 +95,24 @@ test('an arrow Rabe carries out arms x and g on a live row, and only that move',
   }
   const elsewhere = arm(arm(landed, step('row:a')), focus('group-shells', false))
   expect(arm(elsewhere, focus('row:a', false)).isListArmed).toBe(false)
+})
+
+// GPT review round 9: a hook beneath Rabe's sends the move onto another
+// element. The ring lands there, which the person did not choose.
+test('a move another hook sends elsewhere never arms x and g', () => {
+  const landed = arm(DISARMED, { type: 'landed', isMoved: true })
+  const live = arm(landed, focus('row:a'))
+  expect(arm(live, focus('row:c', true, true, 'row:b')).isListArmed).toBe(false)
+  expect(arm(live, focus('group-shells', true, false, 'row:b')).isListArmed).toBe(false)
+  expect(arm(live, focus('stop:shell:a', true, false, 'row:b')).isArmed).toBe(false)
+  // Rabe's arrow onto row b lands on row c: pane.tsx feeds the call as not moved.
+  const sent = arm(arm(live, { type: 'step', key: 'row:b' }), focus('row:c', false, true, 'row:b'))
+  expect(sent.isListArmed).toBe(false)
+  const after = arm(sent, { type: 'landed', isMoved: false })
+  expect([after.isArmed, after.isListArmed]).toEqual([false, false])
+  // The stored selection must name the row the ring landed on.
+  expect(arm(landed, focus('row:a', true, true, 'row:a', 'b')).isListArmed).toBe(false)
+  expect(arm(live, focus('row:a', true, true, 'row:a', 'b')).isListArmed).toBe(false)
 })
 
 const shown = (fallback: string, targets: string[] = [], selected = 'a') =>

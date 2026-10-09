@@ -233,9 +233,18 @@ export type ArmEvent =
   // Rabe's own `$.ui.focus` moved the ring, or was refused or threw.
   | { type: 'landed'; isMoved: boolean }
   // A `ui.focus` on the pane that no hook refused: by the person, or by Rabe
-  // (a landing, `autoFocus`) onto element `key`; `isLiveRow`: a row the list
-  // draws, not a gone slot (`isLiveRow` in views/pane.ts).
-  | { type: 'focus'; byPerson: boolean; key: string; isLiveRow: boolean }
+  // (a landing, `autoFocus`), asking for element `requested`; the ring landed
+  // on `key`, which a hook beneath may have rewritten. `isLiveRow`: `key` is a
+  // row the list draws, not a gone slot (`isLiveRow` in views/pane.ts);
+  // `selected`: the stored selection after the move.
+  | {
+      type: 'focus'
+      byPerson: boolean
+      key: string
+      requested: string | undefined
+      isLiveRow: boolean
+      selected: string
+    }
   // A drawing.
   | ({ type: 'drawn' } & Shown)
 
@@ -255,10 +264,14 @@ export function arm(state: Arming, event: ArmEvent): Arming {
     }
     case 'focus': {
       const { step, ...rest } = state
+      if (event.key !== event.requested) {
+        return { ...rest, isArmed: !isDestructive(event.key), isListArmed: false }
+      }
       const byPerson = event.byPerson || event.key === step
       const isArmed = state.isArmed || byPerson || !isDestructive(event.key)
       const isRow = byPerson && event.key.startsWith('row:')
-      return { ...rest, isArmed, isListArmed: isRow ? event.isLiveRow : state.isListArmed }
+      const isChosen = event.isLiveRow && event.key === `row:${event.selected}`
+      return { ...rest, isArmed, isListArmed: isRow ? isChosen : state.isListArmed }
     }
     case 'drawn': {
       const { fallback, targets, selected } = event

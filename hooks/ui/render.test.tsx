@@ -432,17 +432,27 @@ test(
           }
           if (what === 0) size = { ...size, columns: WIDTHS[pick(WIDTHS.length)] ?? 80 }
           let isLive = false
+          const stops = last.keys.filter(key => key.startsWith('row:') || key.startsWith('group-'))
+          // A focus the pane's hook feeds: where the ring landed and what was asked.
+          const focused = (key: string, byPerson: boolean, requested: string) =>
+            ({
+              type: 'focus',
+              byPerson,
+              key,
+              requested,
+              isLiveRow: isLiveRow(model(items), sel, key),
+              selected: sel.selected,
+            }) as const
           if (what === 1) {
             // The person focuses a row, a gone slot or a group header.
-            const stops = last.keys.filter(
-              key => key.startsWith('row:') || key.startsWith('group-'),
-            )
-            const key = stops[pick(Math.max(1, stops.length))] ?? ''
+            // A hook beneath Rabe's may send it onto another one.
+            const requested = stops[pick(Math.max(1, stops.length))] ?? ''
+            const key = pick(4) === 0 ? (stops[pick(Math.max(1, stops.length))] ?? '') : requested
             if (key.startsWith('row:')) sel.selected = key.slice(4)
-            isLive = isLiveRow(model(items), sel, key)
+            isLive = key === requested && isLiveRow(model(items), sel, key)
             const was = arming.isListArmed
-            arming = arm(arming, { type: 'focus', byPerson: true, key, isLiveRow: isLive })
-            const arms = !isLive && !was && arming.isListArmed
+            arming = arm(arming, focused(key, true, requested))
+            const arms = !isLive && (key !== requested || !was) && arming.isListArmed
             expect([`${surface} ${JSON.stringify(scope)} step ${n}`, key, arms]).toEqual([
               `${surface} ${JSON.stringify(scope)} step ${n}`,
               key,
@@ -451,18 +461,19 @@ test(
           } else if (what === 5) {
             // The person presses an arrow in a pane taller than its body: Rabe
             // moves the ring with its own $.ui.focus, which the engine may
-            // refuse; a row may go before the move lands.
-            const key = stepRow(rowKeys(last.list), sel.selected, pick(2) ? 1 : -1)
-            if (key) {
+            // refuse or a hook beneath may send elsewhere; a row may go before
+            // the move lands.
+            const requested = stepRow(rowKeys(last.list), sel.selected, pick(2) ? 1 : -1)
+            if (requested) {
               const isMoved = pick(4) > 0
               if (pick(4) === 0) items = change(items, pick, n)
-              if (isMoved) sel.selected = key.slice(4)
-              isLive = isMoved && isLiveRow(model(items), sel, key)
-              arming = arm(arming, { type: 'step', key })
-              if (isMoved) {
-                arming = arm(arming, { type: 'focus', byPerson: false, key, isLiveRow: isLive })
-              }
-              arming = arm(arming, { type: 'landed', isMoved })
+              const key =
+                isMoved && pick(4) === 0 ? (stops[pick(stops.length)] ?? requested) : requested
+              if (isMoved && key.startsWith('row:')) sel.selected = key.slice(4)
+              isLive = isMoved && key === requested && isLiveRow(model(items), sel, key)
+              arming = arm(arming, { type: 'step', key: requested })
+              if (isMoved) arming = arm(arming, focused(key, false, requested))
+              arming = arm(arming, { type: 'landed', isMoved: isMoved && key === requested })
               const shown = `${surface} ${JSON.stringify(scope)} step ${n} arrow ${key}`
               expect([shown, arming.isListArmed]).toEqual([shown, isLive])
             }
@@ -505,7 +516,14 @@ test('focus on a gone slot or a group header never arms x on the row the list fe
   const [a, b] = [shell('a'), shell('b')]
   const sel: Selection = { ...OPEN, selected: a.id, order: orderOf([a, b]) }
   const focus = (items: RabeItem[], key: string) =>
-    ({ type: 'focus', byPerson: true, key, isLiveRow: isLiveRow(model(items), sel, key) }) as const
+    ({
+      type: 'focus',
+      byPerson: true,
+      key,
+      requested: key,
+      isLiveRow: isLiveRow(model(items), sel, key),
+      selected: sel.selected,
+    }) as const
   let arming = arm(arm(DISARMED, drawnEvent([a, b], sel)), focus([a, b], `row:${a.id}`))
   arming = arm(arming, drawnEvent([a, b], sel))
   expect(xOf([a, b], sel, arming)?.action).toEqual({ type: 'stop', ids: [a.id] })
@@ -527,7 +545,15 @@ test('focus on a gone slot or a group header never arms x on the row the list fe
 test('a group that shrinks from two stoppable rows to one keeps x armed', () => {
   const [a, b] = [shell('a'), shell('b')]
   const sel: Selection = { ...OPEN, selected: a.id, order: orderOf([a, b]) }
-  const live = { type: 'focus', byPerson: true, key: `row:${a.id}`, isLiveRow: true } as const
+  const key = `row:${a.id}`
+  const live = {
+    type: 'focus',
+    byPerson: true,
+    key,
+    requested: key,
+    isLiveRow: true,
+    selected: a.id,
+  } as const
   const before = arm(arm(arm(DISARMED, drawnEvent([a, b], sel)), live), drawnEvent([a, b], sel))
   const ended = { ...b, status: 'done', endedAt: NOW } as RabeItem
   expect(targetsOf(paneView(model([a, ended]), SIZE, sel))).toEqual([

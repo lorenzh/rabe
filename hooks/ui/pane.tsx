@@ -104,6 +104,9 @@ async function stop($: EngineInterface, ids: string[]): Promise<void> {
 // A module value, so a reload, which also drops the hold, starts disarmed.
 let arming: Arming = DISARMED
 
+// Where the last `ui.focus` on the pane landed, as the pane's focus hook read it.
+let landedOn: string | undefined
+
 function feed($: EngineInterface, event: ArmEvent): void {
   const was = arming.isArmed
   arming = arm(arming, event)
@@ -114,8 +117,9 @@ function feed($: EngineInterface, event: ArmEvent): void {
 // does not hold the keys (Enter then goes to the prompt) or when another hook
 // says no: either way the ring may sit anywhere, so the pane disarms.
 async function focusOn($: EngineInterface, key: string): Promise<boolean> {
+  landedOn = undefined
   const result = await $.ui.focus({ requestId: PANE, key }).catch(() => ({ deny: 'threw' }))
-  const isMoved = !('deny' in result && result.deny)
+  const isMoved = !('deny' in result && result.deny) && landedOn === key
   feed($, { type: 'landed', isMoved })
 
   return isMoved
@@ -298,20 +302,27 @@ export function pane(on: On): void {
     return next(e)
   }).catch((_$, e, next) => next(e))
 
-  // A move no hook refused puts the ring on a known element: the person's
-  // choice, or one of Rabe's safe ones (`autoFocus`, a landing).
+  // A move no hook refused puts the ring where the last link beneath passed
+  // it on (`next.trace`), maybe not `e.element`; the selection follows it.
   on('ui.focus', { requestId: PANE }, async ($, e, next) => {
-    if (e.element?.startsWith('row:')) {
-      await $.state.set({ plugin: 'rabe', key: 'selected' }, e.element.slice(4))
-    }
+    const { value: before = '' } = await $.state.get({ plugin: 'rabe', key: 'selected' })
+    const asked = e.element?.startsWith('row:') ? e.element.slice(4) : before
+    if (asked !== before) await $.state.set({ plugin: 'rabe', key: 'selected' }, asked)
     const result = await next(e)
-    if (e.element && !('deny' in result && result.deny)) {
+    const isDenied = 'deny' in result && result.deny
+    const landed = isDenied ? undefined : next.trace.at(-1)?.received.element
+    const selected = landed?.startsWith('row:') ? landed.slice(4) : before
+    if (selected !== asked) await $.state.set({ plugin: 'rabe', key: 'selected' }, selected)
+    landedOn = landed
+    if (landed) {
       const { model, selection } = await look($, true)
       feed($, {
         type: 'focus',
         byPerson: e.origin.kind === 'person',
-        key: e.element,
-        isLiveRow: isLiveRow(model, selection, e.element),
+        key: landed,
+        requested: e.element,
+        isLiveRow: isLiveRow(model, selection, landed),
+        selected: selection.selected,
       })
     }
 

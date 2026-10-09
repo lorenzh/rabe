@@ -20,7 +20,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 - Shells and monitors a subagent started end when their output file says so. (#TBD)
 - After a change of the tab, the search, a fold or the open item, the focus moves to a safe place, so Enter never presses a button that came to the old place. Rows found while the pane is open go to the end. (#TBD)
-- Stop and delete stay dim until Rabe knows where the focus is. On the list, `x` and `g` act only after you move the focus onto a row that is still there; a `gone` row or a group heading does not count. (#TBD)
+- Stop and delete stay dim until Rabe knows where the focus is. On the list, `x` and `g` act only after you move the focus onto a row that is still there; a `gone` row or a group heading does not count, nor a move another plugin sends to another row. (#TBD)
 - The Timeline axis names each clock time once. (#TBD)
 
 ## [0.1.0] - 2026-10-09
