@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { expect, type Mounted, mock, test } from 'claude-code/testing'
 
 import type { RabeLines, RabePrevious, RabeTurn } from '../../types'
-import type { RabeItem } from '../model'
+import type { RabeItem, RabeItemOf } from '../model'
 import { ALL, babysit, dev, explore, flow, lint, NOW, review, screen } from './fixtures'
 import { previousOf } from './lists'
 
@@ -254,6 +254,25 @@ test('stop calls TaskStop with the task id on every surface', async ($, on) => {
     await ui.unmount()
   }
   expect(stopped).toEqual(['bg_2', 'bg_2'])
+})
+
+test('a body taller than a Raster keeps the selected row in view', async ($, on) => {
+  const many = Array.from(
+    { length: 350 },
+    (_, n): RabeItem => ({
+      ...(dev as RabeItemOf<'shell'>),
+      id: `shell:many${n + 1}`,
+      title: `shell ${n + 1}`,
+      detail: { command: `shell ${n + 1}`, taskId: `many${n + 1}` },
+    }),
+  )
+  hold(on, many, { selected: 'shell:many350' })
+  const tall = { ...PANE, props: { ...PROPS, scroll: { offset: 0, bodyRows: 300 } } }
+  const ui = await $.ui.mount({ surface: 'terminal', ...tall } as never)
+  const shown = await screen(ui)
+  expect(shown.length).toBeLessThanOrEqual(256)
+  expect(shown.some(line => /\bshell 350\b/.test(line))).toBe(true)
+  await ui.unmount()
 })
 
 test('a wide terminal pane shows the selected item beside the list', async ($, on) => {

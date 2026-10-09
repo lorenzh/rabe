@@ -9,6 +9,7 @@ import {
   outputPathOf,
   parseNotifications,
   parseOutput,
+  setLines,
   taskOutput,
 } from '../tasks'
 
@@ -62,9 +63,15 @@ async function keepLines($: EngineInterface, id: string, lines: string[]): Promi
     const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
     const next = appendLines(value[id], lines, now)
     if (!next) return
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const { isSet } = await $.state.set(
       { plugin: 'rabe', key: 'lines' },
-      { ...value, [id]: next },
+      setLines(
+        value,
+        id,
+        next,
+        items.map(item => item.id),
+      ),
       { ifVersion: version },
     )
     if (isSet) return

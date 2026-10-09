@@ -7,7 +7,11 @@ import { endStatus, parseNotifications } from '../tasks'
 type Launched = BuiltinToolResults['Workflow']
 
 export function phaseNames(script: string): string[] | undefined {
-  const list = /\bphases\s*:\s*\[([\s\S]*?)\]/.exec(script)?.[1]
+  // ponytail: a `}` inside an object entry's string still ends that entry.
+  const list =
+    /\bphases\s*:\s*\[\s*((?:(?:'[^']*'|"[^"]*"|`[^`]*`|\{[^}]*\})\s*(?:,\s*)?)*)\]/.exec(
+      script,
+    )?.[1]
   if (list === undefined) return undefined
 
   return [...list.matchAll(/\{[^}]*\}|(['"`])(.*?)\1/g)].flatMap(([whole, quote, text]) => {

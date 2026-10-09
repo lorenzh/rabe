@@ -6,7 +6,6 @@ import type { Drawn, Model, View, ViewButton } from '../view'
 import { draw, type Line } from './lines'
 
 const dim = { fg: C.dim }
-const EDIT_TOOLS = ['Edit', 'Write', 'MultiEdit']
 const CHANGE = 8
 
 type Agent = RabeItemOf<'agent'>
@@ -18,20 +17,13 @@ function relative(path: string, agent: Agent): string {
   return root && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path
 }
 
-// The files agents edited, from the Edit and Write calls in their turns.
+// The files agents edited, from the Edit and Write calls the engine ran for
+// them (a turn's tool calls are only asked for and may be refused).
 // Editors are listed in the order they first edited; conflicts come first.
 export function touched(model: Model): Touched[] {
   const edits = model.items
     .flatMap(item => (item.kind === 'agent' ? [item] : []))
-    .flatMap(agent =>
-      (model.turns[agent.id] ?? []).flatMap(turn =>
-        turn.tools.flatMap(tool =>
-          EDIT_TOOLS.includes(tool.name) && tool.summary
-            ? [{ agent, path: tool.summary, at: turn.at }]
-            : [],
-        ),
-      ),
-    )
+    .flatMap(agent => (agent.detail.edits ?? []).map(edit => ({ agent, ...edit })))
     .toSorted((a, b) => a.at - b.at)
   const files = new Map<string, Touched>()
   for (const { agent, path, at } of edits) {

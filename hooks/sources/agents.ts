@@ -25,6 +25,7 @@ type AgentItem = RabeItemOf<'agent'>
 
 const POLL_MS = 3000
 const MAX_TURNS = 30
+const MAX_EDITS = 100
 const MAX_TEXT = 300
 const MAX_PROMPT = 600
 const MAX_SUMMARY = 80
@@ -85,6 +86,15 @@ export function agentTranscript(path: string, agentId: string): string | undefin
   if (!path.endsWith('.jsonl')) return undefined
 
   return `${path.slice(0, -'.jsonl'.length)}/subagents/agent-${agentId}.jsonl`
+}
+
+// An Edit or Write the engine ran for an agent; its newest MAX_EDITS are kept.
+function edited(items: RabeItem[], id: string, path: string, at: number): RabeItem[] {
+  const agent = asAgent(items, id)
+  if (!agent) return items
+  const edits = [...(agent.detail.edits ?? []), { path, at }].slice(-MAX_EDITS)
+
+  return updateItem(items, id, { detail: { edits } })
 }
 
 export function addTurn(turns: Turns, id: string, turn: RabeTurn, keep: string[]): Turns {
@@ -290,6 +300,24 @@ export function agents(on: On): void {
     if (e.agentId) await recordStep($, e.agentId, result)
 
     return result
+  })
+
+  on('tool.call', { tool: ['Edit', 'Write'] }, async ($, e, next) => {
+    const answer = await next(e)
+    try {
+      if (
+        (e.tool === 'Edit' || e.tool === 'Write') &&
+        e.agentId &&
+        answer.result &&
+        !answer.isError
+      ) {
+        const id = itemId('agent', e.agentId)
+        const now = await $.clock.now()
+        await write($, items => edited(items, id, e.file_path, now))
+      }
+    } catch {}
+
+    return answer
   })
 
   on('turn.complete', { agentId: /^/ }, async ($, e, next) => {

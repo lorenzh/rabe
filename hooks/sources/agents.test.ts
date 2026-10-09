@@ -1,7 +1,7 @@
 import type { AgentSpawnInput, On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
-import type { RabeItem, RabeTurn } from '../model'
+import type { RabeItem, RabeItemOf, RabeTurn } from '../model'
 import { addTurn, agentTranscript, metaPatch, metaPath, toolSummary } from './agents'
 
 const SPAWN: AgentSpawnInput = {
@@ -275,6 +275,41 @@ test('a step adds tokens, tools and a turn; the end of the run ends the agent', 
       text: 'Reading the pool.',
       tools: [{ name: 'Read', summary: 'src/db.ts' }],
     },
+  ])
+})
+
+test('an edit the engine ran is kept on its agent; a refused or failed one is not', async ($, on) => {
+  const held = engine(on, 'a1')
+  on('tool.call', { tool: ['Edit', 'Write'] }, async (_$, e) => {
+    if (e.tool === 'Edit' && e.file_path.endsWith('denied.ts')) return { deny: 'no' }
+    if (e.tool === 'Write' && e.file_path.endsWith('failed.ts')) {
+      return { result: { error: 'x' } as never, isError: true }
+    }
+
+    return { result: {} as never }
+  })
+  await $.agent.spawn(SPAWN)
+  const edit = (file_path: string, agentId?: string) =>
+    $.tool.call({ tool: 'Edit', file_path, old_string: 'a', new_string: 'b', agentId } as never)
+  await edit('/repo/db.ts', 'a1')
+  await edit('/repo/denied.ts', 'a1')
+  await edit('/repo/main.ts')
+  await $.tool.call({
+    tool: 'Write',
+    file_path: '/repo/failed.ts',
+    content: '',
+    agentId: 'a1',
+  } as never)
+  await $.tool.call({
+    tool: 'Write',
+    file_path: '/repo/new.ts',
+    content: '',
+    agentId: 'a1',
+  } as never)
+  const item = held.items?.[0] as RabeItemOf<'agent'>
+  expect(item.detail.edits).toEqual([
+    { path: '/repo/db.ts', at: 5000 },
+    { path: '/repo/new.ts', at: 5000 },
   ])
 })
 

@@ -2,7 +2,7 @@
 title: What Rabe can see
 description: Where Rabe gets each piece of data about background work (mod API, files on disk, source code), what is not available, the pane key model, what a Raster can draw, what of Claude Code's own display a mod can hide, and what still needs a runtime test.
 tags: [feasibility, data-sources, mod-api, claude-code, codex, runtime-tests]
-keywords: [Raster, ui.panes, combining mark, session.usage, cost.usd, $.store, session.end, previous session, files touched, cells, bodyColumns, blit, autoFocus, closeOnEscape, PromptHint, TurnDuration, disableAgentView, agent list, local_bash, installed_plugins.json, CLAUDE_PLUGIN_DATA, CODEX_HOME, sessionId, custom_tool_call, CommandExecution, subagent, workflow, workflowPhase, meta.json, worktree, codex, rollout, threadId, token_count, model_reasoning_summary, shell, task output, monitor, cron, CronList, TaskStop, tool.check, hotkey, Button, focus, band, pane, 4 MiB, n/a, task-notification, output-file, exited with code, killed, backgroundTaskId, background_tasks, session_crons, ScheduleWakeup, scheduledFor, scheduled-trigger, transcript, tool_use, tool_result, item_completed, task_complete]
+keywords: [Raster, ui.panes, combining mark, Hangul Jamo, autonomous-loop, Edit, Write, session.usage, cost.usd, $.store, session.end, previous session, files touched, cells, bodyColumns, blit, autoFocus, closeOnEscape, PromptHint, TurnDuration, disableAgentView, agent list, local_bash, installed_plugins.json, CLAUDE_PLUGIN_DATA, CODEX_HOME, sessionId, custom_tool_call, CommandExecution, subagent, workflow, workflowPhase, meta.json, worktree, codex, rollout, threadId, token_count, model_reasoning_summary, shell, task output, monitor, cron, CronList, TaskStop, tool.check, hotkey, Button, focus, band, pane, 4 MiB, n/a, task-notification, output-file, exited with code, killed, backgroundTaskId, background_tasks, session_crons, ScheduleWakeup, scheduledFor, scheduled-trigger, transcript, tool_use, tool_result, item_completed, task_complete]
 ---
 
 # What Rabe can see
@@ -36,7 +36,8 @@ Rabe keeps its own list. It adds an item when a hook reports a start (`tool.call
 | Prompt | `agent.spawn`'s `prompt`, the Agent tool's `prompt` parameter (d.ts:276). Agents that started before Rabe loaded have none and show the description. |
 | Tool calls, recent tools | `tool.call` carries `agentId` (d.ts:12589). |
 | Tokens, live | `turn.step` carries `agentId` and `usage` per request (d.ts:13316, d.ts:13413). `turn.complete` has the total (d.ts:13201). Rabe adds up the steps, so an agent that runs again after a message keeps counting. |
-| Tool calls per response | The `turn.step` result lists `toolUses` with name and input. Rabe uses it for the tool count and the turns, so it needs no `tool.call` hook per agent. |
+| Tool calls per response | The `turn.step` result lists `toolUses` with name and input: the calls the model asks for, which may still be refused or fail (d.ts:13391). Rabe uses it for the tool count and the turns. |
+| Edits that ran | A `tool.call` hook on `Edit` and `Write`: after `next(e)`, a result without `isError` means the engine ran it; a refusal answers `deny` and no result (d.ts:12631). `e.agentId` names the subagent. |
 | End | `turn.complete` with `agentId` and `reason` (`answer`, `aborted`, `refusal`, `error`). Also `$.agent.list()` status for agents in the list. |
 | Cost | `$.session.usage().cost.usd` gives the whole session's dollars as `/cost` totals them; Rabe shows it as the session cost. No source gives dollars per agent. A price table in Rabe times tokens would give an estimate; it does not exist yet, so the cost per agent shows `n/a`. Claude's `input` counts cache reads, as Codex's `input_tokens` counts `cached_input_tokens`, so the two compare. |
 | Turns | Text and tool calls from the `turn.step` result (Rabe uses this). The transcript `~/.claude/projects/<project>/<session>/subagents/agent-<id>.jsonl` has them too, for agents that ran before Rabe loaded. |
@@ -105,6 +106,7 @@ Line times: task notifications are delayed and often carry several lines, so the
 | Current list | `classic.Stop` `session_crons`: id, `schedule`, `recurring`, prompt; no `humanSchedule`. It also holds wakeups. |
 | Next run | Computed from the schedule in local time (`hooks/schedule.ts`). Claude Code adds up to 10 % jitter to recurring jobs (at most 15 min), and fires one-time jobs at :00 or :30 up to 90 s early. |
 | Loop wakeup | ScheduleWakeup result `scheduledFor` (d.ts:20956); `stop: true` ends the loop. No job id. |
+| Loop prompts | A `/loop` wakeup's prompt is the `/loop` input, passed verbatim each turn, so it fires as that text. An autonomous loop passes the sentinel `<<autonomous-loop-dynamic>>` to ScheduleWakeup, and the CronCreate mode uses `<<autonomous-loop>>` (d.ts:16436); both fire expanded, so their text matches no stored prompt. |
 | Runs | Prompts with origin `scheduled-trigger` (d.ts:8840). The prompt text tells which job; whether a run failed is a guess. |
 | End | CronDelete; a one-time job deletes itself after it fires; a recurring job expires after 7 days. Rabe sees the last two only as a job gone from `session_crons` or `CronList`. |
 
@@ -120,7 +122,7 @@ Line times: task notifications are delayed and often carry several lines, so the
 
 ### Raster
 
-`Raster` (d.ts:9188) is a fixed grid of cells: `columns` 1 to 512, `rows` 1 to 256, and `cells`, standard padded base64 of little-endian u32 triplets `[codePoint, foreground, background]`. A code point is one printable width-1 BMP character, or the tree is refused naming the cell's index. A color is `0x00RRGGBB`, or `0x01000000` for the terminal's default. Rabe cuts every grid to that size before it draws (`clamp`), and `safe()` replaces combining marks and format characters (such as the Devanagari virama U+094D), which take no cell. No bold, underline or italic. It is a leaf (no press, no focus), and only the terminal's element table has it.
+`Raster` (d.ts:9188) is a fixed grid of cells: `columns` 1 to 512, `rows` 1 to 256, and `cells`, standard padded base64 of little-endian u32 triplets `[codePoint, foreground, background]`. A code point is one printable width-1 BMP character, or the tree is refused naming the cell's index. A color is `0x00RRGGBB`, or `0x01000000` for the terminal's default. Rabe cuts every grid to that size before it draws (`clamp`), and `safe()` replaces combining marks, format characters (such as the Devanagari virama U+094D) and Hangul Jamo vowels and finals (U+1160 to U+11FF, U+D7B0 to U+D7FF), which take no cell. No bold, underline or italic. It is a leaf (no press, no focus), and only the terminal's element table has it.
 
 Tested in a live 2.1.295 session in tmux (a spike mod, 2026-10-08):
 
@@ -148,7 +150,7 @@ The views read no files. The sources keep what the views show in session state:
 | Agent turns | `rabe.turns` | `turn.step` with `agentId` (agents source); agents that ran before Rabe loaded have no turns |
 | Codex steps, prompt, model | the item's `detail` (`steps`, `prompt`, `model`, `effort`) | the Codex source, from the Codex session file |
 | Shell and monitor output | `rabe.lines` | the shells and monitors sources, from the task output file |
-| Files agents edited | `rabe.turns`: the `Edit`, `Write` and `MultiEdit` calls, whose summary is the input's `file_path` | agents source; no line counts, since the turn keeps only the summary |
+| Files agents edited | the agent item's `detail.edits`: `{ path, at }` per `Edit` or `Write` call that ran | agents source; no line counts |
 | Session cost | `Model.usd`, from `$.session.usage().cost.usd` (d.ts:11635), the dollars `/cost` totals | `pane.tsx` and `band.tsx` on each draw; absent where the host keeps no ledger |
 | Previous session | `Model.previous`, from `$.store` key `previous:<cwd>` | `pane.tsx` on `session.end`, from the items and `$.session.usage()` |
 

@@ -2,7 +2,14 @@ import type { EngineInterface, On } from 'claude-code'
 
 import { type EndStatus, itemId, type RabeItem } from '../model'
 import { addItem, type Change, commit, endItem, updateItem } from '../registry'
-import { appendLines, endStatus, parseNotifications, parseOutput, taskOutput } from '../tasks'
+import {
+  appendLines,
+  endStatus,
+  parseNotifications,
+  parseOutput,
+  setLines,
+  taskOutput,
+} from '../tasks'
 
 const POLL_MS = 2000
 const MAX_READ = 4 * 1024 * 1024
@@ -40,9 +47,15 @@ async function follow(
       const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
       const next = appendLines(value[id], lines, now)
       if (!next) break
+      const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
       const { isSet } = await $.state.set(
         { plugin: 'rabe', key: 'lines' },
-        { ...value, [id]: next },
+        setLines(
+          value,
+          id,
+          next,
+          items.map(item => item.id),
+        ),
         { ifVersion: version },
       )
       if (isSet) break

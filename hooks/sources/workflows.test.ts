@@ -62,6 +62,13 @@ test('phase names keep their order when strings and objects mix', () => {
   expect(phaseNames(script)).toEqual(['Plan', 'Build', 'Test'])
 })
 
+test('a bracket inside a phase title keeps the list', () => {
+  expect(phaseNames("export const meta = { phases: ['Review [fast]', 'Build'] }")).toEqual([
+    'Review [fast]',
+    'Build',
+  ])
+})
+
 test('a workflow call adds a running run with its name, files and phases', async ($, on) => {
   const held = engine(on)
   await $.tool.call({ tool: 'Workflow', script: SCRIPT })

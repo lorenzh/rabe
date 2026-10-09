@@ -20,24 +20,47 @@ const api: RabeItem = {
   detail: { agentId: 'a3', cwd: '/repo' },
 }
 
-const edit = (at: number, ...paths: string[]): RabeTurn => ({
-  index: 1,
-  at,
-  text: '',
-  tools: paths.map(path => ({ name: 'Edit', summary: path })),
-})
+// Edits the engine ran, kept on each agent; a turn's tool calls are only asked for.
+const editing = (agent: RabeItem, ...edits: [at: number, ...paths: string[]][]): RabeItem =>
+  ({
+    ...agent,
+    detail: {
+      ...agent.detail,
+      edits: edits.flatMap(([at, ...paths]) => paths.map(path => ({ path, at }))),
+    },
+  }) as RabeItem
 
+const ITEMS = [
+  ...ALL.map(item =>
+    item.id === plan.id
+      ? editing(plan, [NOW - 8 * 60_000, '/repo/src/logger.ts', '/repo/src/cli/main.ts'])
+      : item.id === explore.id
+        ? editing(explore, [NOW - 60_000, '/repo/.claude/worktrees/pkg-db/src/db/pool.ts'])
+        : item,
+  ),
+  editing(
+    api,
+    [NOW - 30_000, '/repo/src/logger.ts'],
+    [NOW - 10_000, '/repo/src/logger.ts', '/repo/src/api/server.ts'],
+  ),
+]
+
+// Asked for, never run: the Effects tab leaves these out.
 const TURNS: Record<string, RabeTurn[]> = {
-  [plan.id]: [edit(NOW - 8 * 60_000, '/repo/src/logger.ts', '/repo/src/cli/main.ts')],
   [api.id]: [
-    edit(NOW - 30_000, '/repo/src/logger.ts'),
-    { index: 2, at: NOW - 20_000, text: '', tools: [{ name: 'Read', summary: '/repo/x.ts' }] },
-    edit(NOW - 10_000, '/repo/src/logger.ts', '/repo/src/api/server.ts'),
+    {
+      index: 1,
+      at: NOW - 20_000,
+      text: '',
+      tools: [
+        { name: 'Read', summary: '/repo/x.ts' },
+        { name: 'Edit', summary: '/repo/denied.ts' },
+      ],
+    },
   ],
-  [explore.id]: [edit(NOW - 60_000, '/repo/.claude/worktrees/pkg-db/src/db/pool.ts')],
 }
 
-const MODEL: Model = { items: [...ALL, api], turns: TURNS, lines: {}, now: NOW }
+const MODEL: Model = { items: ITEMS, turns: TURNS, lines: {}, now: NOW }
 
 test('a file edited by two agents in one tree heads the tab as a conflict', () => {
   const { grid } = effectsView(MODEL, SIZE, NO_SELECTION)
@@ -61,7 +84,7 @@ test('files touched list each file with who edited it and how often, conflicts f
   expect(
     shown.some(line => /^ {2}src\/db\/pool\.ts +Explore verifyToken +1 edit$/.test(line)),
   ).toBe(true)
-  expect(shown.some(line => line.includes('/repo/x.ts'))).toBe(false)
+  expect(shown.some(line => line.includes('x.ts') || line.includes('denied.ts'))).toBe(false)
 })
 
 test('worktrees show the path, branch and agents, then the main tree', () => {
@@ -103,7 +126,7 @@ test('with no edits, agents or ports each section says so', () => {
 
 test('a long file list is cut to the rows left, with the rest counted', () => {
   const many = Array.from({ length: 40 }, (_, i) => `/repo/f${i}.ts`)
-  const model = { ...MODEL, items: [api, dev], turns: { [api.id]: [edit(NOW, ...many)] } }
+  const model = { ...MODEL, items: [editing(api, [NOW, ...many]), dev], turns: {} }
   const { grid } = effectsView(model, { ...SIZE, rows: 16 }, NO_SELECTION)
   const shown = lines(grid)
   expect(grid.rows).toBeLessThanOrEqual(16)

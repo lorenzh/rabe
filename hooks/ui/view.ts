@@ -2,7 +2,7 @@ import type { RenderSurface } from 'claude-code'
 
 import type { RabeLines, RabePrevious, RabeTab, RabeTurn } from '../../types'
 import type { RabeItem } from '../model'
-import type { Grid } from './cells/grid'
+import { type Grid, MAX_COLUMNS, MAX_ROWS } from './cells/grid'
 
 // What every view reads: the sources' session values, never files. `usd` is
 // the session's cost as /cost totals it; `previous` is the last session in
@@ -23,6 +23,18 @@ export type Size = {
   rows: number
   surface: RenderSurface
   hasInput: boolean
+}
+
+// The size a view lays out for: on the terminal no larger than one Raster, so
+// what the view keeps in view (the selected row) is never cut off afterwards.
+export function bounded(size: Size): Size {
+  if (size.surface !== 'terminal') return size
+
+  return {
+    ...size,
+    columns: Math.min(size.columns, MAX_COLUMNS),
+    rows: Math.min(size.rows, MAX_ROWS),
+  }
 }
 
 // The person's place in the pane, kept in `$.state` (rabe.tab, rabe.selected, ...).

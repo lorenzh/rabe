@@ -207,11 +207,12 @@ test('at Stop a monitor, which Claude Code lists as a shell, is not added as a s
   expect(state['rabe.items']?.value).toEqual([monitor])
 })
 
-test('the poll keeps the output lines in rabe.lines for the pane', async ($, on) => {
+test('the poll keeps the output lines in rabe.lines and drops those of items gone', async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const held: Record<string, string> = {}
   files(on, held)
   const state = memoryState(on)
+  state['rabe.lines'] = { value: { 'shell:gone': { seen: 1, lines: [] } }, version: 1 }
   bash(on)
   core(on)
   await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })

@@ -76,6 +76,18 @@ test('commit answers undefined when nothing changed, else the capped list', () =
   expect(commit(many, held => held.slice())).toHaveLength(MAX_ENDED)
 })
 
+test('commit answers undefined when the cap drops what the change added', () => {
+  const ended = Array.from({ length: MAX_ENDED }, (_, n) => ({
+    ...shell,
+    id: `shell:${n}`,
+    seenAt: 1000 + n,
+    endedAt: 1000 + n,
+    status: 'done' as const,
+  }))
+  const old: NewItem = { ...shell, id: 'shell:old', status: 'done', endedAt: 1 }
+  expect(commit(ended, held => addItem(held, old, 2000))).toBeUndefined()
+})
+
 test('add keeps seenAt when a full item comes back', () => {
   const items = addItem(
     [{ ...shell, seenAt: 1 }],

@@ -53,5 +53,7 @@ export function commit(held: RabeItem[] | undefined, change: Change): RabeItem[]
   const items = held ?? []
   const next = capEnded(change(items))
 
-  return next === items ? undefined : next
+  const same = next.length === items.length && next.every((item, i) => item === items[i])
+
+  return same ? undefined : next
 }

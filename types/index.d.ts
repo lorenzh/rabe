@@ -4,6 +4,8 @@ export type RabeItemStatus = 'running' | 'done' | 'failed' | 'stopped'
 
 export type RabeTokens = { input: number; output: number; cached?: number }
 
+export type RabeEdit = { path: string; at: number }
+
 export type RabeAgentDetail = {
   agentId: string
   type?: string
@@ -19,6 +21,7 @@ export type RabeAgentDetail = {
   toolCount?: number
   lastTool?: string
   lastToolAt?: number
+  edits?: RabeEdit[]
 }
 
 export type RabeWorkflowDetail = {

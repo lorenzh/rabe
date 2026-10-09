@@ -3,7 +3,7 @@ import type { EngineInterface, On, RenderSurface } from 'claude-code'
 import type { RabePrevious } from '../../types'
 import { KIND_LABEL, previousOf } from './lists'
 import { render } from './render'
-import { type Action, taskIdOf } from './view'
+import { type Action, bounded, taskIdOf } from './view'
 import { paneView } from './views/pane'
 
 const PANE = 'rabe'
@@ -201,12 +201,12 @@ export function pane(on: On): void {
       usd: usage?.cost?.usd,
       previous: await previous($).catch(() => undefined),
     }
-    const size = {
+    const size = bounded({
       columns: e.props.bodyColumns,
       rows: e.props.scroll?.bodyRows || 24,
       surface: e.surface,
       hasInput: 'Input' in ui,
-    }
+    })
     const selection = { tab, query, folded, selected, open, isFocused: e.props.isFocused }
 
     return render(ui, e.surface, paneView(model, size, selection), (action, surface) => {

@@ -102,7 +102,7 @@ test('a wakeup shows when it fires, and the next one replaces it', async ($, on)
   ])
 })
 
-test('a cron job firing ends no wakeup; an unknown prompt ends the due ones', async ($, on) => {
+test('a cron job firing ends no wakeup; an unknown prompt ends only a due autonomous loop', async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const state = memoryState(on)
   tools(on)
@@ -117,8 +117,17 @@ test('a cron job firing ends no wakeup; an unknown prompt ends the due ones', as
   await clock.set(1000)
   await fire('/babysit-prs')
   expect(status()).toEqual(['running', 'running'])
-  await fire('the loop prompt, expanded')
-  expect(status()).toEqual(['running', 'done'])
+  await fire('the recurring loop prompt, expanded')
+  expect(status()).toEqual(['running', 'running'])
+  await $.tool.call({
+    tool: 'ScheduleWakeup',
+    ...wake,
+    delaySeconds: 30,
+    prompt: '<<autonomous-loop-dynamic>>',
+  })
+  expect(status()).toEqual(['running', 'done', 'running'])
+  await fire('the dynamic loop prompt, expanded')
+  expect(status()).toEqual(['running', 'done', 'done'])
 })
 
 test('the autonomous loop sentinel gets a plain title', async ($, on) => {

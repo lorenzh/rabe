@@ -51,6 +51,7 @@ test('safe keeps width-1 BMP characters and replaces the rest', () => {
   expect(safe('✅ ok')).toBe('? ok')
   expect(safe('नमस्ते')).toBe('नमस?त?')
   expect(safe('a\u200db')).toBe('a?b')
+  expect(safe('\u1160\u11a8\ud7b0')).toBe('???')
 })
 
 test('fit pads short text and cuts long text with an ellipsis', () => {

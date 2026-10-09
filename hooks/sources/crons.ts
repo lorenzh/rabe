@@ -45,7 +45,8 @@ function dueWakeups(items: RabeItem[], until: number) {
 }
 
 // A fired prompt ends the due wakeups with that prompt. A cron job's prompt
-// ends none; any other text (the loop sentinel arrives expanded) ends them all.
+// ends none; any other text ends the due autonomous loops, whose sentinel
+// arrives expanded.
 function fired(items: RabeItem[], text: string, now: number): RabeItem[] {
   const prompt = text.trim()
   const due = dueWakeups(items, now + FIRE_SLACK_MS)
@@ -53,7 +54,8 @@ function fired(items: RabeItem[], text: string, now: number): RabeItem[] {
   const isCron = runningCrons(items).some(
     item => !isWakeup(item) && item.detail.prompt.trim() === prompt,
   )
-  const ends = same.length > 0 ? same : isCron ? [] : due
+  const loops = due.filter(item => item.detail.prompt === LOOP_SENTINEL)
+  const ends = same.length > 0 ? same : isCron ? [] : loops
 
   return ends.reduce((next, item) => endItem(next, item.id, 'done', now), items)
 }

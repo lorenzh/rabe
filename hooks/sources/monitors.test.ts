@@ -62,9 +62,10 @@ test('the output file is found beside a known shell output', async ($, on) => {
   expect(items[1]?.detail.outputPath).toBe(OUT)
 })
 
-test('the poll records new lines with the time received and ends on the exit line', async ($, on) => {
+test('the poll records new lines with the time received, drops lines of items gone and ends on the exit line', async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const state = memoryState(on)
+  state['rabe.lines'] = { value: { 'shell:gone': { seen: 1, lines: [] } }, version: 1 }
   const held: Record<string, string> = {}
   files(on, held)
   tools(on)

@@ -94,6 +94,21 @@ export function guessPort(text: string): number | undefined {
   return port > 0 && port < 65536 ? port : undefined
 }
 
+// All kept lines with `id` set to `next`, dropping those of items no longer in
+// `rabe.items` (`keep` holds their ids), so the cap on ended items holds here too.
+export function setLines(
+  all: Record<string, RabeLines>,
+  id: string,
+  next: RabeLines,
+  keep: string[],
+): Record<string, RabeLines> {
+  const out: Record<string, RabeLines> = {}
+  for (const key of keep) if (all[key]) out[key] = all[key]
+  out[id] = next
+
+  return out
+}
+
 export function appendLines(
   held: RabeLines | undefined,
   lines: string[],
