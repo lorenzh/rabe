@@ -436,3 +436,17 @@ test('a Codex job sits indented under the agent that started it and did other wo
     ' ✓ Plan auth split',
   ])
 })
+
+test('below 90 columns the summary of a folded job counts its forwarder, and only what both know', () => {
+  const end = (items: RabeItem[]) => {
+    const shown = lines(
+      gridOf(itemsView({ ...model, items }, NARROW, { ...NO_SELECTION, selected: child.id })).grid,
+    )
+    return shown[shown.length - 1]
+  }
+  expect(end([plan, forwarder, child])).toBe(
+    '◐ review auth.ts · gpt-6.1-sol · ≈ $0.25 · 61k in · running',
+  )
+  const blind = { ...forwarder, costUsd: undefined, tokens: undefined } as RabeItem
+  expect(end([plan, blind, child])).toBe('◐ review auth.ts · gpt-6.1-sol · running')
+})
