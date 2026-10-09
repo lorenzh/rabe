@@ -250,3 +250,20 @@ test('a codex job without a command count says n/a', () => {
     true,
   )
 })
+
+test('a workflow agent offers no own stop or message, only stopping its run', () => {
+  const size: Size = { ...TERMINAL, hasInput: true }
+  const { buttons } = open(model(), verify.id, size)
+  expect(buttons.find(b => b.key === 'message-agent')).toBeUndefined()
+  expect(buttons.find(b => b.key === 'stop')).toMatchObject({
+    label: 'g: stop run',
+    hotkey: 'g',
+    action: { type: 'stop', ids: [flow.id] },
+  })
+})
+
+test('a workflow agent whose run cannot be stopped offers no stop', () => {
+  const run = { ...flow, detail: { runId: 'wf1', phases: [] } } as RabeItem
+  const { buttons } = open(model([run, verify]), verify.id)
+  expect(buttons.find(b => b.key === 'stop')).toBeUndefined()
+})

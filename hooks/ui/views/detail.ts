@@ -7,6 +7,7 @@ import { children, phases, share, sortItems, timeLabel, tokenSum } from '../list
 import {
   canStop,
   type Drawn,
+  isWorkflowAgent,
   type Model,
   type View,
   type ViewButton,
@@ -267,7 +268,11 @@ export function detailLines(model: Model, item: RabeItem, rows: number, columns:
   return [...top, ...body].slice(0, rows)
 }
 
-function detailButtons(item: RabeItem, hasInput: boolean): ViewButton[] {
+function detailButtons(
+  item: RabeItem,
+  hasInput: boolean,
+  items: readonly RabeItem[],
+): ViewButton[] {
   const buttons: ViewButton[] = [
     {
       key: 'back',
@@ -296,12 +301,23 @@ function detailButtons(item: RabeItem, hasInput: boolean): ViewButton[] {
       action: { type: 'delete', id: item.id },
     })
   }
-  if (item.kind === 'agent' && item.status === 'running' && hasInput) {
+  if (item.kind === 'agent' && item.status === 'running' && hasInput && !isWorkflowAgent(item)) {
     buttons.push({
       key: 'message-agent',
       label: 'm: message',
       hotkey: 'm',
       action: { type: 'focus', key: 'message' },
+    })
+  }
+  const run = isWorkflowAgent(item)
+    ? items.find(one => one.id === item.parentId && one.kind === 'workflow')
+    : undefined
+  if (run && canStop(run)) {
+    buttons.push({
+      key: 'stop',
+      label: 'g: stop run',
+      hotkey: 'g',
+      action: { type: 'stop', ids: [run.id] },
     })
   }
   if (canStop(item)) {
@@ -341,5 +357,5 @@ export const detailView: View = (model, size, sel): Drawn => {
     if (line.action) rows[y] = line.action
   })
 
-  return { grid: g, buttons: detailButtons(item, size.hasInput), inputs, rows }
+  return { grid: g, buttons: detailButtons(item, size.hasInput, model.items), inputs, rows }
 }

@@ -1,8 +1,8 @@
 import { expect, test } from 'claude-code/testing'
-
+import type { RabeItem } from '../../model'
 import { cell, lines } from '../cells/grid'
 import { C, DEFAULT } from '../cells/palette'
-import { ALL, babysit, dev, explore, lint, NOW } from '../fixtures'
+import { ALL, babysit, dev, explore, flow, lint, NOW, verify } from '../fixtures'
 import { NO_SELECTION, type Size } from '../view'
 import { itemsView } from './items'
 
@@ -111,4 +111,20 @@ test('off the terminal the list is never cut: the surface scrolls it', () => {
 test('a folded group says so off the terminal', () => {
   const { grid } = itemsView(model, DESKTOP, { ...NO_SELECTION, folded: ['failed'] })
   expect(lines(grid).slice(0, 2)).toEqual(['Failed 1 · folded', 'Agents 6'])
+})
+
+test('a workflow agent in the list has no stop and stays out of a group stop', () => {
+  const other = {
+    ...verify,
+    id: 'agent:w2',
+    title: 'verify:api.ts',
+    detail: { agentId: 'w2', workflowPhase: 'Verify' },
+  } as RabeItem
+  const m = { items: [flow, verify, other, explore], turns: {}, lines: {}, now: NOW }
+  const { buttons } = itemsView(m, WIDE, { ...NO_SELECTION, selected: verify.id })
+  expect(buttons.find(b => b.key === 'stop')).toBeUndefined()
+  const group = buttons.find(b => b.key === 'stop-group')?.action
+  expect(group).toMatchObject({ type: 'stop' })
+  expect(group?.type === 'stop' ? group.ids : []).not.toContain(verify.id)
+  expect(group?.type === 'stop' ? group.ids : []).not.toContain(other.id)
 })
