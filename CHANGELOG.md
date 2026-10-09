@@ -7,6 +7,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 ### Added
 
 - The Effects tab shows the files Codex jobs changed (added, updated or deleted) and the files the main session changed, with who changed each file and how. ([#16](https://github.com/lorenzh/rabe/pull/16))
+- A price table of Claude and OpenAI models in `data/prices.csv`, for a later cost estimate per agent. No code reads it yet. ([#18](https://github.com/lorenzh/rabe/pull/18))
 
 ### Changed
 
