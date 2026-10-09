@@ -34,6 +34,7 @@ hooks/
   ui/views/           pure views: band, pane frame, items, detail, cost, effects, timeline
   ui/*.ts             pure helpers: lists, facts, format
 types/index.d.ts      the state contract: item types and the $.state keys
+data/prices.csv       list prices per model; no code reads it yet (see docs/feasibility.md)
 ```
 
 ## The engine's rule for `$`
@@ -67,7 +68,7 @@ type RabeItemOf<K extends RabeItemKind> = {
   endedAt?: number      // set by endItem
   parentId?: string     // item id of the parent (a workflow, an agent); absent: main session
   tokens?: RabeTokens   // absent: n/a
-  costUsd?: number      // dollar estimate; no source sets it yet (no price table), so views show n/a
+  costUsd?: number      // dollar estimate; no source sets it yet (nothing reads data/prices.csv), so views show n/a
   detail: RabeItemDetails[K]
 }
 

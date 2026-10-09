@@ -18,7 +18,7 @@
 ## TDD
 - Write the failing test first, then the code.
 - Tests live next to the module as `*.test.ts` or `*.test.tsx` and import from `claude-code/testing`.
-- `bun run test` runs every test; there is no single-file filter, and the suite takes about 20 seconds.
+- `bun run test` runs every test; there is no single-file filter, and the suite takes about 40 seconds.
 - UI tests mount on `terminal` and `desktop` and find elements by type and text; `Text` keeps no `key`.
 - Logic that needs no `$` (parsers, formatting, the next cron run) lives in plain functions with their own tests.
 - A test's `$` has no `state` noun: watch writes with a test hook on `state.set`. A test needs `mock.clock(on)` when the code reads the clock.
@@ -27,11 +27,12 @@
 - `hooks/register.tsx`: entry point; calls `sources(on)`, `band(on)`, `pane(on)` and, unless the option `hideBuiltinTasks` is false, `builtin(on)`; nothing else.
 - `hooks/model.ts`: the item types and pure item helpers. `hooks/registry.ts`: pure changes to the item list.
 - `hooks/sources/<kind>.ts`: one module per source (agents, codex, shells, monitors, crons, workflows) that turns events and files into items; `hooks/sources/index.ts` calls each one. Each file's `write($, change)` caps the list and drops the per-item state of the items it removed; a timer's write skips the plugin's own `state.set` hooks.
-- `hooks/tasks.ts`, `hooks/schedule.ts`: pure parsers for task notifications, task output files and cron schedules. Views read session state only, never files.
+- `hooks/tasks.ts`, `hooks/schedule.ts`: pure parsers for task notifications, task output files and cron schedules. `hooks/writes.ts`: pure, the files a shell command line may write (candidates the sources check on disk). Views read session state only, never files.
 - `hooks/testing.ts`: test helpers (`memoryState`, `files`, `core`); the test's `$` has no `state` noun.
 - `hooks/ui/`: band and pane drawing. Only `band.tsx`, `pane.tsx` and `builtin.tsx` touch `$`. Views are pure `View` functions in `hooks/ui/views/` that return lines (Text parts and one plain Button per selectable row) and their controls; `render.tsx` draws them; the cell engine in `hooks/ui/cells/` draws charts only (see `docs/architecture.md`).
 - Colors: only xterm-256 entries from `hooks/ui/cells/palette.ts`; a list never reorders while the pane is open (`stable` in `hooks/ui/lists.ts`).
 - `$.state` keys: declare each in `types/index.d.ts` and name that file as `"types"` in `.claude-plugin/plugin.json`.
+- `data/prices.csv`: list prices per model for a later cost estimate; no code reads it yet (see `docs/feasibility.md`).
 - `types/claude-code.d.ts`: API types written by Claude Code. Do not edit; replace it when the pinned Claude Code version changes.
 
 ## Key Conventions
