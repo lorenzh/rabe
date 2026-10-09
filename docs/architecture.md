@@ -388,7 +388,7 @@ The grid is `bodyColumns` wide and exactly as tall as its lines. The band before
 | `rabe.tab` | The selected tab |
 | `rabe.query` | The search text; matches title, kind, command, prompt, description and agent type |
 | `rabe.folded` | The groups folded in the list |
-| `rabe.selected` | The id of the row that holds the focus: set by a `ui.focus` that lands on a row, by a press that selects a row (a click, `selectsOnPress`), and by opening. An item id, or on the Effects tab `file:<path>` or `ssh:<port>`, which the other tabs do not find and so focus their first row |
+| `rabe.selected` | The selected row's id (a click can select a row while the keyboard focus stays elsewhere; `ringOn` tracks the focus): set by a `ui.focus` that lands on a row, by a press that selects a row (a click, `selectsOnPress`), and by opening. An item id, or on the Effects tab `file:<path>` or `ssh:<port>`, which the other tabs do not find and so focus their first row |
 | `rabe.open` | The item whose full detail shows; `''` shows the list |
 | `rabe.order` | The list order taken when the pane opened (`RabeOrder`, see The held order) |
 

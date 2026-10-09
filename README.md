@@ -69,7 +69,7 @@ The buttons under the tabs show the keys of the current tab. A key that cannot a
 
 With the mouse, click a row once to select it and again to open it. Click a tab to switch to it, a group name to fold the group, a button to press it, or a row on the other tabs to open it. The wheel scrolls the pane. A click does not move the focus, so Enter still opens the row that has the focus. A click also does not give the pane the keys: `ctrl+x tab` does. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
 
-On the list, the stop keys `x` and `g` work only after you move onto a row yourself, with an arrow, Tab or a click. Until then, and after the view or the selected row changes without you, they are dim, so a key press never stops something you did not pick.
+On the list, the stop keys `x` and `g` work only after you move onto a row yourself, with an arrow, Tab or a click. Until then, and after the view or the selected row changes without you, they are dim, so a key press never stops something you did not pick. If they stay dim after a click, the pane does not have the keys yet: press `ctrl+x tab`, then move onto the row with Tab or an arrow.
 
 While the pane is open, rows and buttons keep their places, so Enter acts on what you see under the focus. Items that start after you open the pane go to a NEW group at the end (on the Effects tab, to a NEW section). A row that is gone stays as a dim `gone` slot. Type `/rabe` again to sort the lists.
 
