@@ -4,7 +4,7 @@ import type { RabeItem, RabeItemOf } from '../model'
 import { type Grid, grid, lines, safe, write } from './cells/grid'
 import { ALL, babysit, ci, dev, explore, flow, NOW, raster, review } from './fixtures'
 import { orderOf } from './lists'
-import { type Held, hold, render, type Ui } from './render'
+import { type Held, hold, render, shifts, type Ui } from './render'
 import {
   type Action,
   arm,
@@ -24,7 +24,7 @@ import {
   stepRow,
   targetsOf,
 } from './view'
-import { fallbackOf, isLiveRow, paneView, selectsOnPress } from './views/pane'
+import { fallbackOf, isLiveRow, paneView, seatsRows, selectsOnPress } from './views/pane'
 
 const PROBE = {
   surface: 'terminal',
@@ -104,7 +104,7 @@ type Step = { keys: string[]; held: Held[]; tree: Element[]; acts: Action[]; lis
 
 function draw(model: Model, size: Size, sel: Selection, before?: Held[]): Step {
   const acts: Action[] = []
-  const { list, held } = hold(layout(paneView(model, size, sel)), before)
+  const { list, held } = hold(layout(paneView(model, size, sel)), before, seatsRows(sel))
   const tree = elements(render(UI, size.surface, list, action => acts.push(action)))
 
   return { keys: tree.map(one => String(one.props.key)), held, tree, acts, list }
@@ -170,6 +170,39 @@ test('rows found after the open do not move the controls', () => {
   const more = draw(model([flow, agentOf('w9', { workflowPhase: 'Review' })]), SIZE, open, run.held)
   expect(more.keys.indexOf('back')).toBe(run.keys.indexOf('back'))
   expect(more.keys.slice(0, run.keys.length)).toEqual(run.keys)
+})
+
+test('an item found after the open stands in its group on the list; tabs and controls keep their index', () => {
+  const [a, b] = [shell('a'), shell('b')]
+  const items = [explore, a, b]
+  const sel = { ...OPEN, selected: b.id, order: orderOf(items) }
+  const first = draw(model(items), SIZE, sel)
+  const late = agentOf('late')
+  const later = draw(model([...items, late]), SIZE, sel, first.held)
+  const rows = later.keys.filter(key => key.startsWith('row:'))
+  expect(rows).toEqual([`row:${explore.id}`, `row:${late.id}`, `row:${a.id}`, `row:${b.id}`])
+  expect(later.keys.filter(key => key !== `row:${late.id}`)).toEqual(first.keys)
+  const fixed = first.keys.filter(key => !key.startsWith('row:') && !key.startsWith('group-'))
+  for (const key of fixed)
+    expect([key, later.keys.indexOf(key)]).toEqual([key, first.keys.indexOf(key)])
+  expect(shifts(first.held, later.held, `row:${b.id}`)).toBe(true)
+  expect(shifts(first.held, later.held, `row:${explore.id}`)).toBe(false)
+  expect(shifts(first.held, later.held, 'stop')).toBe(false)
+  // A gone row keeps its slot, and a row found later goes after it.
+  const gone = draw(model([explore, b, late, shell('c')]), SIZE, sel, later.held)
+  expect(gone.keys.filter(key => key.startsWith('row:'))).toEqual([
+    `row:${explore.id}`,
+    `row:${late.id}`,
+    `row:${a.id}`,
+    `row:${b.id}`,
+    'row:shell:c',
+  ])
+  expect(gone.tree.find(one => one.props.key === `row:${a.id}`)?.props.dimColor).toBe(true)
+  // The detail keeps the append-only order.
+  const open = { ...sel, open: explore.id }
+  const detail = draw(model(items), SIZE, open)
+  const more = draw(model([...items, late]), SIZE, open, detail.held)
+  expect(more.keys.slice(0, detail.keys.length)).toEqual(detail.keys)
 })
 
 test('a phase found late does not reorder the agent rows of a workflow', () => {
@@ -302,6 +335,10 @@ function targetOf(action: Action): string | undefined {
       return `stop ${action.ids.join(',')}`
     case 'delete':
       return `delete ${action.id}`
+    case 'remove':
+      return `remove ${action.ids.join(',')}`
+    case 'clear':
+      return 'clear'
     case 'message':
       return `message ${action.id}`
     case 'copy':
@@ -314,7 +351,9 @@ function targetOf(action: Action): string | undefined {
 }
 
 // A key never changes what it acts on, and a focusable index of the hold
-// never acts on another target than it did before (`seen`, by index). The
+// never acts on another target than it did before (`seen`, by index), but for
+// a row of a view that seats rows found later (`isSeated`): the pane holds
+// row presses back while a seated row may have moved the ring. The
 // list's x and g act on the selection: a target they gain comes only by the
 // person's focus on a live row (`byPerson`), else they must be disarmed
 // (`isArmed`).
@@ -325,22 +364,25 @@ function checkTargets(
   seen: string[],
   isArmed = true,
   byPerson = false,
+  isSeated = false,
 ) {
   actionsOf(list, 'hi').forEach(([key, action], i) => {
     const target = targetOf(action)
     if (target === undefined) return
     if (LIST_KEYS.includes(key)) {
       const was = (seen[i] ?? '').split(',')
-      const isGained = action.type === 'stop' && action.ids.some(id => !was.includes(id))
+      const ids = action.type === 'stop' || action.type === 'remove' ? action.ids : []
+      const isGained = ids.some(id => !was.includes(id))
       if (seen[i] !== undefined && isGained && !byPerson) {
         expect([shown, i, key, 'armed', isArmed]).toEqual([shown, i, key, 'armed', false])
       }
-      seen[i] = action.type === 'stop' ? action.ids.join(',') : ''
+      seen[i] = ids.join(',')
       return
     }
     const was = keys.get(key) ?? target
     keys.set(key, was)
     expect([shown, key, target]).toEqual([shown, key, was])
+    if (isSeated && key.startsWith('row:')) return
     const before = seen[i] ?? target
     seen[i] = before
     expect([shown, i, key, target]).toEqual([shown, i, key, before])
@@ -377,7 +419,7 @@ test('the first element after the tabs never stops or deletes', () => {
 
 // The walk takes about 4 s; the suite runs files side by side.
 test(
-  'whatever changes while the pane is open, the focusable keys only grow at the end',
+  'whatever changes while the pane is open, the focusable keys only grow at the end, rows of the list in their group',
   { timeoutMs: 20_000 },
   () => {
     const start = ALL.map(item =>
@@ -514,14 +556,31 @@ test(
           } else if (what !== 0 && what !== 4) items = change(items, pick, n)
           const next = draw(model(items), size, sel, last.held)
           const shown = `${surface} ${JSON.stringify(scope)} step ${n}`
-          expect([shown, next.keys.slice(0, last.keys.length)]).toEqual([shown, last.keys])
+          if (seatsRows(sel)) {
+            // The list seats rows found later in their group: the keys drawn
+            // before keep their order, and only rows and group headers come
+            // between them; tabs and controls keep their index.
+            const kept = next.keys.filter(key => last.keys.includes(key))
+            expect([shown, kept]).toEqual([shown, last.keys])
+            const end = next.keys.indexOf(last.keys.at(-1) ?? '')
+            const between = next.keys.slice(0, end).filter(key => !last.keys.includes(key))
+            const odd = between.filter(key => !key.startsWith('row:') && !key.startsWith('group-'))
+            expect([shown, odd]).toEqual([shown, []])
+            const fixed = last.keys.filter(
+              key => !key.startsWith('row:') && !key.startsWith('group-'),
+            )
+            const moved = fixed.filter(key => next.keys.indexOf(key) !== last.keys.indexOf(key))
+            expect([shown, moved]).toEqual([shown, []])
+          } else {
+            expect([shown, next.keys.slice(0, last.keys.length)]).toEqual([shown, last.keys])
+          }
           arming = arm(arming, drawnOf(items, size))
           const isListArmed = arming.isArmed && arming.isListArmed
           // While the selection falls back, the list's x and g stay inert.
           if (fallbackOf(model(items), sel).includes('selected:')) {
             expect([shown, 'fallback armed', isListArmed]).toEqual([shown, 'fallback armed', false])
           }
-          checkTargets(shown, next.list, targets, seen, isListArmed, isLive)
+          checkTargets(shown, next.list, targets, seen, isListArmed, isLive, seatsRows(sel))
           last = next
         }
       })
@@ -624,5 +683,6 @@ test('walking the list keeps exactly one x and one g', () => {
   }
   expect(last.keys.filter(key => key === 'stop')).toHaveLength(1)
   expect(last.keys.filter(key => key === 'stop-group')).toHaveLength(1)
+  expect(last.keys.filter(key => key === 'remove')).toHaveLength(1)
   expect(last.tree.filter(one => String(one.props.label).startsWith('x:'))).toHaveLength(1)
 })

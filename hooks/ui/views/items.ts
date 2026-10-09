@@ -11,6 +11,7 @@ import {
   glyph,
   grouped,
   groupNote,
+  kept,
   matches,
 } from '../lists'
 import {
@@ -36,7 +37,6 @@ const GROUP_COLOR: Record<Group, number> = {
   shells: C.yellow,
   monitors: C.blue,
   cron: C.purple,
-  new: C.bright,
 }
 
 // The split needs room for both columns; below this the detail opens in place.
@@ -79,7 +79,7 @@ function shownFrom(size: Size, at: number): number {
 // SHELLS and MONITORS the rows of each agent indented under its name.
 // Gaps between groups only where the whole list fits in `rows`.
 function groupsOf(model: Model, sel: Selection) {
-  const visible = model.items.filter(item => matches(item, sel.query))
+  const visible = kept(model.items, model.removed).filter(item => matches(item, sel.query))
 
   return grouped(visible, sel.order).map(group => ({
     ...group,
@@ -166,11 +166,12 @@ function summaryLine(model: Model, item: RabeItem): Line {
 
 // List keys in the toolbar; the rows themselves take the arrows and Enter.
 // g stops the run of a workflow or its agent, else the rows of the group the
-// selected row is shown in (`shown`). Below the split, s keeps only its letter.
-// x and g keep their slots while they cannot act: dim, without a hotkey.
-// Each keeps one key (`stop`, `stop-group`) and acts on the selection, so the
-// person walks the list without leaving slots; a target that changes without
-// the person disarms them (see arming in docs/architecture.md).
+// selected row is shown in (`shown`). r removes the selected row once it
+// ended, a every ended row shown. Below the split, s keeps only its letter.
+// x, g, r and a keep their slots while they cannot act: dim, without a hotkey.
+// x, g and r each keep one key (`stop`, `stop-group`, `remove`) and act on the
+// selection, so the person walks the list without leaving slots; a target that
+// changes without the person disarms them (see arming in docs/architecture.md).
 function listButtons(
   model: Model,
   size: Size,
@@ -186,9 +187,14 @@ function listButtons(
   const group = (shown.find(list => selected && list.includes(selected)) ?? [])
     .filter(canStop)
     .map(one => one.id)
-  const slot = (key: string, label: string, ids: string[] | undefined): ViewButton =>
+  const slot = (
+    key: string,
+    label: string,
+    ids: string[] | undefined,
+    type: 'stop' | 'remove' = 'stop',
+  ): ViewButton =>
     ids
-      ? { key, label, hotkey: label.slice(0, 1), action: { type: 'stop', ids } }
+      ? { key, label, hotkey: label.slice(0, 1), action: { type, ids } }
       : { key, label, action: NONE, dim: true }
   // Search first: a ring the engine left at the index after the tabs (the
   // first row or b of another view) never lands on a stop.
@@ -202,6 +208,7 @@ function listButtons(
         },
       ]
     : []
+  const isEnded = (item: RabeItem) => item.status !== 'running'
   buttons.push(
     slot(
       'stop',
@@ -211,6 +218,15 @@ function listButtons(
     run
       ? slot('stop-group', 'g: stop run', canStop(run) ? [run.id] : undefined)
       : slot('stop-group', 'g: stop group', group.length > 1 ? group : undefined),
+    slot(
+      'remove',
+      'r: remove',
+      selected && isEnded(selected) ? [selected.id] : undefined,
+      'remove',
+    ),
+    shown.flat().some(isEnded)
+      ? { key: 'clear', label: 'a: remove ended', hotkey: 'a', action: { type: 'clear' } }
+      : { key: 'clear', label: 'a: remove ended', action: NONE, dim: true },
   )
 
   return buttons
@@ -237,7 +253,7 @@ export const itemsView: View = (model, size, sel): Drawn => {
     buttons,
     inputs,
   })
-  if (model.items.length === 0) {
+  if (kept(model.items, model.removed).length === 0) {
     return note(' Nothing runs in the background.', listButtons(model, size, undefined, []))
   }
   const split = isSplit(size)

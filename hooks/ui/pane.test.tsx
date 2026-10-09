@@ -14,6 +14,7 @@ import {
   NOW,
   plan,
   review,
+  reviewed,
   screen,
   verify,
 } from './fixtures'
@@ -58,8 +59,11 @@ type Ui = Record<string, unknown>
 
 // Answers the sources' keys and the seeded UI keys; the kit keeps the rest, so
 // a press redraws. Returns what the pane wrote.
+// The clock of the last `hold`, for a test that waits on the pane's timers.
+let held: ReturnType<typeof mock.clock> | undefined
+
 function hold(on: On, items: RabeItem[], seeds: Ui = {}): Ui {
-  mock.clock(on, { now: NOW })
+  held = mock.clock(on, { now: NOW })
   const fixed: Ui = { items, turns: TURNS, lines: LINES }
   const sets: Ui = {}
   on('state.get', async (_$, e, next) => {
@@ -339,7 +343,13 @@ test('a narrow pane puts a one-line summary under the list and short key labels'
   const shown = await screen(ui)
   expect(shown).toContain('◐ review auth.ts · gpt-6.1-sol · ≈ $0.09 · 25k in · running')
   const buttons = (await ui.findAll({ type: 'Button' })).filter(one => !one.props.plain)
-  expect(buttons.map(one => one.props.label)).toEqual(['s', 'x: stop', 'g: stop group'])
+  expect(buttons.map(one => one.props.label)).toEqual([
+    's',
+    'x: stop',
+    'g: stop group',
+    'r: remove',
+    'a: remove ended',
+  ])
   await ui.unmount()
 })
 
@@ -617,7 +627,9 @@ test('g on a workflow agent stops its run on every surface', async ($, on) => {
     })
     const x = await ui.find({ type: 'Button', key: 'stop' })
     expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, undefined])
-    expect(await screen(ui)).toContain(' ↑↓ move · enter open · g stop run · esc close')
+    expect(await screen(ui)).toContain(
+      ' ↑↓ move · enter open · g stop run · a remove ended · esc close',
+    )
     await ui.press({ key: 'stop-group' })
     await ui.unmount()
   }
@@ -1055,3 +1067,121 @@ for (const [name, element, wrote] of OVERLAPS) {
     )
   }
 }
+
+// Issue #24: an item found after the open stands in its group, maybe above the
+// row that holds the focus ring. The ring keeps its index, so until Rabe puts
+// it back (the kit refuses Rabe's own $.ui.focus) or sees it land, Enter on a
+// row does nothing, and the refused move disarms the pane.
+const shellNamed = (id: string): RabeItem => ({ ...dev, id: `shell:${id}`, title: id }) as RabeItem
+
+test('a row found above the focused row holds Enter back until the ring is seen land', async ($, on) => {
+  const [a, b] = [shellNamed('a'), shellNamed('b')]
+  const items = [explore, a, b]
+  const state = hold(on, items, { selected: b.id, order: orderOf(items) })
+  await arm($, `row:${b.id}`)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBe('x')
+  const late = { ...plan, id: 'agent:late', status: 'running', endedAt: undefined } as RabeItem
+  items.push(late)
+  await ui.redraw()
+  await held?.advance(200)
+  await ui.redraw()
+  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBeUndefined()
+  for (const key of [`row:${late.id}`, `row:${a.id}`, 'group-agents']) {
+    await ui.press({ key })
+    expect([key, state.selected, state.open, state.folded]).toEqual([
+      key,
+      undefined,
+      undefined,
+      undefined,
+    ])
+  }
+  await arm($, `row:${b.id}`)
+  await ui.press({ key: `row:${b.id}` })
+  expect(state.open).toBe(b.id)
+  await ui.unmount()
+})
+
+test('a click on a row still selects it while the pane does not hold the keys', async ($, on) => {
+  const [a, b] = [shellNamed('a'), shellNamed('b')]
+  const items = [explore, a, b]
+  const state = hold(on, items, { selected: b.id, order: orderOf(items) })
+  await arm($, `row:${b.id}`)
+  const away = { ...PANE, props: { ...PROPS, isFocused: false } }
+  const ui = await $.ui.mount({ surface: 'terminal', ...away } as never)
+  items.push({ ...plan, id: 'agent:late', status: 'running', endedAt: undefined } as RabeItem)
+  await ui.redraw()
+  await ui.press({ key: `row:${a.id}` })
+  expect(state.selected).toBe(a.id)
+  await ui.unmount()
+})
+
+// Issue #13: r removes the selected row once it ended, a every ended row; a
+// removed row leaves a gone slot while the pane is open, and stays hidden for
+// the session, also from the band, though its item is still in rabe.items.
+const BAND = {
+  surface: 'terminal',
+  plugin: 'rabe',
+  component: 'AbovePrompt',
+  requestId: 'band',
+  props: { hasSurvey: false, isWorking: false, maxRows: 2, bodyColumns: 120, view: {} },
+} as const
+
+test('r and a remove ended rows for the session; running rows stay', async ($, on) => {
+  const state = hold(on, ALL, { selected: lint.id, order: orderOf(ALL) })
+  on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+  const bandText = async () => {
+    const band = await $.ui.mount(BAND as never)
+    const text = (await screen(band)).join('\n')
+    await band.unmount()
+    return text
+  }
+  expect(await bandText()).toContain('failed')
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: 'remove' })
+  await ui.press({ key: 'clear' })
+  expect(state.removed).toBeUndefined()
+  await arm($, `row:${lint.id}`)
+  await ui.redraw()
+  expect((await ui.find({ type: 'Button', key: 'remove' }))?.props.hotkey).toBe('r')
+  await ui.press({ key: 'remove' })
+  expect(state.removed).toEqual([lint.id])
+  expect(state.toasts).toEqual([`Removed shell ${lint.title}`])
+  await ui.redraw()
+  const slot = await ui.find({ type: 'Button', key: `row:${lint.id}` })
+  expect(slot?.props.dimColor).toBe(true)
+  await arm($, `row:${dev.id}`)
+  await ui.redraw()
+  await ui.press({ key: 'clear' })
+  const ended = ALL.filter(item => item.status !== 'running').map(item => item.id)
+  expect(new Set(state.removed as string[])).toEqual(new Set(ended))
+  await ui.unmount()
+  expect(await bandText()).not.toContain('failed')
+  await $.command.run({ command: 'rabe', args: '' } as never)
+  const again = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  const shown = (await screen(again)).join('\n')
+  expect(shown).not.toContain(lint.title)
+  expect(shown).toContain(dev.title)
+  await again.unmount()
+})
+
+// Removing hides rows on the list only: a removed workflow agent still counts
+// in its run's phases and tokens, and a removed item still counts in the cost.
+test('a removed workflow agent still counts in its run and the cost', async ($, on) => {
+  const done = { ...reviewed, tokens: { input: 30_000, output: 2_000 } }
+  const items = ALL.map(item => (item.id === reviewed.id ? done : item))
+  hold(on, items, { removed: [done.id], open: flow.id, order: orderOf(items) })
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  const detail = (await screen(ui)).join('\n')
+  expect(detail).toContain('✓ Review → ◐ Verify')
+  expect(detail).toMatch(/review:bugs +32k/)
+  expect(detail).not.toContain('REVIEW not started')
+  await ui.press({ key: 'back' })
+  const shown = (await screen(ui)).join('\n')
+  expect(shown).toContain(`Items ${items.length - 1}`)
+  expect(shown).not.toContain('review:bugs')
+  await ui.unmount()
+  const band = await $.ui.mount(BAND as never)
+  expect((await screen(band)).join('\n')).toContain('123k tok')
+  await band.unmount()
+})

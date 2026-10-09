@@ -136,7 +136,7 @@ type Port = { item: RabeItemOf<'shell'>; port: number; at: number }
 
 // The ports of the running shells, one per port. With an order, `held` are
 // the ports of the shells that ran with one at the open, in that order, and
-// `fresh` the others, each with the time it was found. A port whose shell
+// `fresh` the others, in the order they were found. A port whose shell
 // ended leaves; the renderer keeps its row's place (see `hold`).
 function portsOf(model: Model, order?: RabeOrder): { held: Port[]; fresh: Port[] } {
   const shown = model.items.flatMap(item =>
@@ -161,7 +161,9 @@ function portsOf(model: Model, order?: RabeOrder): { held: Port[]; fresh: Port[]
 
   return {
     held,
-    fresh: byPort(shown.filter(item => !held.some(one => one.port === item.detail.port))),
+    fresh: byPort(shown.filter(item => !held.some(one => one.port === item.detail.port))).toSorted(
+      (a, b) => a.at - b.at,
+    ),
   }
 }
 
@@ -189,61 +191,32 @@ function portRows({ item, port }: Port, hasHotkey: boolean, selected: string): L
   ]
 }
 
-type Found = { at: number } & ({ file: Touched } | { port: Port })
-
 // The Effects tab: a conflict when two agents edit one file in one tree, the
 // files agents touched (each a row that opens the agent that edited it last),
 // the worktrees, and the ports of shells, each with its ssh command as a row
 // that copies it (`c` the first). While the pane is open the files and ports
-// of the open hold their order (`stable`) and the rows found since go to NEW,
-// the end, in the order they were found: no row above another comes or goes.
+// of the open hold their order (`stable`), and the rows found since follow
+// them in their section, in the order they were found.
 export const effectsView: View = (model, size, sel): Drawn => {
   const { order } = sel
   const all = touched(model.items, model.edits, model.cwd)
-  const files = stable(
-    order ? all.filter(file => order.files?.includes(file.id)) : all,
-    order?.files,
-    byConflict,
-  )
+  const files = stable(all, order?.files, byConflict)
   const ports = portsOf(model, order)
-  const found: Found[] = [
-    ...all.filter(file => order && !files.includes(file)).map(file => ({ at: file.first, file })),
-    ...ports.fresh.map(port => ({ at: port.at, port })),
-  ].toSorted((a, b) => a.at - b.at)
-  const ids = [
-    ...files.map(file => file.id),
-    ...ports.held.map(({ port }) => `ssh:${port}`),
-    ...found.map(one => ('file' in one ? one.file.id : `ssh:${one.port.port}`)),
-  ]
+  const shown = [...ports.held, ...ports.fresh]
+  const ids = [...files.map(file => file.id), ...shown.map(({ port }) => `ssh:${port}`)]
   const selected = ids.includes(sel.selected) ? sel.selected : (ids[0] ?? '')
   const hotkey = ports.held[0]?.port ?? ports.fresh[0]?.port
   const w = widths(size.columns)
   const portLines: Line[] = [
     {
       spans: [
-        [`PORTS ${ports.held.length}`, { fg: C.blue }],
+        [`PORTS ${shown.length}`, { fg: C.blue }],
         ['  found in shell output, may miss some', dim],
       ],
     },
-    ...ports.held.flatMap(port => portRows(port, port.port === hotkey, selected)),
-    ...(ports.held.length ? [] : [{ spans: [['  No open port found.', dim]] as Span[] }]),
+    ...shown.flatMap(port => portRows(port, port.port === hotkey, selected)),
+    ...(shown.length ? [] : [{ spans: [['  No open port found.', dim]] as Span[] }]),
   ]
-  const newLines: Line[] = found.length
-    ? [
-        { spans: [] },
-        {
-          spans: [
-            [`NEW ${found.length}`, { fg: C.bright }],
-            ['  found since Rabe opened', dim],
-          ],
-        },
-        ...found.flatMap(one =>
-          'file' in one
-            ? [fileRow(one.file, w, selected)]
-            : portRows(one.port, one.port.port === hotkey, selected),
-        ),
-      ]
-    : []
   const lines = focusOn(
     [
       ...conflictLines(byConflict(all)),
@@ -252,7 +225,6 @@ export const effectsView: View = (model, size, sel): Drawn => {
       ...treeLines(model),
       { spans: [] },
       ...portLines,
-      ...newLines,
     ],
     selected,
   )

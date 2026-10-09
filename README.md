@@ -59,6 +59,8 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | `s` | Search |
 | `x` | Stop the selected item |
 | `g` | Stop the group the selected row is in (the rows the search shows), or the workflow run of the selected run or workflow agent |
+| `r` | Remove the selected row once it is done, failed or stopped |
+| `a` | Remove every done, failed or stopped row the search shows |
 | `m` | Send a message to an agent |
 | `c` | Copy the command, the prompt or the `ssh -L` line |
 | `d` | Delete a cron job |
@@ -69,9 +71,11 @@ The buttons under the tabs show the keys of the current tab. A key that cannot a
 
 With the mouse, click a row once to select it and again to open it. Click a tab to switch to it, a group name to fold the group, a button to press it, or a row on the other tabs to open it. The wheel scrolls the pane. A click does not move the focus, so Enter still opens the row that has the focus. A click also does not give the pane the keys: `ctrl+x tab` does. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
 
-On the list, the stop keys `x` and `g` work only after you move onto a row yourself, with an arrow, Tab or a click. Until then, and after the view or the selected row changes without you, they are dim, so a key press never stops something you did not pick. If they stay dim after a click, the pane does not have the keys yet: press `ctrl+x tab`, then move onto the row with Tab or an arrow.
+On the list, the stop keys `x` and `g` and the remove key `r` work only after you move onto a row yourself, with an arrow, Tab or a click. Until then, and after the view or the selected row changes without you, they are dim, so a key press never stops something you did not pick. If they stay dim after a click, the pane does not have the keys yet: press `ctrl+x tab`, then move onto the row with Tab or an arrow.
 
-While the pane is open, rows and buttons keep their places, so Enter acts on what you see under the focus. Items that start after you open the pane go to a NEW group at the end (on the Effects tab, to a NEW section). A row that is gone stays as a dim `gone` slot. Type `/rabe` again to sort the lists.
+While the pane is open, rows and buttons keep their places, so Enter acts on what you see under the focus. An item that starts after you open the pane goes into the group of its kind, after the rows already there; on the Effects tab, a new file or port goes into its section the same way. When it comes above the focused row, Rabe moves the focus back onto that row; until then, Enter on a row does nothing. A row that is gone stays as a dim `gone` slot. Type `/rabe` again to sort the lists.
+
+Removed rows stay off the list and out of the band's counts for the rest of the session. They still count in a workflow's phases and tokens, in the cost and on the other tabs, so a summary never loses work that ran. Running items are never removed; an item that runs again shows again. While the pane is open, a removed row stays as a dim `gone` slot; when it was the selected row, the keys go dim until you move onto a row again.
 
 Commands:
 
