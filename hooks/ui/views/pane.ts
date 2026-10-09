@@ -1,6 +1,6 @@
 import type { RabeTab } from '../../../types'
 import { C } from '../cells/palette'
-import { kept } from '../lists'
+import { kept, shown } from '../lists'
 import {
   controlRows,
   type Drawn,
@@ -67,7 +67,7 @@ function tabLines(model: Model, size: Size, sel: Selection): Line[] {
     label:
       one.tab === sel.tab || !isShort
         ? one.tab === 'items'
-          ? `${one.label} ${kept(model.items, model.removed).length}`
+          ? `${one.label} ${kept(shown(model.items), model.removed).length}`
           : one.label
         : one.label.slice(0, 1),
     hotkey: one.hotkey,

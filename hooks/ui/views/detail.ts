@@ -3,7 +3,17 @@ import { nextRuns } from '../../schedule'
 import { type Span, wrap } from '../cells/grid'
 import { C, type Style } from '../cells/palette'
 import { ago, clockTime, countdown, tokens, usd } from '../format'
-import { byStart, children, phases, share, stable, timeLabel, tokenSum } from '../lists'
+import {
+  byStart,
+  children,
+  forwarderOf,
+  phases,
+  share,
+  stable,
+  timeLabel,
+  tokenSum,
+  withForwarder,
+} from '../lists'
 import {
   type Action,
   canStop,
@@ -37,8 +47,10 @@ function lead(first: Span[], value: string, columns: number, style: Style = {}):
 const raise = (lines: Line[]): Line[] => lines.map(line => ({ ...line, bg: C.raised }))
 
 // Spend and activity on a panel: agents and Codex jobs their own, a workflow its agents'.
-function costBox(model: Model, item: RabeItem): Line[] {
-  if (item.kind !== 'agent' && item.kind !== 'codex' && item.kind !== 'workflow') return []
+// A Codex job counts the agent that only forwarded it.
+function costBox(model: Model, own: RabeItem): Line[] {
+  if (own.kind !== 'agent' && own.kind !== 'codex' && own.kind !== 'workflow') return []
+  const item = withForwarder(own, model.items)
   const list = item.kind === 'workflow' ? children(model.items, item.id) : [item]
   const known = list.filter(one => one.tokens)
   const sum = (key: 'input' | 'output' | 'cached') =>
@@ -272,11 +284,21 @@ export function detailLines(
   columns: number,
   sel?: Selection,
 ): Line[] {
-  const top = [...headLines(model, item), ...topLines(model, item, columns)]
+  const top = [...headLines(model, item, columns), ...topLines(model, item, columns)]
   const room = rows - top.length
   const body = room > 0 ? bodyLines(model, item, columns, sel).slice(-room) : []
 
   return [...top, ...body].slice(0, rows)
+}
+
+// A control that copies the command resuming `id`; its key names the id.
+export function resumeButton(command: string, id: string): ViewButton {
+  return {
+    key: `resume:${id}`,
+    label: 'c: copy resume',
+    hotkey: 'c',
+    action: { type: 'copy', text: command },
+  }
 }
 
 function detailButtons(
@@ -307,6 +329,28 @@ function detailButtons(
       label,
       hotkey: 'c',
       action: { type: 'copy', text: copy },
+    })
+  }
+  if (item.kind === 'agent') {
+    buttons.push({
+      key: `copy:${item.id}`,
+      label: 'c: copy id',
+      hotkey: 'c',
+      action: { type: 'copy', text: item.detail.agentId },
+    })
+  }
+  // The key names the thread it resumes; without a thread there is no key.
+  if (item.kind === 'codex' && item.detail.threadId) {
+    buttons.push(resumeButton(`codex resume ${item.detail.threadId}`, item.detail.threadId))
+  }
+  // The agent folded into this job has no row; its detail opens from here.
+  const forwarder = forwarderOf(item, items)
+  if (forwarder) {
+    buttons.push({
+      key: `forwarder:${forwarder.id}`,
+      label: 'f: open forwarder',
+      hotkey: 'f',
+      action: { type: 'open', id: forwarder.id },
     })
   }
   if (item.kind === 'cron' && item.detail.scheduledFor === undefined) {
@@ -366,7 +410,7 @@ export const detailView: View = (model, size, sel): Drawn => {
   const shown =
     item.kind === 'workflow'
       ? [
-          ...headLines(model, item),
+          ...headLines(model, item, size.columns),
           ...topLines(model, item, size.columns),
           ...workflowLines(model, item, size.columns, sel),
         ]

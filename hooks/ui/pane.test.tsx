@@ -227,6 +227,26 @@ test('enter on a row opens it, and b goes back to the list', async ($, on) => {
   await ui.unmount()
 })
 
+// The forwarder has no row of its own, so back from it selects its job's row.
+test('f opens the forwarder of a codex job, and b goes back to the job', async ($, on) => {
+  const call = { at: NOW - 60_000, command: 'task' as const, text: 'codex-companion.mjs task' }
+  const forwarder = {
+    ...explore,
+    id: 'agent:f1',
+    title: 'Codex rescue',
+    detail: { agentId: 'f1', toolCount: 1, codexCalls: [call] },
+  } as RabeItem
+  const job = { ...review, parentId: forwarder.id } as RabeItem
+  const state = hold(on, [forwarder, job, dev], { open: job.id, selected: job.id })
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: `forwarder:${forwarder.id}` })
+  expect(state).toMatchObject({ open: forwarder.id, tab: 'items' })
+  expect(await screen(ui)).toContain('agent f1')
+  await ui.press({ key: 'back' })
+  expect(state).toMatchObject({ open: '', selected: job.id })
+  await ui.unmount()
+})
+
 test('a shell shows the lines its source read on every surface', async ($, on) => {
   hold(on, ALL, { open: lint.id })
   for (const surface of SURFACES) {
@@ -520,10 +540,34 @@ test('moving the focus onto a cost or effects row selects it on every surface', 
 test('the session end keeps a summary for the next session in this project', async ($, on) => {
   hold(on, ALL)
   const store = session(on)
-  await $.session.end({ reason: 'exit', sessionId: 's1' } as never)
+  await $.session.end({ reason: 'exit', sessionId: 's1', resume: { id: 's1-resume' } } as never)
   expect(store['previous:/p']).toEqual(
-    previousOf(ALL, NOW, { startedAt: USAGE.startedAt, usd: USAGE.cost.usd }),
+    previousOf(ALL, NOW, { startedAt: USAGE.startedAt, usd: USAGE.cost.usd }, 's1-resume'),
   )
+})
+
+test('the cost tab names this session and copies its resume command, or shows it on failure', async ($, on) => {
+  const state = hold(on, ALL, { tab: 'cost' })
+  session(on)
+  on('session.id', async () => ({ value: 'sess-9' }))
+  on('ui.copy', async () => ({
+    value: { isCopied: false as const, reason: 'no-clipboard' as const },
+  }))
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  expect(await screen(ui)).toContain(' session sess-9')
+  await ui.press({ key: 'resume:sess-9' })
+  expect(state.toasts).toContain('Copy failed: no-clipboard. Select it: claude --resume sess-9')
+  await ui.unmount()
+})
+
+test('a summary from an older Rabe or of another shape shows no session id', async ($, on) => {
+  hold(on, ALL, { tab: 'timeline' })
+  const store = session(on)
+  store['previous:/p'] = { ...PREVIOUS, sessionId: 42 }
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  expect((await screen(ui)).some(line => line.endsWith(' id n/a'))).toBe(true)
+  expect(await ui.find({ type: 'Button', key: 'resume:42' })).toBeUndefined()
+  await ui.unmount()
 })
 
 test('a session without background work keeps the previous summary', async ($, on) => {

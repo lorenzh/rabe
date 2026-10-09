@@ -15,6 +15,18 @@ export type RabeEdit = {
   change?: 'add' | 'update' | 'delete'
 }
 
+// A Bash call of an agent that ran the Codex plugin's companion script
+// (`task`, `review`, `adversarial-review`): when it started and returned, its
+// command line (cut), and the job or thread its output named.
+export type RabeCodexCall = {
+  at: number
+  command: 'task' | 'review' | 'adversarial-review'
+  text: string
+  endedAt?: number
+  jobId?: string
+  threadId?: string
+}
+
 export type RabeAgentDetail = {
   agentId: string
   type?: string
@@ -31,6 +43,7 @@ export type RabeAgentDetail = {
   lastTool?: string
   lastToolAt?: number
   edits?: RabeEdit[]
+  codexCalls?: RabeCodexCall[]
 }
 
 export type RabeWorkflowDetail = {
@@ -135,6 +148,8 @@ export type RabeLines = { seen: number; lines: RabeLine[] }
 export type RabeOrder = Record<string, string[]>
 
 export type RabePrevious = {
+  // What `claude --resume` takes; absent in summaries before Rabe 0.4.
+  sessionId?: string
   endedAt: number
   startedAt?: number
   counts: Partial<Record<RabeItemKind, number>>

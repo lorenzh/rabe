@@ -868,3 +868,47 @@ test(
     expect(held.items?.[0]?.costUsd).toBeUndefined()
   },
 )
+const COMPANION = 'node "/p/codex/1.0.6/scripts/codex-companion.mjs" task --write'
+
+test("an agent's companion calls keep their start, end and the job or thread they named", async ($, on) => {
+  const clock = mock.clock(on, { now: 5000 })
+  const state = memoryState(on)
+  mock.env(on, { HOME: '/home/u' })
+  on('agent.spawn', async () => ({ model: 'claude-sonnet-5-5', agentId: 'f1' }))
+  on('tool.call', { tool: 'Bash' }, async (_$, e) => {
+    const command = e.tool === 'Bash' ? e.command : ''
+    await clock.advance(700)
+    if (command.includes('"bg"')) {
+      const stdout = 'Codex Task started in the background as task-mg1-ab. Check /codex:status.\n'
+      return { result: { stdout, stderr: '', interrupted: false } as never }
+    }
+    if (command.includes('"long"')) {
+      return { result: { stdout: '', stderr: '', backgroundTaskId: 'b7' } as never }
+    }
+    if (command.includes('"deny"')) return { deny: 'no' }
+    if (command.includes('"oops"')) {
+      const stderr = '[codex] Thread ready (th-8).\nTurn failed.'
+      return { result: { stdout: '', stderr } as never, isError: true }
+    }
+    const stderr = '[codex] Starting Codex task thread.\n[codex] Thread ready (th-9).\n'
+    return { result: { stdout: 'Fixed.', stderr, interrupted: false } as never }
+  })
+  await $.agent.spawn({ ...SPAWN, workflow: undefined })
+  const run = (command: string, agentId?: string) =>
+    $.tool.call({ tool: 'Bash', command, ...(agentId && { agentId }) } as never)
+  await run(`${COMPANION} "fg"`, 'f1')
+  await run(`${COMPANION} "bg"`, 'f1')
+  await run(`${COMPANION} "long"`, 'f1')
+  await run(`${COMPANION} "deny"`, 'f1')
+  await run(`${COMPANION} "oops"`, 'f1')
+  await run(`${COMPANION} "main"`)
+  await run('git status', 'f1')
+  const [item] = state['rabe.items']?.value as RabeItemOf<'agent'>[]
+  expect(item?.detail.codexCalls).toEqual([
+    { at: 5000, command: 'task', text: `${COMPANION} "fg"`, endedAt: 5700, threadId: 'th-9' },
+    { at: 5700, command: 'task', text: `${COMPANION} "bg"`, endedAt: 6400, jobId: 'task-mg1-ab' },
+    { at: 6400, command: 'task', text: `${COMPANION} "long"` },
+    { at: 7100, command: 'task', text: `${COMPANION} "deny"`, endedAt: 7800 },
+    { at: 7800, command: 'task', text: `${COMPANION} "oops"`, endedAt: 8500, threadId: 'th-8' },
+  ])
+})

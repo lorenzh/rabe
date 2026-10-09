@@ -631,3 +631,31 @@ test('a finished job newer than the oldest history held is added and pushes it o
   expect(items.at(-1)).toMatchObject({ id: 'codex:task-1', status: 'done', endedAt: 9000 })
   expect(items.some(item => item.id === 'shell:s0')).toBe(false)
 })
+
+test('a job is linked to the agent whose companion call started it', async ($, on) => {
+  const state = memoryState(on)
+  const text = `node "${PLUGIN}/scripts/codex-companion.mjs" task "Review pkg/auth after the logger migration."`
+  const forwarder: RabeItem = {
+    id: 'agent:f1',
+    kind: 'agent',
+    title: 'forward',
+    status: 'running',
+    seenAt: 500,
+    detail: { agentId: 'f1', toolCount: 1, codexCalls: [{ at: 900, command: 'task', text }] },
+  }
+  state['rabe.items'] = { value: [forwarder], version: 1 }
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: ROLLOUT,
+  })
+  await startAndTick($, w)
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items.map(item => [item.id, item.parentId])).toEqual([
+    ['agent:f1', undefined],
+    ['codex:task-1', 'agent:f1'],
+  ])
+  const version = state['rabe.items']?.version
+  await w.clock.advance(2000)
+  expect(state['rabe.items']?.version).toBe(version)
+})

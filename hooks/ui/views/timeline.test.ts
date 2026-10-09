@@ -137,3 +137,22 @@ test('the timeline draws every bar; the pane scrolls what is below its body', ()
   expect(lines(grid).some(line => line.startsWith('▌bun run lint'))).toBe(true)
   expect(lines(grid)).toContain('WHO STARTED WHAT?  agents and their children')
 })
+
+test('the previous session names its id, and c copies the command that resumes it', () => {
+  const sessionId = '5f1c0d2e-7a7b-4c1d-9e2f-0123456789ab'
+  const drawn = timelineView({ ...MODEL, previous: { ...PREVIOUS, sessionId } }, SIZE, NO_SELECTION)
+  const shown = lines(gridOf(drawn).grid)
+  expect(shown[find(shown, ' id ')]).toMatch(new RegExp(` id ${sessionId}$`))
+  expect(drawn.buttons).toEqual([
+    {
+      key: `resume:${sessionId}`,
+      label: 'c: copy resume',
+      hotkey: 'c',
+      action: { type: 'copy', text: `claude --resume ${sessionId}` },
+    },
+  ])
+  const old = timelineView({ ...MODEL, previous: PREVIOUS }, SIZE, NO_SELECTION)
+  const before = lines(gridOf(old).grid)
+  expect(before[find(before, ' id ')]).toMatch(/ id n\/a$/)
+  expect(old.buttons).toEqual([])
+})

@@ -1,6 +1,7 @@
 import type { EngineInterface, FsStat, On } from 'claude-code'
 
 import type { RabeCodexStep, RabeEdit, RabeTokens } from '../../types'
+import { linkForwarders } from '../forwarders'
 import {
   clip,
   type EndStatus,
@@ -517,6 +518,7 @@ async function poll($: EngineInterface, file: string): Promise<void> {
     }
   }
   looks.stop.abort()
+  await write($, linkForwarders)
 }
 
 function firstLine(text: string): string {

@@ -93,3 +93,36 @@ test('the cost tab fits narrow widths; the pane scrolls what is below its body',
   expect(grid.columns).toBe(40)
   expect(lines(grid).some(line => line.includes('Explore'))).toBe(true)
 })
+
+test('the head names this session, and c copies the command that resumes it', () => {
+  const sessionId = '5f1c0d2e-7a7b-4c1d-9e2f-0123456789ab'
+  const drawn = costView({ ...MODEL, sessionId }, SIZE, NO_SELECTION)
+  expect(lines(gridOf(drawn).grid)[1]).toBe(` session ${sessionId}`)
+  expect(drawn.buttons).toEqual([
+    {
+      key: `resume:${sessionId}`,
+      label: 'c: copy resume',
+      hotkey: 'c',
+      action: { type: 'copy', text: `claude --resume ${sessionId}` },
+    },
+  ])
+  const none = costView(MODEL, SIZE, NO_SELECTION)
+  expect(lines(gridOf(none).grid)[1]).toBe(' session n/a')
+  expect(none.buttons).toEqual([])
+})
+
+test('an agent that only forwarded to Codex adds its tokens to the job and has no row', () => {
+  const call = { at: NOW - 60_000, command: 'task' as const, text: 'codex-companion.mjs task' }
+  const forwarder = {
+    ...explore,
+    id: 'agent:f1',
+    title: 'Codex rescue',
+    tokens: { input: 4_000, output: 1_000 },
+    detail: { agentId: 'f1', toolCount: 1, codexCalls: [call] },
+  } as RabeItem
+  const job = { ...review, parentId: forwarder.id } as RabeItem
+  const drawn = costView({ ...MODEL, items: [forwarder, job] }, SIZE, NO_SELECTION)
+  expect(rowKeys(drawn)).toEqual([`row:${job.id}`])
+  const shown = lines(gridOf(drawn).grid)
+  expect(shown[row(shown, /review auth\.ts/)]).toMatch(/ 33k +\$0\.25/)
+})

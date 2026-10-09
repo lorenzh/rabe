@@ -1,7 +1,7 @@
 import type { EngineInterface, On, RenderSurface } from 'claude-code'
 
 import type { RabePrevious } from '../../types'
-import { KIND_LABEL, kept, matches, orderOf, previousOf } from './lists'
+import { KIND_LABEL, kept, matches, orderOf, previousOf, rowOf } from './lists'
 import { type At, type Held, hold, isRowKey, render, shifts } from './render'
 import {
   type Action,
@@ -36,12 +36,16 @@ async function tick($: EngineInterface): Promise<void> {
   if (items.some(item => item.status === 'running')) $.ui.invalidate('ui.render')
 }
 
-// The store is the plugin's own JSON; an older Rabe may have written another shape.
+// The store is the plugin's own JSON; an older Rabe may have written another
+// shape, and a summary before 0.4 has no session id.
 function asPrevious(value: unknown): RabePrevious | undefined {
   const prev = value as RabePrevious | undefined
-  return typeof prev?.endedAt === 'number' && Array.isArray(prev.failed) && prev.counts
-    ? prev
-    : undefined
+  if (typeof prev?.endedAt !== 'number' || !Array.isArray(prev.failed) || !prev.counts) {
+    return undefined
+  }
+  const { sessionId, ...rest } = prev
+
+  return typeof sessionId === 'string' && sessionId ? { ...rest, sessionId } : rest
 }
 
 async function previous($: EngineInterface): Promise<RabePrevious | undefined> {
@@ -50,14 +54,16 @@ async function previous($: EngineInterface): Promise<RabePrevious | undefined> {
 
 // Keeps this session's summary for the next one in this project; a session
 // with no background work leaves the last summary in place.
-async function remember($: EngineInterface): Promise<void> {
+async function remember($: EngineInterface, sessionId?: string): Promise<void> {
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   if (items.length === 0) return
   const usage = await $.session.usage()
-  const summary = previousOf(items, await $.clock.now(), {
-    startedAt: usage.startedAt,
-    usd: usage.cost?.usd,
-  })
+  const summary = previousOf(
+    items,
+    await $.clock.now(),
+    { startedAt: usage.startedAt, usd: usage.cost?.usd },
+    sessionId,
+  )
   await $.store.set(`previous:${await $.session.cwd()}`, summary)
 }
 
@@ -228,8 +234,11 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
     }
     case 'open': {
       // Back selects the item that was open: the focus may have moved onto a
-      // row inside its detail (a workflow's agents).
-      const { value: was = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
+      // row inside its detail (a workflow's agents). A folded forwarder has no
+      // row, so back selects its job.
+      const { value: open = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
+      const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+      const was = rowOf(open, items)
       const id = action.id || was
       if (id) {
         await $.state.set({ plugin: 'rabe', key: 'selected' }, id)
@@ -261,8 +270,15 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       return
     }
     case 'copy': {
-      const result = await $.ui.copy({ text: action.text, surface })
-      $.ui.toast(result.isCopied ? `Copied: ${action.text}` : `Copy failed: ${result.reason}`)
+      // Over SSH the clipboard needs the terminal's OSC 52; the toast then shows the text to select.
+      const result = await $.ui
+        .copy({ text: action.text, surface })
+        .catch((error: unknown) => ({ isCopied: false as const, reason: String(error) }))
+      $.ui.toast(
+        result.isCopied
+          ? `Copied: ${action.text}`
+          : `Copy failed: ${result.reason}. Select it: ${action.text}`,
+      )
       return
     }
     case 'none':
@@ -309,6 +325,7 @@ async function look(
     previous: await previous($).catch(() => undefined),
     edits,
     cwd: await $.session.cwd().catch(() => undefined),
+    sessionId: await $.session.id().catch(() => undefined),
   }
 
   const selection = {
@@ -423,7 +440,7 @@ export function pane(on: On): void {
   })
 
   on('session.end', { reason: /^/ }, async ($, e, next) => {
-    await remember($)
+    await remember($, e.resume?.id ?? e.sessionId)
 
     return next(e)
   }).catch((_$, e, next) => next(e))
