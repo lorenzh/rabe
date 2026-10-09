@@ -2,8 +2,19 @@ import type { RabeItem } from '../../model'
 import { bar, fit } from '../cells/grid'
 import { C, CHIP, type Style, tone } from '../cells/palette'
 import { duration, short, tokens, usd } from '../format'
-import { byTokens, cost, glyph, stable, tokenSum, totals } from '../lists'
+import {
+  byTokens,
+  cost,
+  glyph,
+  kept,
+  shown,
+  stable,
+  tokenSum,
+  totals,
+  withForwarder,
+} from '../lists'
 import type { Drawn, Line, Model, View } from '../view'
+import { resumeButton } from './detail'
 import { fitLine, focusOn } from './lines'
 
 const dim = { fg: C.dim }
@@ -84,7 +95,10 @@ function loadLines(model: Model): Line[] {
 export const costView: View = (model, size, sel): Drawn => {
   const sum = totals(model.items)
   const running = model.items.filter(item => item.status === 'running').length
-  const workers = model.items.filter(item => item.kind === 'agent' || item.kind === 'codex')
+  // An agent that only forwarded to Codex counts in its job's row.
+  const workers = kept(shown(model.items), model.removed)
+    .filter(item => item.kind === 'agent' || item.kind === 'codex')
+    .map(item => withForwarder(item, model.items))
   const list = stable(workers, sel.order?.cost, byTokens)
   const selected = list.find(item => item.id === sel.selected) ?? list[0]
   const nameWidth = Math.max(12, Math.min(24, size.columns - RIGHT - 12))
@@ -99,16 +113,16 @@ export const costView: View = (model, size, sel): Drawn => {
         [` ${session} `, { fg: C.bright }],
         [' claude ', dim],
         [cost(sum.claude), { fg: C.orange }],
-        ['   codex ', dim],
+        ['  codex ', dim],
         [cost(sum.codex), { fg: C.cyan }],
-        ['   tokens ', dim],
+        ['  tokens ', dim],
         [tokens(sum.tokens), { fg: C.bright }],
-        ['   running ', dim],
+        ['  running ', dim],
         [String(running), { fg: C.yellow }],
-        [sum.unknown ? `   ${sum.unknown} n/a` : '', dim],
+        [sum.unknown ? `  ${sum.unknown} n/a` : '', dim],
       ],
     },
-    { spans: [] },
+    { spans: [[` session ${model.sessionId ?? 'n/a'}`, dim]] },
     { spans: [['by worker · sorted by tokens', dim]] },
     {
       spans: [
@@ -141,5 +155,8 @@ export const costView: View = (model, size, sel): Drawn => {
     { spans: [[foot.filter(Boolean).join(' · '), dim]] } as Line,
   ]
 
-  return { nodes: lines.map(line => fitLine(line, size.columns)), buttons: [] }
+  const id = model.sessionId
+  const buttons = id ? [resumeButton(`claude --resume ${id}`, id)] : []
+
+  return { nodes: lines.map(line => fitLine(line, size.columns)), buttons }
 }

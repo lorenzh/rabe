@@ -61,14 +61,12 @@ const TURNS: Record<string, RabeTurn[]> = {
   ],
 }
 
-const MODEL: Model = { items: ITEMS, turns: TURNS, lines: {}, now: NOW }
+const MODEL: Model = { items: ITEMS, turns: TURNS, lines: {}, now: NOW, cwd: '/repo' }
 
 test('a file edited by two agents in one tree heads the tab as a conflict', () => {
   const { grid } = gridOf(effectsView(MODEL, SIZE, NO_SELECTION))
   const shown = lines(grid)
-  expect(shown[0]).toBe(
-    ' ⚠ conflict  src/logger.ts is edited by Plan auth split and logger in api in the main tree',
-  )
+  expect(shown[0]).toBe(' ⚠ conflict  src/logger.ts is edited by Plan auth split and logger in api')
   expect(cell(grid, 1, 0)).toEqual(['⚠'.codePointAt(0), C.red, CHIP.failed.bg])
   expect(cell(grid, 89, 0)[2]).toBe(CHIP.failed.bg)
 })
@@ -87,9 +85,9 @@ test('files touched list each file with who edited it and how often, conflicts f
   expect(shown.some(line => line.includes('x.ts') || line.includes('denied.ts'))).toBe(false)
 })
 
-test('worktrees show the path, branch and agents, then the main tree', () => {
+test('worktrees show the path, branch and agents, then the main tree, each counted', () => {
   const shown = lines(gridOf(effectsView(MODEL, SIZE, NO_SELECTION)).grid)
-  const head = shown.indexOf('WORKTREES 1  from agent metadata, running agents included')
+  const head = shown.indexOf('WORKTREES 2  from agent metadata, running agents included')
   expect(head).toBeGreaterThan(0)
   expect(shown[head + 1]).toMatch(
     /^ {2}⎇ \.claude\/worktrees\/pkg-db +worktree-agent-a1 · Explore verifyToken$/,
@@ -271,7 +269,7 @@ test('a port found after the open keeps its place, whichever shell found it', ()
   expect(rowKeys(draw([...both, late])).at(-1)).toBe('row:ssh:9229')
 })
 
-test('rows found after the open go to NEW at the end, in the order they were found', () => {
+test('rows found after the open go to their section after the held rows, in the order they were found', () => {
   const items = [editing(api, [NOW, '/repo/a.ts']), serve(5173), serve(3000)]
   const order = orderOf(items)
   const draw = (list: RabeItem[]) =>
@@ -284,16 +282,16 @@ test('rows found after the open go to NEW at the end, in the order they were fou
     serve(3000),
   ]
   const drawn = draw(later(NOW + 1000))
-  expect(before('row:ssh:5173', drawn)).toEqual(at5173)
+  expect(before('row:ssh:5173', drawn).filter(key => key !== 'row:file:/repo/b.ts')).toEqual(at5173)
   expect(rowKeys(drawn)).toEqual([
     'row:file:/repo/a.ts',
+    'row:file:/repo/b.ts',
     'row:ssh:5173',
     'row:ssh:3000',
-    'row:file:/repo/b.ts',
     'row:ssh:8080',
   ])
-  expect(lines(gridOf(drawn).grid)).toContain('NEW 2  found since Rabe opened')
-  expect(rowKeys(draw(later(NOW + 3000))).slice(3)).toEqual(['row:ssh:8080', 'row:file:/repo/b.ts'])
+  expect(lines(gridOf(drawn).grid).some(line => line.includes('NEW'))).toBe(false)
+  expect(rowKeys(draw(later(NOW + 3000)))).toEqual(rowKeys(drawn))
 })
 
 // The other editors: a Codex job, the main session, an agent's shell command.
@@ -340,11 +338,9 @@ test('files from Codex jobs, the main session and shell commands show who and ho
   )
   expect(row('src/old.ts')).toMatch(/src\/old\.ts +review auth\.ts +deleted · codex delete$/)
   expect(row('SKILL.md')).toMatch(/ …[^ ]*\/skills\/demo\/SKILL\.md +Plan auth split +via shell$/)
-  expect(row('notes.md')).toMatch(/ out\/notes\.md +Plan auth split +via shell · cwd n\/a$/)
+  expect(row('notes.md')).toMatch(/ out\/notes\.md +Plan auth split +via shell$/)
   expect(row('plan.md')).toMatch(/^ {2}plan\.md +main session +write$/)
-  expect(shown[0]).toBe(
-    ' ⚠ conflict  src/gen.ts is edited by review auth.ts and main session in the main tree',
-  )
+  expect(shown[0]).toBe(' ⚠ conflict  src/gen.ts is edited by review auth.ts and main session')
 })
 
 test('a main session row copies the path; a Codex row opens the job', () => {
@@ -369,13 +365,82 @@ test('two editors of one relative path are no conflict: the cwd is not known', (
   expect(shown.some(line => line.includes('conflict'))).toBe(false)
 })
 
-test('a main session file found after the open goes to NEW', () => {
+test('a main session file found after the open goes after the held files', () => {
   const order = orderOf(OTHERS.items, OTHERS.edits)
   const later = {
     ...OTHERS,
     edits: [...MAIN, { path: '/repo/late.md', at: NOW, via: 'write' as const }],
   }
   const keys = rowKeys(effectsView(later, SIZE, { ...NO_SELECTION, order }))
-  expect(keys.at(-1)).toBe('row:file:/repo/late.md')
-  expect(keys.slice(0, -1)).toEqual(rowKeys(effectsView(OTHERS, SIZE, { ...NO_SELECTION, order })))
+  const held = rowKeys(effectsView(OTHERS, SIZE, { ...NO_SELECTION, order }))
+  const files = held.filter(key => key.startsWith('row:file:')).length
+  expect(keys).toEqual([...held.slice(0, files), 'row:file:/repo/late.md', ...held.slice(files)])
+})
+
+// Issue 19: the main session edits a file in a second worktree by its full
+// path; git's worktree list places it there.
+test('with git a file shows relative to its worktree, and the worktree lists the main session', () => {
+  const trees = [
+    { path: '/repo', branch: 'main', isMain: true },
+    { path: '/repo/.worktrees/fix', branch: 'fix/login' },
+  ]
+  const edits: RabeEdit[] = [{ path: '/repo/.worktrees/fix/src/login.ts', at: NOW, via: 'edit' }]
+  const model: Model = { items: [], turns: {}, lines: {}, now: NOW, edits, cwd: '/repo' }
+  const before = lines(gridOf(effectsView(model, SIZE, NO_SELECTION)).grid)
+  expect(before.some(line => line.includes('.worktrees/fix/src/login.ts'))).toBe(true)
+  expect(before).toContain('WORKTREES 0  from agent metadata, running agents included')
+  const shown = lines(gridOf(effectsView({ ...model, worktrees: trees }, SIZE, NO_SELECTION)).grid)
+  expect(shown.find(line => line.includes('login.ts'))).toMatch(
+    /^▌ src\/login\.ts +main session +edit$/,
+  )
+  const head = shown.indexOf('WORKTREES 1  from git and agent metadata')
+  expect(head).toBeGreaterThan(0)
+  expect(shown[head + 1]).toMatch(/^ {2}⎇ fix +fix\/login · main session$/)
+})
+
+test('a conflict in a git worktree names that worktree', () => {
+  const trees = [
+    { path: '/repo', branch: 'main', isMain: true },
+    { path: '/repo/.worktrees/fix', branch: 'fix/login' },
+  ]
+  const path = '/repo/.worktrees/fix/a.ts'
+  const agent = { ...plan, detail: { agentId: 'a2', cwd: '/repo', edits: [{ path, at: NOW }] } }
+  const model: Model = {
+    items: [agent as RabeItem],
+    turns: {},
+    lines: {},
+    now: NOW,
+    edits: [{ path, at: NOW + 1 }],
+    cwd: '/repo',
+    worktrees: trees,
+  }
+  const shown = lines(gridOf(effectsView(model, SIZE, NO_SELECTION)).grid)
+  expect(shown[0]).toBe(' ⚠ conflict  a.ts is edited by Plan auth split and main session in fix')
+})
+
+// The banner names a tree only when it is proven to hold the file: git lists
+// it, or the editor's worktree from Claude Code's metadata contains the path.
+test('a conflict names the main tree only when git places the file there', () => {
+  const draw = (path: string, worktrees?: Model['worktrees'], worktreePath?: string) => {
+    const detail = { agentId: 'a2', cwd: '/repo', worktreePath, edits: [{ path, at: NOW }] }
+    const model: Model = {
+      items: [{ ...plan, detail } as RabeItem],
+      turns: {},
+      lines: {},
+      now: NOW,
+      edits: [{ path, at: NOW + 1 }],
+      cwd: '/repo',
+      ...(worktrees && { worktrees }),
+    }
+    return lines(gridOf(effectsView(model, SIZE, NO_SELECTION)).grid)[0]
+  }
+  const main = [{ path: '/repo', branch: 'main', isMain: true }]
+  const by = ' ⚠ conflict  shared.txt is edited by Plan auth split and main session'
+  expect(draw('/tmp/shared.txt', main)).toBe(by.replace('shared.txt', '/tmp/shared.txt'))
+  expect(draw('/repo/shared.txt', main)).toBe(`${by} in the main tree`)
+  expect(draw('/repo/shared.txt')).toBe(by)
+  expect(draw('/repo/.wt/fix/shared.txt', undefined, '/repo/.wt/fix')).toBe(`${by} in fix`)
+  expect(draw('/repo/shared.txt', undefined, '/repo/.wt/fix')).toBe(
+    by.replace('shared.txt', '/repo/shared.txt'),
+  )
 })

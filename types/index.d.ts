@@ -15,6 +15,18 @@ export type RabeEdit = {
   change?: 'add' | 'update' | 'delete'
 }
 
+// A Bash call of an agent that ran the Codex plugin's companion script
+// (`task`, `review`, `adversarial-review`): when it started and returned, its
+// command line (cut), and the job or thread its output named.
+export type RabeCodexCall = {
+  at: number
+  command: 'task' | 'review' | 'adversarial-review'
+  text: string
+  endedAt?: number
+  jobId?: string
+  threadId?: string
+}
+
 export type RabeAgentDetail = {
   agentId: string
   type?: string
@@ -31,6 +43,7 @@ export type RabeAgentDetail = {
   lastTool?: string
   lastToolAt?: number
   edits?: RabeEdit[]
+  codexCalls?: RabeCodexCall[]
 }
 
 export type RabeWorkflowDetail = {
@@ -135,6 +148,8 @@ export type RabeLines = { seen: number; lines: RabeLine[] }
 export type RabeOrder = Record<string, string[]>
 
 export type RabePrevious = {
+  // What `claude --resume` takes; absent in summaries before Rabe 0.4.
+  sessionId?: string
   endedAt: number
   startedAt?: number
   counts: Partial<Record<RabeItemKind, number>>
@@ -142,6 +157,21 @@ export type RabePrevious = {
   usd?: number
   failed: string[]
 }
+
+// A git worktree from `git worktree list --porcelain`: the first one listed
+// is the main worktree (`isMain`); bare entries are left out.
+export type RabeWorktree = {
+  path: string
+  branch?: string
+  isDetached?: boolean
+  isMain?: boolean
+}
+
+// The Timeline tab's window for the open pane: `base` hours from the option
+// `timelineHours`, `hours` the step shown now (0: the whole session) and
+// `since` its start in ms (0: none). `since` stays put while the pane is
+// open, so no row folds away under the focus.
+export type RabeWindow = { base: number; hours: number; since: number }
 
 declare module 'claude-code' {
   interface PluginState {
@@ -157,6 +187,11 @@ declare module 'claude-code' {
       order: RabeOrder
       // The files the main session changed (no agent), newest last.
       edits: RabeEdit[]
+      // The ids of ended items the person removed from the views this session.
+      removed: string[]
+      // The repository's git worktrees; absent without git.
+      worktrees: RabeWorktree[]
+      window: RabeWindow
     }
   }
 }

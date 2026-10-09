@@ -11,7 +11,10 @@ import {
   glyph,
   grouped,
   groupNote,
+  kept,
   matches,
+  shown,
+  withForwarder,
 } from '../lists'
 import {
   canStop,
@@ -36,7 +39,6 @@ const GROUP_COLOR: Record<Group, number> = {
   shells: C.yellow,
   monitors: C.blue,
   cron: C.purple,
-  new: C.bright,
 }
 
 // The split needs room for both columns; below this the detail opens in place.
@@ -65,6 +67,20 @@ const indent = (line: Line): Line => ({
   spans: [...line.spans.slice(0, 1), ['  '], ...line.spans.slice(1)],
 })
 
+const same = (line: Line) => line
+
+// In AGENTS, a Codex job right under the agent that started it, or under that
+// agent's job before it.
+function isUnder(item: RabeItem, before: RabeItem[]): boolean {
+  const last = before.at(-1)
+
+  return (
+    item.kind === 'codex' &&
+    item.parentId !== undefined &&
+    (last?.id === item.parentId || (last?.kind === 'codex' && last.parentId === item.parentId))
+  )
+}
+
 // The first row the pane shows once it has followed the focus onto row `at`:
 // the engine scrolls no further than it must, and does not say where it went.
 function shownFrom(size: Size, at: number): number {
@@ -79,7 +95,7 @@ function shownFrom(size: Size, at: number): number {
 // SHELLS and MONITORS the rows of each agent indented under its name.
 // Gaps between groups only where the whole list fits in `rows`.
 function groupsOf(model: Model, sel: Selection) {
-  const visible = model.items.filter(item => matches(item, sel.query))
+  const visible = kept(shown(model.items), model.removed).filter(item => matches(item, sel.query))
 
   return grouped(visible, sel.order).map(group => ({
     ...group,
@@ -125,7 +141,11 @@ function listLines(
       head,
       ...group.families.flatMap(family =>
         family.id === ''
-          ? family.items.map(row)
+          ? family.items.map((item, i) =>
+              (group.id === 'agents' && isUnder(item, family.items.slice(0, i)) ? indent : same)(
+                row(item),
+              ),
+            )
           : [familyHead(family), ...family.items.map(item => indent(row(item)))],
       ),
     ]
@@ -146,16 +166,19 @@ export function selectedItem(order: RabeItem[], sel: Selection): RabeItem | unde
 
 export const summary = detailLines
 
-// The selected item in one line under a list too narrow for the split.
+// The selected item in one line under a list too narrow for the split. A
+// folded job's spend is its forwarder's too, and n/a as in the detail.
 function summaryLine(model: Model, item: RabeItem): Line {
   const d = item.detail as Record<string, unknown>
+  const spend = withForwarder(item, model.items)
   const dim = { fg: C.dim }
   const parts: Span[] = []
   const add = (text: string, style: Style = dim) => parts.push([' · ', dim], [text, style])
   if (d.port !== undefined) add(`:${d.port}`, { fg: C.blue })
   if (typeof d.model === 'string') add(d.model)
-  if (item.costUsd !== undefined) add(`≈ ${usd(item.costUsd)}`, { fg: C.bright })
-  if (item.tokens) add(`${tokens(item.tokens.input)} in`)
+  if (spend.costUsd !== undefined) add(`≈ ${usd(spend.costUsd)}`, { fg: C.bright })
+  else if (item.kind === 'agent' || item.kind === 'codex') add('cost n/a')
+  if (spend.tokens) add(`${tokens(spend.tokens.input)} in`)
   add(facts(item, model.now, model.items).status.slice(2), { fg: tone(item) })
 
   return {
@@ -166,11 +189,12 @@ function summaryLine(model: Model, item: RabeItem): Line {
 
 // List keys in the toolbar; the rows themselves take the arrows and Enter.
 // g stops the run of a workflow or its agent, else the rows of the group the
-// selected row is shown in (`shown`). Below the split, s keeps only its letter.
-// x and g keep their slots while they cannot act: dim, without a hotkey.
-// Each keeps one key (`stop`, `stop-group`) and acts on the selection, so the
-// person walks the list without leaving slots; a target that changes without
-// the person disarms them (see arming in docs/architecture.md).
+// selected row is shown in (`shown`). r removes the selected row once it
+// ended, a every ended row shown. Below the split, s keeps only its letter.
+// x, g, r and a keep their slots while they cannot act: dim, without a hotkey.
+// x, g and r each keep one key (`stop`, `stop-group`, `remove`) and act on the
+// selection, so the person walks the list without leaving slots; a target that
+// changes without the person disarms them (see arming in docs/architecture.md).
 function listButtons(
   model: Model,
   size: Size,
@@ -186,9 +210,14 @@ function listButtons(
   const group = (shown.find(list => selected && list.includes(selected)) ?? [])
     .filter(canStop)
     .map(one => one.id)
-  const slot = (key: string, label: string, ids: string[] | undefined): ViewButton =>
+  const slot = (
+    key: string,
+    label: string,
+    ids: string[] | undefined,
+    type: 'stop' | 'remove' = 'stop',
+  ): ViewButton =>
     ids
-      ? { key, label, hotkey: label.slice(0, 1), action: { type: 'stop', ids } }
+      ? { key, label, hotkey: label.slice(0, 1), action: { type, ids } }
       : { key, label, action: NONE, dim: true }
   // Search first: a ring the engine left at the index after the tabs (the
   // first row or b of another view) never lands on a stop.
@@ -202,6 +231,7 @@ function listButtons(
         },
       ]
     : []
+  const isEnded = (item: RabeItem) => item.status !== 'running'
   buttons.push(
     slot(
       'stop',
@@ -211,6 +241,15 @@ function listButtons(
     run
       ? slot('stop-group', 'g: stop run', canStop(run) ? [run.id] : undefined)
       : slot('stop-group', 'g: stop group', group.length > 1 ? group : undefined),
+    slot(
+      'remove',
+      'r: remove',
+      selected && isEnded(selected) ? [selected.id] : undefined,
+      'remove',
+    ),
+    shown.flat().some(isEnded)
+      ? { key: 'clear', label: 'a: remove ended', hotkey: 'a', action: { type: 'clear' } }
+      : { key: 'clear', label: 'a: remove ended', action: NONE, dim: true },
   )
 
   return buttons
@@ -237,7 +276,7 @@ export const itemsView: View = (model, size, sel): Drawn => {
     buttons,
     inputs,
   })
-  if (model.items.length === 0) {
+  if (kept(model.items, model.removed).length === 0) {
     return note(' Nothing runs in the background.', listButtons(model, size, undefined, []))
   }
   const split = isSplit(size)

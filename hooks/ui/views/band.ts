@@ -1,6 +1,6 @@
 import { grid, type Span, spans } from '../cells/grid'
 import { C, CHIP } from '../cells/palette'
-import { type BandRow, bandRows, costLine } from '../lists'
+import { type BandRow, bandRows, costLine, kept } from '../lists'
 import type { View } from '../view'
 
 // The one-line band names each count: [one, more].
@@ -22,12 +22,12 @@ const cost = (parts: string[]): Span[] => [
 // The band above the prompt: one line of count chips with the cost, under one
 // empty row when `maxRows` leaves room for it.
 export const bandView: View = (model, size) => {
-  const rows = bandRows(model.items, model.now)
+  const rows = bandRows(kept(model.items, model.removed), model.now)
   const money = costLine(model.items, model.usd)?.split(' · ')
   const top = size.rows >= 2 ? 1 : 0
   const g = grid(size.columns, top + 1)
   const chips = rows.flatMap((row): Span[] => {
-    const n = row.names.length
+    const n = row.count
     return [[` ${row.glyph} ${n} ${COUNT[row.kind][n === 1 ? 0 : 1]} `, CHIP[row.kind]], [' ']]
   })
   spans(g, 0, top, [...chips, ...(money ? cost(money.slice(0, 2)) : [])])

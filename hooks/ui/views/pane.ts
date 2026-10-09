@@ -1,5 +1,6 @@
 import type { RabeTab } from '../../../types'
 import { C } from '../cells/palette'
+import { kept, shown } from '../lists'
 import {
   controlRows,
   type Drawn,
@@ -44,7 +45,7 @@ function hint(sel: Selection, isOpen: boolean, inner: Drawn): string {
   if (isOpen) return 'b back · esc close'
   const move = hasRows(inner.nodes) ? ['↑↓ move', 'enter open'] : []
   const keys = inner.buttons.flatMap(one =>
-    one.hotkey === 'x' || one.hotkey === 'g' ? [one.label.replace(': ', ' ')] : [],
+    ['x', 'g', 'r', 'a'].includes(one.hotkey ?? '') ? [one.label.replace(': ', ' ')] : [],
   )
 
   return [...move, ...keys, 'esc close'].join(' · ')
@@ -66,7 +67,7 @@ function tabLines(model: Model, size: Size, sel: Selection): Line[] {
     label:
       one.tab === sel.tab || !isShort
         ? one.tab === 'items'
-          ? `${one.label} ${model.items.length}`
+          ? `${one.label} ${kept(shown(model.items), model.removed).length}`
           : one.label
         : one.label.slice(0, 1),
     hotkey: one.hotkey,
@@ -143,6 +144,12 @@ export function fallbackOf(model: Model, sel: Selection): string {
     .join(' ')
 }
 
+// Whether the view seats rows found later where it draws them, also above a
+// held row (`hold`): the Items list, which puts a new item in its group, and
+// the Effects tab, which puts a new file or port in its section.
+export const seatsRows = (sel: Selection): boolean =>
+  (sel.tab === 'items' && sel.open === '') || sel.tab === 'effects'
+
 // Whether `key` is a row the Items list draws, not a gone slot of one.
 export const isLiveRow = (model: Model, sel: Selection, key: string): boolean =>
   key.startsWith('row:') && listOrder(model, sel).some(item => `row:${item.id}` === key)
@@ -159,9 +166,10 @@ export function selectsOnPress(model: Model, sel: Selection, id: string, ring?: 
   return order.some(item => item.id === id) && selectedItem(order, sel)?.id !== id
 }
 
-// Stop and delete drawn while the pane is disarmed: dim, no action, no hotkey.
+// Stop, delete and remove drawn while the pane is disarmed: dim, no action,
+// no hotkey.
 const disarmed = (one: ViewButton): ViewButton => {
-  if (one.action.type !== 'stop' && one.action.type !== 'delete') return one
+  if (!['stop', 'delete', 'remove', 'clear'].includes(one.action.type)) return one
   const { hotkey: _, ...rest } = one
 
   return { ...rest, action: NONE, dim: true }

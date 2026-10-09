@@ -1,11 +1,12 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { RabePrevious } from '../../../types'
+import type { RabeItem } from '../../model'
 import { cell, lines } from '../cells/grid'
 import { C, CHIP } from '../cells/palette'
-import { ALL, babysit, dev, gridOf, lint, NOW, plan } from '../fixtures'
+import { ALL, babysit, dev, gridOf, lint, NOW, plan, review } from '../fixtures'
 import { isPress, type Model, NO_SELECTION, rowKeys, type Size } from '../view'
-import { timelineView } from './timeline'
+import { hoursOf, timelineView, widen, windowOf } from './timeline'
 
 const SIZE: Size = { columns: 100, rows: 40, surface: 'terminal', hasInput: false }
 const MODEL: Model = { items: ALL, turns: {}, lines: {}, now: NOW }
@@ -136,4 +137,114 @@ test('the timeline draws every bar; the pane scrolls what is below its body', ()
   const { grid } = gridOf(timelineView(MODEL, { ...SIZE, columns: 72, rows: 14 }, sel))
   expect(lines(grid).some(line => line.startsWith('▌bun run lint'))).toBe(true)
   expect(lines(grid)).toContain('WHO STARTED WHAT?  agents and their children')
+})
+
+test('the previous session names its id, and c copies the command that resumes it', () => {
+  const sessionId = '5f1c0d2e-7a7b-4c1d-9e2f-0123456789ab'
+  const drawn = timelineView({ ...MODEL, previous: { ...PREVIOUS, sessionId } }, SIZE, NO_SELECTION)
+  const shown = lines(gridOf(drawn).grid)
+  expect(shown[find(shown, ' id ')]).toMatch(new RegExp(` id ${sessionId}$`))
+  expect(drawn.buttons).toEqual([
+    {
+      key: `resume:${sessionId}`,
+      label: 'c: copy resume',
+      hotkey: 'c',
+      action: { type: 'copy', text: `claude --resume ${sessionId}` },
+    },
+  ])
+  const old = timelineView({ ...MODEL, previous: PREVIOUS }, SIZE, NO_SELECTION)
+  const before = lines(gridOf(old).grid)
+  expect(before[find(before, ' id ')]).toMatch(/ id n\/a$/)
+  expect(old.buttons).toEqual([])
+})
+
+const H = 3_600_000
+const WINDOW = { base: 4, hours: 4, since: NOW - 4 * H }
+const old = {
+  ...plan,
+  id: 'agent:old',
+  title: 'old plan',
+  seenAt: NOW - 6 * H,
+  startedAt: NOW - 6 * H,
+  endedAt: NOW - 5 * H,
+} as RabeItem
+const older = { ...old, id: 'agent:older', title: 'older plan' } as RabeItem
+const long = { ...dev, id: 'shell:long', title: 'long serve', seenAt: NOW - 6 * H } as RabeItem
+
+test('a short session inside the window draws as before', () => {
+  const shown = lines(gridOf(timelineView(MODEL, SIZE, { ...NO_SELECTION, window: WINDOW })).grid)
+  expect(shown[0]).toBe('WHEN DID THINGS RUN?  this session, last 40 min')
+  expect(shown[4]).toMatch(/^▌bun run dev :5173 +█+$/)
+})
+
+test('items that ended before the window fold into one line; a long bar is cut with a marker', () => {
+  const model = { ...MODEL, items: [old, older, long, dev] }
+  const drawn = gridOf(timelineView(model, SIZE, { ...NO_SELECTION, window: WINDOW }))
+  const shown = lines(drawn.grid)
+  expect(shown[0]).toBe('WHEN DID THINGS RUN?  this session, last 4h00m')
+  expect(shown[4]).toBe(' +2 older items, ended before 06:52')
+  expect(rowKeys(drawn)).toEqual([`row:${long.id}`, `row:${dev.id}`])
+  expect(shown[5]).toMatch(/^▌long serve :5173 +◂█+$/)
+  expect(shown.some(line => line.includes('old plan') || line.includes('older plan'))).toBe(false)
+  const one = lines(
+    gridOf(timelineView({ ...model, items: [old] }, SIZE, { ...NO_SELECTION, window: WINDOW }))
+      .grid,
+  )
+  expect(one[4]).toBe(' +1 older item, ended before 06:52')
+  expect(one.some(line => line.includes('Nothing ran yet.'))).toBe(false)
+  const all = lines(gridOf(timelineView(model, SIZE, NO_SELECTION)).grid)
+  expect(all.some(line => line.includes('old plan'))).toBe(true)
+})
+
+test('w widens the window for the open pane: 4 h, 12 h, the whole session, and back', () => {
+  const at = (window?: typeof WINDOW) =>
+    timelineView(MODEL, SIZE, { ...NO_SELECTION, window }).buttons
+  expect(at(WINDOW)).toEqual([
+    { key: 'window', label: 'w: show 12 h', hotkey: 'w', action: { type: 'window' } },
+  ])
+  const wide = widen(WINDOW, NOW + 60_000)
+  expect(wide).toEqual({ base: 4, hours: 12, since: NOW + 60_000 - 12 * H })
+  const all = widen(wide, NOW)
+  expect(all).toEqual({ base: 4, hours: 0, since: 0 })
+  expect(at(all)[0]?.label).toBe('w: show 4 h')
+  expect(widen(all, NOW)).toEqual(windowOf(4, NOW))
+  expect(widen({ base: 12, hours: 12, since: 5 }, NOW)).toEqual({ base: 12, hours: 0, since: 0 })
+  expect(at(windowOf(0, NOW))).toEqual([])
+  expect(at()).toEqual([])
+})
+
+test('widening never starts the window later than it started', () => {
+  expect(widen(windowOf(4, NOW - 10 * H), NOW).since).toBe(NOW - 14 * H)
+})
+
+test('the option is a number of hours, 0 for no limit; anything else is 4', () => {
+  expect([4, 12, 0, 1.5, '6'].map(hoursOf)).toEqual([4, 12, 0, 1.5, 6])
+  expect([-1, 'x', true, undefined, Number.NaN].map(hoursOf)).toEqual([4, 4, 4, 4, 4])
+})
+
+// Issue #13: a removed item has no row on the timeline.
+test('a removed item has no row on the timeline', () => {
+  const drawn = gridOf(timelineView({ ...MODEL, removed: [plan.id] }, SIZE, NO_SELECTION))
+  expect(rowKeys(drawn)).not.toContain(`row:${plan.id}`)
+  expect(rowKeys(drawn)).toContain(`row:${dev.id}`)
+  expect(lines(drawn.grid).some(line => line.includes(plan.title))).toBe(false)
+})
+
+// The rows fold a forwarder into its Codex job, but who started what keeps
+// it, with its job under it.
+test('who started what keeps a forwarder above its Codex job', () => {
+  const call = { at: NOW - 60_000, command: 'task' as const, text: 'codex-companion.mjs task' }
+  const forwarder = {
+    ...plan,
+    id: 'agent:f1',
+    title: 'Codex rescue',
+    detail: { agentId: 'f1', toolCount: 1, codexCalls: [call] },
+  } as RabeItem
+  const job = { ...review, parentId: forwarder.id } as RabeItem
+  const drawn = gridOf(timelineView({ ...MODEL, items: [forwarder, job] }, SIZE, NO_SELECTION))
+  expect(rowKeys(drawn)).toEqual([`row:${job.id}`])
+  const shown = lines(drawn.grid)
+  const at = find(shown, '└─ ✓ Codex rescue')
+  expect(at).toBeGreaterThan(0)
+  expect(shown[at + 1]).toMatch(/^ {3}└─ ◐ review auth\.ts \(codex\)/)
 })

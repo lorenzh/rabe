@@ -67,9 +67,14 @@ function slot(one: Held): Piece {
 // so it never stands under the heading of the next. A line with several
 // Buttons (the tab row) moves as one. Returns the pieces to draw and the
 // keys to hold next.
-export function hold(list: Piece[], before?: readonly Held[]): { list: Piece[]; held: Held[] } {
+export function hold(
+  list: Piece[],
+  held?: readonly Held[],
+  inPlace = false,
+): { list: Piece[]; held: Held[] } {
   const drawn = list.flatMap(keysOf)
-  if (!before) return { list, held: drawn }
+  if (!held) return { list, held: drawn }
+  const before = inPlace ? seat(list, held) : held
   const rank = new Map(before.map((one, i) => [one.key, i]))
   const where = new Map(list.flatMap((piece, i) => keysOf(piece).map(one => [one.key, i] as const)))
   const last = Math.max(-1, ...before.map(one => where.get(one.key) ?? -1))
@@ -114,6 +119,45 @@ export function hold(list: Piece[], before?: readonly Held[]): { list: Piece[]; 
       ...drawn.filter(one => !rank.has(one.key)),
     ],
   }
+}
+
+// Rows and group headers that may stand where the view draws them, also above
+// a held one: the pane moves the ring back onto its element after such a
+// drawing (see `shifts`). Tabs, controls and Inputs never move.
+export const isRowKey = (key: string): boolean => key.startsWith('row:') || key.startsWith('group-')
+
+// The held keys with each new row line seated where the view draws it: after
+// the held key before it in document order and the gone slots that follow
+// that key, never above a held tab, control or Input.
+function seat(list: Piece[], held: readonly Held[]): Held[] {
+  const out = [...held]
+  const shown = new Set(list.flatMap(keysOf).map(one => one.key))
+  const fence = out.findLastIndex(one => !isRowKey(one.key))
+  let prev = -1
+  for (const piece of list) {
+    const keys = keysOf(piece)
+    const known = keys.map(one => out.findIndex(was => was.key === one.key))
+    prev = Math.max(prev, ...known)
+    const [one] = keys
+    if (!one || keys.length > 1 || known[0] !== -1 || !('spans' in piece) || !isRowKey(one.key)) {
+      continue
+    }
+    let to = prev + 1
+    while (to < out.length && !shown.has((out[to] as Held).key)) to++
+    if (to <= fence) continue
+    out.splice(to, 0, one)
+    prev = to
+  }
+
+  return out
+}
+
+// Whether the element `ring` stands at another index of the focus order now:
+// rows came or went above it while the pane held the keys.
+export function shifts(before: readonly Held[], after: readonly Held[], ring?: string): boolean {
+  const was = before.findIndex(one => one.key === ring)
+
+  return was >= 0 && after.findIndex(one => one.key === ring) !== was
 }
 
 // The one renderer, the same tree on every surface: each line a row Box of

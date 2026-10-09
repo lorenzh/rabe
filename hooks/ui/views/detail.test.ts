@@ -13,7 +13,9 @@ import {
   gridOf,
   lint,
   NOW,
+  plan,
   review,
+  reviewed,
   verify,
 } from '../fixtures'
 import { isPress, type Model, NO_SELECTION, rowKeys, type Size } from '../view'
@@ -104,8 +106,9 @@ test('a long brief keeps three lines', () => {
   expect(shown[at + 4]).toBe('')
 })
 
-test('an agent without turns and tokens says n/a', () => {
-  const shown = lines(open(model([verify]), verify.id).grid)
+test('an agent without turns and a price says n/a', () => {
+  const bare = { ...verify, costUsd: undefined }
+  const shown = lines(open(model([bare]), verify.id).grid)
   expect(shown).toContain('Turns n/a: none seen since Rabe loaded.')
   expect(shown).toContain(' cost n/a   in 19k  out 3k')
   expect(shown.some(line => line.includes('active n/a'))).toBe(true)
@@ -129,7 +132,7 @@ test('a codex job shows its steps with the running command raised and an x: stop
   const { grid: g, buttons } = open(model([job]), job.id)
   const shown = lines(g)
   expect(shown).toContain('model gpt-6.1-sol · effort high · sandbox read-only')
-  expect(shown).toContain('job task-1 · session file read')
+  expect(shown).toContain('job task-1 · thread n/a · session file read')
   expect(shown).toContain(' ≈ $0.09   in 25k  out 3k  cached 18k')
   expect(shown.some(line => line.startsWith(' 2 commands  100% of session'))).toBe(true)
   expect(shown.some(line => line.endsWith('active 20s ago'))).toBe(true)
@@ -155,7 +158,7 @@ test('a codex job whose session file is gone says so', () => {
     detail: { jobId: 'task-9', isSessionMissing: true },
   } as RabeItem
   const { grid: g, buttons } = open(model([job]), job.id)
-  expect(lines(g)).toContain('job task-9 · session file gone')
+  expect(lines(g)).toContain('job task-9 · thread n/a · session file gone')
   expect(buttons.find(b => b.key === `stop:${job.id}`)).toMatchObject({
     dim: true,
     action: { type: 'none' },
@@ -168,11 +171,26 @@ test('a workflow shows its phases and each agent with tokens and time', () => {
   const shown = lines(g)
   expect(shown).toContain('✓ Review → ◐ Verify → · Report')
   expect(shown).toContain(' 2 agents')
+  // review:bugs ended without token data, so the sum is not known
+  expect(shown.some(line => line.startsWith(' cost n/a   in 19k'))).toBe(true)
   expect(fg(g, find(g, 'VERIFY'))).toBe(C.green)
   expect(shown.some(line => /◐ verify:db\.ts +22k · 40s$/.test(line))).toBe(true)
   expect(shown.some(line => /✓ review:bugs +n\/a · 3m ago$/.test(line))).toBe(true)
   expect(rowKeys(drawn)).toContain(`row:${verify.id}`)
   expect(buttons.find(b => b.key === `stop-run:${flow.id}`)?.label).toBe('g: stop run')
+})
+
+test('a workflow sums the cost of its agents once each one has a price', () => {
+  const priced = { ...reviewed, tokens: { input: 1_000, output: 0 }, costUsd: 0.01 }
+  const items = ALL.map(item => (item.id === reviewed.id ? priced : item))
+  const shown = lines(open(model(items), flow.id).grid)
+  expect(shown.some(line => line.startsWith(' ≈ $0.07   in 20k'))).toBe(true)
+})
+
+test('a workflow with an agent that has tokens but no price shows cost n/a', () => {
+  const items = ALL.map(item => (item.id === verify.id ? { ...item, costUsd: undefined } : item))
+  const shown = lines(open(model(items), flow.id).grid)
+  expect(shown.some(line => line.startsWith(' cost n/a   in 19k'))).toBe(true)
 })
 
 test('a shell shows its output tail and its exit code in color', () => {
@@ -353,16 +371,136 @@ test('every control of a detail that acts on an item names it in its key', () =>
   }
   expect(keysOf(explore.id)).toEqual([
     'back',
+    `copy:${explore.id}`,
     `message-agent:${explore.id}`,
     `stop:${explore.id}`,
     `message:${explore.id}`,
   ])
   expect(keysOf(dev.id)).toEqual(['back', `copy:${dev.id}`, `stop:${dev.id}`])
   expect(keysOf(babysit.id)).toEqual(['back', `copy:${babysit.id}`, `delete:${babysit.id}`])
-  expect(keysOf(verify.id)).toEqual(['back', `stop-run:${flow.id}`])
+  expect(keysOf(verify.id)).toEqual(['back', `copy:${verify.id}`, `stop-run:${flow.id}`])
   const drawn = detailView(model(), size, { ...NO_SELECTION, open: explore.id })
   expect(drawn.buttons.find(one => one.hotkey === 'm')?.action).toEqual({
     type: 'focus',
     key: `message:${explore.id}`,
   })
+})
+
+test('an agent shows its id and transcript, and c copies the id', () => {
+  const { grid: g, buttons } = open(model([explore]), explore.id)
+  expect(lines(g)).toContain('agent a1')
+  expect(lines(g)).toContain('transcript /t/agent-a1.jsonl')
+  expect(buttons.find(b => b.key === `copy:${explore.id}`)).toMatchObject({
+    label: 'c: copy id',
+    hotkey: 'c',
+    action: { type: 'copy', text: 'a1' },
+  })
+  const bare = { ...plan, detail: { agentId: 'a2' } } as RabeItem
+  const bareLines = lines(open(model([bare]), bare.id).grid)
+  expect(bareLines).toContain('agent a2')
+  expect(bareLines).toContain('transcript n/a')
+})
+
+// The whole path, with the agent file's name at its end, at any width.
+test('an agent shows its transcript path in full, across lines', () => {
+  const path = `/home/me/.claude/projects/-home-me-src-app/${'0'.repeat(36)}/subagents/agent-a1.jsonl`
+  const agent = { ...explore, detail: { ...explore.detail, transcriptPath: path } } as RabeItem
+  const joined = (shown: string[]) => {
+    const at = shown.findIndex(line => line.trim().startsWith('transcript '))
+    return shown
+      .slice(at, at + 4)
+      .map(line => line.trim())
+      .join('')
+  }
+  expect(joined(lines(open(model([agent]), agent.id).grid))).toContain(`transcript ${path}`)
+  const split = gridOf(
+    itemsView(
+      model([agent]),
+      { ...TERMINAL, columns: 120 },
+      { ...NO_SELECTION, selected: agent.id },
+    ),
+  )
+  const right = lines(split.grid).map(line => line.slice(line.indexOf('│') + 1))
+  expect(joined(right)).toContain(`transcript ${path}`)
+  // a short pane keeps the whole head and scrolls it, in full and in the split
+  const short = { ...TERMINAL, columns: 80, rows: 6 }
+  expect(joined(lines(open(model([agent]), agent.id, short).grid))).toContain(`transcript ${path}`)
+  const low = gridOf(
+    itemsView(model([agent]), { ...short, columns: 120 }, { ...NO_SELECTION, selected: agent.id }),
+  )
+  const side = lines(low.grid).map(line => line.slice(line.indexOf('│') + 1))
+  expect(joined(side)).toContain(`transcript ${path}`)
+})
+
+test('a codex job shows its thread, and c copies the command that resumes it', () => {
+  const job = { ...review, detail: { ...review.detail, threadId: 'th-1' } } as RabeItem
+  const { grid: g, buttons } = open(model([job]), job.id)
+  expect(lines(g)).toContain('job task-1 · thread th-1 · session file read')
+  expect(buttons.find(b => b.hotkey === 'c')).toEqual({
+    key: 'resume:th-1',
+    label: 'c: copy resume',
+    hotkey: 'c',
+    action: { type: 'copy', text: 'codex resume th-1' },
+  })
+  const { grid: none, buttons: without } = open(model([review]), review.id)
+  expect(lines(none)).toContain('job task-1 · thread n/a · session file read')
+  expect(without.some(b => b.hotkey === 'c' || b.key.startsWith('resume:'))).toBe(false)
+})
+
+test('a codex job counts the tokens of the agent that only forwarded it', () => {
+  const call = { at: NOW - 60_000, command: 'task' as const, text: 'codex-companion.mjs task' }
+  const forwarder = {
+    ...explore,
+    id: 'agent:f1',
+    title: 'Codex rescue',
+    tokens: { input: 4_000, output: 1_000, cached: 3_000 },
+    costUsd: 0.01,
+    detail: { agentId: 'f1', toolCount: 1, codexCalls: [call] },
+  } as RabeItem
+  const job = { ...review, parentId: forwarder.id } as RabeItem
+  const shown = lines(open(model([forwarder, job]), job.id).grid)
+  expect(shown).toContain('forwarded by claude Codex rescue · its tokens count here')
+  expect(shown).toContain(' ≈ $0.10   in 29k  out 4k  cached 21k')
+})
+
+// The folded agent has no row: its job's detail opens it, with its turns, id and transcript.
+test('a codex job opens the agent that only forwarded it', () => {
+  const call = { at: NOW - 60_000, command: 'task' as const, text: 'codex-companion.mjs task' }
+  const forwarder = {
+    ...explore,
+    id: 'agent:f1',
+    title: 'Codex rescue',
+    detail: { agentId: 'f1', toolCount: 1, codexCalls: [call] },
+  } as RabeItem
+  const job = { ...review, parentId: forwarder.id } as RabeItem
+  expect(open(model([forwarder, job]), job.id).buttons).toContainEqual({
+    key: 'forwarder:agent:f1',
+    label: 'f: open forwarder',
+    hotkey: 'f',
+    action: { type: 'open', id: 'agent:f1' },
+  })
+  const busy = {
+    ...forwarder,
+    detail: { ...forwarder.detail, toolCount: 3 },
+  } as RabeItem
+  for (const items of [
+    [busy, job],
+    [forwarder, review],
+  ]) {
+    const { buttons } = open(model(items), job.id)
+    expect(buttons.some(b => b.key.startsWith('forwarder:'))).toBe(false)
+  }
+})
+
+// Issue #13: a removed agent keeps counting in its run, but has no row there.
+test('a workflow counts a removed agent in its phases and tokens but draws no row for it', () => {
+  const done = { ...reviewed, tokens: { input: 30_000, output: 2_000 } }
+  const items = ALL.map(item => (item.id === reviewed.id ? done : item))
+  const drawn = open(model(items, { removed: [done.id] }), flow.id)
+  const shown = lines(drawn.grid)
+  expect(shown).toContain('✓ Review → ◐ Verify → · Report')
+  expect(shown.some(line => line.includes('REVIEW 1 done'))).toBe(true)
+  expect(shown.some(line => line.startsWith(' cost n/a   in 49k'))).toBe(true)
+  expect(rowKeys(drawn)).not.toContain(`row:${done.id}`)
+  expect(rowKeys(drawn)).toContain(`row:${verify.id}`)
 })

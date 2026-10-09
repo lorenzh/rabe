@@ -16,9 +16,7 @@ const row = (shown: string[], pattern: RegExp) => shown.findIndex(line => patter
 test('the cost tab heads with the session cost, the totals and the running count', () => {
   const { grid } = gridOf(costView(MODEL, SIZE, NO_SELECTION))
   const shown = lines(grid)
-  expect(shown[0]).toBe(
-    ' ≈ $0.41 session  claude $0.16   codex $0.09   tokens 91k   running 7   2 n/a',
-  )
+  expect(shown[0]).toBe(' ≈ $0.41 session  claude n/a  codex ≈ $0.09  tokens 91k  running 7  2 n/a')
   expect(cell(grid, 1, 0)).toEqual(['≈'.codePointAt(0), C.bright, C.panel])
   expect(cell(grid, 79, 0)[2]).toBe(C.panel)
   expect(shown[2]).toBe('by worker · sorted by tokens')
@@ -34,7 +32,7 @@ test('each worker has a block bar by tokens in its kind color, and n/a where unk
   const { grid } = gridOf(costView(MODEL, SIZE, NO_SELECTION))
   const shown = lines(grid)
   const top = row(shown, /Explore verifyToken/)
-  expect(shown[top]).toMatch(/^▌◐ Explore verifyToken +█+ +41k +\$0\.16 +1m$/)
+  expect(shown[top]).toMatch(/^▌◐ Explore verifyToken +█+ +41k +≈ \$0\.16 +1m$/)
   const x = shown[top]?.indexOf('█') ?? -1
   expect(cell(grid, x, top)[1]).toBe(CHIP.agent.fg)
   expect(cell(grid, 0, top)[2]).toBe(C.selected)
@@ -94,4 +92,47 @@ test('the cost tab fits narrow widths; the pane scrolls what is below its body',
   const { grid } = gridOf(costView({ ...MODEL, items: [...ALL, plan] }, size, NO_SELECTION))
   expect(grid.columns).toBe(40)
   expect(lines(grid).some(line => line.includes('Explore'))).toBe(true)
+})
+
+test('the head names this session, and c copies the command that resumes it', () => {
+  const sessionId = '5f1c0d2e-7a7b-4c1d-9e2f-0123456789ab'
+  const drawn = costView({ ...MODEL, sessionId }, SIZE, NO_SELECTION)
+  expect(lines(gridOf(drawn).grid)[1]).toBe(` session ${sessionId}`)
+  expect(drawn.buttons).toEqual([
+    {
+      key: `resume:${sessionId}`,
+      label: 'c: copy resume',
+      hotkey: 'c',
+      action: { type: 'copy', text: `claude --resume ${sessionId}` },
+    },
+  ])
+  const none = costView(MODEL, SIZE, NO_SELECTION)
+  expect(lines(gridOf(none).grid)[1]).toBe(' session n/a')
+  expect(none.buttons).toEqual([])
+})
+
+test('an agent that only forwarded to Codex adds its tokens to the job and has no row', () => {
+  const call = { at: NOW - 60_000, command: 'task' as const, text: 'codex-companion.mjs task' }
+  const forwarder = {
+    ...explore,
+    id: 'agent:f1',
+    title: 'Codex rescue',
+    tokens: { input: 4_000, output: 1_000 },
+    detail: { agentId: 'f1', toolCount: 1, codexCalls: [call] },
+  } as RabeItem
+  const job = { ...review, parentId: forwarder.id } as RabeItem
+  const drawn = costView({ ...MODEL, items: [forwarder, job] }, SIZE, NO_SELECTION)
+  expect(rowKeys(drawn)).toEqual([`row:${job.id}`])
+  const shown = lines(gridOf(drawn).grid)
+  expect(shown[row(shown, /review auth\.ts/)]).toMatch(/ 33k +≈ \$0\.25/)
+})
+
+// Issue #13: a removed worker has no row, but the totals still count it; a
+// running one is never hidden.
+test('a removed worker has no row on the cost tab; the totals keep it', () => {
+  const drawn = gridOf(costView({ ...MODEL, removed: [plan.id, review.id] }, SIZE, NO_SELECTION))
+  expect(rowKeys(drawn)).not.toContain(`row:${plan.id}`)
+  expect(rowKeys(drawn)).toContain(`row:${review.id}`)
+  expect(rowKeys(drawn)).toContain(`row:${explore.id}`)
+  expect(lines(drawn.grid)[0]).toContain('codex ≈ $0.09  tokens 91k')
 })

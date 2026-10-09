@@ -1,5 +1,5 @@
 import type { AgentSpawnInput, AgentStatus, FsStat, On } from 'claude-code'
-import { expect, mock, test } from 'claude-code/testing'
+import { type Engine, expect, mock, test } from 'claude-code/testing'
 
 import type { RabeEdit } from '../../types'
 import type { RabeItem, RabeItemOf, RabeTurn } from '../model'
@@ -179,21 +179,25 @@ test('a refused spawn adds nothing', async ($, on) => {
   expect(held.items).toBeUndefined()
 })
 
-test('subagent start sets the transcript and a worktree outside the session folder', async ($, on) => {
+// Another cwd may be a worktree or a plain subfolder; only the meta file or
+// git tells, so the start event gives the cwd alone.
+test('subagent start sets the transcript and the cwd, never a worktree', async ($, on) => {
   const held = engine(on, 'a1')
   on('session.cwd', async () => ({ value: '/repo' }))
   await $.agent.spawn(SPAWN)
-  await $.classic.SubagentStart({
-    agent_id: 'a1',
-    agent_type: 'general-purpose',
-    cwd: '/repo/.claude/worktrees/a1',
-    transcript_path: '/p/s1.jsonl',
-  })
-  expect(held.items?.[0]?.detail).toMatchObject({
-    transcriptPath: '/p/s1/subagents/agent-a1.jsonl',
-    worktreePath: '/repo/.claude/worktrees/a1',
-    cwd: '/repo/.claude/worktrees/a1',
-  })
+  for (const cwd of ['/repo/.claude/worktrees/a1', '/repo/packages/api']) {
+    await $.classic.SubagentStart({
+      agent_id: 'a1',
+      agent_type: 'general-purpose',
+      cwd,
+      transcript_path: '/p/s1.jsonl',
+    })
+    expect(held.items?.[0]?.detail).toMatchObject({
+      transcriptPath: '/p/s1/subagents/agent-a1.jsonl',
+      cwd,
+    })
+    expect(held.items?.[0]?.detail).not.toHaveProperty('worktreePath')
+  }
 })
 
 test('SubagentStart during the spawn keeps the transcript once the spawn adds the item', async ($, on) => {
@@ -749,4 +753,166 @@ test('an agent the cap dropped comes back when the list shows it running', async
   const items = state['rabe.items']?.value as RabeItem[]
   expect(items.find(item => item.id === 'agent:a4000')?.status).toBe('running')
   expect(items).toHaveLength(MAX_ENDED + 1)
+})
+
+const PRICES = [
+  '# test prices',
+  'provider,model,aliases,input,output,cache_read,cache_write_5m',
+  'claude,claude-opus-5-5,,4,20,0.2,5',
+].join('\n')
+
+// The plugin's own table and the user's files, as fs.read answers them.
+function priceFiles(on: On, own: Record<string, string> = {}): string[] {
+  const asked: string[] = []
+  on('fs.read', async (_$, e, next) => {
+    asked.push(e.path)
+    if (e.path.endsWith('/data/prices.csv')) return { value: PRICES }
+    if (e.path in own) return { value: own[e.path] ?? '' }
+    return next(e)
+  })
+
+  return asked
+}
+
+// The engine's stand-in for a step per model, registered before the test's first call on `$`.
+function stepper(on: On, models: string[]) {
+  // biome-ignore lint/correctness/useYield: the engine's stand-in answers without chunks
+  on('turn.step', async function* (_$, e) {
+    return {
+      turnId: e.turnId,
+      index: e.index,
+      answer: '',
+      toolUses: [],
+      stopReason: 'end_turn' as const,
+      usage: {
+        input_tokens: 100,
+        output_tokens: 20,
+        cache_read_input_tokens: 50,
+        cache_creation_input_tokens: 10,
+        model: models[e.index] ?? '',
+      },
+    }
+  })
+
+  return async ($: Engine) => {
+    for (let index = 0; index < models.length; index++) {
+      const stream = $.turn.step({
+        turnId: 't1',
+        index,
+        model: 'm',
+        messageCount: 1,
+        agentId: 'a1',
+      })
+      for await (const _ of stream);
+    }
+  }
+}
+
+// 100 in at 4, 50 read at 0.2, 10 written at 5, 20 out at 20, per million
+const STEP_USD = (100 * 4 + 50 * 0.2 + 10 * 5 + 20 * 20) / 1e6
+
+test('each step adds its price to the agent cost', async ($, on) => {
+  const held = engine(on, 'a1')
+  const asked = priceFiles(on)
+  const run = stepper(on, ['claude-opus-5-5', 'claude-opus-5-5'])
+  await $.agent.spawn(SPAWN)
+  await run($)
+  expect(held.items?.[0]?.costUsd).toBe(2 * STEP_USD)
+  expect(asked.every(path => path.endsWith('/data/prices.csv'))).toBe(true)
+})
+
+test('a step of a model without a price leaves the agent cost n/a for good', async ($, on) => {
+  const held = engine(on, 'a1')
+  priceFiles(on)
+  const run = stepper(on, ['claude-opus-5-5', 'claude-new-9', 'claude-opus-5-5'])
+  await $.agent.spawn(SPAWN)
+  await run($)
+  expect(held.items?.[0]?.tokens).toMatchObject({ output: 60 })
+  expect(held.items?.[0]?.costUsd).toBeUndefined()
+})
+
+test('an agent Rabe did not see start has no cost', async ($, on) => {
+  const state = memoryState(on)
+  mock.clock(on, { now: 5000 })
+  priceFiles(on)
+  const run = stepper(on, ['claude-opus-5-5'])
+  state['rabe.items'] = { value: [{ ...agent, startedAt: undefined }], version: 1 }
+  await run($)
+  const [item] = state['rabe.items'].value as RabeItem[]
+  expect(item?.tokens).toMatchObject({ output: 20 })
+  expect(item?.costUsd).toBeUndefined()
+})
+
+test(
+  "the user's price file comes first",
+  { options: { pricesFile: '~/prices.csv' } },
+  async ($, on) => {
+    const held = engine(on, 'a1')
+    mock.env(on, { HOME: '/home/u' })
+    priceFiles(on, {
+      '/home/u/prices.csv': 'provider,model,input,output\nclaude,claude-opus-5-5,1,1\n',
+    })
+    const run = stepper(on, ['claude-opus-5-5'])
+    await $.agent.spawn(SPAWN)
+    await run($)
+    expect(held.items?.[0]?.costUsd).toBe(180 / 1e6)
+  },
+)
+
+test(
+  'a price file that cannot be read makes the cost n/a',
+  { options: { pricesFile: '/gone.csv' } },
+  async ($, on) => {
+    const held = engine(on, 'a1')
+    priceFiles(on)
+    const run = stepper(on, ['claude-opus-5-5'])
+    await $.agent.spawn(SPAWN)
+    await run($)
+    expect(held.items?.[0]?.tokens).toBeDefined()
+    expect(held.items?.[0]?.costUsd).toBeUndefined()
+  },
+)
+const COMPANION = 'node "/p/codex/1.0.6/scripts/codex-companion.mjs" task --write'
+
+test("an agent's companion calls keep their start, end and the job or thread they named", async ($, on) => {
+  const clock = mock.clock(on, { now: 5000 })
+  const state = memoryState(on)
+  mock.env(on, { HOME: '/home/u' })
+  on('agent.spawn', async () => ({ model: 'claude-sonnet-5-5', agentId: 'f1' }))
+  on('tool.call', { tool: 'Bash' }, async (_$, e) => {
+    const command = e.tool === 'Bash' ? e.command : ''
+    await clock.advance(700)
+    if (command.includes('"bg"')) {
+      const stdout = 'Codex Task started in the background as task-mg1-ab. Check /codex:status.\n'
+      return { result: { stdout, stderr: '', interrupted: false } as never }
+    }
+    if (command.includes('"long"')) {
+      return { result: { stdout: '', stderr: '', backgroundTaskId: 'b7' } as never }
+    }
+    if (command.includes('"deny"')) return { deny: 'no' }
+    if (command.includes('"oops"')) {
+      const stderr = '[codex] Thread ready (th-8).\nTurn failed.'
+      return { result: { stdout: '', stderr } as never, isError: true }
+    }
+    const stderr = '[codex] Starting Codex task thread.\n[codex] Thread ready (th-9).\n'
+    return { result: { stdout: 'Fixed.', stderr, interrupted: false } as never }
+  })
+  await $.agent.spawn({ ...SPAWN, workflow: undefined })
+  const run = (command: string, agentId?: string) =>
+    $.tool.call({ tool: 'Bash', command, ...(agentId && { agentId }) } as never)
+  await run(`${COMPANION} "fg"`, 'f1')
+  await run(`${COMPANION} "bg"`, 'f1')
+  await run(`${COMPANION} "long"`, 'f1')
+  await run(`${COMPANION} "deny"`, 'f1')
+  await run(`${COMPANION} "oops"`, 'f1')
+  await run(`${COMPANION} "main"`)
+  await run('git status', 'f1')
+  const [item] = state['rabe.items']?.value as RabeItemOf<'agent'>[]
+  expect(item?.detail.codexCalls).toEqual([
+    { at: 5000, command: 'task', text: `${COMPANION} "fg"`, endedAt: 5700, threadId: 'th-9' },
+    { at: 5700, command: 'task', text: `${COMPANION} "bg"`, endedAt: 6400, jobId: 'task-mg1-ab' },
+    { at: 6400, command: 'task', text: `${COMPANION} "long"` },
+    { at: 7100, command: 'task', text: `${COMPANION} "deny"`, endedAt: 7800 },
+    { at: 7800, command: 'task', text: `${COMPANION} "oops"`, endedAt: 8500, threadId: 'th-8' },
+  ])
 })

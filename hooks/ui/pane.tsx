@@ -1,8 +1,8 @@
 import type { EngineInterface, On, RenderSurface } from 'claude-code'
 
-import type { RabePrevious } from '../../types'
-import { KIND_LABEL, orderOf, previousOf } from './lists'
-import { type At, type Held, hold, render } from './render'
+import type { RabeItem, RabePrevious } from '../../types'
+import { KIND_LABEL, kept, matches, orderOf, previousOf, rowOf } from './lists'
+import { type At, type Held, hold, isRowKey, render, shifts } from './render'
 import {
   type Action,
   type ArmEvent,
@@ -20,9 +20,14 @@ import {
   targetsOf,
   taskIdOf,
 } from './view'
-import { fallbackOf, isLiveRow, paneView, selectsOnPress } from './views/pane'
+import { fallbackOf, isLiveRow, paneView, seatsRows, selectsOnPress } from './views/pane'
+import { widen, windowOf } from './views/timeline'
 
 const PANE = 'rabe'
+
+// The option `timelineHours`, set by `pane(on, hours)`: the Timeline's window
+// when the pane opens.
+let baseHours = 4
 
 // Esc may have closed the pane before the delayed focus call.
 async function refocus($: EngineInterface): Promise<void> {
@@ -36,12 +41,16 @@ async function tick($: EngineInterface): Promise<void> {
   if (items.some(item => item.status === 'running')) $.ui.invalidate('ui.render')
 }
 
-// The store is the plugin's own JSON; an older Rabe may have written another shape.
+// The store is the plugin's own JSON; an older Rabe may have written another
+// shape, and a summary before 0.4 has no session id.
 function asPrevious(value: unknown): RabePrevious | undefined {
   const prev = value as RabePrevious | undefined
-  return typeof prev?.endedAt === 'number' && Array.isArray(prev.failed) && prev.counts
-    ? prev
-    : undefined
+  if (typeof prev?.endedAt !== 'number' || !Array.isArray(prev.failed) || !prev.counts) {
+    return undefined
+  }
+  const { sessionId, ...rest } = prev
+
+  return typeof sessionId === 'string' && sessionId ? { ...rest, sessionId } : rest
 }
 
 async function previous($: EngineInterface): Promise<RabePrevious | undefined> {
@@ -50,14 +59,16 @@ async function previous($: EngineInterface): Promise<RabePrevious | undefined> {
 
 // Keeps this session's summary for the next one in this project; a session
 // with no background work leaves the last summary in place.
-async function remember($: EngineInterface): Promise<void> {
+async function remember($: EngineInterface, sessionId?: string): Promise<void> {
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   if (items.length === 0) return
   const usage = await $.session.usage()
-  const summary = previousOf(items, await $.clock.now(), {
-    startedAt: usage.startedAt,
-    usd: usage.cost?.usd,
-  })
+  const summary = previousOf(
+    items,
+    await $.clock.now(),
+    { startedAt: usage.startedAt, usd: usage.cost?.usd },
+    sessionId,
+  )
   await $.store.set(`previous:${await $.session.cwd()}`, summary)
 }
 
@@ -112,10 +123,20 @@ let landedOn: string | undefined
 // it land; unknown after a reset, whose view puts another element at its index.
 let ringOn: string | undefined
 
+// The element the ring belongs on after rows came above it in the Items list
+// (the ring kept its index), until the pane's focus hook sees the ring land.
+// `isAsked`: a move back is under way; `tries`: moves asked since the pane
+// last took the keys.
+type Shift = { key: string; isAsked: boolean; tries: number }
+let shifted: Shift | undefined
+
 function feed($: EngineInterface, event: ArmEvent): void {
   const was = arming
   arming = arm(arming, event)
-  if (event.type === 'reset') ringOn = undefined
+  if (event.type === 'reset') {
+    ringOn = undefined
+    shifted = undefined
+  }
   if (arming.isArmed !== was.isArmed || arming.isListArmed !== was.isListArmed) {
     $.ui.invalidate('ui.render')
   }
@@ -132,6 +153,34 @@ async function focusOn($: EngineInterface, key: string): Promise<boolean> {
 
   return isMoved
 }
+
+// Puts the ring back on the element rows came above, a moment after the
+// drawing: a move asked while the hook draws resolves against the tree
+// before the one it returns, where the element still stands at its old
+// index. From a timer the move reaches no hook (see feasibility), so the
+// engine's answer is the evidence: a move it refuses or abandons counts as a
+// refused landing, and the next drawing asks again, at most three times. A
+// landing the focus hook saw since (the person's arrow) makes the move moot.
+const REGAIN_MS = 100
+
+async function regain($: EngineInterface, want: Shift): Promise<void> {
+  if (shifted !== want) return
+  const result = await $.ui
+    .focus({ requestId: PANE, key: want.key })
+    .catch(() => ({ deny: 'threw' }))
+  if (!('deny' in result && result.deny)) {
+    if (shifted === want) shifted = undefined
+    return
+  }
+  want.isAsked = false
+  feed($, { type: 'landed', isMoved: false })
+}
+
+// A row press while the ring is off its element: Enter would press the row
+// that took its index. A click while the pane does not hold the keys is the
+// person's own.
+const isHeldBack = (at: At): boolean =>
+  shifted !== undefined && seats.get(at.surface)?.isFocused === true && isRowKey(at.element)
 
 // A new view starts its hold anew, but the ring keeps its index, where the new
 // view may draw a stop; so the pane disarms and the ring moves (`landing`).
@@ -151,6 +200,35 @@ async function choose($: EngineInterface, id: string): Promise<boolean> {
   return true
 }
 
+// Hides ended items for the session: they stay in `rabe.items`, which polls
+// fill again, and only the list leaves them out (`kept`). An id stays even when
+// the cap drops its item, which a poll may find again.
+async function remove($: EngineInterface, action: Action & { type: 'remove' | 'clear' }) {
+  const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+  const { value: query = '' } = await $.state.get({ plugin: 'rabe', key: 'query' })
+  let gone: RabeItem[] = []
+  for (;;) {
+    const { value: removed = [], version } = await $.state.get({ plugin: 'rabe', key: 'removed' })
+    gone = kept(items, removed).filter(
+      item =>
+        item.status !== 'running' &&
+        (action.type === 'remove' ? action.ids.includes(item.id) : matches(item, query)),
+    )
+    if (gone.length === 0) return
+    const next = [...removed, ...gone.map(item => item.id)]
+    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'removed' }, next, {
+      ifVersion: version,
+    })
+    if (isSet) break
+  }
+  const [one] = gone
+  $.ui.toast(
+    gone.length === 1 && one
+      ? `Removed ${KIND_LABEL[one.kind]} ${one.title}`
+      : `Removed ${gone.length} ended items`,
+  )
+}
+
 async function act($: EngineInterface, action: Action, surface: RenderSurface): Promise<void> {
   if (action.type === 'open' && (await choose($, action.id))) return
   if (landing(action, '').length > 0) feed($, { type: 'reset' })
@@ -168,8 +246,11 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
     }
     case 'open': {
       // Back selects the item that was open: the focus may have moved onto a
-      // row inside its detail (a workflow's agents).
-      const { value: was = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
+      // row inside its detail (a workflow's agents). A folded forwarder has no
+      // row, so back selects its job.
+      const { value: open = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
+      const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+      const was = rowOf(open, items)
       const id = action.id || was
       if (id) {
         await $.state.set({ plugin: 'rabe', key: 'selected' }, id)
@@ -181,11 +262,24 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
     case 'query':
       await $.state.set({ plugin: 'rabe', key: 'query' }, action.text)
       return land($, landing(action, ''))
+    case 'window': {
+      const now = await $.clock.now()
+      const { value = windowOf(baseHours, now) } = await $.state.get({
+        plugin: 'rabe',
+        key: 'window',
+      })
+      await $.state.set({ plugin: 'rabe', key: 'window' }, widen(value, now))
+      return land($, landing(action, ''))
+    }
     case 'focus':
       await focusOn($, action.key)
       return
     case 'stop':
       await stop($, action.ids)
+      return
+    case 'remove':
+    case 'clear':
+      await remove($, action)
       return
     case 'delete': {
       const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
@@ -197,8 +291,15 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       return
     }
     case 'copy': {
-      const result = await $.ui.copy({ text: action.text, surface })
-      $.ui.toast(result.isCopied ? `Copied: ${action.text}` : `Copy failed: ${result.reason}`)
+      // Over SSH the clipboard needs the terminal's OSC 52; the toast then shows the text to select.
+      const result = await $.ui
+        .copy({ text: action.text, surface })
+        .catch((error: unknown) => ({ isCopied: false as const, reason: String(error) }))
+      $.ui.toast(
+        result.isCopied
+          ? `Copied: ${action.text}`
+          : `Copy failed: ${result.reason}. Select it: ${action.text}`,
+      )
       return
     }
     case 'none':
@@ -224,6 +325,7 @@ async function look(
   isFocused: boolean,
 ): Promise<{ model: Model; selection: Selection }> {
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+  const { value: removed = [] } = await $.state.get({ plugin: 'rabe', key: 'removed' })
   const { value: turns = {} } = await $.state.get({ plugin: 'rabe', key: 'turns' })
   const { value: lines = {} } = await $.state.get({ plugin: 'rabe', key: 'lines' })
   const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
@@ -233,16 +335,22 @@ async function look(
   const { value: selected = '' } = await $.state.get({ plugin: 'rabe', key: 'selected' })
   const { value: open = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
   const { value: order } = await $.state.get({ plugin: 'rabe', key: 'order' })
+  const { value: worktrees } = await $.state.get({ plugin: 'rabe', key: 'worktrees' })
+  const { value: window } = await $.state.get({ plugin: 'rabe', key: 'window' })
+  const now = await $.clock.now()
   const usage = await $.session.usage().catch(() => undefined)
   const model = {
     items,
+    removed,
     turns,
     lines,
-    now: await $.clock.now(),
+    now,
     usd: usage?.cost?.usd,
     previous: await previous($).catch(() => undefined),
     edits,
     cwd: await $.session.cwd().catch(() => undefined),
+    sessionId: await $.session.id().catch(() => undefined),
+    ...(worktrees && { worktrees }),
   }
 
   const selection = {
@@ -254,6 +362,7 @@ async function look(
     isFocused,
     isArmed: arming.isArmed,
     isListArmed: arming.isListArmed,
+    window: window ?? windowOf(baseHours, now),
     ...(order && { order }),
   }
 
@@ -261,7 +370,8 @@ async function look(
 }
 
 // The view the person chose. A change of it is theirs, so its hold starts anew.
-const scopeOf = (sel: Selection) => JSON.stringify([sel.tab, sel.open, sel.query, sel.folded])
+const scopeOf = (sel: Selection) =>
+  JSON.stringify([sel.tab, sel.open, sel.query, sel.folded, sel.window?.hours])
 
 // Per surface, the focusable keys the pane drew since it opened, for one view
 // (`scope`). A render hook may not write `$.state` (drawing is pure), so this
@@ -302,7 +412,7 @@ async function carry<R>($: EngineInterface, at: At, run: () => Promise<R>): Prom
     if (rest.length > 0) waiting.set(key, rest)
     else waiting.delete(key)
   }
-  if (mine.press) await act($, mine.press.action, mine.press.surface)
+  if (mine.press && !isHeldBack(at)) await act($, mine.press.action, mine.press.surface)
 
   return result
 }
@@ -320,7 +430,7 @@ async function arrow($: EngineInterface, by: number, bodyRows: number): Promise<
   const size = { columns: 80, rows: bodyRows, surface: 'terminal', hasInput: true } as const
   const drawn = layout(paneView(model, size, selection))
   const key = stepRow(
-    rowKeys(hold(drawn, heldOf('terminal', selection)).list),
+    rowKeys(hold(drawn, heldOf('terminal', selection), seatsRows(selection)).list),
     selection.selected,
     by,
   )
@@ -331,7 +441,8 @@ async function arrow($: EngineInterface, by: number, bodyRows: number): Promise<
   return true
 }
 
-export function pane(on: On): void {
+export function pane(on: On, hours = baseHours): void {
+  baseHours = hours
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'rabe',
@@ -348,6 +459,7 @@ export function pane(on: On): void {
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
     await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(items, edits))
+    await $.state.set({ plugin: 'rabe', key: 'window' }, windowOf(baseHours, await $.clock.now()))
     holds.clear()
     feed($, { type: 'reset' })
     await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })
@@ -357,7 +469,7 @@ export function pane(on: On): void {
   })
 
   on('session.end', { reason: /^/ }, async ($, e, next) => {
-    await remember($)
+    await remember($, e.resume?.id ?? e.sessionId)
 
     return next(e)
   }).catch((_$, e, next) => next(e))
@@ -375,7 +487,10 @@ export function pane(on: On): void {
     const selected = landed?.startsWith('row:') ? landed.slice(4) : before
     if (selected !== asked) await $.state.set({ plugin: 'rabe', key: 'selected' }, selected)
     landedOn = landed
-    if (landing) ringOn = landed
+    if (landing) {
+      ringOn = landed
+      shifted = undefined
+    }
     if (!landing) feed($, { type: 'landed', isMoved: false })
     else if (landed) {
       const { model, selection } = await look($, true)
@@ -437,8 +552,19 @@ export function pane(on: On): void {
     })
     const selection = { ...seen, isArmed: arming.isArmed, isListArmed: arming.isListArmed }
     const drawn = arming.isArmed && arming.isListArmed ? armed : paneView(model, size, selection)
-    const out = hold(layout(drawn), heldOf(e.surface, selection))
+    const before = heldOf(e.surface, selection)
+    const out = hold(layout(drawn), before, seatsRows(selection))
     holds.set(e.surface, { scope: scopeOf(selection), keys: out.held })
+    if (before && ringOn && shifts(before, out.held, ringOn)) {
+      shifted = { key: ringOn, isAsked: false, tries: 0 }
+    }
+    if (shifted && seat && !seat.isFocused && e.props.isFocused) shifted.tries = 0
+    if (shifted && !shifted.isAsked && shifted.tries < 3 && e.props.isFocused) {
+      shifted.isAsked = true
+      shifted.tries += 1
+      const want = shifted
+      $.clock.after(REGAIN_MS, () => void regain($, want).catch(() => undefined))
+    }
 
     return render(ui, e.surface, out.list, leave)
   })

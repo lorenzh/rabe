@@ -68,8 +68,14 @@ test('each row is a plain Button keyed by its item that opens it; the selected o
   expect(own?.dim).toBeUndefined()
   expect(rows.filter(one => one.autoFocus)).toHaveLength(1)
   expect(rows.find(one => one.key === `row:${dev.id}`)?.dim).toBe(true)
-  expect(keys(drawn.buttons)).toEqual(['s: search', 'x: stop', 'g: stop group'])
-  expect(drawn.buttons.map(one => one.hotkey)).toEqual(['s', 'x', 'g'])
+  expect(keys(drawn.buttons)).toEqual([
+    's: search',
+    'x: stop',
+    'g: stop group',
+    'r: remove',
+    'a: remove ended',
+  ])
+  expect(drawn.buttons.map(one => one.hotkey)).toEqual(['s', 'x', 'g', undefined, 'a'])
 })
 
 test('a group header is a Button that folds it; with nothing selected the first row has the focus', () => {
@@ -99,7 +105,7 @@ test('below 90 columns the list fills the width, drops the gaps and ends with on
   expect(cell(grid, 0, end).slice(1)).toEqual([C.yellow, C.panel])
   expect(cell(grid, 79, end)[2]).toBe(C.panel)
   expect(cell(grid, at(shown, end, '≈'), end)[1]).toBe(C.bright)
-  expect(keys(buttons)).toEqual(['s', 'x: stop', 'g: stop group'])
+  expect(keys(buttons)).toEqual(['s', 'x: stop', 'g: stop group', 'r: remove', 'a: remove ended'])
 })
 
 test('below 90 columns a list that fits keeps the gaps between groups', () => {
@@ -237,29 +243,31 @@ const shellOf = (id: string, parentId?: string): RabeItem => ({
   detail: { command: id, taskId: id },
 })
 
-test('a held list adds new items in NEW at the end, never above the focused row', () => {
+test('a held list puts new items in the group of their kind, after its held rows', () => {
   const s1 = shellOf('s1')
   const s2 = shellOf('s2')
   const before = [explore, s1, s2]
   const sel = { ...NO_SELECTION, selected: s2.id, order: orderOf(before) }
-  const upTo = (drawn: Drawn) => rowKeys(drawn).slice(0, rowKeys(drawn).indexOf(`row:${s2.id}`) + 1)
-  const held = upTo(itemsView({ ...model, items: before }, NARROW, sel))
   const agent: RabeItem = { ...plan, status: 'running', endedAt: undefined }
   const a2 = shellOf('a2', explore.id)
   const watch = { ...ci, id: 'monitor:new' }
   const drawn = itemsView({ ...model, items: [...before, agent, a2, watch] }, NARROW, sel)
-  expect(upTo(drawn)).toEqual(held)
-  expect(rowKeys(drawn).slice(held.length)).toEqual(
-    [agent.id, a2.id, watch.id].map(id => `row:${id}`),
+  expect(rowKeys(drawn)).toEqual(
+    [explore.id, agent.id, s1.id, s2.id, a2.id, watch.id].map(id => `row:${id}`),
   )
   const shown = lines(gridOf(drawn).grid).map(line => line.trimEnd())
-  expect(shown.some(line => line.startsWith('▾ NEW 3'))).toBe(true)
+  expect(shown.some(line => line.includes('NEW'))).toBe(false)
+  expect(shown.filter(line => line.startsWith('▾ '))).toEqual([
+    '▾ AGENTS 2 claude',
+    '▾ SHELLS 3 running',
+    '▾ MONITORS 1 running',
+  ])
 })
 
-test('the first shell after the open does not open a SHELLS group above the monitors', () => {
+test('the first shell after the open opens a SHELLS group above the monitors', () => {
   const sel = { ...NO_SELECTION, selected: ci.id, order: orderOf([explore, ci]) }
   const keys = rowKeys(itemsView({ ...model, items: [explore, ci, shellOf('late')] }, NARROW, sel))
-  expect(keys).toEqual([`row:${explore.id}`, `row:${ci.id}`, 'row:shell:late'])
+  expect(keys).toEqual([`row:${explore.id}`, 'row:shell:late', `row:${ci.id}`])
 })
 
 test('a held order keeps the families as the list showed them when it opened', () => {
@@ -334,10 +342,15 @@ test('a disarmed pane draws its stops and deletes dim, without action or hotkey'
   expect(cron.buttons.find(one => one.key.startsWith('delete:'))?.action).toEqual(NONE)
   expect(cron.buttons.find(one => one.key.startsWith('copy:'))?.action.type).toBe('copy')
   const hint = (drawn: Drawn) => lines(gridOf(drawn).grid).at(-1)?.trim()
-  expect(hint(armed)).toBe('↑↓ move · enter open · x stop · g stop group · esc close')
+  expect(hint(armed)).toBe(
+    '↑↓ move · enter open · x stop · g stop group · a remove ended · esc close',
+  )
   expect(hint(disarmed)).toBe('↑↓ move · enter open · esc close')
+  // a acts on every ended row, not on the selection: the ring alone arms it.
   const list = paneView(model, WIDE, { ...sel, isArmed: true })
-  expect(list.buttons).toEqual(disarmed.buttons)
+  const notClear = (drawn: Drawn) => drawn.buttons.filter(one => one.key !== 'clear')
+  expect(notClear(list)).toEqual(notClear(disarmed))
+  expect(list.buttons.find(one => one.key === 'clear')?.action).toEqual({ type: 'clear' })
   const detail = paneView(model, WIDE, { ...sel, open: babysit.id, isArmed: true })
   expect(detail.buttons.find(one => one.key.startsWith('delete:'))?.action.type).toBe('delete')
 })
@@ -364,4 +377,78 @@ test('a row is live where the list draws it, not as a gone slot, a header or a c
   for (const key of ['group-shells', 'tab-items', 'stop', explore.id]) {
     expect([key, isLiveRow(model, sel, key)]).toEqual([key, false])
   }
+})
+
+// Issue #13: r removes the selected row once it ended, a every ended row the
+// search shows; running items stay. Both keep their slots while they cannot act.
+test('r removes the selected ended row and a every ended row; neither touches a running one', () => {
+  const sel = { ...NO_SELECTION, selected: lint.id }
+  const buttons = itemsView(model, WIDE, sel).buttons
+  expect(buttons.map(one => one.label)).toEqual([
+    's: search',
+    'x: stop',
+    'g: stop group',
+    'r: remove',
+    'a: remove ended',
+  ])
+  expect(buttons[3]).toMatchObject({
+    key: 'remove',
+    hotkey: 'r',
+    action: { type: 'remove', ids: [lint.id] },
+  })
+  expect(buttons[4]).toMatchObject({ key: 'clear', hotkey: 'a', action: { type: 'clear' } })
+  const running = itemsView(model, WIDE, { ...sel, selected: explore.id }).buttons
+  expect(running[3]).toMatchObject({ key: 'remove', action: NONE, dim: true })
+  const live = ALL.map(item => ({ ...item, status: 'running' as const, endedAt: undefined }))
+  const none = itemsView({ ...model, items: live }, WIDE, sel).buttons
+  expect(none[4]).toMatchObject({ key: 'clear', action: NONE, dim: true })
+  const narrow = itemsView(model, NARROW, sel).buttons
+  expect(controlRows({ buttons: narrow }, NARROW)).toBe(1)
+})
+
+const call = { at: NOW - 60_000, command: 'task' as const, text: 'codex-companion.mjs task' }
+const forwarder = {
+  ...explore,
+  id: 'agent:f1',
+  title: 'Codex rescue',
+  detail: { agentId: 'f1', toolCount: 1, codexCalls: [call] },
+} as RabeItem
+const busy = {
+  ...forwarder,
+  title: 'Port the parser',
+  detail: { agentId: 'f1', toolCount: 4, codexCalls: [call] },
+} as RabeItem
+const child = { ...review, parentId: forwarder.id, startedAt: NOW - 1000 } as RabeItem
+
+test('an agent that only forwarded to Codex has no row: its job stands for both', () => {
+  const drawn = itemsView({ ...model, items: [plan, forwarder, child] }, NARROW, NO_SELECTION)
+  expect(rowKeys(drawn)).toEqual([`row:${child.id}`, `row:${plan.id}`])
+  expect(lines(gridOf(drawn).grid)[0]).toBe('▾ AGENTS 1 claude · 1 codex')
+})
+
+test('a Codex job sits indented under the agent that started it and did other work', () => {
+  const drawn = itemsView({ ...model, items: [plan, busy, child] }, NARROW, NO_SELECTION)
+  expect(rowKeys(drawn)).toEqual([`row:${busy.id}`, `row:${child.id}`, `row:${plan.id}`])
+  const shown = lines(gridOf(drawn).grid).map(line => line.slice(0, 24).trimEnd())
+  expect(shown.slice(1, 4)).toEqual([
+    '▌◐ Port the parser',
+    '   ◐ review auth.ts',
+    ' ✓ Plan auth split',
+  ])
+})
+
+test('below 90 columns the summary of a folded job counts its forwarder, and only what both know', () => {
+  const end = (items: RabeItem[]) => {
+    const shown = lines(
+      gridOf(itemsView({ ...model, items }, NARROW, { ...NO_SELECTION, selected: child.id })).grid,
+    )
+    return shown[shown.length - 1]
+  }
+  const job = { ...child, costUsd: 2 } as RabeItem
+  const cheap = { ...forwarder, costUsd: 0.01 } as RabeItem
+  expect(end([plan, cheap, job])).toBe(
+    '◐ review auth.ts · gpt-6.1-sol · ≈ $2.01 · 61k in · running',
+  )
+  const blind = { ...forwarder, costUsd: undefined, tokens: undefined } as RabeItem
+  expect(end([plan, blind, job])).toBe('◐ review auth.ts · gpt-6.1-sol · cost n/a · running')
 })

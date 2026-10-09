@@ -1,6 +1,7 @@
 import type { EngineInterface, FsStat, On } from 'claude-code'
 
 import type { RabeCodexStep, RabeEdit, RabeTokens } from '../../types'
+import { linkForwarders } from '../forwarders'
 import {
   clip,
   type EndStatus,
@@ -9,7 +10,8 @@ import {
   type RabeItem,
   type RabeItemOf,
 } from '../model'
-import { addItem, type Change, commit, endItem, prune } from '../registry'
+import { type CodexRequest, codexUsd, type Prices, parsePrices, withOverride } from '../prices'
+import { addItem, type Change, commit, endItem, prune, updateItem } from '../registry'
 import { shellWrites } from '../writes'
 
 const POLL_MS = 2000
@@ -36,6 +38,8 @@ export type Rollout = {
   sandbox?: string
   prompt?: string
   tokens?: RabeTokens
+  // One per model request, from `last_token_usage`, with the model then in use.
+  requests: CodexRequest[]
   commandCount: number
   steps: RabeCodexStep[]
   edits?: RabeEdit[]
@@ -51,6 +55,8 @@ export type CodexSession = {
   isMissing?: boolean
   isPartial?: boolean
   rollout?: Rollout
+  // Set with `rollout`: the job's dollars, undefined when not known.
+  usd?: number
 }
 
 function rec(value: unknown): Rec {
@@ -146,8 +152,30 @@ function fileChanges(changes: unknown, at: number): RabeEdit[] {
   })
 }
 
-export function parseRollout(text: string, home?: string): Rollout {
-  const out: Rollout = { commandCount: 0, steps: [] }
+// A count that is missing makes the request one without a model: no price.
+function request(value: unknown, model: string | undefined): CodexRequest {
+  const usage = rec(value)
+  const counts = [
+    usage.input_tokens,
+    usage.cached_input_tokens,
+    usage.cache_write_input_tokens,
+    usage.output_tokens,
+  ].map(num)
+  const [input = 0, cached = 0, write = 0, output = 0] = counts
+
+  return { ...(!counts.includes(undefined) && { model }), input, cached, write, output }
+}
+
+// `since` is the job's start: a job that resumed a thread finds the turns of
+// the jobs before it in the same file, and counts none of them. `until` is a
+// finished job's end: the turns of jobs that resumed the thread later count
+// nothing either.
+export function parseRollout(text: string, home?: string, since?: number, until?: number): Rollout {
+  const out: Rollout = { requests: [], commandCount: 0, steps: [] }
+  let total = ''
+  // the thread's total when the job started; undefined while none was seen
+  let base: Rec | undefined
+  let isResumed = false
   const edits: RabeEdit[] = []
   const checks: Check[] = []
   const pending = new Map<string, RabeCodexStep>()
@@ -155,17 +183,39 @@ export function parseRollout(text: string, home?: string): Rollout {
     const record = parseJson(raw)
     if (!record) continue
     const payload = rec(record.payload)
+    if (until !== undefined && Date.parse(str(record.timestamp) ?? '') > until) continue
     if (record.type === 'turn_context') {
       const settings = rec(rec(payload.collaboration_mode).settings)
       out.model = str(payload.model) ?? str(settings.model) ?? out.model
       out.effort = str(payload.effort) ?? str(settings.reasoning_effort) ?? out.effort
       out.sandbox = str(rec(payload.sandbox_policy).type) ?? out.sandbox
+    } else if (since !== undefined && Date.parse(str(record.timestamp) ?? '') < since) {
+      isResumed = true
+      const info = rec(payload.info)
+      if (payload.type === 'token_count' && Object.keys(info).length) {
+        base = rec(info.total_token_usage)
+        total = JSON.stringify(base)
+      }
     } else if (record.type === 'event_msg' && payload.type === 'token_count') {
-      const usage = rec(rec(payload.info).total_token_usage)
-      const input = num(usage.input_tokens)
-      const output = num(usage.output_tokens)
+      const info = rec(payload.info)
+      const usage = rec(info.total_token_usage)
+      // the total counts the whole thread: a resumed job's share needs the total it started at
+      const own = (key: string) => {
+        const now = num(usage[key])
+        if (!isResumed || now === undefined) return now
+        const before = num(base?.[key])
+        return before === undefined ? undefined : now - before
+      }
+      const input = own('input_tokens')
+      const output = own('output_tokens')
       if (input !== undefined && output !== undefined) {
-        out.tokens = defined({ input, output, cached: num(usage.cached_input_tokens) })
+        out.tokens = defined({ input, output, cached: own('cached_input_tokens') })
+      }
+      // a record without counts (rate limits only) or that repeats the total adds no request
+      const key = JSON.stringify(usage)
+      if (Object.keys(info).length) {
+        if (key !== total) out.requests.push(request(info.last_token_usage, out.model))
+        total = key
       }
     } else if (record.type === 'event_msg' && payload.type === 'item_completed') {
       const item = rec(payload.item)
@@ -232,12 +282,17 @@ function jobStart(job: CodexJob): number | undefined {
   return Date.parse(str(job.startedAt) ?? str(job.createdAt) ?? '') || undefined
 }
 
+// a running job, or a finished one without its time, has no end to cut at
+function jobStop(job: CodexJob): number | undefined {
+  return (jobEnd(job.status) && Date.parse(str(job.completedAt) ?? '')) || undefined
+}
+
 export function codexItem(job: CodexJob, session: CodexSession | undefined): NewItem {
   const rollout = session?.rollout
   // an unchanged session file is not parsed again; the held item keeps what it gave
   const request = session?.path && !rollout ? {} : rec(job.request)
 
-  return defined({
+  const item = defined({
     id: itemId('codex', job.id),
     kind: 'codex' as const,
     title: str(String(job.summary ?? '').split('\n')[0]) ?? str(job.title) ?? 'Codex job',
@@ -263,6 +318,11 @@ export function codexItem(job: CodexJob, session: CodexSession | undefined): New
       edits: rollout?.edits,
     }),
   })
+
+  // only an unchanged file keeps the cost; a parse, a gone or unreadable file sets it, also to unknown
+  const isUnchanged = session?.updatedAt !== undefined && !rollout
+
+  return session && !isUnchanged ? { ...item, costUsd: session.usd } : item
 }
 
 async function write($: Pick<EngineInterface, 'state'>, change: Change): Promise<void> {
@@ -366,12 +426,25 @@ async function confirmed($: EngineInterface, rollout: Rollout, looks: Looks): Pr
   return edits.length ? { ...rest, edits } : rest
 }
 
+// The built-in table, or with the user's file (`pricesFile`) its rows first. A
+// file that is set but cannot be read gives no prices: costs show n/a.
+async function prices($: EngineInterface, file: string): Promise<Prices> {
+  const read = (path: string) => $.fs.read(path).then(text => parsePrices(String(text)))
+  const built = await read(`${$.plugin.root}/data/prices.csv`).catch(() => [])
+  if (!file) return built
+  const home = file.startsWith('~/') && (await $.env.get('HOME').catch(() => undefined))
+  const own = await read(home ? `${home}${file.slice(1)}` : file).catch(() => undefined)
+
+  return own ? withOverride(built, own) : []
+}
+
 async function readSession(
   $: EngineInterface,
   codexHome: string,
   job: CodexJob,
   held: RabeItemOf<'codex'> | undefined,
   looks: Looks,
+  file: string,
 ): Promise<CodexSession | undefined> {
   const threadId = str(job.threadId)
   if (!threadId) return undefined
@@ -379,17 +452,26 @@ async function readSession(
     held?.detail.sessionPath ??
     (await findRollout($, codexHome, threadId, jobStart(job) ?? (await $.clock.now())))
   const stat = path ? await $.fs.stat(path).catch(() => undefined) : undefined
-  if (!path || !stat) return jobEnd(job.status) ? { isMissing: true } : undefined
+  if (!path || !stat) {
+    if (jobEnd(job.status)) return { isMissing: true }
+
+    // a file seen before and gone now: no new fields, but the cost is no longer known
+    return held?.detail.sessionPath ? { path } : undefined
+  }
   const updatedAt = stat.mtimeMs
   if (updatedAt === held?.detail.sessionUpdatedAt) return { path, updatedAt }
   // no updatedAt on failure, so the next poll tries again
   const home = await $.env.get('HOME')
   if (stat.size <= MAX_READ) {
     const text = await $.fs.read(path).catch(() => undefined)
+    if (text === undefined) return { path }
+    const rollout = await confirmed(
+      $,
+      parseRollout(String(text), home, jobStart(job), jobStop(job)),
+      looks,
+    )
 
-    return text === undefined
-      ? { path }
-      : { path, updatedAt, rollout: await confirmed($, parseRollout(String(text), home), looks) }
+    return { path, updatedAt, rollout, usd: codexUsd(await prices($, file), rollout.requests) }
   }
   const head = await $.process
     .run(['grep', '-m', '2', '-E', '"type":"(turn_context|UserMessage)"', path])
@@ -397,11 +479,16 @@ async function readSession(
   const tail = await $.process.run(['tail', '-n', String(TAIL_LINES), path]).catch(() => undefined)
   if (!head || !tail || tail.exitCode !== 0) return { path }
 
+  // the head and tail miss requests between them, so no usd
   return {
     path,
     updatedAt,
     isPartial: true,
-    rollout: await confirmed($, parseRollout(`${head.stdout}\n${tail.stdout}`, home), looks),
+    rollout: await confirmed(
+      $,
+      parseRollout(`${head.stdout}\n${tail.stdout}`, home, jobStart(job), jobStop(job)),
+      looks,
+    ),
   }
 }
 
@@ -413,9 +500,10 @@ async function refresh(
   entry: CodexJob,
   items: RabeItem[],
   looks: Looks,
+  file: string,
 ): Promise<void> {
-  const file = parseJson(String(await $.fs.read(jobPath).catch(() => '')))
-  const job: CodexJob = { ...entry, ...file, id: entry.id }
+  const saved = parseJson(String(await $.fs.read(jobPath).catch(() => '')))
+  const job: CodexJob = { ...entry, ...saved, id: entry.id }
   if (job.sessionId !== sessionId) return
   const end = jobEnd(job.status)
   const now = await $.clock.now()
@@ -428,11 +516,11 @@ async function refresh(
   const held = items.find((one): one is RabeItemOf<'codex'> => one.id === itemId('codex', job.id))
   // a finished job the cap would drop again: its session file is not read
   if (!held && commit(items, change(codexItem(job, undefined))) === undefined) return
-  const session = await readSession($, codexHome, job, held, looks)
+  const session = await readSession($, codexHome, job, held, looks, file)
   await write($, change(codexItem(job, session)))
 }
 
-async function poll($: EngineInterface): Promise<void> {
+async function poll($: EngineInterface, file: string): Promise<void> {
   const { claude, codex } = await homes($)
   const stateRoot = `${claude}/${CODEX_DATA}/state`
   const sessionId = await $.session.id()
@@ -460,10 +548,12 @@ async function poll($: EngineInterface): Promise<void> {
         { ...entry, id },
         items,
         looks,
+        file,
       ).catch(() => undefined)
     }
   }
   looks.stop.abort()
+  await write($, linkForwarders)
 }
 
 function firstLine(text: string): string {
@@ -496,12 +586,20 @@ async function cancel($: EngineInterface, id: string): Promise<{ text: string }>
     return { text: `Stop refused: ${firstLine(result.stderr) || `exit ${result.exitCode}`}` }
   }
   const now = await $.clock.now()
-  await write($, held => endItem(held, id, 'stopped', now))
+  // later polls skip the stopped job: its cost stays only while the session
+  // file is the one it was priced from
+  const { sessionPath, sessionUpdatedAt } = item.detail
+  const stat = sessionPath ? await $.fs.stat(sessionPath).catch(() => undefined) : undefined
+  const isPriced = stat !== undefined && stat.mtimeMs === sessionUpdatedAt
+  await write($, held => {
+    const ended = endItem(held, id, 'stopped', now)
+    return isPriced ? ended : updateItem(ended, id, { costUsd: undefined })
+  })
 
   return { text: `Stopped codex ${item.title}` }
 }
 
-export function codex(on: On): void {
+export function codex(on: On, file: string): void {
   on('session.start', { isInteractive: true }, async ($, e, next) => {
     const started = await next(e)
     await $.command.register({
@@ -514,7 +612,7 @@ export function codex(on: On): void {
     $.clock.every(POLL_MS, () => {
       if (isPolling) return
       isPolling = true
-      poll($)
+      poll($, file)
         .catch(() => undefined)
         .finally(() => {
           isPolling = false

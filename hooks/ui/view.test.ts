@@ -167,8 +167,10 @@ test('while the selection falls back, x and g stay inert until the person focuse
 
 test('the keys of destructive controls are known by their prefix', () => {
   expect(
-    ['stop', 'stop-group', 'stop:a', 'stop-run:workflow:a', 'delete:cron:a'].map(isDestructive),
-  ).toEqual([true, true, true, true, true])
+    ['stop', 'stop-group', 'stop:a', 'stop-run:workflow:a', 'delete:cron:a', 'remove', 'clear'].map(
+      isDestructive,
+    ),
+  ).toEqual([true, true, true, true, true, true, true])
   expect(['row:a', 'back', 'copy:a', 'message-agent:a', 'tab-items'].map(isDestructive)).toEqual([
     false,
     false,

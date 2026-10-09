@@ -8,7 +8,8 @@ import type {
   TurnUsage,
 } from 'claude-code'
 
-import type { RabeEdit, RabeToolUse, RabeTurn } from '../../types'
+import type { RabeCodexCall, RabeEdit, RabeToolUse, RabeTurn } from '../../types'
+import { companionCall, companionOutput } from '../forwarders'
 import {
   clip,
   type EndStatus,
@@ -18,6 +19,7 @@ import {
   type RabeItemStatus,
   type RabeTokens,
 } from '../model'
+import { claudeUsd, type Prices, parsePrices, withOverride } from '../prices'
 import { addItem, type Change, commit, endItem, pastEnd, prune, updateItem } from '../registry'
 import { changed, type Seen, shellWrites } from '../writes'
 
@@ -27,6 +29,7 @@ type AgentItem = RabeItemOf<'agent'>
 const POLL_MS = 3000
 const MAX_TURNS = 30
 const MAX_EDITS = 100
+const MAX_CALLS = 10
 const MAX_CHECKS = 20
 const LOOK_MS = 1000
 const MAX_TEXT = 300
@@ -122,6 +125,32 @@ function edited(items: RabeItem[], id: string, changes: RabeEdit[]): RabeItem[] 
   return updateItem(items, id, { detail: { edits } })
 }
 
+// The companion calls of an agent: a new one, or what its answer told.
+function called(
+  items: RabeItem[],
+  id: string,
+  at: number,
+  patch: Partial<RabeCodexCall>,
+): RabeItem[] {
+  const agent = asAgent(items, id)
+  if (!agent) return items
+  const calls = agent.detail.codexCalls ?? []
+  const codexCalls = calls.some(one => one.at === at)
+    ? calls.map(one => (one.at === at ? { ...one, ...patch } : one))
+    : [...calls, { at, ...patch } as RabeCodexCall].slice(-MAX_CALLS)
+
+  return updateItem(items, id, { detail: { codexCalls } })
+}
+
+// A call that went to the background still runs: it keeps no end. A failed
+// run still printed its thread.
+function answered(answer: { result?: unknown }, now: number): Partial<RabeCodexCall> {
+  const result = (answer.result ?? {}) as Record<string, unknown>
+  if (result.backgroundTaskId) return {}
+
+  return { endedAt: now, ...companionOutput(`${result.stdout ?? ''}\n${result.stderr ?? ''}`) }
+}
+
 export function addTurn(turns: Turns, id: string, turn: RabeTurn): Turns {
   return { ...turns, [id]: [...(turns[id] ?? []), turn].slice(-MAX_TURNS) }
 }
@@ -136,6 +165,16 @@ function addUsage(tokens: RabeTokens | undefined, usage: TurnUsage): RabeTokens 
     output: (tokens?.output ?? 0) + usage.output_tokens,
     cached: (tokens?.cached ?? 0) + usage.cache_read_input_tokens,
   }
+}
+
+// Each step adds its own price, so a long-context step bills at its own tier. The
+// sum is known only while every step since the start was: an agent Rabe did not
+// see start, or one step without a price, stays n/a.
+function addCost(item: AgentItem, usd: number | undefined): number | undefined {
+  if (usd === undefined || item.startedAt === undefined) return undefined
+  if (!item.tokens) return usd
+
+  return item.costUsd === undefined ? undefined : item.costUsd + usd
 }
 
 function asAgent(items: RabeItem[], id: string): AgentItem | undefined {
@@ -188,6 +227,7 @@ function stepped(
   result: TurnStepResult,
   tools: RabeToolUse[],
   now: number,
+  usd: number | undefined,
 ): RabeItem[] {
   const item = asAgent(items, id)
   if (!item) return items
@@ -197,6 +237,7 @@ function stepped(
     status: 'running',
     endedAt: undefined,
     tokens: result.usage ? addUsage(item.tokens, result.usage) : item.tokens,
+    costUsd: result.usage ? addCost(item, usd) : item.costUsd,
     detail: {
       model: result.usage?.model ?? item.detail.model,
       toolCount: (item.detail.toolCount ?? 0) + tools.length,
@@ -378,13 +419,32 @@ async function refresh($: EngineInterface): Promise<void> {
   }
 }
 
-async function recordStep($: EngineInterface, agentId: string, result: TurnStepResult) {
+// The built-in table, or with the user's file (`pricesFile`) its rows first. A
+// file that is set but cannot be read gives no prices: costs show n/a.
+async function prices($: EngineInterface, file: string): Promise<Prices> {
+  const read = (path: string) => $.fs.read(path).then(text => parsePrices(String(text)))
+  const built = await read(`${$.plugin.root}/data/prices.csv`).catch(() => [])
+  if (!file) return built
+  const home = file.startsWith('~/') && (await $.env.get('HOME').catch(() => undefined))
+  const own = await read(home ? `${home}${file.slice(1)}` : file).catch(() => undefined)
+
+  return own ? withOverride(built, own) : []
+}
+
+async function recordStep(
+  $: EngineInterface,
+  agentId: string,
+  result: TurnStepResult,
+  file: string,
+) {
   const id = itemId('agent', agentId)
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   if (!asAgent(items, id)) return
   const now = await $.clock.now()
   const tools = result.toolUses.map(use => ({ name: use.name, summary: toolSummary(use.input) }))
-  await write($, list => stepped(list, id, result, tools, now))
+  const usage = result.usage
+  const usd = usage ? claudeUsd(await prices($, file), usage, usage.model) : undefined
+  await write($, list => stepped(list, id, result, tools, now, usd))
   if (!result.answer && tools.length === 0) return
   await writeTurns($, turns => {
     const index = (turns[id]?.at(-1)?.index ?? 0) + 1
@@ -394,7 +454,7 @@ async function recordStep($: EngineInterface, agentId: string, result: TurnStepR
   })
 }
 
-export function agents(on: On): void {
+export function agents(on: On, file: string): void {
   on('session.start', { cwd: /^/ }, async ($, e, next) => {
     $.clock.every(POLL_MS, () => refresh($))
     await refresh($)
@@ -436,13 +496,11 @@ export function agents(on: On): void {
   }).catch((_$, e, next) => next(e))
 
   on('classic.SubagentStart', { agent_id: /^/ }, async ($, e, next) => {
-    const cwd = await $.session.cwd().catch(() => e.cwd)
     const transcriptPath = agentTranscript(e.transcript_path, e.agent_id)
     const detail = {
       agentId: e.agent_id,
       ...(transcriptPath && { transcriptPath }),
       ...(e.cwd && { cwd: e.cwd }),
-      ...(e.cwd && e.cwd !== cwd && { worktreePath: e.cwd }),
     }
     const id = itemId('agent', e.agent_id)
     const now = await $.clock.now()
@@ -461,7 +519,7 @@ export function agents(on: On): void {
 
   on('turn.step', { agentId: /^/ }, async function* ($, e, next) {
     const result = yield* next(e)
-    if (e.agentId) await recordStep($, e.agentId, result)
+    if (e.agentId) await recordStep($, e.agentId, result, file)
 
     return result
   })
@@ -480,10 +538,24 @@ export function agents(on: On): void {
   })
 
   // The command line proposes files; a look on disk before and after decides.
+  // A call of the Codex companion is kept on its agent, so the Codex source can
+  // link the job it starts (see forwarders.ts).
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const before =
       e.tool === 'Bash' ? await beforeBash($, e.command).catch(() => undefined) : undefined
+    const call = e.tool === 'Bash' && e.agentId ? companionCall(e.command) : undefined
+    const id = itemId('agent', e.agentId ?? '')
+    const at = call && (await $.clock.now().catch(() => undefined))
+    if (call && at !== undefined) {
+      await write($, items => called(items, id, at, call)).catch(() => undefined)
+    }
     const answer = await next(e)
+    try {
+      if (at !== undefined) {
+        const patch = answered(answer, await $.clock.now())
+        await write($, items => called(items, id, at, patch))
+      }
+    } catch {}
     try {
       if (before && ranBash(answer)) await afterBash($, e.agentId, before)
     } catch {}

@@ -48,6 +48,12 @@ const ROLLOUT = [
     type: 'token_count',
     info: {
       total_token_usage: { input_tokens: 25000, cached_input_tokens: 18000, output_tokens: 3000 },
+      last_token_usage: {
+        input_tokens: 25000,
+        cached_input_tokens: 18000,
+        cache_write_input_tokens: 0,
+        output_tokens: 3000,
+      },
     },
   }),
   line('response_item', {
@@ -65,6 +71,7 @@ test('a rollout gives model, effort, sandbox, prompt, tokens and steps', () => {
     sandbox: 'read-only',
     prompt: 'Review pkg/auth.',
     tokens: { input: 25000, output: 3000, cached: 18000 },
+    requests: [{ model: 'gpt-6.1-sol', input: 25000, cached: 18000, write: 0, output: 3000 }],
     commandCount: 1,
     steps: [
       { kind: 'message', text: 'I will read the diff first.' },
@@ -196,8 +203,119 @@ test('a tick is skipped while the last poll still runs', async ($, on) => {
   expect(polls()).toBe(2)
 })
 
+const tokenCount = (total: number, last?: object) =>
+  line('event_msg', {
+    type: 'token_count',
+    info: { total_token_usage: { input_tokens: total, output_tokens: 1 }, last_token_usage: last },
+  })
+const usage = (input: number) => ({
+  input_tokens: input,
+  cached_input_tokens: 0,
+  cache_write_input_tokens: 0,
+  output_tokens: 1,
+})
+
+test('each new total is one request, with the model in use then', () => {
+  const { requests } = parseRollout(
+    [
+      line('turn_context', { model: 'gpt-6.1-sol' }),
+      line('event_msg', { type: 'token_count', info: null }),
+      tokenCount(10, usage(10)),
+      tokenCount(10, usage(10)),
+      line('turn_context', { model: 'gpt-6-luna' }),
+      tokenCount(30, usage(20)),
+      tokenCount(40, { input_tokens: 10, output_tokens: 1 }),
+    ].join('\n'),
+  )
+  expect(requests).toEqual([
+    { model: 'gpt-6.1-sol', input: 10, cached: 0, write: 0, output: 1 },
+    { model: 'gpt-6-luna', input: 20, cached: 0, write: 0, output: 1 },
+    // a count is missing: no model, so no price
+    { input: 10, cached: 0, write: 0, output: 1 },
+  ])
+})
+
+test('a rate-limit record between two equal totals adds no request', () => {
+  const { requests } = parseRollout(
+    [
+      line('turn_context', { model: 'gpt-6.1-sol' }),
+      tokenCount(10, usage(10)),
+      line('event_msg', { type: 'token_count', info: null }),
+      tokenCount(10, usage(10)),
+    ].join('\n'),
+  )
+  expect(requests).toHaveLength(1)
+})
+
+// A record with its time, as Codex writes each line.
+const timed = (ms: number, record: string) =>
+  JSON.stringify({ timestamp: new Date(ms).toISOString(), ...JSON.parse(record) })
+const userMessage = (text: string) =>
+  line('event_msg', {
+    type: 'item_completed',
+    item: { type: 'UserMessage', content: [{ type: 'text', text }] },
+  })
+const commandRun = line('event_msg', {
+  type: 'item_completed',
+  item: { type: 'CommandExecution', command: ['ls'], exit_code: 0 },
+})
+const total = (input: number, output: number, last: object) =>
+  line('event_msg', {
+    type: 'token_count',
+    info: {
+      total_token_usage: { input_tokens: input, cached_input_tokens: 0, output_tokens: output },
+      last_token_usage: last,
+    },
+  })
+// A thread resumed by a second job: the first job's turn comes first.
+const RESUMED = [
+  timed(100, line('turn_context', { model: 'gpt-6.1-sol' })),
+  timed(110, userMessage('Job A')),
+  timed(120, commandRun),
+  timed(130, total(10, 1, usage(10))),
+  timed(1100, line('turn_context', { model: 'gpt-6-luna' })),
+  timed(1110, userMessage('Job B')),
+  timed(1120, total(30, 2, usage(20))),
+]
+
+test('a resumed thread counts only the turns after the job started', () => {
+  const own = parseRollout(RESUMED.join('\n'), undefined, 1000)
+  expect(own.requests).toEqual([{ model: 'gpt-6-luna', input: 20, cached: 0, write: 0, output: 1 }])
+  expect(own.tokens).toEqual({ input: 20, output: 1, cached: 0 })
+  expect(own.prompt).toBe('Job B')
+  expect(own.commandCount).toBe(0)
+  expect(own.model).toBe('gpt-6-luna')
+  // without the first job's total, this job's share of the thread total is not known
+  const cut = RESUMED.filter((_, i) => i !== 3).join('\n')
+  expect(parseRollout(cut, undefined, 1000).tokens).toBeUndefined()
+  // a job that started the thread counts all of it
+  expect(parseRollout(RESUMED.join('\n'), undefined, 50).tokens).toEqual({
+    input: 30,
+    output: 2,
+    cached: 0,
+  })
+})
+
+test('a finished job counts nothing after its end, even when its thread ran on', () => {
+  const later = [
+    ...RESUMED,
+    timed(1130, change('completed', { '/work/b.ts': { type: 'add' } }, 1130)),
+  ]
+  const own = parseRollout(later.join('\n'), undefined, 50, 500)
+  expect(own.requests).toEqual([
+    { model: 'gpt-6.1-sol', input: 10, cached: 0, write: 0, output: 1 },
+  ])
+  expect(own.tokens).toEqual({ input: 10, output: 1, cached: 0 })
+  expect(own.prompt).toBe('Job A')
+  expect(own.commandCount).toBe(1)
+  expect(own.model).toBe('gpt-6.1-sol')
+  expect(own.edits).toBeUndefined()
+  // no end yet (a running job): the thread so far counts
+  expect(parseRollout(later.join('\n'), undefined, 50).edits).toHaveLength(1)
+})
+
 test('an empty or broken rollout gives no fields', () => {
-  expect(parseRollout('not json\n')).toEqual({ steps: [], commandCount: 0 })
+  expect(parseRollout('not json\n')).toEqual({ requests: [], steps: [], commandCount: 0 })
 })
 
 test('job states map to item states', () => {
@@ -316,6 +434,13 @@ function watchItems(on: On): RabeItem[][] {
   return writes
 }
 
+// Rabe's own price table, as fs.read answers it for the plugin's folder.
+function prices(on: On): void {
+  on('fs.read', { path: /\/data\/prices\.csv$/ }, async () => ({
+    value: 'provider,model,input,output,cache_read\nopenai,gpt-6.1-sol,2,10,0.1\n',
+  }))
+}
+
 async function startAndTick($: Engine, w: World) {
   await $.session.start({ cwd: '/work/rabe', surface: 'terminal', isInteractive: true })
   await w.clock.advance(2000)
@@ -363,6 +488,102 @@ test('a running job of this session becomes a live codex item', async ($, on) =>
   })
 })
 
+test('a job costs its requests at the price of their model', async ($, on) => {
+  const writes = watchItems(on)
+  prices(on)
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: ROLLOUT,
+  })
+  await startAndTick($, w)
+  // 7k uncached at 2, 18k cached at 0.1, 3k out at 10, per million
+  expect(writes.at(-1)?.[0]?.costUsd).toBe((7000 * 2 + 18000 * 0.1 + 3000 * 10) / 1e6)
+})
+
+test('a job that resumed a thread costs only its own requests', async ($, on) => {
+  const writes = watchItems(on)
+  prices(on)
+  const resumed = RESUMED.map(one => one.replace('gpt-6-luna', 'gpt-6.1-sol')).join('\n')
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: resumed,
+  })
+  await startAndTick($, w)
+  // 20 input at 2 and 1 output at 10 per million: the first job's request is not counted
+  expect(Math.round((writes.at(-1)?.[0]?.costUsd ?? 0) * 1e6)).toBe(20 * 2 + 10)
+})
+
+test('a finished job found after a later job resumed its thread keeps only its own turns', async ($, on) => {
+  const writes = watchItems(on)
+  prices(on)
+  const resumed = [
+    ...RESUMED.map(one => one.replace('gpt-6-luna', 'gpt-6.1-sol')),
+    timed(1130, change('completed', { '/work/b.ts': { type: 'add' } }, 1130)),
+  ].join('\n')
+  const done = job({
+    status: 'completed',
+    startedAt: '1970-01-01T00:00:00.050Z',
+    completedAt: '1970-01-01T00:00:00.500Z',
+  })
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [done] },
+    [`${WS}/jobs/task-1.json`]: done,
+    [ROLLOUT_PATH]: resumed,
+  })
+  await startAndTick($, w)
+  const item = writes.at(-1)?.[0]
+  expect(item?.tokens).toEqual({ input: 10, output: 1, cached: 0 })
+  // 10 input at 2 and 1 output at 10 per million
+  expect(Math.round((item?.costUsd ?? 0) * 1e6)).toBe(10 * 2 + 10)
+  expect(item?.detail).not.toHaveProperty('edits')
+})
+
+test('a job whose session file is gone by its end has no cost, not the last one seen', async ($, on) => {
+  const writes = watchItems(on)
+  prices(on)
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: ROLLOUT,
+  })
+  await startAndTick($, w)
+  expect(writes.at(-1)?.[0]?.costUsd).toBeDefined()
+  w.files.delete(ROLLOUT_PATH)
+  w.files.set(`${WS}/jobs/task-1.json`, {
+    text: JSON.stringify(job({ status: 'completed', completedAt: '1970-01-01T00:00:09.000Z' })),
+    mtimeMs: 6000,
+  })
+  await w.clock.advance(2000)
+  expect(writes.at(-1)?.[0]).toMatchObject({ status: 'done', detail: { isSessionMissing: true } })
+  expect(writes.at(-1)?.[0]?.costUsd).toBeUndefined()
+})
+
+test('a running job whose session file goes away or cannot be read loses its cost', async ($, on) => {
+  const writes = watchItems(on)
+  prices(on)
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: ROLLOUT,
+  })
+  await startAndTick($, w)
+  expect(writes.at(-1)?.[0]?.costUsd).toBeDefined()
+  w.files.delete(ROLLOUT_PATH)
+  await w.clock.advance(2000)
+  expect(writes.at(-1)?.[0]?.status).toBe('running')
+  expect(writes.at(-1)?.[0]?.costUsd).toBeUndefined()
+  // back with new requests: priced again
+  w.files.set(ROLLOUT_PATH, { text: ROLLOUT, mtimeMs: 6000 })
+  await w.clock.advance(2000)
+  expect(writes.at(-1)?.[0]?.costUsd).toBeDefined()
+  // grown past 4 MiB and the tail fails: the file cannot be read
+  w.files.set(ROLLOUT_PATH, { text: ROLLOUT, mtimeMs: 7000, size: 5 * 1024 * 1024 })
+  await w.clock.advance(2000)
+  expect(writes.at(-1)?.[0]?.costUsd).toBeUndefined()
+})
+
 test('an unchanged session file causes no second write', async ($, on) => {
   const writes = watchItems(on)
   const w = world(on, {
@@ -395,6 +616,7 @@ test('a finished job ends its item; a gone session file shows as missing', async
 
 test('a session file over 4 MiB is read with grep and tail', async ($, on) => {
   const writes = watchItems(on)
+  prices(on)
   const w = world(on, {
     [`${WS}/state.json`]: { jobs: [job()] },
     [`${WS}/jobs/task-1.json`]: job(),
@@ -402,7 +624,8 @@ test('a session file over 4 MiB is read with grep and tail', async ($, on) => {
   })
   w.files.set(ROLLOUT_PATH, { text: '', mtimeMs: 5000, size: 5 * 1024 * 1024 })
   const runs: string[][] = []
-  on('process.run', async (_$, e) => {
+  on('process.run', async (_$, e, next) => {
+    if (e.argv[0] === 'git') return next(e)
     runs.push([...e.argv])
     const [head, tail] = ROLLOUT.split('\n').reduce<[string[], string[]]>(
       ([h, t], one, n) => (n < 3 ? [[...h, one], t] : [h, [...t, one]]),
@@ -421,6 +644,9 @@ test('a session file over 4 MiB is read with grep and tail', async ($, on) => {
   expect(writes.at(-1)?.[0]).toMatchObject({
     detail: { model: 'gpt-6.1-sol', isSessionPartial: true, commandCount: 1 },
   })
+  // the tail misses requests, so the cost is not known
+  expect(writes.at(-1)?.[0]?.tokens).toBeDefined()
+  expect(writes.at(-1)?.[0]?.costUsd).toBeUndefined()
 })
 
 test('/rabe-stop cancels the job through the companion script', async ($, on) => {
@@ -433,7 +659,8 @@ test('/rabe-stop cancels the job through the companion script', async ($, on) =>
     },
   })
   const runs: { argv: string[]; env?: Record<string, string> }[] = []
-  on('process.run', async (_$, e) => {
+  on('process.run', async (_$, e, next) => {
+    if (e.argv[0] === 'git') return next(e)
     runs.push({ argv: [...e.argv], env: e.init?.env })
     return { value: { exitCode: 0, stdout: '{}', stderr: '' } } as never
   })
@@ -454,6 +681,38 @@ test('/rabe-stop cancels the job through the companion script', async ($, on) =>
     },
   ])
   expect(answer).toEqual({ text: 'Stopped codex Review pkg/auth after the logger migration.' })
+})
+
+// A stop ends the item at once, and later polls skip it: its cost stays only
+// when the session file is the one it was priced from.
+test('/rabe-stop keeps the cost of an unchanged session file and drops it otherwise', async ($, on) => {
+  const writes = watchItems(on)
+  prices(on)
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job(), job({ id: 'task-2', threadId: 'th-1' })] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [`${WS}/jobs/task-2.json`]: job({ id: 'task-2', threadId: 'th-1' }),
+    [ROLLOUT_PATH]: ROLLOUT,
+    [`${HOME}/.claude/plugins/installed_plugins.json`]: {
+      plugins: { 'codex@openai-codex': [{ installPath: PLUGIN }] },
+    },
+  })
+  on('process.run', async (_$, e, next) =>
+    e.argv[0] === 'git' ? next(e) : ({ value: { exitCode: 0, stdout: '{}', stderr: '' } } as never),
+  )
+  await startAndTick($, w)
+  const priced = writes.at(-1)?.find(item => item.id === 'codex:task-1')?.costUsd
+  expect(priced).toBeDefined()
+  await $.command.run({ command: 'rabe-stop', args: 'codex:task-1' } as never)
+  expect(writes.at(-1)?.find(item => item.id === 'codex:task-1')).toMatchObject({
+    status: 'stopped',
+    costUsd: priced,
+  })
+  w.files.set(ROLLOUT_PATH, { text: ROLLOUT, mtimeMs: 6000 })
+  await $.command.run({ command: 'rabe-stop', args: 'codex:task-2' } as never)
+  const stopped = writes.at(-1)?.find(item => item.id === 'codex:task-2')
+  expect(stopped?.status).toBe('stopped')
+  expect(stopped?.costUsd).toBeUndefined()
 })
 
 test('an unchanged session file keeps the model and effort it gave', () => {
@@ -523,4 +782,32 @@ test('a finished job newer than the oldest history held is added and pushes it o
   expect(items).toHaveLength(MAX_ENDED)
   expect(items.at(-1)).toMatchObject({ id: 'codex:task-1', status: 'done', endedAt: 9000 })
   expect(items.some(item => item.id === 'shell:s0')).toBe(false)
+})
+
+test('a job is linked to the agent whose companion call started it', async ($, on) => {
+  const state = memoryState(on)
+  const text = `node "${PLUGIN}/scripts/codex-companion.mjs" task "Review pkg/auth after the logger migration."`
+  const forwarder: RabeItem = {
+    id: 'agent:f1',
+    kind: 'agent',
+    title: 'forward',
+    status: 'running',
+    seenAt: 500,
+    detail: { agentId: 'f1', toolCount: 1, codexCalls: [{ at: 900, command: 'task', text }] },
+  }
+  state['rabe.items'] = { value: [forwarder], version: 1 }
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: ROLLOUT,
+  })
+  await startAndTick($, w)
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items.map(item => [item.id, item.parentId])).toEqual([
+    ['agent:f1', undefined],
+    ['codex:task-1', 'agent:f1'],
+  ])
+  const version = state['rabe.items']?.version
+  await w.clock.advance(2000)
+  expect(state['rabe.items']?.version).toBe(version)
 })
