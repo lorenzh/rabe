@@ -9,7 +9,7 @@
 
 Rabe (German for raven) is a Claude Code mod. It shows your subagents, Codex jobs, background shells, monitors, cron jobs and workflows in one place. A short band above the prompt shows what runs now. The `/rabe` command opens a pane with the full detail.
 
-![Rabe in a Claude Code session: the band above the prompt is one line of counts, two claude, three shells, one monitor and one cron, with the cost; /rabe opens the pane, the arrow keys move through the list and the detail beside it follows, a click selects the shell an agent started, indented under that agent, and a second click opens it, b goes back, the Effects tab shows a file an agent wrote through the shell (via shell) and one the main session wrote, then the Cost and Timeline tabs show, and Esc closes the pane](docs/assets/demo.gif)
+![Rabe in a Claude Code session: the band above the prompt is one line of counts, two claude, three shells, one monitor and one cron, with the cost; /rabe opens the pane with the items grouped by kind, the arrow keys move through the list and the detail beside it follows with the agent's id and estimated cost, a click selects the shell an agent started, indented under that agent, and a second click opens it, b goes back, the Effects tab shows a file an agent wrote through the shell (via shell), one the main session wrote, the worktree and a port, the Cost tab shows the estimate in dollars per agent and the session id, the Timeline tab shows the bars and who started what, and Esc closes the pane](docs/assets/demo.gif)
 
 Status: early development. See [releases](https://github.com/lorenzh/rabe/releases) and the [changelog](CHANGELOG.md) for the current version.
 
@@ -140,7 +140,7 @@ Rabe keeps its items in the session state of Claude Code. When a session ends, R
 
 ## Requirements
 
-- Claude Code 2.1.295. We build and test Rabe with this version. Other versions can show `n/a` where a file changed.
+- Claude Code 2.1.296. We build and test Rabe with this version. Other versions can show `n/a` where a file changed.
 - A terminal for the colored band and pane. The Claude desktop app draws the same pane with plain text and buttons (tested by the maintainer on Windows with Rabe 0.1.0).
 - Optional: the Codex plugin (`codex@openai-codex`) for Codex jobs, and the `gh` CLI for the report commands.
 
