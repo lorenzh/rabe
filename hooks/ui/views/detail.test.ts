@@ -81,7 +81,7 @@ test('an agent shows a cost box, its brief and its turns from rabe.turns', () =>
   expect(bg(g, [0, first[1]])).not.toBe(C.raised)
   expect(bg(g, [0, find(g, '2  ● Reading verify.ts.')[1]])).toBe(C.raised)
   expect(bg(g, [0, find(g, '⎿ Read verify.ts')[1]])).toBe(C.raised)
-  expect(buttons.find(b => b.key === 'stop')?.label).toBe('x: stop')
+  expect(buttons.find(b => b.key === `stop:${explore.id}`)?.label).toBe('x: stop')
 })
 
 test('the brief of an agent is the prompt it was given when Rabe saw the spawn', () => {
@@ -141,7 +141,7 @@ test('a codex job shows its steps with the running command raised and an x: stop
   const running = find(g, '◐ running')
   expect(fg(g, running)).toBe(C.yellow)
   expect(bg(g, [0, running[1]])).toBe(C.raised)
-  expect(buttons.find(b => b.key === 'stop')).toMatchObject({
+  expect(buttons.find(b => b.key === `stop:${job.id}`)).toMatchObject({
     label: 'x: stop',
     hotkey: 'x',
     action: { type: 'stop', ids: [job.id] },
@@ -156,7 +156,10 @@ test('a codex job whose session file is gone says so', () => {
   } as RabeItem
   const { grid: g, buttons } = open(model([job]), job.id)
   expect(lines(g)).toContain('job task-9 · session file gone')
-  expect(buttons.find(b => b.key === 'stop')).toMatchObject({ dim: true, action: { type: 'none' } })
+  expect(buttons.find(b => b.key === `stop:${job.id}`)).toMatchObject({
+    dim: true,
+    action: { type: 'none' },
+  })
 })
 
 test('a workflow shows its phases and each agent with tokens and time', () => {
@@ -169,7 +172,7 @@ test('a workflow shows its phases and each agent with tokens and time', () => {
   expect(shown.some(line => /◐ verify:db\.ts +22k · 40s$/.test(line))).toBe(true)
   expect(shown.some(line => /✓ review:bugs +n\/a · 3m ago$/.test(line))).toBe(true)
   expect(rowKeys(drawn)).toContain(`row:${verify.id}`)
-  expect(buttons.find(b => b.key === 'stop')?.label).toBe('g: stop run')
+  expect(buttons.find(b => b.key === `stop-run:${flow.id}`)?.label).toBe('g: stop run')
 })
 
 test('a shell shows its output tail and its exit code in color', () => {
@@ -265,9 +268,9 @@ test('a codex job without a command count says n/a', () => {
 test('a workflow agent offers no own stop or message, only stopping its run', () => {
   const size: Size = { ...TERMINAL, hasInput: true }
   const { buttons } = open(model(), verify.id, size)
-  expect(buttons.find(b => b.key === 'message-agent')).toBeUndefined()
+  expect(buttons.find(b => b.key.startsWith('message'))).toBeUndefined()
   expect(open(model(), verify.id, size).inputs ?? []).toHaveLength(0)
-  expect(buttons.find(b => b.key === 'stop')).toMatchObject({
+  expect(buttons.find(b => b.key === `stop-run:${flow.id}`)).toMatchObject({
     label: 'g: stop run',
     hotkey: 'g',
     action: { type: 'stop', ids: [flow.id] },
@@ -277,8 +280,8 @@ test('a workflow agent offers no own stop or message, only stopping its run', ()
 test('a workflow agent whose run cannot be stopped keeps a dim stop that does nothing', () => {
   const run = { ...flow, detail: { runId: 'wf1', phases: [] } } as RabeItem
   const { buttons } = open(model([run, verify]), verify.id)
-  expect(buttons.find(b => b.key === 'stop')).toEqual({
-    key: 'stop',
+  expect(buttons.find(b => b.key === `stop-run:${run.id}`)).toEqual({
+    key: `stop-run:${run.id}`,
     label: 'g: stop run',
     action: { type: 'none' },
     dim: true,
@@ -338,4 +341,28 @@ test('a workflow draws every agent row, also past the rows of the pane', () => {
   )
   expect(rowKeys(drawn)).toHaveLength(30)
   expect(lines(gridOf(drawn).grid)[0]).toMatch(/^⧉ workflow · review-changes/)
+})
+
+// A control that acts on an item carries that item in its key, so a new
+// target is a new key, which the held focus order puts at the end.
+test('every control of a detail that acts on an item names it in its key', () => {
+  const size: Size = { ...TERMINAL, hasInput: true }
+  const keysOf = (id: string) => {
+    const drawn = detailView(model(), size, { ...NO_SELECTION, open: id })
+    return [...drawn.buttons, ...(drawn.inputs ?? [])].map(one => one.key)
+  }
+  expect(keysOf(explore.id)).toEqual([
+    'back',
+    `message-agent:${explore.id}`,
+    `stop:${explore.id}`,
+    `message:${explore.id}`,
+  ])
+  expect(keysOf(dev.id)).toEqual(['back', `copy:${dev.id}`, `stop:${dev.id}`])
+  expect(keysOf(babysit.id)).toEqual(['back', `copy:${babysit.id}`, `delete:${babysit.id}`])
+  expect(keysOf(verify.id)).toEqual(['back', `stop-run:${flow.id}`])
+  const drawn = detailView(model(), size, { ...NO_SELECTION, open: explore.id })
+  expect(drawn.buttons.find(one => one.hotkey === 'm')?.action).toEqual({
+    type: 'focus',
+    key: `message:${explore.id}`,
+  })
 })

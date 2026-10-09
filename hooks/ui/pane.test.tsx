@@ -1,4 +1,4 @@
-import type { On } from 'claude-code'
+import type { On, UiFocusInput } from 'claude-code'
 import { expect, type Mounted, mock, test } from 'claude-code/testing'
 
 import type { RabeLines, RabePrevious, RabeTurn } from '../../types'
@@ -73,12 +73,29 @@ function hold(on: On, items: RabeItem[], seeds: Ui = {}): Ui {
     if (e.plugin === 'rabe') sets[e.key] = e.value
     return next(e)
   })
+  on('ui.focus', { requestId: 'rabe' }, async (_$, e, next) =>
+    e.origin.kind === 'person' ? {} : next(e),
+  )
   on('ui.toast', async (_$, e) => {
     sets.toasts = [...((sets.toasts as string[] | undefined) ?? []), e.text]
     return { value: undefined }
   })
 
   return sets
+}
+
+// The person moves the ring (Tab or an arrow), which arms the pane's stops.
+async function arm(
+  $: { ui: { focus: (e: UiFocusInput) => Promise<unknown> } },
+  element = 'tab-items',
+) {
+  await $.ui.focus({
+    component: 'Pane',
+    requestId: 'rabe',
+    plugin: 'rabe',
+    element,
+    origin: { kind: 'person' },
+  })
 }
 
 function opening(on: On, isOpen: boolean) {
@@ -212,7 +229,9 @@ test('a shell shows the lines its source read on every surface', async ($, on) =
     expect(shown.some(line => /^✗ shell · bun run lint +failed · exit 2$/.test(line))).toBe(true)
     expect(shown).toContain(' 42:5 error Unexpected any')
     expect(shown).toContain(' b back · esc close')
-    expect((await ui.find({ type: 'Button', key: 'copy' }))?.props.label).toBe('c: copy command')
+    expect((await ui.find({ type: 'Button', key: `copy:${lint.id}` }))?.props.label).toBe(
+      'c: copy command',
+    )
     await ui.unmount()
   }
 })
@@ -235,8 +254,8 @@ test('an agent shows its turns from rabe.turns on every surface', async ($, on) 
     const shown = await screen(ui)
     expect(shown).toContain('1  ● Searching the middleware.')
     expect(shown).toContain('     ⎿ Grep verifyToken')
-    expect(await ui.find({ type: 'Button', key: 'message-agent' })).toBeDefined()
-    expect(await ui.find({ type: 'Input', key: 'message' })).toBeDefined()
+    expect(await ui.find({ type: 'Button', key: `message-agent:${explore.id}` })).toBeDefined()
+    expect(await ui.find({ type: 'Input', key: `message:${explore.id}` })).toBeDefined()
     await ui.unmount()
   }
 })
@@ -262,7 +281,8 @@ test('a workflow lists its agents by phase on every surface', async ($, on) => {
     expect(shown).toContain('✓ Review → ◐ Verify → · Report')
     expect(shown).toContain('VERIFY 1 running')
     expect(shown).toContain('REPORT not started')
-    expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.label).toBe('g: stop run')
+    const run = await ui.find({ type: 'Button', key: `stop-run:${flow.id}` })
+    expect(run?.props.label).toBe('g: stop run')
     await ui.unmount()
   }
 })
@@ -275,9 +295,10 @@ test('stop calls TaskStop with the task id on every surface', async ($, on) => {
     stopped.push(e.task_id)
     return { result: {}, text: 'stopped' }
   })
+  await arm($)
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
-    await ui.press({ key: 'stop' })
+    await ui.press({ key: `stop:${dev.id}` })
     await ui.unmount()
   }
   expect(stopped).toEqual(['bg_2', 'bg_2'])
@@ -511,8 +532,9 @@ test('a /loop wakeup offers copy but no delete on every surface', async ($, on) 
   hold(on, [wakeup, babysit], { open: wakeup.id })
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
-    expect((await ui.find({ type: 'Button', key: 'copy' }))?.props.label).toBe('c: copy prompt')
-    expect(await ui.find({ type: 'Button', key: 'delete' })).toBeUndefined()
+    const copy = await ui.find({ type: 'Button', key: `copy:${wakeup.id}` })
+    expect(copy?.props.label).toBe('c: copy prompt')
+    expect(await ui.find({ type: 'Button', key: `delete:${wakeup.id}` })).toBeUndefined()
     await ui.unmount()
   }
 })
@@ -521,7 +543,7 @@ test('a cron job offers delete on every surface', async ($, on) => {
   hold(on, [wakeup, babysit], { open: babysit.id })
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
-    expect(await ui.find({ type: 'Button', key: 'delete' })).toBeDefined()
+    expect(await ui.find({ type: 'Button', key: `delete:${babysit.id}` })).toBeDefined()
     await ui.unmount()
   }
 })
@@ -581,16 +603,17 @@ test('g on a workflow agent stops its run on every surface', async ($, on) => {
     stopped.push(e.task_id)
     return { result: {}, text: 'stopped' }
   })
+  await arm($)
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
-    expect((await ui.find({ type: 'Button', key: 'stop-group' }))?.props).toMatchObject({
+    expect((await ui.find({ type: 'Button', key: `stop-run:${flow.id}` }))?.props).toMatchObject({
       label: 'g: stop run',
       hotkey: 'g',
     })
-    const x = await ui.find({ type: 'Button', key: 'stop' })
+    const x = await ui.find({ type: 'Button', key: `stop:${verify.id}` })
     expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, undefined])
     expect(await screen(ui)).toContain(' ↑↓ move · enter open · g stop run · esc close')
-    await ui.press({ key: 'stop-group' })
+    await ui.press({ key: `stop-run:${flow.id}` })
     await ui.unmount()
   }
   expect(stopped).toEqual(['wf_task', 'wf_task'])
@@ -603,11 +626,12 @@ test('x stops a codex job through /rabe-stop on every surface', async ($, on) =>
     runs.push(e.args)
     return { text: `Stopped codex ${review.title}` }
   })
+  await arm($)
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
-    const stop = await ui.find({ type: 'Button', key: 'stop' })
+    const stop = await ui.find({ type: 'Button', key: `stop:${review.id}` })
     expect(stop?.props.label).toBe('x: stop')
-    await ui.press({ key: 'stop' })
+    await ui.press({ key: `stop:${review.id}` })
     await ui.unmount()
   }
   expect(runs).toEqual([review.id, review.id])
@@ -717,5 +741,70 @@ test('a pane the terminal moved takes the keys back only if it held them', async
   await ui.redraw(seat('dock', false) as never)
   await clock.advance(2000)
   expect(opens).toHaveLength(1)
+  await ui.unmount()
+})
+
+function stops(on: On): unknown[] {
+  const stopped: unknown[] = []
+  on('tool.call', async (_$, e, next) => {
+    if (e.tool !== 'TaskStop') return next(e)
+    stopped.push(e.task_id)
+    return { result: {}, text: 'stopped' }
+  })
+  return stopped
+}
+
+// The ring keeps an index the pane cannot see, so a stop acts only once the
+// ring is known to sit on a safe element (see arming in docs/architecture.md).
+test('the pane opens disarmed: a stop does nothing until the person moves the ring', async ($, on) => {
+  hold(on, ALL, { selected: dev.id })
+  on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+  on('ui.panes', async () => ({ value: [] }))
+  const stopped = stops(on)
+  await arm($)
+  await $.command.run({ command: 'rabe', args: '' } as never)
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    const x = await ui.find({ type: 'Button', key: `stop:${dev.id}` })
+    expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, undefined])
+    await ui.press({ key: `stop:${dev.id}` })
+    await ui.unmount()
+  }
+  expect(stopped).toEqual([])
+  await arm($, `row:${dev.id}`)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  expect((await ui.find({ type: 'Button', key: `stop:${dev.id}` }))?.props.hotkey).toBe('x')
+  await ui.press({ key: `stop:${dev.id}` })
+  await ui.unmount()
+  expect(stopped).toEqual(['bg_2'])
+})
+
+test('an open item that is gone disarms the list the view falls back to', async ($, on) => {
+  const items = [...ALL]
+  hold(on, items, { open: dev.id, selected: explore.id })
+  await arm($)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  expect((await ui.find({ type: 'Button', key: `stop:${dev.id}` }))?.props.hotkey).toBe('x')
+  items.splice(items.indexOf(dev), 1)
+  await ui.redraw()
+  const x = await ui.find({ type: 'Button', key: `stop:${explore.id}` })
+  expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, undefined])
+  await arm($, `row:${explore.id}`)
+  await ui.redraw()
+  expect((await ui.find({ type: 'Button', key: `stop:${explore.id}` }))?.props.hotkey).toBe('x')
+  await ui.unmount()
+})
+
+// The kit answers no plugin's own $.ui.focus (see feasibility): the landing
+// fails, as one another hook refuses does.
+test('a change of the view disarms until the ring lands; a failed landing keeps it so', async ($, on) => {
+  hold(on, ALL, { selected: dev.id })
+  await arm($)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  expect((await ui.find({ type: 'Button', key: `stop:${dev.id}` }))?.props.hotkey).toBe('x')
+  await ui.press({ key: 'tab-cost' })
+  await ui.press({ key: 'tab-items' })
+  const x = await ui.find({ type: 'Button', key: `stop:${dev.id}` })
+  expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, undefined])
   await ui.unmount()
 })

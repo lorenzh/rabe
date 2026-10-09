@@ -52,6 +52,8 @@ export type Selection = {
   open: string
   order?: RabeOrder
   isFocused: boolean
+  // Stop and delete act only while this holds (`arm`).
+  isArmed: boolean
 }
 
 export type Action =
@@ -152,6 +154,7 @@ export const NO_SELECTION: Selection = {
   selected: '',
   open: '',
   isFocused: false,
+  isArmed: false,
 }
 
 // The item rows of a drawing in document order: what the arrow keys walk.
@@ -197,6 +200,55 @@ export function landing(action: Action, open: string): string[] {
     default:
       return []
   }
+}
+
+// Whether the focus ring is known to sit on a safe element, so that stop and
+// delete may act. The engine keeps the ring on an index the pane cannot read;
+// `fallback` is the last fallback a drawing showed (`undefined`: take the next
+// one as it is). See arming in docs/architecture.md.
+export type Arming = { isArmed: boolean; fallback?: string }
+
+export const DISARMED: Arming = { isArmed: false }
+
+export type ArmEvent =
+  // The pane opened, or the person changed the view (tab, open, back, fold, search).
+  | { type: 'reset' }
+  // Rabe's own `$.ui.focus` moved the ring, or was refused or threw.
+  | { type: 'landed'; isMoved: boolean }
+  // A `ui.focus` on the pane that no hook refused: by the person, or by Rabe
+  // (a landing, `autoFocus`) onto element `key`.
+  | { type: 'focus'; byPerson: boolean; key: string }
+  // A drawing; `fallback` names the open or selected item it could not show.
+  | { type: 'drawn'; fallback: string }
+
+const DESTRUCTIVE = /^(stop|stop-group|stop-run|delete):/
+
+export const isDestructive = (key: string): boolean => DESTRUCTIVE.test(key)
+
+export function arm(state: Arming, event: ArmEvent): Arming {
+  switch (event.type) {
+    case 'reset':
+      return { isArmed: false }
+    case 'landed':
+      return { ...state, isArmed: event.isMoved }
+    case 'focus':
+      return event.byPerson || !isDestructive(event.key) ? { ...state, isArmed: true } : state
+    case 'drawn': {
+      const isNew = state.fallback !== undefined && event.fallback !== state.fallback
+      return {
+        isArmed: state.isArmed && !(isNew && event.fallback !== ''),
+        fallback: event.fallback,
+      }
+    }
+  }
+}
+
+// A short name for a list of ids, for a key: the same list, the same name.
+export function hash(ids: readonly string[]): string {
+  let h = 5381
+  for (const ch of ids.join('\n')) h = (Math.imul(h, 33) ^ (ch.codePointAt(0) ?? 0)) >>> 0
+
+  return h.toString(36)
 }
 
 // Rows the toolbar takes: wrapped Buttons ("[ label ]" and a

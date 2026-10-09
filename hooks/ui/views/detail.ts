@@ -301,17 +301,23 @@ function detailButtons(
         : undefined
   if (copy !== undefined) {
     const label = item.kind === 'cron' ? 'c: copy prompt' : 'c: copy command'
-    buttons.push({ key: 'copy', label, hotkey: 'c', action: { type: 'copy', text: copy } })
+    buttons.push({
+      key: `copy:${item.id}`,
+      label,
+      hotkey: 'c',
+      action: { type: 'copy', text: copy },
+    })
   }
   if (item.kind === 'cron' && item.detail.scheduledFor === undefined) {
     buttons.push({
-      key: 'delete',
+      key: `delete:${item.id}`,
       label: 'd: delete job',
       hotkey: 'd',
       action: { type: 'delete', id: item.id },
     })
   }
   // Message and stop keep their slots once the item ended: dim, no hotkey.
+  // Each key names the item it acts on (see `listButtons` in items.ts).
   const slot = (key: string, label: string, action: Action | undefined): ViewButton =>
     action
       ? { key, label, hotkey: label.slice(0, 1), action }
@@ -319,7 +325,11 @@ function detailButtons(
   if (item.kind === 'agent' && hasInput && !isWorkflowAgent(item)) {
     const isOn = item.status === 'running'
     buttons.push(
-      slot('message-agent', 'm: message', isOn ? { type: 'focus', key: 'message' } : undefined),
+      slot(
+        `message-agent:${item.id}`,
+        'm: message',
+        isOn ? { type: 'focus', key: `message:${item.id}` } : undefined,
+      ),
     )
   }
   const run = isWorkflowAgent(item)
@@ -329,11 +339,19 @@ function detailButtons(
       : undefined
   if (run) {
     buttons.push(
-      slot('stop', 'g: stop run', canStop(run) ? { type: 'stop', ids: [run.id] } : undefined),
+      slot(
+        `stop-run:${run.id}`,
+        'g: stop run',
+        canStop(run) ? { type: 'stop', ids: [run.id] } : undefined,
+      ),
     )
   } else if (item.kind !== 'cron' && !isWorkflowAgent(item)) {
     buttons.push(
-      slot('stop', 'x: stop', canStop(item) ? { type: 'stop', ids: [item.id] } : undefined),
+      slot(
+        `stop:${item.id}`,
+        'x: stop',
+        canStop(item) ? { type: 'stop', ids: [item.id] } : undefined,
+      ),
     )
   }
 
@@ -356,7 +374,7 @@ export const detailView: View = (model, size, sel): Drawn => {
     item.kind === 'agent' && item.status === 'running' && size.hasInput && !isWorkflowAgent(item)
       ? [
           {
-            key: 'message',
+            key: `message:${item.id}`,
             label: 'message',
             placeholder: 'text for the agent',
             submitLabel: 'send',

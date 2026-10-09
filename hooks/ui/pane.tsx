@@ -5,7 +5,11 @@ import { KIND_LABEL, orderOf, previousOf } from './lists'
 import { type Held, hold, render } from './render'
 import {
   type Action,
+  type ArmEvent,
+  type Arming,
+  arm,
   bounded,
+  DISARMED,
   landing,
   layout,
   type Model,
@@ -14,7 +18,7 @@ import {
   stepRow,
   taskIdOf,
 } from './view'
-import { paneView } from './views/pane'
+import { fallbackOf, paneView } from './views/pane'
 
 const PANE = 'rabe'
 
@@ -95,14 +99,35 @@ async function stop($: EngineInterface, ids: string[]): Promise<void> {
   }
 }
 
+// Whether stop and delete act: the ring is known to sit on a safe element.
+// A module value, so a reload, which also drops the hold, starts disarmed.
+let arming: Arming = DISARMED
+
+function feed($: EngineInterface, event: ArmEvent): void {
+  const was = arming.isArmed
+  arming = arm(arming, event)
+  if (arming.isArmed !== was) $.ui.invalidate('ui.render')
+}
+
+// Moves the ring onto one of the pane's safe elements. Refused while the pane
+// does not hold the keys (Enter then goes to the prompt) or when another hook
+// says no: either way the ring may sit anywhere, so the pane disarms.
+async function focusOn($: EngineInterface, key: string): Promise<boolean> {
+  const result = await $.ui.focus({ requestId: PANE, key }).catch(() => ({ deny: 'threw' }))
+  const isMoved = !('deny' in result && result.deny)
+  feed($, { type: 'landed', isMoved })
+
+  return isMoved
+}
+
 // A new view starts its hold anew, but the ring keeps its index, where the new
-// view may draw a stop; so the ring moves (`landing`). Refused while the pane
-// does not hold the keys: Enter then goes to the prompt.
+// view may draw a stop; so the pane disarms and the ring moves (`landing`).
 async function land($: EngineInterface, keys: string[]): Promise<void> {
-  for (const key of keys) await $.ui.focus({ requestId: PANE, key }).catch(() => undefined)
+  for (const key of keys) if (!(await focusOn($, key))) return
 }
 
 async function act($: EngineInterface, action: Action, surface: RenderSurface): Promise<void> {
+  if (landing(action, '').length > 0) feed($, { type: 'reset' })
   switch (action.type) {
     case 'tab':
       await $.state.set({ plugin: 'rabe', key: 'tab' }, action.tab)
@@ -131,7 +156,7 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       await $.state.set({ plugin: 'rabe', key: 'query' }, action.text)
       return land($, landing(action, ''))
     case 'focus':
-      await $.ui.focus({ requestId: PANE, key: action.key })
+      await focusOn($, action.key)
       return
     case 'stop':
       await stop($, action.ids)
@@ -191,7 +216,16 @@ async function look(
     previous: await previous($).catch(() => undefined),
   }
 
-  const selection = { tab, query, folded, selected, open, isFocused, ...(order && { order }) }
+  const selection = {
+    tab,
+    query,
+    folded,
+    selected,
+    open,
+    isFocused,
+    isArmed: arming.isArmed,
+    ...(order && { order }),
+  }
 
   return { model, selection }
 }
@@ -226,7 +260,7 @@ async function arrow($: EngineInterface, by: number, bodyRows: number): Promise<
     by,
   )
   if (!key) return false
-  void $.ui.focus({ requestId: PANE, key }).catch(() => undefined)
+  void focusOn($, key)
 
   return true
 }
@@ -248,6 +282,7 @@ export function pane(on: On): void {
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(items))
     holds.clear()
+    feed($, { type: 'reset' })
     await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })
     $.clock.after(1500, () => void refocus($).catch(() => undefined))
 
@@ -260,12 +295,18 @@ export function pane(on: On): void {
     return next(e)
   }).catch((_$, e, next) => next(e))
 
+  // A move no hook refused puts the ring on a known element: the person's
+  // choice, or one of Rabe's safe ones (`autoFocus`, a landing).
   on('ui.focus', { requestId: PANE }, async ($, e, next) => {
     if (e.element?.startsWith('row:')) {
       await $.state.set({ plugin: 'rabe', key: 'selected' }, e.element.slice(4))
     }
+    const result = await next(e)
+    if (e.element && !('deny' in result && result.deny)) {
+      feed($, { type: 'focus', byPerson: e.origin.kind === 'person', key: e.element })
+    }
 
-    return next(e)
+    return result
   }).catch((_$, e, next) => next(e))
 
   on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
@@ -282,7 +323,9 @@ export function pane(on: On): void {
     if (seat?.isFocused && seat.placement !== e.props.placement) {
       $.clock.after(500, () => void refocus($).catch(() => undefined))
     }
-    const { model, selection } = await look($, e.props.isFocused)
+    const { model, selection: seen } = await look($, e.props.isFocused)
+    feed($, { type: 'drawn', fallback: fallbackOf(model, seen) })
+    const selection = { ...seen, isArmed: arming.isArmed }
     const size = bounded({
       columns: e.props.bodyColumns,
       rows: e.props.scroll?.bodyRows || 24,

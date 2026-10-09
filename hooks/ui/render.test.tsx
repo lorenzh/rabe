@@ -91,7 +91,7 @@ function elements(one: unknown): Element[] {
 }
 
 const SIZE: Size = { columns: 80, rows: 30, surface: 'terminal', hasInput: true }
-const OPEN: Selection = { ...NO_SELECTION, isFocused: true }
+const OPEN: Selection = { ...NO_SELECTION, isFocused: true, isArmed: true }
 
 type Step = { keys: string[]; held: Held[]; tree: Element[]; acts: Action[]; list: Piece[] }
 
@@ -156,8 +156,8 @@ test('rows found after the open do not move the controls', () => {
   const first = draw(model(items), SIZE, sel)
   const later = draw(model([...items, shell('b')]), SIZE, sel, first.held)
   expect(later.keys.slice(0, first.keys.length)).toEqual(first.keys)
-  expect(later.keys.indexOf('stop')).toBe(first.keys.indexOf('stop'))
-  expect(later.keys.indexOf('stop')).toBeLessThan(later.keys.indexOf('row:shell:a'))
+  expect(later.keys.indexOf('stop:shell:a')).toBe(first.keys.indexOf('stop:shell:a'))
+  expect(later.keys.indexOf('stop:shell:a')).toBeLessThan(later.keys.indexOf('row:shell:a'))
   const open = { ...sel, open: flow.id, order: orderOf([flow]) }
   const run = draw(model([flow]), SIZE, open)
   const more = draw(model([flow, agentOf('w9', { workflowPhase: 'Review' })]), SIZE, open, run.held)
@@ -287,6 +287,40 @@ function change(items: RabeItem[], pick: (n: number) => number, n: number): Rabe
   }
 }
 
+// What a control acts on: the items it stops, deletes or messages, the text
+// it copies, the element it focuses. Moving between views is not acting.
+function targetOf(action: Action): string | undefined {
+  switch (action.type) {
+    case 'stop':
+      return `stop ${action.ids.join(',')}`
+    case 'delete':
+      return `delete ${action.id}`
+    case 'message':
+      return `message ${action.id}`
+    case 'copy':
+      return `copy ${action.text}`
+    case 'focus':
+      return `focus ${action.key}`
+    default:
+      return undefined
+  }
+}
+
+// A key never changes what it acts on, and a focusable index of the hold
+// never acts on another target than it did before (`seen`, by index).
+function checkTargets(shown: string, list: Piece[], keys: Map<string, string>, seen: string[]) {
+  actionsOf(list, 'hi').forEach(([key, action], i) => {
+    const target = targetOf(action)
+    if (target === undefined) return
+    const was = keys.get(key) ?? target
+    keys.set(key, was)
+    expect([shown, key, target]).toEqual([shown, key, was])
+    const before = seen[i] ?? target
+    seen[i] = before
+    expect([shown, i, key, target]).toEqual([shown, i, key, before])
+  })
+}
+
 const SCOPES: Partial<Selection>[] = [
   { tab: 'items' },
   { tab: 'cost' },
@@ -326,6 +360,9 @@ test('whatever changes while the pane is open, the focusable keys only grow at t
       const sel: Selection = { ...OPEN, order: orderOf(items), ...scope }
       let size: Size = { ...SIZE, surface }
       let last = draw(model(items), size, sel)
+      const targets = new Map<string, string>()
+      let seen: string[] = []
+      checkTargets(`${surface} ${JSON.stringify(scope)} start`, last.list, targets, seen)
       for (let n = 0; n < 80; n++) {
         const what = pick(5)
         if (what === 4) {
@@ -347,6 +384,8 @@ test('whatever changes while the pane is open, the focusable keys only grow at t
           expect([shown, keys[0] && actions.has(keys[0])]).toEqual([shown, true])
           const type = actions.get(landed ?? '')?.type ?? 'none'
           expect([shown, type === 'stop' || type === 'delete']).toEqual([shown, false])
+          seen = []
+          checkTargets(shown, last.list, targets, seen)
           continue
         }
         if (what === 0) size = { ...size, columns: WIDTHS[pick(WIDTHS.length)] ?? 80 }
@@ -357,8 +396,26 @@ test('whatever changes while the pane is open, the focusable keys only grow at t
         const next = draw(model(items), size, sel, last.held)
         const shown = `${surface} ${JSON.stringify(scope)} step ${n}`
         expect([shown, next.keys.slice(0, last.keys.length)]).toEqual([shown, last.keys])
+        checkTargets(shown, next.list, targets, seen)
         last = next
       }
     })
   }
+})
+
+// GPT review round 6: an ended shell's detail is open and another shell runs;
+// the open shell is pruned, the view falls back to the list.
+test('an open item that is gone never hands its slots to the list, whose stop comes last', () => {
+  const ended = { ...shell('a'), status: 'done', endedAt: NOW } as RabeItem
+  const items = [ended, shell('b')]
+  const sel = { ...OPEN, open: ended.id, selected: ended.id, order: orderOf(items) }
+  const first = draw(model(items), SIZE, sel)
+  const later = draw(model([shell('b')]), SIZE, sel, first.held)
+  const actions = actionsOf(later.list)
+  for (const [key, action] of actions.slice(0, first.keys.length)) {
+    expect([key, action.type]).not.toEqual([key, 'stop'])
+  }
+  expect(actions.findIndex(([key]) => key === 'stop:shell:b')).toBeGreaterThanOrEqual(
+    first.keys.length,
+  )
 })

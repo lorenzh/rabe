@@ -16,6 +16,7 @@ import {
 import {
   canStop,
   type Drawn,
+  hash,
   isPress,
   isWorkflowAgent,
   type Line,
@@ -78,21 +79,33 @@ function shownFrom(size: Size, at: number): number {
 // shows: a header per group (a Button that folds it), a row per item, and in
 // SHELLS and MONITORS the rows of each agent indented under its name.
 // Gaps between groups only where the whole list fits in `rows`.
-function listLines(
-  model: Model,
-  sel: Selection,
-  rows: number,
-): { lines: Line[]; order: RabeItem[]; shown: RabeItem[][] } {
+function groupsOf(model: Model, sel: Selection) {
   const visible = model.items.filter(item => matches(item, sel.query))
-  const groups = grouped(visible, sel.order).map(group => ({
+
+  return grouped(visible, sel.order).map(group => ({
     ...group,
     families: FAMILIES.includes(group.id)
       ? byParent(group.items, model.items)
       : [{ id: '', title: '', items: group.items }],
   }))
-  const order = groups.flatMap(group =>
+}
+
+const orderIn = (groups: ReturnType<typeof groupsOf>, sel: Selection) =>
+  groups.flatMap(group =>
     sel.folded.includes(group.id) ? [] : group.families.flatMap(family => family.items),
   )
+
+// The rows of the Items list in order, as the list draws them.
+export const listOrder = (model: Model, sel: Selection): RabeItem[] =>
+  orderIn(groupsOf(model, sel), sel)
+
+function listLines(
+  model: Model,
+  sel: Selection,
+  rows: number,
+): { lines: Line[]; order: RabeItem[]; shown: { id: Group; items: RabeItem[] }[] } {
+  const groups = groupsOf(model, sel)
+  const order = orderIn(groups, sel)
   const selected = selectedItem(order, sel)
   const row = (item: RabeItem) => itemLine(item, model.now, item === selected)
   const blocks = groups.map((group): Line[] => {
@@ -124,7 +137,7 @@ function listLines(
   return {
     lines: focusOn(lines, selected?.id ?? ''),
     order,
-    shown: groups.map(group => group.items),
+    shown: groups.map(group => ({ id: group.id, items: group.items })),
   }
 }
 
@@ -156,11 +169,13 @@ function summaryLine(model: Model, item: RabeItem): Line {
 // g stops the run of a workflow or its agent, else the rows of the group the
 // selected row is shown in (`shown`). Below the split, s keeps only its letter.
 // x and g keep their slots while they cannot act: dim, without a hotkey.
+// Each key names its target (`stop:<id>`, `stop-group:<group>:<hash of ids>`,
+// `stop-run:<id>`), so a new target is a new key and never takes a held slot.
 function listButtons(
   model: Model,
   size: Size,
   selected: RabeItem | undefined,
-  shown: RabeItem[][],
+  shown: { id: Group; items: RabeItem[] }[],
 ) {
   const run =
     selected?.kind === 'workflow'
@@ -168,9 +183,8 @@ function listButtons(
       : selected && isWorkflowAgent(selected)
         ? model.items.find(one => one.id === selected.parentId && one.kind === 'workflow')
         : undefined
-  const group = (shown.find(list => selected && list.includes(selected)) ?? [])
-    .filter(canStop)
-    .map(one => one.id)
+  const home = shown.find(one => selected && one.items.includes(selected))
+  const group = (home?.items ?? []).filter(canStop).map(one => one.id)
   const slot = (key: string, label: string, ids: string[] | undefined): ViewButton =>
     ids
       ? { key, label, hotkey: label.slice(0, 1), action: { type: 'stop', ids } }
@@ -189,13 +203,17 @@ function listButtons(
     : []
   buttons.push(
     slot(
-      'stop',
+      `stop:${selected?.id ?? ''}`,
       'x: stop',
       selected && selected !== run && canStop(selected) ? [selected.id] : undefined,
     ),
     run
-      ? slot('stop-group', 'g: stop run', canStop(run) ? [run.id] : undefined)
-      : slot('stop-group', 'g: stop group', group.length > 1 ? group : undefined),
+      ? slot(`stop-run:${run.id}`, 'g: stop run', canStop(run) ? [run.id] : undefined)
+      : slot(
+          `stop-group:${home?.id ?? ''}:${group.length > 1 ? hash(group) : ''}`,
+          'g: stop group',
+          group.length > 1 ? group : undefined,
+        ),
   )
 
   return buttons

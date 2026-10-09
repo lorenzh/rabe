@@ -6,16 +6,18 @@ import {
   isPress,
   type Line,
   type Model,
+  NONE,
   type Node,
   type Press,
   type Selection,
   type Size,
   type View,
+  type ViewButton,
 } from '../view'
 import { costView } from './cost'
 import { detailView } from './detail'
 import { effectsView } from './effects'
-import { isSplit, itemsView } from './items'
+import { isSplit, itemsView, listOrder } from './items'
 import { fitLine } from './lines'
 import { timelineView } from './timeline'
 
@@ -126,6 +128,27 @@ function tabLines(model: Model, size: Size, sel: Selection): Line[] {
 // of the focus order (see `hold` in render.tsx). The view gets the rows the
 // rest leaves; a list longer than that makes the pane scroll, and the focus
 // carries the window along.
+// What the drawing could not show as the person left it: the open item, or
+// the selected row of the Items list, gone (pruned, filtered or folded away).
+// The view then falls back to the list, or to its first row.
+export function fallbackOf(model: Model, sel: Selection): string {
+  if (sel.tab !== 'items') return ''
+  if (sel.open) return model.items.some(item => item.id === sel.open) ? '' : `open:${sel.open}`
+  if (!sel.selected) return ''
+
+  return listOrder(model, sel).some(item => item.id === sel.selected)
+    ? ''
+    : `selected:${sel.selected}`
+}
+
+// Stop and delete drawn while the pane is disarmed: dim, no action, no hotkey.
+const disarmed = (one: ViewButton): ViewButton => {
+  if (one.action.type !== 'stop' && one.action.type !== 'delete') return one
+  const { hotkey: _, ...rest } = one
+
+  return { ...rest, action: NONE, dim: true }
+}
+
 export const paneView: View = (model, size, sel): Drawn => {
   const isOpen = sel.tab === 'items' && model.items.some(item => item.id === sel.open)
   const body = isOpen ? detailView : (TABS.find(one => one.tab === sel.tab)?.view ?? itemsView)
@@ -138,7 +161,8 @@ export const paneView: View = (model, size, sel): Drawn => {
   const first = body(model, room(size.rows - head.length - HINT, head.length), sel)
   const tools = controlRows(first, size)
   const rows = size.rows - head.length - tools - HINT
-  const inner = body(model, room(rows, head.length + tools), sel)
+  const drawn = body(model, room(rows, head.length + tools), sel)
+  const inner = sel.isArmed ? drawn : { ...drawn, buttons: drawn.buttons.map(disarmed) }
   const pad = Math.max(0, rows - rowsOf(inner.nodes))
   const nodes: Node[] = [
     ...head,

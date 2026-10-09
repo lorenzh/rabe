@@ -2,11 +2,33 @@ import { expect, test } from 'claude-code/testing'
 import type { RabeItem, RabeItemOf } from '../../model'
 import { cell, lines } from '../cells/grid'
 import { C, DEFAULT } from '../cells/palette'
-import { ALL, ci, dev, explore, flow, gridOf, lint, NOW, plan, review, verify } from '../fixtures'
+import {
+  ALL,
+  babysit,
+  ci,
+  dev,
+  explore,
+  flow,
+  gridOf,
+  lint,
+  NOW,
+  plan,
+  review,
+  verify,
+} from '../fixtures'
 import { grouped, orderOf } from '../lists'
-import { controlRows, type Drawn, isPress, NO_SELECTION, rowKeys, type Size } from '../view'
+import {
+  controlRows,
+  type Drawn,
+  hash,
+  isPress,
+  NO_SELECTION,
+  NONE,
+  rowKeys,
+  type Size,
+} from '../view'
 import { itemsView } from './items'
-import { paneView } from './pane'
+import { fallbackOf, paneView } from './pane'
 
 const WIDE: Size = { columns: 100, rows: 24, surface: 'terminal', hasInput: true }
 const NARROW: Size = { ...WIDE, columns: 80, rows: 12 }
@@ -118,7 +140,7 @@ test('a workflow agent stays out of a group stop', () => {
   } as RabeItem
   const m = { items: [flow, verify, other, explore], turns: {}, lines: {}, now: NOW }
   const { buttons } = gridOf(itemsView(m, WIDE, { ...NO_SELECTION, selected: explore.id }))
-  const group = buttons.find(b => b.key === 'stop-group')?.action
+  const group = buttons.find(b => b.hotkey === 'g')?.action
   expect(group).toMatchObject({ type: 'stop' })
   expect(group?.type === 'stop' ? group.ids : []).not.toContain(verify.id)
   expect(group?.type === 'stop' ? group.ids : []).not.toContain(other.id)
@@ -181,14 +203,14 @@ test('a workflow agent or a run offers g: stop run on the list', () => {
   for (const selected of [verify.id, flow.id]) {
     const { buttons } = itemsView(model, WIDE, { ...NO_SELECTION, selected })
     const run = buttons.find(one => one.hotkey === 'g')
-    expect(run).toMatchObject({ key: 'stop-group', label: 'g: stop run' })
+    expect(run).toMatchObject({ key: `stop-run:${flow.id}`, label: 'g: stop run' })
     expect(run?.action).toEqual({ type: 'stop', ids: [flow.id] })
     expect(buttons.find(one => one.hotkey === 'x')).toBeUndefined()
   }
 })
 
 const stopIds = (drawn: Drawn) => {
-  const action = drawn.buttons.find(one => one.key === 'stop-group')?.action
+  const action = drawn.buttons.find(one => one.key.startsWith('stop-group:'))?.action
   return action?.type === 'stop' ? action.ids : undefined
 }
 
@@ -291,4 +313,60 @@ test('the split detail sits in the rows the pane shows, where the focus took the
     },
   )
   expect(detailAt(still, 's08') + controlRows(still, WIDE)).toBe(5)
+})
+
+// A control that acts on an item carries its target in its key: another
+// selected row or another set of group rows is another key.
+test('x and g name what they stop in their keys', () => {
+  const sel = { ...NO_SELECTION, selected: explore.id }
+  const [, x, g] = itemsView(model, WIDE, sel).buttons
+  expect(x).toMatchObject({
+    key: `stop:${explore.id}`,
+    action: { type: 'stop', ids: [explore.id] },
+  })
+  const ids = g?.action.type === 'stop' ? g.action.ids : []
+  expect(g?.key).toBe(`stop-group:agents:${hash(ids)}`)
+  const [, other] = itemsView(model, WIDE, { ...sel, selected: review.id }).buttons
+  expect(other?.key).toBe(`stop:${review.id}`)
+  const fewer = { ...model, items: ALL.filter(item => item.id !== review.id) }
+  expect(itemsView(fewer, WIDE, sel).buttons[2]?.key).not.toBe(g?.key)
+  const ended = itemsView(model, WIDE, { ...sel, selected: lint.id }).buttons
+  expect(ended[1]).toMatchObject({ key: `stop:${lint.id}`, action: { type: 'none' }, dim: true })
+  const none = itemsView({ ...model, items: [] }, WIDE, NO_SELECTION).buttons
+  expect(none.map(one => [one.key, one.action.type])).toEqual([
+    ['find', 'focus'],
+    ['stop:', 'none'],
+    ['stop-group::', 'none'],
+  ])
+})
+
+// Until the ring is known to sit on a safe element, stop and delete are drawn
+// but do nothing (see arming in docs/architecture.md).
+test('a disarmed pane draws its stops and deletes dim, without action or hotkey', () => {
+  const sel = { ...NO_SELECTION, selected: explore.id, isFocused: true }
+  const armed = paneView(model, WIDE, { ...sel, isArmed: true })
+  const disarmed = paneView(model, WIDE, sel)
+  expect(disarmed.buttons.map(one => one.key)).toEqual(armed.buttons.map(one => one.key))
+  expect(disarmed.buttons.slice(1)).toEqual(
+    armed.buttons.slice(1).map(({ hotkey: _, ...one }) => ({ ...one, action: NONE, dim: true })),
+  )
+  expect(disarmed.buttons[0]).toEqual(armed.buttons[0])
+  const cron = paneView(model, WIDE, { ...sel, open: babysit.id })
+  expect(cron.buttons.find(one => one.key.startsWith('delete:'))?.action).toEqual(NONE)
+  expect(cron.buttons.find(one => one.key.startsWith('copy:'))?.action.type).toBe('copy')
+  const hint = (drawn: Drawn) => lines(gridOf(drawn).grid).at(-1)?.trim()
+  expect(hint(armed)).toBe('↑↓ move · enter open · x stop · g stop group · esc close')
+  expect(hint(disarmed)).toBe('↑↓ move · enter open · esc close')
+})
+
+test('a view falls back when its open item or its selected row is gone', () => {
+  const sel = { ...NO_SELECTION, selected: explore.id }
+  expect(fallbackOf(model, sel)).toBe('')
+  expect(fallbackOf(model, { ...sel, open: dev.id })).toBe('')
+  expect(fallbackOf(model, { ...sel, open: 'shell:gone' })).toBe('open:shell:gone')
+  expect(fallbackOf(model, { ...sel, open: 'shell:gone', tab: 'cost' })).toBe('')
+  expect(fallbackOf(model, { ...sel, selected: 'agent:gone' })).toBe('selected:agent:gone')
+  expect(fallbackOf(model, { ...sel, query: 'zz' })).toBe(`selected:${explore.id}`)
+  expect(fallbackOf(model, { ...sel, tab: 'cost', selected: 'agent:gone' })).toBe('')
+  expect(fallbackOf(model, NO_SELECTION)).toBe('')
 })
