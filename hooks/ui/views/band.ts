@@ -25,7 +25,7 @@ const cost = (parts: string[]): Span[] => [
 // empty one.
 export const bandView: View = (model, size) => {
   const rows = bandRows(model.items, model.now)
-  const money = costLine(model.items)?.split(' · ')
+  const money = costLine(model.items, model.usd)?.split(' · ')
   const count = rows.length + (money ? 1 : 0)
   if (count > size.rows) {
     const g = grid(size.columns, 1)

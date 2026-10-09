@@ -109,6 +109,7 @@ test('without any dollar amount the cost is n/a, not $0.00', () => {
   const unpriced = ALL.map(({ costUsd: _, ...item }) => item as RabeItem)
   expect(totals(unpriced)).toEqual({ tokens: 91_000, unknown: 2 })
   expect(costLine(unpriced)).toBe('cost n/a · 91k tok · top: Explore verifyToken 41k')
+  expect(costLine(unpriced, 0.41)).toBe('≈ $0.41 · 91k tok · top: Explore verifyToken 41k')
 })
 
 test('workflow phases follow the agents in them', () => {

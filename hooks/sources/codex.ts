@@ -1,7 +1,14 @@
 import type { EngineInterface, On } from 'claude-code'
 
 import type { RabeCodexStep, RabeTokens } from '../../types'
-import { type EndStatus, itemId, type NewItem, type RabeItem, type RabeItemOf } from '../model'
+import {
+  clip,
+  type EndStatus,
+  itemId,
+  type NewItem,
+  type RabeItem,
+  type RabeItemOf,
+} from '../model'
 import { addItem, type Change, commit, endItem } from '../registry'
 
 const POLL_MS = 2000
@@ -64,10 +71,6 @@ function defined<T extends object>(value: T): T {
   return Object.fromEntries(Object.entries(value).filter(([, one]) => one !== undefined)) as T
 }
 
-function clip(text: string): string {
-  return text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT - 1)}…` : text
-}
-
 function texts(content: unknown, type: string): string {
   return list(content)
     .map(rec)
@@ -126,7 +129,7 @@ export function parseRollout(text: string): Rollout {
         out.steps.push(
           defined({
             kind: 'command' as const,
-            text: clip(shellLine(item.command)),
+            text: clip(shellLine(item.command), MAX_TEXT),
             exitCode: num(item.exit_code),
             lines: lineCount(item.aggregated_output),
           }),
@@ -135,17 +138,17 @@ export function parseRollout(text: string): Rollout {
     } else if (record.type === 'response_item') {
       if (payload.type === 'message' && payload.role === 'assistant') {
         const message = texts(payload.content, 'output_text')
-        if (message) out.steps.push({ kind: 'message', text: clip(message) })
+        if (message) out.steps.push({ kind: 'message', text: clip(message, MAX_TEXT) })
       } else if (payload.type === 'reasoning') {
         const summary = list(payload.summary)
           .map(part => str(rec(part).text))
           .filter(Boolean)
           .join('\n')
-        if (summary) out.steps.push({ kind: 'reasoning', text: clip(summary) })
+        if (summary) out.steps.push({ kind: 'reasoning', text: clip(summary, MAX_TEXT) })
       } else if (payload.type === 'custom_tool_call') {
         const step: RabeCodexStep = {
           kind: 'command',
-          text: clip(pendingCommand(payload.input)),
+          text: clip(pendingCommand(payload.input), MAX_TEXT),
           isRunning: true,
         }
         pending.set(String(payload.call_id), step)

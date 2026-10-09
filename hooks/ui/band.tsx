@@ -9,7 +9,8 @@ export function band(on: On): void {
     if (e.props.hasSurvey) return next(e)
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     if (!items.some(item => item.status === 'running')) return next(e)
-    const model = { items, turns: {}, lines: {}, now: await $.clock.now() }
+    const usage = await $.session.usage().catch(() => undefined)
+    const model = { items, turns: {}, lines: {}, now: await $.clock.now(), usd: usage?.cost?.usd }
     const size = {
       columns: e.props.bodyColumns,
       rows: e.props.maxRows,

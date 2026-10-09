@@ -127,10 +127,38 @@ test('a spawn adds a running agent under its workflow', async ($, on) => {
         type: 'general-purpose',
         model: 'claude-opus-5-5',
         description: 'verify:db.ts',
+        prompt: 'Verify the pool',
         workflowIndex: 5,
       },
     },
   ])
+})
+
+test('a long answer is kept cut with an ellipsis', async ($, on) => {
+  const held = engine(on, 'a1')
+  // biome-ignore lint/correctness/useYield: the engine's stand-in answers without chunks
+  on('turn.step', async function* (_$, e) {
+    return {
+      turnId: e.turnId,
+      index: e.index,
+      answer: 'word '.repeat(100),
+      toolUses: [],
+      stopReason: 'end_turn' as const,
+      usage: {
+        input_tokens: 1,
+        output_tokens: 1,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        model: 'claude-opus-5-5',
+      },
+    }
+  })
+  await $.agent.spawn(SPAWN)
+  const stream = $.turn.step({ turnId: 't1', index: 0, model: 'm', messageCount: 1, agentId: 'a1' })
+  for await (const _ of stream);
+  const text = held.turns?.['agent:a1']?.[0]?.text ?? ''
+  expect(text.length).toBe(300)
+  expect(text.endsWith('…')).toBe(true)
 })
 
 test('a spawn from another agent names that agent as parent', async ($, on) => {

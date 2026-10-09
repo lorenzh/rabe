@@ -33,6 +33,7 @@ Rabe keeps its own list. It adds an item when a hook reports a start (`tool.call
 |---|---|
 | id, type, description, name, status, parent | `$.agent.list()` (d.ts:3159, d.ts:122). Status values at d.ts:544. Workflow agents are not in this list (d.ts:3157). |
 | Start time | Rabe's own clock at `agent.spawn` (d.ts:4063). |
+| Prompt | `agent.spawn`'s `prompt`, the Agent tool's `prompt` parameter (d.ts:276). Agents that started before Rabe loaded have none and show the description. |
 | Tool calls, recent tools | `tool.call` carries `agentId` (d.ts:12589). |
 | Tokens, live | `turn.step` carries `agentId` and `usage` per request (d.ts:13316, d.ts:13413). `turn.complete` has the total (d.ts:13201). Rabe adds up the steps, so an agent that runs again after a message keeps counting. |
 | Tool calls per response | The `turn.step` result lists `toolUses` with name and input. Rabe uses it for the tool count and the turns, so it needs no `tool.call` hook per agent. |
@@ -148,7 +149,7 @@ The views read no files. The sources keep what the views show in session state:
 | Codex steps, prompt, model | the item's `detail` (`steps`, `prompt`, `model`, `effort`) | the Codex source, from the Codex session file |
 | Shell and monitor output | `rabe.lines` | the shells and monitors sources, from the task output file |
 | Files agents edited | `rabe.turns`: the `Edit`, `Write` and `MultiEdit` calls, whose summary is the input's `file_path` | agents source; no line counts, since the turn keeps only the summary |
-| Session cost | `Model.usd`, from `$.session.usage().cost.usd` (d.ts:11635), the dollars `/cost` totals | `pane.tsx` on each draw; absent where the host keeps no ledger |
+| Session cost | `Model.usd`, from `$.session.usage().cost.usd` (d.ts:11635), the dollars `/cost` totals | `pane.tsx` and `band.tsx` on each draw; absent where the host keeps no ledger |
 | Previous session | `Model.previous`, from `$.store` key `previous:<cwd>` | `pane.tsx` on `session.end`, from the items and `$.session.usage()` |
 
 A file the source cannot read leaves the value as it was, and the view shows `n/a`.

@@ -72,6 +72,15 @@ test('an agent shows a cost box, its brief and its turns from rabe.turns', () =>
   expect(buttons.find(b => b.key === 'stop')?.label).toBe('x: stop')
 })
 
+test('the brief of an agent is the prompt it was given when Rabe saw the spawn', () => {
+  const agent = {
+    ...explore,
+    detail: { ...explore.detail, description: 'Find it', prompt: 'Find verifyToken in src.' },
+  } as RabeItem
+  const shown = lines(open(model([agent]), agent.id).grid)
+  expect(shown[shown.indexOf('▸ brief') + 1]).toBe('  Find verifyToken in src.')
+})
+
 test('a long brief keeps three lines', () => {
   const agent = {
     ...explore,
@@ -115,7 +124,7 @@ test('a codex job shows its steps with the running command raised and an x: stop
   expect(shown).toContain('  Review middleware/auth.ts for token-expiry bugs.')
   expect(fg(g, find(g, '● Reading the diff.'))).toBe(C.cyan)
   expect(shown).toContain('  thinking: Diff first.')
-  expect(fg(g, find(g, '✓ exit 0 · 1 lines'))).toBe(C.green)
+  expect(fg(g, find(g, '✓ exit 0 · 1 line'))).toBe(C.green)
   expect(fg(g, find(g, '✗ exit 1'))).toBe(C.red)
   const running = find(g, '◐ running')
   expect(fg(g, running)).toBe(C.yellow)
@@ -168,6 +177,13 @@ test('a shell shows its output tail and its exit code in color', () => {
   expect(shown).toContain(' 42:5 error Unexpected any')
   expect(shown.findLast(line => line !== '')).toBe('✗ exit 2')
   expect(fg(g, find(g, '✗ exit 2'))).toBe(C.red)
+})
+
+test('a shell that printed one line says 1 line', () => {
+  const m = model([lint], {
+    lines: { [lint.id]: { seen: 1, lines: [{ at: NOW, text: 'seeding' }] } },
+  })
+  expect(lines(open(m, lint.id).grid)).toContain('▸ output · newest last · 1 line')
 })
 
 test('a shell without lines says its output is n/a', () => {

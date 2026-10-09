@@ -154,9 +154,10 @@ export const timelineView: View = (model, size, sel): Drawn => {
               nameSpans(item)
                 .map(([text]) => text)
                 .join(''),
-              labelWidth - 1,
+              labelWidth - 2,
             ),
           ],
+          [' '],
           [track(item, start, model.now, barWidth), { fg: color(item) }],
         ],
         ...(item === selected && { bg: C.selected }),

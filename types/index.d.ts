@@ -9,6 +9,7 @@ export type RabeAgentDetail = {
   type?: string
   model?: string
   description?: string
+  prompt?: string
   transcriptPath?: string
   cwd?: string
   worktreePath?: string

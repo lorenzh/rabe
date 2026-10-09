@@ -10,6 +10,7 @@ import type {
 
 import type { RabeToolUse, RabeTurn } from '../../types'
 import {
+  clip,
   type EndStatus,
   itemId,
   type RabeItem,
@@ -25,6 +26,7 @@ type AgentItem = RabeItemOf<'agent'>
 const POLL_MS = 3000
 const MAX_TURNS = 30
 const MAX_TEXT = 300
+const MAX_PROMPT = 600
 const MAX_SUMMARY = 80
 const SUMMARY_FIELDS = ['file_path', 'command', 'pattern', 'path', 'url', 'query', 'description']
 const META_FIELDS = ['cwd', 'worktreePath', 'worktreeBranch', 'workflowPhase'] as const
@@ -209,7 +211,7 @@ async function recordStep($: EngineInterface, agentId: string, result: TurnStepR
   const ids = items.map(one => one.id)
   await writeTurns($, turns => {
     const index = (turns[id]?.at(-1)?.index ?? 0) + 1
-    const turn = { index, at: now, text: result.answer.slice(0, MAX_TEXT), tools }
+    const turn = { index, at: now, text: clip(result.answer, MAX_TEXT), tools }
 
     return addTurn(turns, id, turn, ids)
   })
@@ -245,6 +247,7 @@ export function agents(on: On): void {
             type: e.subagentType,
             model: result.model,
             description: e.description,
+            prompt: clip(e.prompt, MAX_PROMPT),
             workflowIndex: e.workflow?.agentIndex,
           },
         },

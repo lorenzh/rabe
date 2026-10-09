@@ -205,13 +205,16 @@ export function share(items: RabeItem[], item: RabeItem): string {
   return all > 0 && own >= 0 ? `${Math.round((own / all) * 100)}%` : 'n/a'
 }
 
-export function costLine(items: RabeItem[]): string | undefined {
+// `session` is the session's cost as `/cost` totals it; it wins over the sum
+// of the items, which misses every worker without a dollar amount.
+export function costLine(items: RabeItem[], session?: number): string | undefined {
   const sum = totals(items)
   if (sum.tokens === 0) return undefined
   const top = byTokens(items)[0]
   const topText = top?.tokens ? ` · top: ${top.title} ${tokens(tokenSum(top))}` : ''
 
-  const dollars = sum.usd === undefined ? 'cost n/a' : `≈ ${usd(sum.usd)}`
+  const known = session ?? sum.usd
+  const dollars = known === undefined ? 'cost n/a' : `≈ ${usd(known)}`
 
   return `${dollars} · ${tokens(sum.tokens)} tok${topText}`
 }

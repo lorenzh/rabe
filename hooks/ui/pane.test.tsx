@@ -206,7 +206,7 @@ test('a codex job shows its steps from the item on every surface', async ($, on)
     expect(shown).toContain('  Review middleware/auth.ts for token-expiry bugs.')
     expect(shown).toContain('● Reading the diff.')
     expect(shown).toContain('  thinking: Diff first.')
-    expect(shown.some(line => /^ {2}\$ git diff +✓ exit 0 · 1 lines$/.test(line))).toBe(true)
+    expect(shown.some(line => /^ {2}\$ git diff +✓ exit 0 · 1 line$/.test(line))).toBe(true)
     await ui.unmount()
   }
 })

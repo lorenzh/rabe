@@ -49,6 +49,12 @@ test('each item gets a bar over its run, colored by kind while it runs, then by 
   expect(cell(grid, x, done)[1]).toBe(C.green)
 })
 
+test('a long name is cut and keeps a space before its bar', () => {
+  const long = { ...dev, title: 'python3 -u -m http.server 4173', startedAt: NOW - 39 * 60_000 }
+  const shown = lines(timelineView({ ...MODEL, items: [long] }, SIZE, NO_SELECTION).grid)
+  expect(shown[4]).toMatch(/^▌python3 -u -m http\.se… █+$/)
+})
+
 test('a cron job draws one tick per run since Rabe saw it', () => {
   const { grid } = timelineView(MODEL, SIZE, NO_SELECTION)
   const shown = lines(grid)

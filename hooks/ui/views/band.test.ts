@@ -45,6 +45,11 @@ test('the cost row puts the dollar amount first and bright, the rest dim', () =>
   expect(cell(grid, at(shown, 7, '91k'), 7)[1]).toBe(C.dim)
 })
 
+test('the cost row shows the session cost when Rabe knows it', () => {
+  const shown = lines(bandView({ ...model(), usd: 0.41 }, SIZE, NO_SELECTION).grid)
+  expect(shown[7]).toBe(' $ cost        ≈ $0.41 · 91k tok · top: Explore verifyToken 41k')
+})
+
 test('a band taller than maxRows becomes one line of count chips, failed first', () => {
   const { grid } = bandView(model(), { ...SIZE, columns: 120, rows: 3 }, NO_SELECTION)
   const shown = lines(grid)

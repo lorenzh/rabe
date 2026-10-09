@@ -19,6 +19,11 @@ export type ItemPatch = Partial<
 
 export type EndStatus = Exclude<RabeItemStatus, 'running'>
 
+// Cuts text to `max` characters, the last one an ellipsis.
+export function clip(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text
+}
+
 export function itemId(kind: RabeItemKind, nativeId: string): string {
   return `${kind}:${nativeId}`
 }

@@ -104,14 +104,16 @@ function topLines(model: Model, item: RabeItem, columns: number): Line[] {
   const box = costBox(model, item)
   switch (item.kind) {
     case 'agent':
-      return [...box, ...brief('brief', item.detail.description, columns)]
+      return [...box, ...brief('brief', item.detail.prompt || item.detail.description, columns)]
     case 'codex':
       return [...box, ...brief('prompt', item.detail.prompt, columns)]
     case 'workflow':
       return box
     case 'shell': {
       const seen = model.lines[item.id]?.seen
-      return [label(`output · newest last${seen ? ` · ${seen} lines` : ''}`)]
+      return [
+        label(`output · newest last${seen ? ` · ${seen} ${seen === 1 ? 'line' : 'lines'}` : ''}`),
+      ]
     }
     case 'monitor':
       return [label('lines received · newest last')]
@@ -148,7 +150,8 @@ function commandLine(step: {
   lines?: number
   isRunning?: boolean
 }): Line {
-  const lines = step.lines === undefined ? '' : ` · ${step.lines} lines`
+  const lines =
+    step.lines === undefined ? '' : ` · ${step.lines} ${step.lines === 1 ? 'line' : 'lines'}`
   const right: Span = step.isRunning
     ? ['◐ running ', { fg: C.yellow }]
     : step.exitCode === 0

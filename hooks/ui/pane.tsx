@@ -100,6 +100,10 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
         await $.state.set({ plugin: 'rabe', key: 'tab' }, 'items')
       }
       await $.state.set({ plugin: 'rabe', key: 'open' }, action.id)
+      // Back on the list the ring would stay where b was, on the first Button.
+      if (!action.id && surface === 'terminal') {
+        await $.ui.focus({ requestId: PANE, key: 'open' }).catch(() => undefined)
+      }
       return
     case 'query':
       await $.state.set({ plugin: 'rabe', key: 'query' }, action.text)
