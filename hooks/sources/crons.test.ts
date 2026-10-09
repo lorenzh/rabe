@@ -102,32 +102,69 @@ test('a wakeup shows when it fires, and the next one replaces it', async ($, on)
   ])
 })
 
-test('a cron job firing ends no wakeup; an unknown prompt ends only a due autonomous loop', async ($, on) => {
+// The texts Claude Code 2.1.295 fires for the two autonomous loops, shortened.
+const RECURRING_TICK = `# Autonomous loop tick
+
+Run the autonomous check using the loop instructions established earlier in this conversation. The recurring cron will fire the next tick automatically — do not call ScheduleWakeup from this tick.`
+const DYNAMIC_TICK = `# Autonomous loop tick (dynamic pacing)
+
+You scheduled this tick via the ScheduleWakeup tool (not a recurring cron). To keep the loop alive, call ScheduleWakeup again this turn with \`prompt\` set to the literal sentinel \`<<autonomous-loop-dynamic>>\` and \`noop\` set to \`true\` if this tick changed nothing.`
+
+test('a fired prompt ends a due wakeup only when it is its prompt or names its sentinel', async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const state = memoryState(on)
   tools(on)
   core(on)
-  await $.tool.call({ tool: 'CronCreate', cron: '*/5 * * * *', prompt: '/babysit-prs' })
-  const wake = { delaySeconds: 60, reason: 'r', prompt: '/loop check CI', noop: false }
-  await $.tool.call({ tool: 'ScheduleWakeup', ...wake })
+  await $.tool.call({ tool: 'CronCreate', cron: '*/5 * * * *', prompt: '<<autonomous-loop>>' })
+  await $.tool.call({
+    tool: 'ScheduleWakeup',
+    delaySeconds: 600,
+    reason: 'r',
+    prompt: '<<autonomous-loop-dynamic>>',
+    noop: false,
+  })
   const fire = (text: string) =>
     $.prompt.submit({ text, origin: { kind: 'scheduled-trigger' }, wait: false })
   const status = () =>
     (state['rabe.items']?.value as { id: string; status: string }[]).map(one => one.status)
-  await clock.set(1000)
+
+  // Not due yet: even its own text ends nothing.
+  await fire(DYNAMIC_TICK)
+  expect(status()).toEqual(['running', 'running'])
+
+  // Due: the recurring loop's tick and other text are no evidence.
+  await clock.set(601_000)
+  await fire(RECURRING_TICK)
   await fire('/babysit-prs')
   expect(status()).toEqual(['running', 'running'])
-  await fire('the recurring loop prompt, expanded')
-  expect(status()).toEqual(['running', 'running'])
+
+  // Its own tick names its sentinel.
+  await fire(DYNAMIC_TICK)
+  expect(status()).toEqual(['running', 'done'])
+})
+
+test('a /loop wakeup ends on its own prompt, not on an autonomous tick', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  tools(on)
+  core(on)
   await $.tool.call({
     tool: 'ScheduleWakeup',
-    ...wake,
-    delaySeconds: 30,
-    prompt: '<<autonomous-loop-dynamic>>',
+    delaySeconds: 60,
+    reason: 'r',
+    prompt: '/loop check CI',
+    noop: false,
   })
-  expect(status()).toEqual(['running', 'done', 'running'])
-  await fire('the dynamic loop prompt, expanded')
-  expect(status()).toEqual(['running', 'done', 'done'])
+  const fire = (text: string) =>
+    $.prompt.submit({ text, origin: { kind: 'scheduled-trigger' }, wait: false })
+  const status = () =>
+    (state['rabe.items']?.value as { id: string; status: string }[]).map(one => one.status)
+  await clock.set(61_000)
+  await fire(DYNAMIC_TICK)
+  await fire(RECURRING_TICK)
+  expect(status()).toEqual(['running'])
+  await fire('/loop check CI')
+  expect(status()).toEqual(['done'])
 })
 
 test('the autonomous loop sentinel gets a plain title', async ($, on) => {

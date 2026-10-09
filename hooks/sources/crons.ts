@@ -4,6 +4,7 @@ import { type EndStatus, itemId, type RabeItem, type RabeItemOf } from '../model
 import { addItem, type Change, commit, endItem } from '../registry'
 
 const LOOP_SENTINEL = '<<autonomous-loop-dynamic>>'
+const SENTINEL = /^<<[\w.-]+>>$/
 const WAKEUP = 'wakeup-'
 // A wakeup fires when the session is idle, up to 90 s early for :00 and :30.
 const FIRE_SLACK_MS = 90_000
@@ -44,18 +45,16 @@ function dueWakeups(items: RabeItem[], until: number) {
   )
 }
 
-// A fired prompt ends the due wakeups with that prompt. A cron job's prompt
-// ends none; any other text ends the due autonomous loops, whose sentinel
-// arrives expanded.
+// A due wakeup ends only on evidence that it fired: its own prompt, or the
+// sentinel it was given (`<<autonomous-loop-dynamic>>`), which its expanded
+// tick names. Other text, such as a recurring loop's tick, ends none.
 function fired(items: RabeItem[], text: string, now: number): RabeItem[] {
   const prompt = text.trim()
-  const due = dueWakeups(items, now + FIRE_SLACK_MS)
-  const same = due.filter(item => item.detail.prompt.trim() === prompt)
-  const isCron = runningCrons(items).some(
-    item => !isWakeup(item) && item.detail.prompt.trim() === prompt,
-  )
-  const loops = due.filter(item => item.detail.prompt === LOOP_SENTINEL)
-  const ends = same.length > 0 ? same : isCron ? [] : loops
+  const ends = dueWakeups(items, now + FIRE_SLACK_MS).filter(item => {
+    const own = item.detail.prompt.trim()
+
+    return own === prompt || (SENTINEL.test(own) && text.includes(own))
+  })
 
   return ends.reduce((next, item) => endItem(next, item.id, 'done', now), items)
 }
