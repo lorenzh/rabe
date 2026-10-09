@@ -75,8 +75,12 @@ const NOT_WIDTH_1: [number, number][] = [
   [0xfff0, 0xffff],
 ]
 
+// Combining marks and format characters take no cell of their own.
+const ZERO_WIDTH = /[\p{M}\p{Cf}]/u
+
 function isWidth1(code: number): boolean {
   if (code < 0x20 || (code >= 0x7f && code < 0xa0) || code === 0xad || code > 0xffff) return false
+  if (ZERO_WIDTH.test(String.fromCharCode(code))) return false
 
   return !NOT_WIDTH_1.some(([from, to]) => code >= from && code <= to)
 }
@@ -112,6 +116,19 @@ export function grid(columns: number, rows: number, style: Style = {}): Grid {
   }
 
   return { columns: width, rows: height, cells }
+}
+
+// The most a Raster takes: 512 columns, 256 rows.
+export const MAX_COLUMNS = 512
+export const MAX_ROWS = 256
+
+// The grid cut to what a Raster takes; a grid that fits comes back as is.
+export function clamp(g: Grid): Grid {
+  if (g.columns <= MAX_COLUMNS && g.rows <= MAX_ROWS) return g
+  const out = grid(Math.min(g.columns, MAX_COLUMNS), Math.min(g.rows, MAX_ROWS))
+  paste(out, g, 0, 0)
+
+  return out
 }
 
 function put(g: Grid, x: number, y: number, code: number, style: Style): void {

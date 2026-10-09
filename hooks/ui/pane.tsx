@@ -8,6 +8,12 @@ import { paneView } from './views/pane'
 
 const PANE = 'rabe'
 
+// Esc may have closed the pane before the delayed focus call.
+async function refocus($: EngineInterface): Promise<void> {
+  if (!(await $.ui.panes()).some(one => one.id === PANE)) return
+  await $.ui.open({ id: PANE, title: 'Rabe', focus: true, closeOnEscape: true })
+}
+
 async function tick($: EngineInterface): Promise<void> {
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   if (items.some(item => item.status === 'running')) $.ui.invalidate('ui.render')
@@ -157,10 +163,7 @@ export function pane(on: On): void {
 
   on('command.run', { command: 'rabe' }, async $ => {
     await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })
-    $.clock.after(
-      1500,
-      () => void $.ui.open({ id: PANE, title: 'Rabe', focus: true, closeOnEscape: true }),
-    )
+    $.clock.after(1500, () => void refocus($).catch(() => undefined))
 
     return { text: 'Rabe opened.' }
   })

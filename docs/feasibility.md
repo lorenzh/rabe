@@ -2,7 +2,7 @@
 title: What Rabe can see
 description: Where Rabe gets each piece of data about background work (mod API, files on disk, source code), what is not available, the pane key model, what a Raster can draw, what of Claude Code's own display a mod can hide, and what still needs a runtime test.
 tags: [feasibility, data-sources, mod-api, claude-code, codex, runtime-tests]
-keywords: [Raster, session.usage, cost.usd, $.store, session.end, previous session, files touched, cells, bodyColumns, blit, autoFocus, closeOnEscape, PromptHint, TurnDuration, disableAgentView, agent list, local_bash, installed_plugins.json, CLAUDE_PLUGIN_DATA, CODEX_HOME, sessionId, custom_tool_call, CommandExecution, subagent, workflow, workflowPhase, meta.json, worktree, codex, rollout, threadId, token_count, model_reasoning_summary, shell, task output, monitor, cron, CronList, TaskStop, tool.check, hotkey, Button, focus, band, pane, 4 MiB, n/a, task-notification, output-file, exited with code, killed, backgroundTaskId, background_tasks, session_crons, ScheduleWakeup, scheduledFor, scheduled-trigger, transcript, tool_use, tool_result, item_completed, task_complete]
+keywords: [Raster, ui.panes, combining mark, session.usage, cost.usd, $.store, session.end, previous session, files touched, cells, bodyColumns, blit, autoFocus, closeOnEscape, PromptHint, TurnDuration, disableAgentView, agent list, local_bash, installed_plugins.json, CLAUDE_PLUGIN_DATA, CODEX_HOME, sessionId, custom_tool_call, CommandExecution, subagent, workflow, workflowPhase, meta.json, worktree, codex, rollout, threadId, token_count, model_reasoning_summary, shell, task output, monitor, cron, CronList, TaskStop, tool.check, hotkey, Button, focus, band, pane, 4 MiB, n/a, task-notification, output-file, exited with code, killed, backgroundTaskId, background_tasks, session_crons, ScheduleWakeup, scheduledFor, scheduled-trigger, transcript, tool_use, tool_result, item_completed, task_complete]
 ---
 
 # What Rabe can see
@@ -114,13 +114,13 @@ Line times: task notifications are delayed and often carry several lines, so the
 - **Pane.** Docks beside the transcript, or sits inline at about a third of the height. There is no full screen (d.ts:10241). Design for narrow widths with `bodyColumns`.
 - **Keys.** Tested: nothing holds focus when the pane opens, so Enter does nothing until Tab is pressed, unless a Button has `autoFocus`. Tab and Down move focus between Buttons (`ui.focus` fires); Left and Right do nothing. Enter presses the focused Button. Space never presses a Button: it takes the keys away from the pane. Hotkeys are one digit or one lowercase letter, and Shift is ignored, so `X` is the same as `x` (d.ts:1070, d.ts:9334). `/`, space and `←→` cannot be bindings. `Client.onKey` gets every key, but only after a mouse click (d.ts:1583).
 - **Esc.** Without `closeOnEscape` Esc only returns the keys and the pane stays. With it, Esc closes the pane while it holds the keys, and at an idle, empty prompt (`PaneOpenArgs.closeOnEscape`).
-- **Opening focused.** `$.ui.open({ focus: true })` inside `command.run` places the pane but does not focus it. The same call from `$.clock.after(1500)` after the command does focus it.
+- **Opening focused.** `$.ui.open({ focus: true })` inside `command.run` places the pane but does not focus it. The same call from `$.clock.after(1500)` after the command does focus it. Esc may close the pane in that time, so the late call first checks `$.ui.panes()` (d.ts:2499, this plugin's open panes) and opens nothing when the pane is gone.
 - **Large lists.** A tree draws at most 100,000 characters. Draw the visible part and use `$.ui.scroll`.
 - **Status line and toasts.** `$.ui.status` (d.ts:2449) and `$.ui.toast` (d.ts:2437).
 
 ### Raster
 
-`Raster` (d.ts:9188) is a fixed grid of cells: `columns` 1 to 512, `rows` 1 to 256, and `cells`, standard padded base64 of little-endian u32 triplets `[codePoint, foreground, background]`. A code point is one printable width-1 BMP character, or the tree is refused naming the cell's index. A color is `0x00RRGGBB`, or `0x01000000` for the terminal's default. No bold, underline or italic. It is a leaf (no press, no focus), and only the terminal's element table has it.
+`Raster` (d.ts:9188) is a fixed grid of cells: `columns` 1 to 512, `rows` 1 to 256, and `cells`, standard padded base64 of little-endian u32 triplets `[codePoint, foreground, background]`. A code point is one printable width-1 BMP character, or the tree is refused naming the cell's index. A color is `0x00RRGGBB`, or `0x01000000` for the terminal's default. Rabe cuts every grid to that size before it draws (`clamp`), and `safe()` replaces combining marks and format characters (such as the Devanagari virama U+094D), which take no cell. No bold, underline or italic. It is a leaf (no press, no focus), and only the terminal's element table has it.
 
 Tested in a live 2.1.295 session in tmux (a spike mod, 2026-10-08):
 

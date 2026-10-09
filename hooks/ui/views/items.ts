@@ -206,9 +206,11 @@ export const itemsView: View = (model, size, sel): Drawn => {
     return { grid: g, buttons, inputs }
   }
   const listWidth = split ? Math.min(48, Math.floor(size.columns * 0.42)) : size.columns
-  const shown = windowed(lines, selected ? listRows : size.rows)
-  // Off the terminal each row is a Text or a Button, so the grid ends with the list.
-  if (size.surface !== 'terminal') g = grid(size.columns, shown.length)
+  // Off the terminal each row is a Text or a Button the surface scrolls, so the
+  // grid holds the whole list.
+  const isTerminal = size.surface === 'terminal'
+  const shown = isTerminal ? windowed(lines, selected ? listRows : size.rows) : lines
+  if (!isTerminal) g = grid(size.columns, shown.length)
   draw(g, 0, 0, listWidth, shown)
   if (selected && split) {
     vline(g, listWidth, 0, size.rows, { fg: C.rule })

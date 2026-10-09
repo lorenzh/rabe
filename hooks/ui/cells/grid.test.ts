@@ -4,6 +4,7 @@ import {
   bar,
   box,
   cell,
+  clamp,
   decode,
   encode,
   fill,
@@ -48,6 +49,8 @@ test('safe keeps width-1 BMP characters and replaces the rest', () => {
   expect(safe('日本')).toBe('??')
   expect(safe('é')).toBe('e?')
   expect(safe('✅ ok')).toBe('? ok')
+  expect(safe('नमस्ते')).toBe('नमस?त?')
+  expect(safe('a\u200db')).toBe('a?b')
 })
 
 test('fit pads short text and cuts long text with an ellipsis', () => {
@@ -80,6 +83,16 @@ test('bar fills a width in eighths of a block', () => {
   expect(bar(1, 2, 4)).toBe('██  ')
   expect(bar(1, 16, 2)).toBe('▏ ')
   expect(bar(5, 0, 3)).toBe('   ')
+})
+
+test('clamp cuts a grid to the 512 columns and 256 rows a Raster takes', () => {
+  const small = grid(3, 2)
+  expect(clamp(small)).toBe(small)
+  const big = grid(600, 300)
+  write(big, 0, 0, 'a')
+  const cut = clamp(big)
+  expect([cut.columns, cut.rows]).toEqual([512, 256])
+  expect(cell(cut, 0, 0)[0]).toBe(97)
 })
 
 test('paste copies one grid into another and clips it', () => {

@@ -102,6 +102,25 @@ test('a wakeup shows when it fires, and the next one replaces it', async ($, on)
   ])
 })
 
+test('a cron job firing ends no wakeup; an unknown prompt ends the due ones', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  tools(on)
+  core(on)
+  await $.tool.call({ tool: 'CronCreate', cron: '*/5 * * * *', prompt: '/babysit-prs' })
+  const wake = { delaySeconds: 60, reason: 'r', prompt: '/loop check CI', noop: false }
+  await $.tool.call({ tool: 'ScheduleWakeup', ...wake })
+  const fire = (text: string) =>
+    $.prompt.submit({ text, origin: { kind: 'scheduled-trigger' }, wait: false })
+  const status = () =>
+    (state['rabe.items']?.value as { id: string; status: string }[]).map(one => one.status)
+  await clock.set(1000)
+  await fire('/babysit-prs')
+  expect(status()).toEqual(['running', 'running'])
+  await fire('the loop prompt, expanded')
+  expect(status()).toEqual(['running', 'done'])
+})
+
 test('the autonomous loop sentinel gets a plain title', async ($, on) => {
   mock.clock(on, { now: 1000 })
   const state = memoryState(on)

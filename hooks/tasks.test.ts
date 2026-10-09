@@ -13,6 +13,18 @@ import {
 
 const DIR = '/tmp/claude-1004/-home-me-app/5f1c/tasks'
 
+test('a line still being written is updated once it is complete', () => {
+  const first = appendLines(undefined, ['hel'], 10)
+  expect(appendLines(first, ['hello'], 20)).toEqual({ seen: 1, lines: [{ at: 10, text: 'hello' }] })
+  expect(appendLines(first, ['hello', 'world'], 20)).toEqual({
+    seen: 2,
+    lines: [
+      { at: 10, text: 'hello' },
+      { at: 20, text: 'world' },
+    ],
+  })
+})
+
 test('a notification gives task id, status, output file and exit code', () => {
   const text = `<task-notification>
 <task-id>bi7ug3at2</task-id>

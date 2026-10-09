@@ -103,6 +103,11 @@ test('off the terminal each row is plain text the renderer turns into a Button',
   expect(buttons.map(one => one.key)).toEqual(['find'])
 })
 
+test('off the terminal the list is never cut: the surface scrolls it', () => {
+  const { grid } = itemsView(model, { ...DESKTOP, rows: 4 }, NO_SELECTION)
+  expect(lines(grid).at(-1)).toBe('⟳ /babysit-prs · next 3:00')
+})
+
 test('a folded group says so off the terminal', () => {
   const { grid } = itemsView(model, DESKTOP, { ...NO_SELECTION, folded: ['failed'] })
   expect(lines(grid).slice(0, 2)).toEqual(['Failed 1 · folded', 'Agents 6'])

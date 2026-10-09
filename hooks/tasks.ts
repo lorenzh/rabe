@@ -101,8 +101,15 @@ export function appendLines(
   max = MAX_LINES,
 ): RabeLines | undefined {
   const seen = held?.seen ?? 0
-  if (lines.length <= seen) return undefined
+  const kept = held?.lines ?? []
+  // The last line read may have been cut mid-write; it keeps its time.
+  const last = kept.at(-1)
+  const grown = last && seen > 0 && lines[seen - 1] !== undefined && lines[seen - 1] !== last.text
+  if (lines.length <= seen && !grown) return undefined
+  const head = grown
+    ? [...kept.slice(0, -1), { at: last.at, text: lines[seen - 1] as string }]
+    : kept
   const fresh = lines.slice(seen).map(text => ({ at: now, text }))
 
-  return { seen: lines.length, lines: [...(held?.lines ?? []), ...fresh].slice(-max) }
+  return { seen: lines.length, lines: [...head, ...fresh].slice(-max) }
 }

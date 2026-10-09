@@ -64,6 +64,14 @@ test('a cron job draws one tick per run since Rabe saw it', () => {
   expect(cell(grid, shown[at]?.indexOf('█') ?? 0, at)[1]).toBe(C.purple)
 })
 
+test('a deleted cron job draws no ticks after it ended', () => {
+  const stopped = { ...babysit, status: 'stopped' as const, endedAt: NOW - 16 * 60_000 }
+  const model = { ...MODEL, items: ALL.map(item => (item === babysit ? stopped : item)) }
+  const shown = lines(timelineView(model, SIZE, NO_SELECTION).grid)
+  const at = find(shown, babysit.title)
+  expect((shown[at]?.match(/█/g) ?? []).length).toBe(3)
+})
+
 test('j, k and enter move through the bars and open one', () => {
   const sel = { ...NO_SELECTION, tab: 'timeline' as const, selected: babysit.id }
   const drawn = timelineView(MODEL, SIZE, sel)

@@ -69,18 +69,34 @@ function hold(on: On, items: RabeItem[], seeds: Ui = {}): Ui {
   return sets
 }
 
-test('/rabe opens the pane so that Esc closes it', async ($, on) => {
-  const clock = mock.clock(on, { now: NOW })
+function opening(on: On, isOpen: boolean) {
   on('state.get', async () => ({ value: { value: undefined, version: 0 } }))
   const opens: unknown[] = []
   on('ui.open', async (_$, e) => {
     opens.push(e)
     return { value: { isPlaced: true as const } }
   })
+  const pane = { id: 'rabe', title: 'Rabe', isShown: true, isFocused: false, isPlaced: true }
+  on('ui.panes', async () => ({ value: isOpen ? [pane] : [] }))
+
+  return opens
+}
+
+test('/rabe opens the pane so that Esc closes it', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const opens = opening(on, true)
   await $.command.run({ command: 'rabe', args: '' } as never)
   await clock.advance(2000)
   expect(opens).toHaveLength(2)
   for (const one of opens) expect(one).toMatchObject({ id: 'rabe', closeOnEscape: true })
+})
+
+test('a pane closed before the focus call stays closed', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const opens = opening(on, false)
+  await $.command.run({ command: 'rabe', args: '' } as never)
+  await clock.advance(2000)
+  expect(opens).toHaveLength(1)
 })
 
 test('the pane shows the tabs and the empty state on every surface', async ($, on) => {

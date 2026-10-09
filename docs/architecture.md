@@ -2,7 +2,7 @@
 title: How Rabe is built
 description: The item model, the registry in session state, the source contract, the cell engine and the view contract behind the band and the pane, and how Rabe hides Claude Code's own count of background work, so that each source and view can be built on its own.
 tags: [architecture, item-model, registry, sources, ui, state, raster]
-keywords: [Raster, clip, detail.prompt, costView, effectsView, timelineView, touched, previousOf, RabePrevious, $.store, session.end, session.usage, conflict, files touched, load, long tool, stuck, moveButtons, windowStart, cells, grid, palette, DEFAULT, View, Drawn, ViewButton, ViewInput, Selection, render, paneView, bandView, itemsView, detailView, TABS, controlRows, SPLIT_COLUMNS, bodyColumns, closeOnEscape, PromptHint, TurnDuration, hideBuiltinTasks, stripTasks, RabeTurn, rabe.turns, agents, workflows, agent.spawn, turn.step, turn.complete, SubagentStart, meta.json, task-notification, matcher, codex source, rabe-stop, detailLines, costBox, $.command.run, parseRollout, codexItem, RabeCodexStep, RabeItem, RabeItemKind, RabeItemStatus, NewItem, ItemPatch, itemId, addItem, updateItem, endItem, capEnded, commit, MAX_ENDED, write loop, Source, sources, register.tsx, band, pane, AbovePrompt, Pane, tab, $.state, ifVersion, scanner, shells, monitors, crons, tasks.ts, schedule.ts, nextRun, nextRuns, parseNotifications, parseOutput, guessPort, rabe.lines, RabeLines, memoryState, act, rabe.selected, rabe.open, bandRows, nameSpans, joinFit, chip, summary line, desktop fallback]
+keywords: [Raster, clip, clamp, ui.panes, combining mark, detail.prompt, costView, effectsView, timelineView, touched, previousOf, RabePrevious, $.store, session.end, session.usage, conflict, files touched, load, long tool, stuck, moveButtons, windowStart, cells, grid, palette, DEFAULT, View, Drawn, ViewButton, ViewInput, Selection, render, paneView, bandView, itemsView, detailView, TABS, controlRows, SPLIT_COLUMNS, bodyColumns, closeOnEscape, PromptHint, TurnDuration, hideBuiltinTasks, stripTasks, RabeTurn, rabe.turns, agents, workflows, agent.spawn, turn.step, turn.complete, SubagentStart, meta.json, task-notification, matcher, codex source, rabe-stop, detailLines, costBox, $.command.run, parseRollout, codexItem, RabeCodexStep, RabeItem, RabeItemKind, RabeItemStatus, NewItem, ItemPatch, itemId, addItem, updateItem, endItem, capEnded, commit, MAX_ENDED, write loop, Source, sources, register.tsx, band, pane, AbovePrompt, Pane, tab, $.state, ifVersion, scanner, shells, monitors, crons, tasks.ts, schedule.ts, nextRun, nextRuns, parseNotifications, parseOutput, guessPort, rabe.lines, RabeLines, memoryState, act, rabe.selected, rabe.open, bandRows, nameSpans, joinFit, chip, summary line, desktop fallback]
 ---
 
 # How Rabe is built
@@ -143,7 +143,7 @@ type RabeToolUse = { name: string; summary?: string }   // 'Read', 'src/db.ts'
 type RabeTurn = { index: number; at: number; text: string; tools: RabeToolUse[] }
 ```
 
-`index` counts from 1 and keeps counting when old turns are dropped. `text` is the visible answer, cut to 300 characters with `…` at the end (`clip` in `model.ts`). `summary` is the first of the tool's `file_path`, `command`, `pattern`, `path`, `url`, `query` or `description`, on one line of at most 80 characters. Each item keeps its newest 30 turns, and a write drops the turns of items no longer in `rabe.items`.
+`index` counts from 1 and keeps counting when old turns are dropped. `text` is the visible answer, cut to 300 characters with `…` at the end (`clip` in `model.ts`). `summary` is the first of the tool's `file_path`, `command`, `pattern`, `path`, `url`, `query` or `description`, on one line of at most 80 characters; a `file_path` is kept whole, since the Effects tab tells files apart by it. Each item keeps its newest 30 turns, and a write drops the turns of items no longer in `rabe.items`.
 
 ## The source contract
 
@@ -227,7 +227,7 @@ The same four hooks for the Monitor tool. The Monitor result has no file path, s
 
 The end notification is handled only for task ids Rabe has as `monitor:<id>`: a shell's notification also carries an `<output-file>`, and reading it would file shell lines under a monitor id.
 
-Monitor lines are kept apart from the item, in the `$.state` key `rabe.lines`: `Record<itemId, { seen, lines: { at, text }[] }>`. `seen` counts the lines read from the file; `lines` holds the newest 200, each with the time the poll first read it ("received"). The poll and the end notification both read the file, so the last lines are kept even when the notification comes first. Notification `<event>` lines are not used: they come late and in batches.
+Monitor lines are kept apart from the item, in the `$.state` key `rabe.lines`: `Record<itemId, { seen, lines: { at, text }[] }>`. `seen` counts the lines read from the file; `lines` holds the newest 200, each with the time the poll first read it ("received"). A last line read while it was still being written (`hel`, then `hello`) is updated in place and keeps its time. The poll and the end notification both read the file, so the last lines are kept even when the notification comes first. Notification `<event>` lines are not used: they come late and in batches.
 
 ### Cron jobs and loops: `hooks/sources/crons.ts`
 
@@ -236,7 +236,7 @@ Monitor lines are kept apart from the item, in the `$.state` key `rabe.lines`: `
 | `tool.call` `{ tool: 'CronCreate' }` | Adds `cron:<id>` with `schedule`, `humanSchedule` and `prompt`. |
 | `tool.call` `{ tool: 'CronDelete' }` | Ends the job as stopped. |
 | `tool.call` `{ tool: 'ScheduleWakeup' }` | Ends the running wakeup as done and adds `cron:wakeup-<scheduledFor>` with `scheduledFor` and no schedule. `stop: true` ends running wakeups as stopped. The `<<autonomous-loop-dynamic>>` prompt shows as "autonomous loop". |
-| `prompt.submit` `{ origin: { kind: 'scheduled-trigger' } }` | Ends the wakeups due by now (plus 90 s of jitter) as done. |
+| `prompt.submit` `{ origin: { kind: 'scheduled-trigger' } }` | Ends the wakeups due by now (plus 90 s of jitter) as done. When a due wakeup has the fired text as its prompt, only those end; the prompt of a running cron job ends none; other text (the loop sentinel arrives expanded) ends all due wakeups. |
 | `session.start` | Calls `CronList` and adds the jobs made before Rabe loaded. |
 | `classic.Stop` | Syncs with `session_crons`: a job gone from the list ends as done (a one-time job fired, a job expired); a new one is added. Wakeups are not ended here, and a listed job whose prompt matches a running wakeup is not added twice. |
 
@@ -276,7 +276,8 @@ A Raster is a fixed grid of terminal cells. Each cell is exactly `[codePoint, fo
 | Function | What it does |
 |---|---|
 | `grid(columns, rows, style?)` | A grid of spaces in the default colors (or the style's) |
-| `safe(text)` | One cell per character: whitespace becomes a space; a wide, zero-width, emoji, control or non-BMP character becomes `?` |
+| `safe(text)` | One cell per character: whitespace becomes a space; a wide, emoji, control or non-BMP character, a combining mark or a format character (any script, such as the Devanagari virama) becomes `?` |
+| `clamp(g)` | The grid cut to the 512 columns and 256 rows a Raster takes; `render` applies it to every Raster |
 | `fit(text, width)` | Pads, or cuts with `…`, to exactly `width` cells |
 | `write(g, x, y, text, style?)` | Text from `(x, y)`, clipped at the edge; a style leaves the colors it does not name |
 | `spans(g, x, y, [[text, style], …], width?)` | Runs of styled text, the last cut with `…` at `width` |
@@ -323,7 +324,7 @@ A new view is a file in `hooks/ui/views/` that exports a `View`. A new tab adds 
 
 `render(ui, surface, drawn, act)` in `ui/render.tsx` is the one place that turns a `Drawn` into elements:
 
-- On the terminal: a `Raster` keyed `cells` (the band's is keyed `band`) with the grid's size and `encode(grid)`, then a row of Buttons, then the Inputs.
+- On the terminal: a `Raster` keyed `cells` (the band's is keyed `band`) with the grid's size and `encode(grid)`, then a row of Buttons, then the Inputs. The grid is cut to 512 columns and 256 rows first (`clamp`), since the engine refuses a larger Raster.
 - On every other surface: one `Text` per grid row (trailing spaces cut), or a plain `Button` for a row in `rows`, then the same Buttons and Inputs. The desktop draws an empty Box for a Raster though `$.ui.resolve` hands one out, so the choice is `surface === 'terminal'`, not whether `Raster` exists.
 
 The renderer redraws the whole Raster on each draw. `$.ui.blit` repaints only changed cells, but it is refused after a size change, so it is not used yet.
@@ -342,7 +343,7 @@ The grid is `bodyColumns` wide and exactly as tall as its lines. The band before
 
 ### The pane
 
-`/rabe` opens the pane `rabe` with `closeOnEscape`, so Esc closes it; without it Esc only hands the keys back and the pane stays. The command cannot focus it (see feasibility), so `pane.tsx` opens it again with `focus: true` from `$.clock.after(1500)`. Until the pane holds the keys, the hint says "tab to select · esc close".
+`/rabe` opens the pane `rabe` with `closeOnEscape`, so Esc closes it; without it Esc only hands the keys back and the pane stays. The command cannot focus it (see feasibility), so `pane.tsx` opens it again with `focus: true` from `$.clock.after(1500)`, but only while `$.ui.panes()` still lists it: a pane closed with Esc in that time stays closed. Until the pane holds the keys, the hint says "tab to select · esc close".
 
 On the terminal `paneView` draws the tab row (the active one orange with a `━` line under it): `Items 7    Cost    Effects    Timeline` and `1-4 switch` at the right end at 90 columns and more, `Items 7  Cost  Effects  Timeline` below. It adds the tab Buttons `1` to `4`, labeled with the digit only. Off the terminal the tab Buttons are the tab row (`Items 7`, `Cost`, … with the same hotkeys), so the grid starts with the tab's view. Each value the pane keeps is a `$.state` key, so a hot reload keeps it:
 
@@ -358,7 +359,7 @@ Keys: the Buttons under the grid hold them. On the list: `j` down, `k` up, Enter
 
 **Items tab.** Groups: failed first, then agents (Claude, Codex, workflows), shells, monitors and cron; inside a group running items first, then the newest. A group row is `▾ AGENTS` in the group's color and a dim note (`2 claude · 1 codex`, `2 running`). A row reads glyph (colored by `tone`), name, and the time, or the status word and age once it ended. The selected row has an orange `▌`, the `selected` background, a bright name and a plain time; other times are dim, and ended names too. The window follows the selected row.
 
-**Desktop.** Off the terminal the list is text the renderer turns into Buttons: group rows read `Agents 2` (`Shells 1 · folded` when folded) and fold on press; item rows read `▶ python3 -u -m http.server · :4173 · 47s` and open on press. The grid ends with the list, the list has no `j`, `k` or `open` Buttons (a press or Enter on a row opens it, and focus on a row selects it), and there is no summary line.
+**Desktop.** Off the terminal the list is text the renderer turns into Buttons: group rows read `Agents 2` (`Shells 1 · folded` when folded) and fold on press; item rows read `▶ python3 -u -m http.server · :4173 · 47s` and open on press. The grid holds the whole list, never windowed, since the desktop scrolls the rows itself; the list has no `j`, `k` or `open` Buttons (a press or Enter on a row opens it, and focus on a row selects it), and there is no summary line.
 
 **Detail per kind.** `detailLines(model, item, rows, width)` in `views/detail.ts` builds one item's detail; the full detail (`detailView`) and the right side of the split (`summary` in `views/items.ts`) both use it. It has three parts. The head (`headLines`) is the glyph, the title, the status word on the right, and the fact lines in dim. The top stays while the body scrolls: a cost panel and the brief or prompt, or the label of the body (`▸ output`, `▸ next runs`). The body (`bodyLines`) is cut from the start, so the newest lines show:
 
@@ -375,7 +376,7 @@ Cost, tokens and the share of the session left the fact lines for the panel; the
 
 **Effects tab** (`views/effects.ts`). `touched(model)` collects the files agents edited from the `Edit`, `Write` and `MultiEdit` calls in `rabe.turns` (the tool summary is the input's `file_path`); a path is shown relative to the agent's worktree or `cwd`. A file two agents edited is a conflict: the tab heads with `⚠ conflict  src/logger.ts is edited by A and B in the main tree` on a red background, and lists conflicts first, then the newest edits, with who edited and how many times. Two worktrees never share an absolute path, so the same file in two worktrees is no conflict. Then the worktrees (`⎇ .claude/worktrees/…  branch · agents`), the agents that share the main tree and those whose tree is `n/a`, and the ports of running shells with the `ssh -L` line; the first port's line has a background and `c copies`, and a Button per port copies it (`c` for the first). The file list gets the rows the other sections leave, ending with `… N more`.
 
-**Timeline tab** (`views/timeline.ts`). A head with the window (`last 40 min`), a legend of chip colors and a time axis with three clock times and `now`. One row per item, sorted by start: a bar from its start to its end (or now) in the kind's color while it runs, green or red once it ended. A cron job draws a tick at each run its schedule had since Rabe saw it, computed with `nextRun`, so jitter is not shown. A space parts the name, cut with `…`, from its bar. `j`/`k` and Enter work as in the Cost tab, and the window follows the selected row. Below: who started what (`tree`, with the kind in brackets for all but Claude agents), and the previous session in this project (`Model.previous`): side by side from 90 columns, else one under the other.
+**Timeline tab** (`views/timeline.ts`). A head with the window (`last 40 min`), a legend of chip colors and a time axis with three clock times and `now`. One row per item, sorted by start: a bar from its start to its end (or now) in the kind's color while it runs, green or red once it ended. A cron job draws a tick at each run its schedule had since Rabe saw it and before it ended, computed with `nextRun`, so jitter is not shown. A space parts the name, cut with `…`, from its bar. `j`/`k` and Enter work as in the Cost tab, and the window follows the selected row. Below: who started what (`tree`, with the kind in brackets for all but Claude agents), and the previous session in this project (`Model.previous`): side by side from 90 columns, else one under the other.
 
 ### The previous session
 

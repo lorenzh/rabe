@@ -47,8 +47,9 @@ function track(item: RabeItem, start: number, now: number, width: number): strin
   const cells = Array<string>(width).fill(' ')
   const schedule = item.detail.schedule
   const span = Math.max(1, now - start)
+  const end = Math.min(now, item.endedAt ?? now)
   let at = schedule ? nextRun(schedule, Math.max(start, item.startedAt ?? item.seenAt)) : undefined
-  for (let n = 0; at !== undefined && at <= now && n < width; n++) {
+  for (let n = 0; at !== undefined && at <= end && n < width; n++) {
     cells[Math.min(width - 1, Math.floor(((at - start) / span) * width))] = '█'
     at = nextRun(schedule as string, at)
   }

@@ -51,9 +51,12 @@ const ENDED: Record<TurnCompleteReason, EndStatus> = {
 export function toolSummary(input: unknown): string | undefined {
   if (!input || typeof input !== 'object') return undefined
   const fields = input as Record<string, unknown>
-  const value = SUMMARY_FIELDS.map(name => fields[name]).find(one => typeof one === 'string')
+  const name = SUMMARY_FIELDS.find(one => typeof fields[one] === 'string')
+  if (!name) return undefined
+  const line = String(fields[name]).split('\n')[0] ?? ''
 
-  return typeof value === 'string' ? value.split('\n')[0]?.slice(0, MAX_SUMMARY) : undefined
+  // Effects tells files apart by the whole path.
+  return name === 'file_path' ? line : line.slice(0, MAX_SUMMARY)
 }
 
 export function metaPatch(text: string): Partial<AgentItem['detail']> | undefined {

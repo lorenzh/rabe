@@ -8,7 +8,7 @@ import type {
   TextProps,
 } from 'claude-code'
 
-import { encode, lines } from './cells/grid'
+import { clamp, encode, lines } from './cells/grid'
 import type { Action, Drawn } from './view'
 
 export type Ui = {
@@ -27,9 +27,10 @@ export type Act = (action: Action, surface: RenderSurface) => void
 export function render(ui: Ui, surface: RenderSurface, drawn: Drawn, act: Act, key = 'cells') {
   const { Box, Button, Input, Raster, Text } = ui
   const { grid } = drawn
+  const cut = clamp(grid)
   const body =
     surface === 'terminal' && Raster ? (
-      <Raster key={key} columns={grid.columns} rows={grid.rows} cells={encode(grid)} />
+      <Raster key={key} columns={cut.columns} rows={cut.rows} cells={encode(cut)} />
     ) : (
       lines(grid).map((line, y) => {
         const row = drawn.rows?.[y]

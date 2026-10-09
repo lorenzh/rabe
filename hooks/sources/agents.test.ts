@@ -56,6 +56,8 @@ test('the tool summary is the first useful argument on one short line', () => {
   expect(toolSummary({ command: 'bun test\necho done' })).toBe('bun test')
   expect(toolSummary({ pattern: 'release\\(', path: 'src/' })).toBe('release\\(')
   expect(toolSummary({ command: 'x'.repeat(200) })).toHaveLength(80)
+  const long = `/home/me/app/${'deep/'.repeat(20)}a.ts`
+  expect(toolSummary({ file_path: long })).toBe(long)
   expect(toolSummary({ other: 1 })).toBeUndefined()
   expect(toolSummary(null)).toBeUndefined()
 })

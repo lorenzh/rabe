@@ -35,9 +35,27 @@ function isWakeup(item: RabeItemOf<'cron'>): boolean {
 }
 
 function endWakeups(items: RabeItem[], status: EndStatus, now: number, until = Infinity) {
-  return runningCrons(items)
-    .filter(item => isWakeup(item) && (item.detail.scheduledFor ?? 0) <= until)
-    .reduce((next, item) => endItem(next, item.id, status, now), items)
+  return dueWakeups(items, until).reduce((next, item) => endItem(next, item.id, status, now), items)
+}
+
+function dueWakeups(items: RabeItem[], until: number) {
+  return runningCrons(items).filter(
+    item => isWakeup(item) && (item.detail.scheduledFor ?? 0) <= until,
+  )
+}
+
+// A fired prompt ends the due wakeups with that prompt. A cron job's prompt
+// ends none; any other text (the loop sentinel arrives expanded) ends them all.
+function fired(items: RabeItem[], text: string, now: number): RabeItem[] {
+  const prompt = text.trim()
+  const due = dueWakeups(items, now + FIRE_SLACK_MS)
+  const same = due.filter(item => item.detail.prompt.trim() === prompt)
+  const isCron = runningCrons(items).some(
+    item => !isWakeup(item) && item.detail.prompt.trim() === prompt,
+  )
+  const ends = same.length > 0 ? same : isCron ? [] : due
+
+  return ends.reduce((next, item) => endItem(next, item.id, 'done', now), items)
 }
 
 function sync(items: RabeItem[], jobs: Job[], now: number): RabeItem[] {
@@ -167,7 +185,7 @@ export function crons(on: On): void {
   on('prompt.submit', { origin: { kind: 'scheduled-trigger' } }, async ($, e, next) => {
     try {
       const now = await $.clock.now()
-      await write($, held => endWakeups(held, 'done', now, now + FIRE_SLACK_MS))
+      await write($, held => fired(held, e.text, now))
     } catch {}
 
     return next(e)
