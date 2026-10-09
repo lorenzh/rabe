@@ -255,6 +255,7 @@ test('a workflow agent offers no own stop or message, only stopping its run', ()
   const size: Size = { ...TERMINAL, hasInput: true }
   const { buttons } = open(model(), verify.id, size)
   expect(buttons.find(b => b.key === 'message-agent')).toBeUndefined()
+  expect(open(model(), verify.id, size).inputs ?? []).toHaveLength(0)
   expect(buttons.find(b => b.key === 'stop')).toMatchObject({
     label: 'g: stop run',
     hotkey: 'g',

@@ -341,7 +341,7 @@ export const detailView: View = (model, size, sel): Drawn => {
   const shown = detailLines(model, item, size.rows, size.columns)
   draw(g, 0, 0, size.columns, shown)
   const inputs: ViewInput[] =
-    item.kind === 'agent' && item.status === 'running' && size.hasInput
+    item.kind === 'agent' && item.status === 'running' && size.hasInput && !isWorkflowAgent(item)
       ? [
           {
             key: 'message',

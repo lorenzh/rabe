@@ -119,7 +119,7 @@ export function controlRows(drawn: Omit<Drawn, 'grid'>, size: Size): number {
   return rows + (size.hasInput ? (drawn.inputs?.length ?? 0) : 0)
 }
 
-// An agent a workflow script started. Claude Code stops and messages only the whole run.
+// An agent a workflow script started. Claude Code can stop only the whole run, and cannot message it.
 export function isWorkflowAgent(item: RabeItem): boolean {
   if (item.kind !== 'agent') return false
 
