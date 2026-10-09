@@ -25,7 +25,7 @@ Status: early development. See [releases](https://github.com/lorenzh/rabe/releas
 | Cron jobs and `/loop` wakeups | Prompt and the time of the next run (`due` for a wakeup that waits) | The next five runs |
 | Cost | Session cost and tokens of the background work | Cost tab: tokens per worker, workers that look stuck |
 
-The band puts failures from the last 10 minutes first. Shells and monitors that an agent started come after the others, with the name of that agent. When nothing runs, it draws nothing. When its rows do not fit, it draws one line of counts.
+The band is one line of counts, one chip per kind with failures from the last 10 minutes first, then the cost, under an empty row so the status line above does not touch it. The names are in the pane. When nothing runs, it draws nothing.
 
 The pane has four tabs:
 

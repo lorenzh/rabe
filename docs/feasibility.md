@@ -121,7 +121,7 @@ Line times: task notifications are delayed and often carry several lines, so the
 
 ## User interface
 
-- **Band above the prompt.** Several lines up to `maxRows`; the engine draws its own "n more" row (d.ts:10200). Collapse belongs to the engine (ctrl+x ctrl+a, d.ts:10184); the hook gets no collapsed flag. When nothing runs, the band draws nothing.
+- **Band above the prompt.** Rabe draws two lines, an empty one and one line of count chips, whatever `maxRows` is, so the band is always the collapsed form. Collapse belongs to the engine (ctrl+x ctrl+a, d.ts:10184); the hook gets no collapsed flag. When nothing runs, the band draws nothing.
 - **Pane.** Docks beside the transcript, or sits inline at about a third of the height. There is no full screen (d.ts:10241). Design for narrow widths with `bodyColumns`.
 - **Keys.** Tested: nothing holds focus when the pane opens, so Enter does nothing until Tab is pressed, unless a Button has `autoFocus`. Tab and Down move focus between Buttons (`ui.focus` fires); Left and Right do nothing. Enter presses the focused Button. Space never presses a Button: it takes the keys away from the pane. Hotkeys are one digit or one lowercase letter, and Shift is ignored, so `X` is the same as `x` (d.ts:1070, d.ts:9334). `/`, space and `←→` cannot be bindings. `Client.onKey` gets every key, but only after a mouse click (d.ts:1583). How the arrows, Tab and the mouse act on plain Buttons is under Buttons, focus and the mouse.
 - **Esc.** Without `closeOnEscape` Esc only returns the keys and the pane stays. With it, Esc closes the pane while it holds the keys, and at an idle, empty prompt (`PaneOpenArgs.closeOnEscape`).
