@@ -58,8 +58,11 @@ type Ui = Record<string, unknown>
 
 // Answers the sources' keys and the seeded UI keys; the kit keeps the rest, so
 // a press redraws. Returns what the pane wrote.
+// The clock of the last `hold`, for a test that waits on the pane's timers.
+let held: ReturnType<typeof mock.clock> | undefined
+
 function hold(on: On, items: RabeItem[], seeds: Ui = {}): Ui {
-  mock.clock(on, { now: NOW })
+  held = mock.clock(on, { now: NOW })
   const fixed: Ui = { items, turns: TURNS, lines: LINES }
   const sets: Ui = {}
   on('state.get', async (_$, e, next) => {
@@ -1055,3 +1058,51 @@ for (const [name, element, wrote] of OVERLAPS) {
     )
   }
 }
+
+// Issue #24: an item found after the open stands in its group, maybe above the
+// row that holds the focus ring. The ring keeps its index, so until Rabe puts
+// it back (the kit refuses Rabe's own $.ui.focus) or sees it land, Enter on a
+// row does nothing, and the refused move disarms the pane.
+const shellNamed = (id: string): RabeItem => ({ ...dev, id: `shell:${id}`, title: id }) as RabeItem
+
+test('a row found above the focused row holds Enter back until the ring is seen land', async ($, on) => {
+  const [a, b] = [shellNamed('a'), shellNamed('b')]
+  const items = [explore, a, b]
+  const state = hold(on, items, { selected: b.id, order: orderOf(items) })
+  await arm($, `row:${b.id}`)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBe('x')
+  const late = { ...plan, id: 'agent:late', status: 'running', endedAt: undefined } as RabeItem
+  items.push(late)
+  await ui.redraw()
+  await held?.advance(200)
+  await ui.redraw()
+  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBeUndefined()
+  for (const key of [`row:${late.id}`, `row:${a.id}`, 'group-agents']) {
+    await ui.press({ key })
+    expect([key, state.selected, state.open, state.folded]).toEqual([
+      key,
+      undefined,
+      undefined,
+      undefined,
+    ])
+  }
+  await arm($, `row:${b.id}`)
+  await ui.press({ key: `row:${b.id}` })
+  expect(state.open).toBe(b.id)
+  await ui.unmount()
+})
+
+test('a click on a row still selects it while the pane does not hold the keys', async ($, on) => {
+  const [a, b] = [shellNamed('a'), shellNamed('b')]
+  const items = [explore, a, b]
+  const state = hold(on, items, { selected: b.id, order: orderOf(items) })
+  await arm($, `row:${b.id}`)
+  const away = { ...PANE, props: { ...PROPS, isFocused: false } }
+  const ui = await $.ui.mount({ surface: 'terminal', ...away } as never)
+  items.push({ ...plan, id: 'agent:late', status: 'running', endedAt: undefined } as RabeItem)
+  await ui.redraw()
+  await ui.press({ key: `row:${a.id}` })
+  expect(state.selected).toBe(a.id)
+  await ui.unmount()
+})

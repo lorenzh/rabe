@@ -237,29 +237,31 @@ const shellOf = (id: string, parentId?: string): RabeItem => ({
   detail: { command: id, taskId: id },
 })
 
-test('a held list adds new items in NEW at the end, never above the focused row', () => {
+test('a held list puts new items in the group of their kind, after its held rows', () => {
   const s1 = shellOf('s1')
   const s2 = shellOf('s2')
   const before = [explore, s1, s2]
   const sel = { ...NO_SELECTION, selected: s2.id, order: orderOf(before) }
-  const upTo = (drawn: Drawn) => rowKeys(drawn).slice(0, rowKeys(drawn).indexOf(`row:${s2.id}`) + 1)
-  const held = upTo(itemsView({ ...model, items: before }, NARROW, sel))
   const agent: RabeItem = { ...plan, status: 'running', endedAt: undefined }
   const a2 = shellOf('a2', explore.id)
   const watch = { ...ci, id: 'monitor:new' }
   const drawn = itemsView({ ...model, items: [...before, agent, a2, watch] }, NARROW, sel)
-  expect(upTo(drawn)).toEqual(held)
-  expect(rowKeys(drawn).slice(held.length)).toEqual(
-    [agent.id, a2.id, watch.id].map(id => `row:${id}`),
+  expect(rowKeys(drawn)).toEqual(
+    [explore.id, agent.id, s1.id, s2.id, a2.id, watch.id].map(id => `row:${id}`),
   )
   const shown = lines(gridOf(drawn).grid).map(line => line.trimEnd())
-  expect(shown.some(line => line.startsWith('▾ NEW 3'))).toBe(true)
+  expect(shown.some(line => line.includes('NEW'))).toBe(false)
+  expect(shown.filter(line => line.startsWith('▾ '))).toEqual([
+    '▾ AGENTS 2 claude',
+    '▾ SHELLS 3 running',
+    '▾ MONITORS 1 running',
+  ])
 })
 
-test('the first shell after the open does not open a SHELLS group above the monitors', () => {
+test('the first shell after the open opens a SHELLS group above the monitors', () => {
   const sel = { ...NO_SELECTION, selected: ci.id, order: orderOf([explore, ci]) }
   const keys = rowKeys(itemsView({ ...model, items: [explore, ci, shellOf('late')] }, NARROW, sel))
-  expect(keys).toEqual([`row:${explore.id}`, `row:${ci.id}`, 'row:shell:late'])
+  expect(keys).toEqual([`row:${explore.id}`, 'row:shell:late', `row:${ci.id}`])
 })
 
 test('a held order keeps the families as the list showed them when it opened', () => {

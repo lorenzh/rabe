@@ -51,7 +51,7 @@ test('groups put failed first and running before ended', () => {
   expect(groupNote('shells', [dev, { ...dev, status: 'done' }])).toBe('1 running · 1 ended')
 })
 
-test('a held order keeps rows in place: new items go to NEW at the end, status changes move nothing', () => {
+test('a held order keeps rows in place: new items go to their kind group after the held rows, status changes move nothing', () => {
   const order = orderOf(ALL)
   expect(order.failed).toEqual([lint.id])
   expect(order.agents?.at(-1)).toBe(plan.id)
@@ -63,9 +63,11 @@ test('a held order keeps rows in place: new items go to NEW at the end, status c
   const older: RabeItem = { ...dev, id: 'shell:old', title: 'old', startedAt: NOW - 99 * 60_000 }
   const groups = grouped([...ended, fresh, older], order)
   expect(groups.find(g => g.id === 'failed')?.items).toEqual([lint])
-  expect(groups.find(g => g.id === 'shells')?.items.map(item => item.id)).toEqual([dev.id])
-  expect(groups.at(-1)?.id).toBe('new')
-  expect(groups.at(-1)?.items.map(item => item.id)).toEqual([fresh.id, older.id])
+  expect(groups.find(g => g.id === 'shells')?.items.map(item => item.id)).toEqual([
+    dev.id,
+    fresh.id,
+    older.id,
+  ])
   expect(
     grouped(ended)
       .find(g => g.id === 'failed')
@@ -209,7 +211,7 @@ test('previousOf sums a session up: counts per kind, tokens, cost, failed titles
   })
 })
 
-test('items Rabe saw after the open hold their order in NEW, under every held row', () => {
+test('items Rabe saw after the open go to the group of their kind, failed or not, and keep it', () => {
   const order = orderOf([explore])
   const older: RabeItem = { ...dev, id: 'shell:a', startedAt: NOW - 9 * 60_000 }
   const newer: RabeItem = { ...dev, id: 'shell:b', startedAt: NOW - 60_000 }
@@ -217,15 +219,13 @@ test('items Rabe saw after the open hold their order in NEW, under every held ro
   const fails: RabeItem = { ...review, id: 'codex:x', status: 'failed', endedAt: NOW }
   const ids = (items: RabeItem[]) => grouped(items, order).map(g => [g.id, g.items.map(i => i.id)])
   const running = [explore, older, newer, ci, watch, fails]
-  const ids0 = [older.id, newer.id, ci.id, watch.id, fails.id]
   expect(ids(running)).toEqual([
-    ['agents', [explore.id]],
-    ['new', ids0],
+    ['agents', [explore.id, fails.id]],
+    ['shells', [older.id, newer.id]],
+    ['monitors', [ci.id, watch.id]],
   ])
   const ended = running.map(item =>
     item === newer || item === watch ? { ...item, status: 'done' as const, endedAt: NOW } : item,
   )
   expect(ids(ended)).toEqual(ids(running))
-  expect(grouped(running).some(g => g.id === 'new')).toBe(false)
-  expect(orderOf(running).new).toBeUndefined()
 })

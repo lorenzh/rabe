@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Changed
+
+- While the pane is open, an item that starts goes straight into the group of its kind in the Items list (AGENTS, SHELLS, MONITORS or CRON; a shell or monitor under the agent that started it) instead of a NEW group at the end; on the Effects tab, a new file or port goes into FILES or PORTS instead of a NEW section. When it comes above the focused row, Rabe moves the focus back onto that row, and Enter does nothing until it has. (fixes [#24](https://github.com/lorenzh/rabe/issues/24))
+
 ## [0.3.0] - 2026-10-09
 
 ### Added

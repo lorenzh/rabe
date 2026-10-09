@@ -271,7 +271,7 @@ test('a port found after the open keeps its place, whichever shell found it', ()
   expect(rowKeys(draw([...both, late])).at(-1)).toBe('row:ssh:9229')
 })
 
-test('rows found after the open go to NEW at the end, in the order they were found', () => {
+test('rows found after the open go to their section after the held rows, in the order they were found', () => {
   const items = [editing(api, [NOW, '/repo/a.ts']), serve(5173), serve(3000)]
   const order = orderOf(items)
   const draw = (list: RabeItem[]) =>
@@ -284,16 +284,16 @@ test('rows found after the open go to NEW at the end, in the order they were fou
     serve(3000),
   ]
   const drawn = draw(later(NOW + 1000))
-  expect(before('row:ssh:5173', drawn)).toEqual(at5173)
+  expect(before('row:ssh:5173', drawn).filter(key => key !== 'row:file:/repo/b.ts')).toEqual(at5173)
   expect(rowKeys(drawn)).toEqual([
     'row:file:/repo/a.ts',
+    'row:file:/repo/b.ts',
     'row:ssh:5173',
     'row:ssh:3000',
-    'row:file:/repo/b.ts',
     'row:ssh:8080',
   ])
-  expect(lines(gridOf(drawn).grid)).toContain('NEW 2  found since Rabe opened')
-  expect(rowKeys(draw(later(NOW + 3000))).slice(3)).toEqual(['row:ssh:8080', 'row:file:/repo/b.ts'])
+  expect(lines(gridOf(drawn).grid).some(line => line.includes('NEW'))).toBe(false)
+  expect(rowKeys(draw(later(NOW + 3000)))).toEqual(rowKeys(drawn))
 })
 
 // The other editors: a Codex job, the main session, an agent's shell command.
@@ -369,13 +369,14 @@ test('two editors of one relative path are no conflict: the cwd is not known', (
   expect(shown.some(line => line.includes('conflict'))).toBe(false)
 })
 
-test('a main session file found after the open goes to NEW', () => {
+test('a main session file found after the open goes after the held files', () => {
   const order = orderOf(OTHERS.items, OTHERS.edits)
   const later = {
     ...OTHERS,
     edits: [...MAIN, { path: '/repo/late.md', at: NOW, via: 'write' as const }],
   }
   const keys = rowKeys(effectsView(later, SIZE, { ...NO_SELECTION, order }))
-  expect(keys.at(-1)).toBe('row:file:/repo/late.md')
-  expect(keys.slice(0, -1)).toEqual(rowKeys(effectsView(OTHERS, SIZE, { ...NO_SELECTION, order })))
+  const held = rowKeys(effectsView(OTHERS, SIZE, { ...NO_SELECTION, order }))
+  const files = held.filter(key => key.startsWith('row:file:')).length
+  expect(keys).toEqual([...held.slice(0, files), 'row:file:/repo/late.md', ...held.slice(files)])
 })

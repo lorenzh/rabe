@@ -36,7 +36,6 @@ const GROUP_COLOR: Record<Group, number> = {
   shells: C.yellow,
   monitors: C.blue,
   cron: C.purple,
-  new: C.bright,
 }
 
 // The split needs room for both columns; below this the detail opens in place.

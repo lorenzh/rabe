@@ -71,7 +71,7 @@ With the mouse, click a row once to select it and again to open it. Click a tab 
 
 On the list, the stop keys `x` and `g` work only after you move onto a row yourself, with an arrow, Tab or a click. Until then, and after the view or the selected row changes without you, they are dim, so a key press never stops something you did not pick. If they stay dim after a click, the pane does not have the keys yet: press `ctrl+x tab`, then move onto the row with Tab or an arrow.
 
-While the pane is open, rows and buttons keep their places, so Enter acts on what you see under the focus. Items that start after you open the pane go to a NEW group at the end (on the Effects tab, to a NEW section). A row that is gone stays as a dim `gone` slot. Type `/rabe` again to sort the lists.
+While the pane is open, rows and buttons keep their places, so Enter acts on what you see under the focus. An item that starts after you open the pane goes into the group of its kind, after the rows already there; on the Effects tab, a new file or port goes into its section the same way. When it comes above the focused row, Rabe moves the focus back onto that row; until then, Enter on a row does nothing. A row that is gone stays as a dim `gone` slot. Type `/rabe` again to sort the lists.
 
 Commands:
 

@@ -5,7 +5,7 @@ import type { Span } from './cells/grid'
 import { C, type Style } from './cells/palette'
 import { ago, clockTime, duration, short, tokens, usd } from './format'
 
-export type Group = 'failed' | 'agents' | 'shells' | 'monitors' | 'cron' | 'new'
+export type Group = 'failed' | 'agents' | 'shells' | 'monitors' | 'cron'
 
 export const GROUPS: { id: Group; label: string }[] = [
   { id: 'failed', label: 'Failed' },
@@ -13,7 +13,6 @@ export const GROUPS: { id: Group; label: string }[] = [
   { id: 'shells', label: 'Shells' },
   { id: 'monitors', label: 'Monitors' },
   { id: 'cron', label: 'Cron' },
-  { id: 'new', label: 'New' },
 ]
 
 export const KIND_LABEL: Record<RabeItemKind, string> = {
@@ -82,7 +81,11 @@ export function timeLabel(item: RabeItem, now: number): string {
 }
 
 export function groupOf(item: RabeItem): Group {
-  if (item.status === 'failed') return 'failed'
+  return item.status === 'failed' ? 'failed' : kindGroupOf(item)
+}
+
+// The group of an item's kind, whatever its status.
+function kindGroupOf(item: RabeItem): Group {
   if (item.kind === 'shell') return 'shells'
   if (item.kind === 'monitor') return 'monitors'
   if (item.kind === 'cron') return 'cron'
@@ -125,14 +128,18 @@ export function stable<T extends { id: string }>(
 
 // The Items tab's groups, failed first. Without `order` each group sorts
 // running first, then the newest; with it, a held item stays in the group and
-// place `orderOf` gave it, and items Rabe saw since go to NEW, the last group,
-// in the order Rabe saw them: a row never appears above another.
+// place `orderOf` gave it, and an item Rabe saw since goes to the group of its
+// kind (failed or not, so it never changes group), after the held rows, in
+// the order Rabe saw it. The pane moves the focus ring back onto its row when
+// such a row comes above it (see `hold` in render.tsx).
 export function grouped(
   items: RabeItem[],
   order?: RabeOrder,
 ): { id: Group; label: string; items: RabeItem[] }[] {
   const of = (item: RabeItem): Group =>
-    order ? (GROUPS.find(group => order[group.id]?.includes(item.id))?.id ?? 'new') : groupOf(item)
+    order
+      ? (GROUPS.find(group => order[group.id]?.includes(item.id))?.id ?? kindGroupOf(item))
+      : groupOf(item)
 
   return GROUPS.map(group => ({
     ...group,

@@ -143,6 +143,12 @@ export function fallbackOf(model: Model, sel: Selection): string {
     .join(' ')
 }
 
+// Whether the view seats rows found later where it draws them, also above a
+// held row (`hold`): the Items list, which puts a new item in its group, and
+// the Effects tab, which puts a new file or port in its section.
+export const seatsRows = (sel: Selection): boolean =>
+  (sel.tab === 'items' && sel.open === '') || sel.tab === 'effects'
+
 // Whether `key` is a row the Items list draws, not a gone slot of one.
 export const isLiveRow = (model: Model, sel: Selection, key: string): boolean =>
   key.startsWith('row:') && listOrder(model, sel).some(item => `row:${item.id}` === key)

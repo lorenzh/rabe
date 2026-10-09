@@ -2,7 +2,7 @@ import type { EngineInterface, On, RenderSurface } from 'claude-code'
 
 import type { RabePrevious } from '../../types'
 import { KIND_LABEL, orderOf, previousOf } from './lists'
-import { type At, type Held, hold, render } from './render'
+import { type At, type Held, hold, isRowKey, render, shifts } from './render'
 import {
   type Action,
   type ArmEvent,
@@ -20,7 +20,7 @@ import {
   targetsOf,
   taskIdOf,
 } from './view'
-import { fallbackOf, isLiveRow, paneView, selectsOnPress } from './views/pane'
+import { fallbackOf, isLiveRow, paneView, seatsRows, selectsOnPress } from './views/pane'
 
 const PANE = 'rabe'
 
@@ -112,10 +112,20 @@ let landedOn: string | undefined
 // it land; unknown after a reset, whose view puts another element at its index.
 let ringOn: string | undefined
 
+// The element the ring belongs on after rows came above it in the Items list
+// (the ring kept its index), until the pane's focus hook sees the ring land.
+// `isAsked`: a move back is under way; `tries`: moves asked since the pane
+// last took the keys.
+type Shift = { key: string; isAsked: boolean; tries: number }
+let shifted: Shift | undefined
+
 function feed($: EngineInterface, event: ArmEvent): void {
   const was = arming
   arming = arm(arming, event)
-  if (event.type === 'reset') ringOn = undefined
+  if (event.type === 'reset') {
+    ringOn = undefined
+    shifted = undefined
+  }
   if (arming.isArmed !== was.isArmed || arming.isListArmed !== was.isListArmed) {
     $.ui.invalidate('ui.render')
   }
@@ -132,6 +142,34 @@ async function focusOn($: EngineInterface, key: string): Promise<boolean> {
 
   return isMoved
 }
+
+// Puts the ring back on the element rows came above, a moment after the
+// drawing: a move asked while the hook draws resolves against the tree
+// before the one it returns, where the element still stands at its old
+// index. From a timer the move reaches no hook (see feasibility), so the
+// engine's answer is the evidence: a move it refuses or abandons counts as a
+// refused landing, and the next drawing asks again, at most three times. A
+// landing the focus hook saw since (the person's arrow) makes the move moot.
+const REGAIN_MS = 100
+
+async function regain($: EngineInterface, want: Shift): Promise<void> {
+  if (shifted !== want) return
+  const result = await $.ui
+    .focus({ requestId: PANE, key: want.key })
+    .catch(() => ({ deny: 'threw' }))
+  if (!('deny' in result && result.deny)) {
+    if (shifted === want) shifted = undefined
+    return
+  }
+  want.isAsked = false
+  feed($, { type: 'landed', isMoved: false })
+}
+
+// A row press while the ring is off its element: Enter would press the row
+// that took its index. A click while the pane does not hold the keys is the
+// person's own.
+const isHeldBack = (at: At): boolean =>
+  shifted !== undefined && seats.get(at.surface)?.isFocused === true && isRowKey(at.element)
 
 // A new view starts its hold anew, but the ring keeps its index, where the new
 // view may draw a stop; so the pane disarms and the ring moves (`landing`).
@@ -302,7 +340,7 @@ async function carry<R>($: EngineInterface, at: At, run: () => Promise<R>): Prom
     if (rest.length > 0) waiting.set(key, rest)
     else waiting.delete(key)
   }
-  if (mine.press) await act($, mine.press.action, mine.press.surface)
+  if (mine.press && !isHeldBack(at)) await act($, mine.press.action, mine.press.surface)
 
   return result
 }
@@ -320,7 +358,7 @@ async function arrow($: EngineInterface, by: number, bodyRows: number): Promise<
   const size = { columns: 80, rows: bodyRows, surface: 'terminal', hasInput: true } as const
   const drawn = layout(paneView(model, size, selection))
   const key = stepRow(
-    rowKeys(hold(drawn, heldOf('terminal', selection)).list),
+    rowKeys(hold(drawn, heldOf('terminal', selection), seatsRows(selection)).list),
     selection.selected,
     by,
   )
@@ -375,7 +413,10 @@ export function pane(on: On): void {
     const selected = landed?.startsWith('row:') ? landed.slice(4) : before
     if (selected !== asked) await $.state.set({ plugin: 'rabe', key: 'selected' }, selected)
     landedOn = landed
-    if (landing) ringOn = landed
+    if (landing) {
+      ringOn = landed
+      shifted = undefined
+    }
     if (!landing) feed($, { type: 'landed', isMoved: false })
     else if (landed) {
       const { model, selection } = await look($, true)
@@ -437,8 +478,19 @@ export function pane(on: On): void {
     })
     const selection = { ...seen, isArmed: arming.isArmed, isListArmed: arming.isListArmed }
     const drawn = arming.isArmed && arming.isListArmed ? armed : paneView(model, size, selection)
-    const out = hold(layout(drawn), heldOf(e.surface, selection))
+    const before = heldOf(e.surface, selection)
+    const out = hold(layout(drawn), before, seatsRows(selection))
     holds.set(e.surface, { scope: scopeOf(selection), keys: out.held })
+    if (before && ringOn && shifts(before, out.held, ringOn)) {
+      shifted = { key: ringOn, isAsked: false, tries: 0 }
+    }
+    if (shifted && seat && !seat.isFocused && e.props.isFocused) shifted.tries = 0
+    if (shifted && !shifted.isAsked && shifted.tries < 3 && e.props.isFocused) {
+      shifted.isAsked = true
+      shifted.tries += 1
+      const want = shifted
+      $.clock.after(REGAIN_MS, () => void regain($, want).catch(() => undefined))
+    }
 
     return render(ui, e.surface, out.list, leave)
   })
