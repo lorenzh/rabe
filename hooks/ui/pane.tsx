@@ -1,6 +1,7 @@
 import type { EngineInterface, On, RenderSurface } from 'claude-code'
 
 import type { RabeItem, RabePrevious } from '../../types'
+import { safe } from './cells/grid'
 import { KIND_LABEL, kept, matches, orderOf, previousOf, rowOf } from './lists'
 import { type At, type Held, hold, isRowKey, render, shifts } from './render'
 import {
@@ -310,14 +311,12 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       const result = await $.ui
         .copy({ text: action.text, surface })
         .catch((error: unknown) => ({ isCopied: false as const, reason: String(error) }))
-      const preview = action.text.replace(/\s+/g, ' ')
-      const selectable = preview === action.text && !/[\p{Cc}]/u.test(action.text)
+      const preview = safe(action.text.replace(/\s+/g, ' '))
+      const selectable = preview === action.text
       $.ui.toast(
         result.isCopied
           ? `Copied: ${preview}`
-          : selectable
-            ? `Copy failed: ${result.reason}. Select it: ${action.text}`.replace(/\s+/g, ' ')
-            : 'Copy failed: the clipboard cannot be reached.',
+          : `Copy failed: ${safe(result.reason.replace(/\s+/g, ' '))}.${selectable ? ` Select it: ${action.text}` : ''}`,
       )
       return
     }
