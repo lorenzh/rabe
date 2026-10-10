@@ -183,18 +183,9 @@ const disarmed = (one: ViewButton): ViewButton => {
 
 // Missing keys use inert controls; hold appends new keys without moving old slots.
 function bind(drawn: Drawn): Drawn {
-  const labels = [
-    'x: stop',
-    'g: stop group',
-    'r: remove',
-    'a: remove ended',
-    'd: delete job',
-    'm: message',
-    's: search',
-    'c: copy',
-  ]
+  const hotkeys = ['x', 'g', 'r', 'a', 'd', 'm', 's', 'c', 'b', 'f', 'w']
   const buttons = drawn.buttons.map(one =>
-    one.dim && one.action.type === 'none' && labels.some(label => label[0] === one.label[0])
+    one.dim && one.action.type === 'none' && hotkeys.includes(one.label.slice(0, 1))
       ? { ...one, hotkey: one.label.slice(0, 1) }
       : one,
   )
@@ -202,10 +193,16 @@ function bind(drawn: Drawn): Drawn {
     ...buttons,
     ...drawn.nodes.flatMap(node => ('spans' in node ? node.spans.filter(isPress) : [])),
   ].map(one => one.hotkey)
-  for (const label of labels) {
-    const hotkey = label.slice(0, 1)
+  for (const hotkey of hotkeys) {
     if (!keys.includes(hotkey))
-      buttons.push({ key: `inert-${hotkey}`, label, hotkey, action: NONE, dim: true })
+      buttons.push({
+        key: `inert-${hotkey}`,
+        label: ' ',
+        plain: true,
+        hotkey,
+        action: NONE,
+        dim: true,
+      })
   }
 
   return { ...drawn, buttons }

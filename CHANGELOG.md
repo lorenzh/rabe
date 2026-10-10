@@ -6,7 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
-- Inactive pane keys `x`, `g`, `r`, `a`, `d`, `m`, `s` and `c` stay bound and do nothing. Missing controls keep these letters in the pane. Letters Rabe never binds still go to the prompt. (fixes [#25](https://github.com/lorenzh/rabe/issues/25))
+- Every letter Rabe uses as a hotkey stays bound in every view, including `b`, `f` and `w`. Keys for actions outside the view use blank buttons. Unavailable actions keep their dim labels. All other letters go to the prompt. (fixes [#25](https://github.com/lorenzh/rabe/issues/25))
 - Search shows its active query after Enter and reopening, capped with `…` in the toolbar at every width. Enter returns the keys to the marked filtered row. An empty search clears the filter. (fixes [#26](https://github.com/lorenzh/rabe/issues/26))
 - The Timeline legend says "scheduled run" for cron ticks. Ticks come from the schedule, without actual firing times or idle delays. ([#49](https://github.com/lorenzh/rabe/pull/49), fixes [#34](https://github.com/lorenzh/rabe/issues/34))
 - The Cost tab says "sorted by tokens when opened" while it holds the opening order. New workers follow the held rows. ([#49](https://github.com/lorenzh/rabe/pull/49), fixes [#33](https://github.com/lorenzh/rabe/issues/33))

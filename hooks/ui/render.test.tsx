@@ -8,6 +8,7 @@ import { type Held, hold, render, shifts, type Ui } from './render'
 import {
   type Action,
   arm,
+  controlRows,
   DISARMED,
   type Drawn,
   isPress,
@@ -158,6 +159,34 @@ const agentOf = (id: string, extra: Partial<RabeItemOf<'agent'>['detail']> = {})
     title: `agent ${id}`,
     detail: { agentId: id, cwd: '/repo', ...extra },
   }) as RabeItem
+
+test('blank key bindings fit a narrow toolbar and stay blank when their action appears', () => {
+  const size = { ...SIZE, columns: 40 }
+  const sel = { ...OPEN, tab: 'cost' as const }
+  const first = draw(model([]), size, sel)
+  expect(controlRows(paneView(model([]), size, sel), size)).toBe(1)
+  const later = draw({ ...model([]), sessionId: 'new-session' }, size, sel, first.held)
+  expect(later.keys.slice(0, first.keys.length)).toEqual(first.keys)
+  expect(later.tree.find(one => one.props.key === 'inert-c')?.props).toMatchObject({
+    label: ' ',
+    plain: true,
+    dimColor: true,
+  })
+  expect(later.tree.find(one => one.props.key === 'resume:new-session')?.props).toMatchObject({
+    label: 'c: copy resume',
+    hotkey: 'c',
+  })
+  const items = draw(model([dev]), size, { ...OPEN, selected: dev.id, isArmed: false })
+  expect(items.tree.find(one => one.props.key === 'stop')?.props).toMatchObject({
+    label: 'x: stop',
+    dimColor: true,
+  })
+  const cron = draw(model([babysit]), size, { ...OPEN, open: babysit.id, isArmed: false })
+  expect(cron.tree.find(one => one.props.key === `delete:${babysit.id}`)?.props).toMatchObject({
+    label: 'd: delete job',
+    dimColor: true,
+  })
+})
 
 test('rows found after the open do not move the controls', () => {
   const items = [shell('a')]
@@ -726,7 +755,7 @@ test('pane keys stay unique across views without moving held focus indices', () 
       const presses = next.list.flatMap(piece =>
         'button' in piece ? [piece.button] : 'spans' in piece ? piece.spans.filter(isPress) : [],
       )
-      for (const hotkey of ['x', 'g', 'r', 'a', 'd', 'm', 's', 'c']) {
+      for (const hotkey of ['x', 'g', 'r', 'a', 'd', 'm', 's', 'c', 'b', 'f', 'w']) {
         const bound = presses.filter(one => one.hotkey === hotkey)
         expect(bound).toHaveLength(1)
         for (const one of drawn.buttons)

@@ -37,13 +37,20 @@ export type Act = (action: Action, at: At) => void
 
 // A focusable element drawn since the pane opened: its key, its latest label,
 // and whether it is a control (an Input too) rather than a row Button.
-export type Held = { key: string; label: string; isControl?: true }
+export type Held = { key: string; label: string; plain?: true; isControl?: true }
 
 const keysOf = (piece: Piece): Held[] =>
   'spans' in piece
     ? piece.spans.filter(isPress).map(one => ({ key: one.key, label: one.label }))
     : 'button' in piece
-      ? [{ key: piece.button.key, label: piece.button.label, isControl: true }]
+      ? [
+          {
+            key: piece.button.key,
+            label: piece.button.label,
+            plain: piece.button.plain,
+            isControl: true,
+          },
+        ]
       : 'input' in piece
         ? [{ key: piece.input.key, label: piece.input.label, isControl: true }]
         : []
@@ -51,7 +58,8 @@ const keysOf = (piece: Piece): Held[] =>
 // What stands in for an element that is gone: its key and old label, dim,
 // and a press does nothing. A row says `gone` first, which a cut keeps.
 function slot(one: Held): Piece {
-  if (one.isControl) return { button: { key: one.key, label: one.label, action: NONE, dim: true } }
+  if (one.isControl)
+    return { button: { key: one.key, label: one.label, plain: one.plain, action: NONE, dim: true } }
 
   return {
     spans: [[' gone ', { fg: C.dim }], { key: one.key, label: one.label, action: NONE, dim: true }],
@@ -235,6 +243,7 @@ export function render(
   const control = (one: ViewButton) => (
     <Button
       key={one.key}
+      plain={one.plain}
       label={one.label}
       hotkey={one.hotkey}
       autoFocus={one.autoFocus}

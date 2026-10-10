@@ -71,7 +71,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 
 A deleted cron job shows no next runs, and its delete button stays dim. The previous-session summary counts only cron jobs still running when the session ends. Delete failures show plain text.
 
-The buttons under the tabs show the keys of the current tab. A key that cannot act now is dim, and pressing it does nothing. While the pane holds the keys, `x`, `g`, `r`, `a`, `d`, `m`, `s` and `c` stay bound in every view. Unavailable keys do nothing. Letters Rabe never binds still go to the prompt: the mod API has no key hook to catch them.
+The buttons under the tabs show the actions of the current view. Unavailable actions keep their labels and stay dim. Keys for actions outside the view use blank buttons that do nothing. While the pane holds the keys outside input fields, `x g r a d m s c b f w` stay bound. All other letters go to the prompt because the mod API has no key hook to catch them.
 
 An opened item keeps its recorded turns, steps or output lines in its detail. Use ↑↓, PageUp, PageDown or the wheel to scroll. The scroll hint shows only when the opened detail needs scrolling. Claude Code sets the pane's height. The split preview marks hidden agent text or counts older output lines. Press Enter to open the full detail.
 

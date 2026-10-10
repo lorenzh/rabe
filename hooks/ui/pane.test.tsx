@@ -369,9 +369,6 @@ test('a narrow pane puts a one-line summary under the list and short key labels'
     'g: stop group',
     'r: remove',
     'a: remove ended',
-    'd: delete job',
-    'm: message',
-    'c: copy',
   ])
   await ui.unmount()
 })
@@ -1413,7 +1410,7 @@ test('dim and absent pane keys stay bound and inert on every surface', async ($,
   })
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
-    for (const hotkey of ['x', 'g', 'r', 'a', 'd', 'm', 'c']) {
+    for (const hotkey of ['x', 'g', 'r', 'a', 'd', 'm', 'c', 'b', 'f', 'w']) {
       const buttons = await ui.findAll({ type: 'Button' })
       const bound = buttons.filter(one => one.props.hotkey === hotkey)
       expect(bound).toHaveLength(1)
@@ -1421,10 +1418,20 @@ test('dim and absent pane keys stay bound and inert on every surface', async ($,
       const key = bound[0]?.key
       if (key) await ui.press({ key })
     }
-    await ui.press({ key: 'tab-cost' })
-    const search = (await ui.findAll({ type: 'Button' })).find(one => one.props.hotkey === 's')
-    expect(search?.props.dimColor).toBe(true)
-    if (search?.key) await ui.press({ key: search.key })
+    for (const tab of ['cost', 'effects', 'timeline']) {
+      await ui.press({ key: `tab-${tab}` })
+      const hotkeys = ['x', 'g', 'r', 'a', 'd', 'm', 's', 'b', 'f']
+      if (tab !== 'timeline') hotkeys.push('w')
+      for (const hotkey of hotkeys) {
+        const bound = (await ui.findAll({ type: 'Button' })).filter(
+          one => one.props.hotkey === hotkey,
+        )
+        expect(bound).toHaveLength(1)
+        expect(bound[0]?.props).toMatchObject({ label: ' ', plain: true, dimColor: true })
+        const key = bound[0]?.key
+        if (key) await ui.press({ key })
+      }
+    }
     expect(state.toasts).toBeUndefined()
     expect(state.removed).toBeUndefined()
     await ui.press({ key: 'tab-items' })
