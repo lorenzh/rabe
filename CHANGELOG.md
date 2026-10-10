@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Fixed
+
+- The Effects tab finds shell writes on independent lists after `||`, including later lines with here-docs. Conditional writes stay hidden. (fixes #27)
+
 ## [0.4.1] - 2026-10-10
 
 ### Fixed
