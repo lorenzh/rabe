@@ -3,6 +3,7 @@ import { expect, type Mounted, mock, test } from 'claude-code/testing'
 
 import type { RabeLines, RabePrevious, RabeTurn } from '../../types'
 import type { RabeItem, RabeItemOf } from '../model'
+import { core } from '../testing'
 import {
   ALL,
   babysit,
@@ -769,6 +770,23 @@ test('a session without background work keeps the previous summary', async ($, o
   const store = session(on)
   await $.session.end({ reason: 'clear', sessionId: 's1' } as never)
   expect(store['previous:/p']).toBe(PREVIOUS)
+})
+
+test('the next prompt gets queued Rabe actions as private context and clears them', async ($, on) => {
+  const state = hold(on, [], { actions: ['Rabe: user stopped shell shell:1 (sleep)'] })
+  core(on)
+
+  const result = await $.prompt.submit({
+    text: 'what is running?',
+    context: ['existing context'],
+    origin: { kind: 'composer' },
+    wait: false,
+  })
+
+  expect(result).toMatchObject({
+    context: ['existing context', 'Rabe: user stopped shell shell:1 (sleep)'],
+  })
+  expect(state.actions).toEqual([])
 })
 
 const wakeup: RabeItem = {

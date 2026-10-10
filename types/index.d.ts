@@ -193,6 +193,8 @@ declare module 'claude-code' {
       // The repository's git worktrees; absent without git.
       worktrees: RabeWorktree[]
       window: RabeWindow
+      // Successful actions from the pane, for the next main-session prompt.
+      actions: string[]
     }
   }
 }

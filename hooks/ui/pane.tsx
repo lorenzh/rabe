@@ -26,6 +26,7 @@ import { fallbackOf, isLiveRow, paneView, seatsRows, selectsOnPress } from './vi
 import { widen, windowOf } from './views/timeline'
 
 const PANE = 'rabe'
+const MAX_ACTIONS = 20
 
 // The option `timelineHours`, set by `pane(on, hours)`: the Timeline's window
 // when the pane opens.
@@ -84,6 +85,7 @@ async function stop($: EngineInterface, ids: string[]): Promise<void> {
   const one = targets.length === 1 ? targets[0] : undefined
   if (one) $.ui.toast(`Stopping ${KIND_LABEL[one.kind]} ${one.title}…`)
   let stopped = 0
+  const stoppedItems: RabeItem[] = []
   let ended = 0
   let refused: string | undefined
   for (const item of targets) {
@@ -91,8 +93,10 @@ async function stop($: EngineInterface, ids: string[]): Promise<void> {
       const { text = 'n/a' } = await $.command
         .run({ command: 'rabe-stop', args: item.id })
         .catch((error: unknown) => ({ text: `Stop refused: ${String(error)}` }))
-      if (text.startsWith('Stopped')) stopped += 1
-      else refused = text.replace(/^Stop refused: /, '')
+      if (text.startsWith('Stopped')) {
+        stopped += 1
+        stoppedItems.push(item)
+      } else refused = text.replace(/^Stop refused: /, '')
       continue
     }
     const task = taskIdOf(item)
@@ -104,10 +108,16 @@ async function stop($: EngineInterface, ids: string[]): Promise<void> {
       const result = await $.tool.call({ tool: 'TaskStop', task_id: task })
       if (result.deny) refused = result.deny
       else if (result.isError) refused = result.text ?? 'n/a'
-      else stopped += 1
+      else {
+        stopped += 1
+        stoppedItems.push(item)
+      }
     } catch (error) {
       refused = error instanceof Error ? error.message : String(error)
     }
+  }
+  for (const item of stoppedItems) {
+    await queueAction($, `Rabe: user stopped ${item.kind} ${item.id} (${item.title})`)
   }
   if (one && refused) $.ui.toast(`Stop refused: ${refused}`)
   else if (one) $.ui.toast(ended ? `${one.title} had already finished` : `Stopped ${one.title}`)
@@ -115,6 +125,31 @@ async function stop($: EngineInterface, ids: string[]): Promise<void> {
     const done = ended ? `; ${ended} had already finished` : ''
     const no = refused ? `; refused: ${refused}` : ''
     $.ui.toast(`Stopped ${stopped} of ${targets.length}${done}${no}`)
+  }
+}
+
+async function queueAction($: EngineInterface, note: string): Promise<void> {
+  for (;;) {
+    const { value = [], version } = await $.state.get({ plugin: 'rabe', key: 'actions' })
+    const { isSet } = await $.state.set(
+      { plugin: 'rabe', key: 'actions' },
+      [...value, note].slice(-MAX_ACTIONS),
+      { ifVersion: version },
+    )
+    if (isSet) return
+  }
+}
+
+async function clearActions($: EngineInterface, delivered: string[]): Promise<void> {
+  for (;;) {
+    const { value = [], version } = await $.state.get({ plugin: 'rabe', key: 'actions' })
+    if (!delivered.every((note, index) => value[index] === note)) return
+    const { isSet } = await $.state.set(
+      { plugin: 'rabe', key: 'actions' },
+      value.slice(delivered.length),
+      { ifVersion: version },
+    )
+    if (isSet) return
   }
 }
 
@@ -309,6 +344,7 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
           ? `Delete refused: ${reason.replace(/<\/?tool_use_error>/g, '').trim()}`
           : `Deleted cron ${item.title}`,
       )
+      if (!reason) await queueAction($, `Rabe: user deleted cron ${item.id} (${item.title})`)
       return
     }
     case 'copy': {
@@ -337,6 +373,8 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
           ? `Message sent to claude ${item.title}`
           : `Message not sent: ${sent.reason}`,
       )
+      if (sent.isDelivered)
+        await queueAction($, `Rabe: user sent a message to agent ${item.id} (${item.title})`)
       return sequence(async () => {
         const { selection } = await look($, true)
         const target = messageLanding(action, selection, ringOn)
@@ -521,6 +559,14 @@ export function pane(on: On, hours = baseHours): void {
     await remember($, e.resume?.id ?? e.sessionId)
 
     return next(e)
+  }).catch((_$, e, next) => next(e))
+
+  on('prompt.submit', { origin: { kind: /^/ } }, async ($, e, next) => {
+    const { value: actions = [] } = await $.state.get({ plugin: 'rabe', key: 'actions' })
+    if (actions.length === 0) return next(e)
+    const result = await next({ ...e, context: [...(e.context ?? []), ...actions] })
+    if (!result.drop) await clearActions($, actions)
+    return result
   }).catch((_$, e, next) => next(e))
 
   // The ring lands where the engine's link received the move (`landingOf`),

@@ -40,7 +40,7 @@ export function files(on: On, held: Record<string, string>): void {
 }
 
 export function core(on: On): void {
-  on('prompt.submit', async (_$, e) => ({ text: e.text }))
+  on('prompt.submit', async (_$, e) => ({ text: e.text, context: e.context }))
   on('session.start', async (_$, e) => ({ cwd: e.cwd }))
   on('command.register', async (_$, e) => ({ value: { command: e.name } }))
   on('classic.Stop', async () => ({}))
