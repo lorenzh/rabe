@@ -557,10 +557,16 @@ export function pane(on: On, hours = baseHours): void {
   // Rabe's own `$.ui.focus` from a Button's or Input's closure reaches no
   // hook of Rabe's, so its landings would never count; calls from these do.
   on('ui.press', { requestId: PANE }, ($, e, next) => carry($, e, () => next(e))).catch(
-    (_$, e, next) => next(e),
+    (_$, e, next) =>
+      next.called && next.error.message?.includes('no handler is held under handle')
+        ? { element: e.element }
+        : next(e),
   )
   on('ui.input', { requestId: PANE }, ($, e, next) => carry($, e, () => next(e))).catch(
-    (_$, e, next) => next(e),
+    (_$, e, next) =>
+      next.called && next.error.message?.includes('no handler is held under handle')
+        ? { element: e.element, value: e.value }
+        : next(e),
   )
 
   on('ui.scroll', { requestId: PANE }, async ($, e, next) => {

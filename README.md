@@ -73,6 +73,8 @@ A deleted cron job shows no next runs, and its delete button stays dim. The prev
 
 The buttons under the tabs show the actions of the current view. Unavailable controls keep their visible labels and stay dim. Their hotkeys do nothing and stay caught while the pane holds the keys outside input fields. Rabe adds no blank buttons for letters a view does not own.
 
+If a list redraw removes a row or search handler during an event, Rabe drops that stale action and keeps the pane's keys.
+
 | View | Letters caught outside input fields |
 |------|-------------------------------------|
 | Items list | `x g r a`; `s` where search is available |
