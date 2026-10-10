@@ -1376,24 +1376,66 @@ test('a removed workflow agent still counts in its run and the cost', async ($, 
   await band.unmount()
 })
 
-test('failed multiline copies flatten the fallback on every surface', async ($, on) => {
-  const command = 'echo ready\n\tsleep 1'
-  const shell = { ...dev, detail: { ...dev.detail, command } } as RabeItemOf<'shell'>
-  const state = hold(on, [shell], { open: shell.id })
-  const copies: string[] = []
-  on('ui.copy', async (_$, e) => {
-    copies.push(e.text)
-    return { value: { isCopied: false as const, reason: 'no-clipboard' as const } }
+for (const command of [
+  'echo first\necho second',
+  "printf '%s' 'a  b'",
+  'echo\tready',
+  'echo\rready',
+  'echo\u0000ready',
+  'echo\u001b[31mready',
+  'echo\u007fready',
+  'echo\u0085ready',
+]) {
+  test(`failed copy of ${JSON.stringify(command)} shows only the failure on every surface`, async ($, on) => {
+    const shell = { ...dev, detail: { ...dev.detail, command } } as RabeItemOf<'shell'>
+    const state = hold(on, [shell], { open: shell.id })
+    const copies: string[] = []
+    on('ui.copy', async (_$, e) => {
+      copies.push(e.text)
+      return { value: { isCopied: false as const, reason: 'no-clipboard' as const } }
+    })
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ surface, ...PANE } as never)
+      await ui.press({ key: `copy:${shell.id}` })
+      await ui.unmount()
+    }
+    expect(copies).toEqual([command, command])
+    expect(state.toasts).toEqual([
+      'Copy failed: the clipboard cannot be reached.',
+      'Copy failed: the clipboard cannot be reached.',
+    ])
   })
+}
+
+test('failed copies of an id show the exact text on every surface', async ($, on) => {
+  const state = hold(on, [explore], { open: explore.id })
+  on('ui.copy', async () => ({
+    value: { isCopied: false as const, reason: 'no-clipboard' as const },
+  }))
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
-    await ui.press({ key: `copy:${shell.id}` })
+    await ui.press({ key: `copy:${explore.id}` })
     await ui.unmount()
   }
-  expect(copies).toEqual([command, command])
   expect(state.toasts).toEqual([
-    'Copy failed: no-clipboard. Select it: echo ready sleep 1',
-    'Copy failed: no-clipboard. Select it: echo ready sleep 1',
+    'Copy failed: no-clipboard. Select it: a1',
+    'Copy failed: no-clipboard. Select it: a1',
+  ])
+})
+
+test('failed copies of an ssh line show the exact text on every surface', async ($, on) => {
+  const state = hold(on, [dev], { tab: 'effects' })
+  on('ui.copy', async () => ({
+    value: { isCopied: false as const, reason: 'no-clipboard' as const },
+  }))
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    await ui.press({ key: 'row:ssh:5173' })
+    await ui.unmount()
+  }
+  expect(state.toasts).toEqual([
+    'Copy failed: no-clipboard. Select it: ssh -L 5173:localhost:5173 <your-host>',
+    'Copy failed: no-clipboard. Select it: ssh -L 5173:localhost:5173 <your-host>',
   ])
 })
 

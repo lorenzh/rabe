@@ -4,6 +4,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-10
+
 ### Fixed
 
 - Partly fixed #25: dim controls keep their visible labels and catch their hotkeys without acting. Blank inert buttons are removed because Tab and arrows stop on them. Letters without a control in the current view still reach the prompt. The mod API has no key hook. ([#51](https://github.com/lorenzh/rabe/pull/51), refs [#25](https://github.com/lorenzh/rabe/issues/25))
@@ -16,7 +18,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - Opened monitors and shells keep every stored output line for scrolling. Split previews say how many older lines they hide. ([#50](https://github.com/lorenzh/rabe/pull/50), fixes [#32](https://github.com/lorenzh/rabe/issues/32))
 - Agent reports keep up to 16,000 characters instead of stopping at 300. Longer reports end with `…`. Split previews wrap only recent agent text and mark hidden text. Wrapped bullet and numbered list markers stay beside the start of long paths. ([#50](https://github.com/lorenzh/rabe/pull/50), fixes [#30](https://github.com/lorenzh/rabe/issues/30))
 - Opened agents and Codex jobs keep all recorded turns and steps. The detail scrolls beyond the pane's height. The scroll hint shows only when the opened detail needs scrolling. ([#50](https://github.com/lorenzh/rabe/pull/50), fixes [#29](https://github.com/lorenzh/rabe/issues/29))
-- Copy success and failure toasts show line breaks and tabs as spaces. The clipboard keeps the original text. ([#51](https://github.com/lorenzh/rabe/pull/51), fixes [#36](https://github.com/lorenzh/rabe/issues/36))
+- When one line can show text unchanged, copy failure toasts offer the exact text. Other failures say the clipboard cannot be reached. Success toasts keep their flattened preview. The clipboard keeps the original text. ([#51](https://github.com/lorenzh/rabe/pull/51), [#52](https://github.com/lorenzh/rabe/pull/52), fixes [#36](https://github.com/lorenzh/rabe/issues/36))
 - Tab switches focus the marked row after a safe move through the tab label. Enter opens that row at once. ([#51](https://github.com/lorenzh/rabe/pull/51), fixes [#31](https://github.com/lorenzh/rabe/issues/31))
 
 ## [0.4.1] - 2026-10-10
@@ -108,7 +110,8 @@ The first public version.
 
 - Workflow agents no longer offer stop and message, which Claude Code does not support for a single workflow agent; their detail offers stopping the run. ([#8](https://github.com/lorenzh/rabe/pull/8))
 
-[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/lorenzh/rabe/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/lorenzh/rabe/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/lorenzh/rabe/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/lorenzh/rabe/compare/v0.2.0...v0.3.0
