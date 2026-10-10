@@ -215,10 +215,15 @@ export function stepRow(keys: string[], selected: string, by: number): string | 
 // Where the focus ring goes, key by key, after `action` changed the view
 // (the item `open` was open): the active tab's Button, then the element the
 // change leads to. The search keeps the ring in its Input, which never moves.
-export function landing(action: Action, open: string): string[] {
+export function landing(action: Action, open: string, drawn?: Drawn): string[] {
+  const target =
+    drawn?.buttons.find(one => one.autoFocus)?.key ??
+    drawn?.nodes
+      .flatMap(node => ('spans' in node ? node.spans.filter(isPress) : []))
+      .find(one => one.autoFocus)?.key
   switch (action.type) {
     case 'tab':
-      return [`tab-${action.tab}`]
+      return [`tab-${action.tab}`, ...(target ? [target] : [])]
     case 'open': {
       const next = action.id ? 'back' : open && `row:${open}`
       return ['tab-items', ...(next ? [next] : [])]

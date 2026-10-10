@@ -1,8 +1,10 @@
 import { expect, test } from 'claude-code/testing'
 
+import type { RabeItemOf } from '../model'
+
 import { ALL, ci, dev, explore, NOW } from './fixtures'
 import { arm, DISARMED, isDestructive, landing, landingOf, NO_SELECTION, stepRow } from './view'
-import { selectsOnPress } from './views/pane'
+import { paneView, selectsOnPress } from './views/pane'
 
 const KEYS = ['row:a', 'row:b', 'row:c']
 
@@ -30,6 +32,25 @@ test('a change of the view lands the focus ring on the active tab, then where it
   expect(landing({ type: 'fold', group: 'shells' }, '')).toEqual(['tab-items', 'group-shells'])
   expect(landing({ type: 'query', text: 'dev' }, '')).toEqual(['search'])
   expect(landing({ type: 'stop', ids: ['shell:a'] }, '')).toEqual([])
+})
+
+test('switching tabs lands on the marked row after the safe tab detour', () => {
+  const edited = {
+    ...explore,
+    detail: { ...explore.detail, edits: [{ path: '/repo/a.ts', at: NOW }] },
+  } as RabeItemOf<'agent'>
+  const model = { items: [edited, dev], turns: {}, lines: {}, now: NOW }
+  for (const tab of ['cost', 'effects', 'timeline'] as const) {
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const sel = { ...NO_SELECTION, tab, selected: explore.id, isFocused: true }
+      const drawn = paneView(model, { columns: 80, rows: 24, surface, hasInput: true }, sel)
+      const row = tab === 'effects' ? 'row:file:/repo/a.ts' : `row:${explore.id}`
+      expect(landing({ type: 'tab', tab }, '', drawn)).toEqual([`tab-${tab}`, row])
+    }
+  }
+  expect(landing({ type: 'tab', tab: 'cost' }, '', { nodes: [], buttons: [] })).toEqual([
+    'tab-cost',
+  ])
 })
 
 // Destructive controls act only while the ring is known to sit on a safe

@@ -55,7 +55,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | Click on a row | Select the row; click it again to open it. A click on the row that has the focus opens it at once |
 | Tab / Shift+Tab | Move the focus through rows, tabs and buttons |
 | `b` | Go back to the list |
-| `1` to `4` | Switch tab |
+| `1` to `4` | Switch tab and focus its marked row. An empty tab keeps the focus on its label |
 | `s` | Search |
 | `x` | Stop the selected item |
 | `g` | Stop the group the selected row is in (the rows the search shows), or the workflow run of the selected run or workflow agent |
