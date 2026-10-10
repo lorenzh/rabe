@@ -61,7 +61,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | `g` | Stop the group the selected row is in (the rows the search shows), or the workflow run of the selected run or workflow agent |
 | `r` | Remove the selected row once it is done, failed or stopped |
 | `a` | Remove every done, failed or stopped row the search shows |
-| `m` | Send a message to an agent |
+| `m` | Send a message to an agent. Enter sends it and gives the keys back to the pane |
 | `f` | Open the Claude agent that forwarded a Codex job (it has no row of its own); `b` then goes back to the job's row |
 | `c` | Copy the command, the prompt, the `ssh -L` line, an agent's id, or the command that resumes a session or a Codex thread. If the clipboard cannot be reached (for example over SSH in a terminal without OSC 52), a message shows the text to select |
 | `d` | Delete a running cron job |
