@@ -23,6 +23,15 @@ test('the cost tab heads with the session cost, the totals and the running count
   expect(shown[3]).toMatch(/^ {2}NAME +TOKENS +COST +TIME$/)
 })
 
+test('cost names use more room and source totals without a source are hidden', () => {
+  const size = { ...SIZE, columns: 100 }
+  const long = { ...explore, title: 'Explore feature implementation' }
+  const shown = lines(gridOf(costView({ ...MODEL, items: [long] }, size, NO_SELECTION)).grid)
+  expect(shown[0]).toContain('claude')
+  expect(shown[0]).not.toContain('codex')
+  expect(shown.some(line => line.includes(long.title))).toBe(true)
+})
+
 test('without the session cost the head says n/a, never $0.00', () => {
   const shown = lines(gridOf(costView({ ...MODEL, usd: undefined }, SIZE, NO_SELECTION)).grid)
   expect(shown[0]).toMatch(/^ session cost n\/a {2}claude/)
