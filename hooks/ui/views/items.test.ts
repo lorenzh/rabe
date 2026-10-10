@@ -357,6 +357,15 @@ test('x and g keep their keys and act on the selected row', () => {
   expect(x).toMatchObject({ key: 'stop', action: { type: 'stop', ids: [explore.id] } })
   expect(g?.key).toBe('stop-group')
   expect(g?.label).toBe('g: stop 3')
+  const fewer = itemsView(
+    { ...model, items: model.items.filter(item => item !== review) },
+    WIDE,
+    sel,
+  )
+  expect(fewer.buttons.find(button => button.key === 'stop-group')).toMatchObject({
+    key: 'stop-group',
+    label: 'g: stop 2',
+  })
   const [, other] = itemsView(model, WIDE, { ...sel, selected: review.id }).buttons
   expect(other).toMatchObject({ key: 'stop', action: { type: 'stop', ids: [review.id] } })
   const ended = itemsView(model, WIDE, { ...sel, selected: lint.id }).buttons

@@ -24,14 +24,6 @@ export function ago(ms: number): string {
   return `${Math.floor(s / 3600)}h ago`
 }
 
-export function countdown(ms: number): string {
-  const s = Math.max(0, Math.ceil(ms / 1000))
-  const h = Math.floor(s / 3600)
-  const m = Math.floor(s / 60) % 60
-
-  return h > 0 ? `${h}:${pad(m)}:${pad(s % 60)}` : `${m}:${pad(s % 60)}`
-}
-
 export function clockTime(ms: number): string {
   const d = new Date(ms)
 

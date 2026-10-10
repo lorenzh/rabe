@@ -168,7 +168,7 @@ function agentLines(model: Model, item: RabeItem, columns: number, rows = Infini
     const value = textRows > 0 ? turn.text : ''
     const cut = value.length > limit
     const lines = [
-      ...(textRows > 0
+      ...(textRows > 0 && value
         ? lead(
             cut
               ? [['     ', dim]]

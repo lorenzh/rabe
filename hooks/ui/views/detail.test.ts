@@ -343,7 +343,7 @@ test('a monitor shows each line with the time it was received', () => {
   expect(fg(g, [at[0] + 9, at[1]])).toBe(C.text)
 })
 
-test('a cron job lists its next runs with a countdown', () => {
+test('a cron job lists its next runs with the pane duration format', () => {
   const shown = lines(open(model(), babysit.id).grid)
   expect(shown).toContain('▸ next runs')
   expect(shown).toContain('  10:55  in 3m00s')
@@ -384,7 +384,7 @@ test('a wakeup shows the one time it fires', () => {
   expect(lines(open(model([wake]), wake.id).grid)).toContain('  10:53  in 1m30s')
 })
 
-test('an agent turn with only tools shows the tool line without placeholder text', () => {
+test('an agent turn with only tools shows its tool line without an empty header', () => {
   const m = model([explore], {
     turns: {
       [explore.id]: [
@@ -395,6 +395,7 @@ test('an agent turn with only tools shows the tool line without placeholder text
   const shown = lines(open(m, explore.id).grid)
   expect(shown).toContain('     ⎿ Read file.ts')
   expect(shown.some(line => line.includes('(tools only)'))).toBe(false)
+  expect(shown.some(line => line.includes('●'))).toBe(false)
 })
 
 test('a short opened shell keeps its head and every output line for scrolling', () => {
