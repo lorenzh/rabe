@@ -3,7 +3,16 @@ import { expect, test } from 'claude-code/testing'
 import type { RabeItemOf } from '../model'
 
 import { ALL, ci, dev, explore, NOW } from './fixtures'
-import { arm, DISARMED, isDestructive, landing, landingOf, NO_SELECTION, stepRow } from './view'
+import {
+  arm,
+  DISARMED,
+  isDestructive,
+  landing,
+  landingOf,
+  messageLanding,
+  NO_SELECTION,
+  stepRow,
+} from './view'
 import { paneView, selectsOnPress } from './views/pane'
 
 const KEYS = ['row:a', 'row:b', 'row:c']
@@ -15,9 +24,23 @@ test('an arrow steps to the next or previous row and stops at the ends', () => {
   expect(stepRow(KEYS, 'a', -1)).toBeUndefined()
 })
 
+test('a combined arrow keeps its valid move to the list boundary', () => {
+  expect(stepRow(KEYS, 'b', 2)).toBe('row:c')
+  expect(stepRow(KEYS, 'b', -2)).toBe('row:a')
+})
+
+test('message completion returns focus to m when its field still owns focus', () => {
+  const action = { type: 'message', id: 'agent:a', text: 'hello' } as const
+  expect(messageLanding(action, { tab: 'items', open: 'agent:a' }, 'message:agent:a')).toEqual([
+    'message-agent:agent:a',
+  ])
+  expect(messageLanding(action, { tab: 'items', open: 'agent:a' }, undefined)).toBeUndefined()
+})
+
 test('from no row, down goes to the first and up scrolls on', () => {
   expect(stepRow(KEYS, '', 1)).toBe('row:a')
   expect(stepRow(KEYS, '', 2)).toBe('row:b')
+  expect(stepRow(KEYS, '', 4)).toBe('row:c')
   expect(stepRow(KEYS, 'a', 2)).toBe('row:c')
   expect(stepRow(KEYS, 'c', -2)).toBe('row:a')
   expect(stepRow(KEYS, 'gone', -1)).toBeUndefined()

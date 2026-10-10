@@ -207,9 +207,12 @@ export function rowKeys(drawn: Drawn | Piece[]): string[] {
 // the first row when the focus is on none; undefined past either end.
 export function stepRow(keys: string[], selected: string, by: number): string | undefined {
   const at = keys.indexOf(`row:${selected}`)
-  if (at === -1) return by > 0 ? keys[by - 1] : undefined
+  if (at === -1) return by > 0 ? keys[Math.min(keys.length - 1, by - 1)] : undefined
 
-  return keys[at + by]
+  const target = at + by
+  if (target >= 0 && target < keys.length) return keys[target]
+  if (Math.abs(by) > 1) return keys[Math.max(0, Math.min(keys.length - 1, target))]
+  return undefined
 }
 
 // Where the focus ring goes, key by key, after `action` changed the view
@@ -240,6 +243,21 @@ export function landing(action: Action, open: string, drawn?: Drawn): string[] {
     default:
       return []
   }
+}
+
+export function messageLanding(
+  action: Action,
+  selection: Pick<Selection, 'tab' | 'open'>,
+  ringOn: string | undefined,
+): string[] | undefined {
+  if (
+    action.type !== 'message' ||
+    selection.tab !== 'items' ||
+    selection.open !== action.id ||
+    ringOn !== `message:${action.id}`
+  )
+    return undefined
+  return landing(action, '')
 }
 
 // Whether the focus ring is known to sit on a safe element, so that stop and

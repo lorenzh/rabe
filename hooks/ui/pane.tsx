@@ -15,6 +15,7 @@ import {
   landingOf,
   layout,
   type Model,
+  messageLanding,
   rowKeys,
   type Selection,
   stepRow,
@@ -242,7 +243,7 @@ async function remove($: EngineInterface, action: Action & { type: 'remove' | 'c
 
 async function act($: EngineInterface, action: Action, surface: RenderSurface): Promise<void> {
   if (action.type === 'open' && (await choose($, action.id))) return
-  if (landing(action, '').length > 0) feed($, { type: 'reset' })
+  if (action.type !== 'message' && landing(action, '').length > 0) feed($, { type: 'reset' })
   switch (action.type) {
     case 'tab':
       await $.state.set({ plugin: 'rabe', key: 'tab' }, action.tab)
@@ -336,7 +337,11 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
           ? `Message sent to claude ${item.title}`
           : `Message not sent: ${sent.reason}`,
       )
-      return sequence(() => land($, landing(action, '')))
+      return sequence(async () => {
+        const { selection } = await look($, true)
+        const target = messageLanding(action, selection, ringOn)
+        if (target) await land($, target)
+      })
     }
   }
 }
@@ -469,20 +474,20 @@ const heldOf = (surface: RenderSurface, sel: Selection): Held[] | undefined => {
 // An arrow key in a pane taller than its body scrolls it a row; Rabe moves
 // the focus to the next or previous row instead, and the pane follows the
 // focus. Past either end the scroll goes on, to show what is above or below.
-async function arrow($: EngineInterface, by: number, bodyRows: number): Promise<boolean> {
+async function arrow($: EngineInterface, by: number, bodyRows: number): Promise<number | false> {
   const { model, selection } = await look($, true)
   const size = { columns: 80, rows: bodyRows, surface: 'terminal', hasInput: true } as const
   const drawn = layout(paneView(model, size, selection))
-  const key = stepRow(
-    rowKeys(hold(drawn, heldOf('terminal', selection), seatsRows(selection)).list),
-    selection.selected,
-    by,
-  )
+  const keys = rowKeys(hold(drawn, heldOf('terminal', selection), seatsRows(selection)).list)
+  const key = stepRow(keys, selection.selected, by)
   if (!key) return false
+  const from = keys.indexOf(`row:${selection.selected}`)
+  const to = keys.indexOf(key)
+  const moved = from < 0 ? to + 1 : to - from
   feed($, { type: 'step', key })
   await focusOn($, key)
 
-  return true
+  return by - moved
 }
 
 export function pane(on: On, hours = baseHours): void {
@@ -571,7 +576,14 @@ export function pane(on: On, hours = baseHours): void {
 
   on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
     if (e.pointer || e.by === 0 || Math.abs(e.by) >= e.bodyRows) return next(e)
-    if (await sequence(() => arrow($, e.by, e.bodyRows)).catch(() => false)) return {}
+    const remaining = await sequence(() => arrow($, e.by, e.bodyRows)).catch(() => false)
+    if (remaining === 0) return {}
+    if (typeof remaining === 'number')
+      return next(
+        e.offset > 0 && e.offset < e.contentRows - e.bodyRows
+          ? { ...e, offset: e.offset - e.by + remaining }
+          : e,
+      )
 
     return next(e)
   })
