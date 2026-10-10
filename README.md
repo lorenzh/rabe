@@ -18,7 +18,7 @@ Status: early development. See [releases](https://github.com/lorenzh/rabe/releas
 | Kind | In the band | In the pane |
 |---|---|---|
 | Claude subagents | Count (`claude`) | Tokens, share of the session, the prompt it got, each turn with its tool calls, the agent id (`c` copies it) and the full path of its transcript |
-| Workflows | Count (`workflow`) | Phases in order, the agents of each phase in start order with tokens and time; select an agent to open it |
+| Workflows | Count (`workflow`) | Phases and their agents in start order, with tokens and time; select an agent to open it |
 | Codex jobs (from the Codex plugin) | Count (`codex`) | Model, effort and sandbox, tokens, the prompt, each message and command with its exit code, the thread id (`c` copies `codex resume <thread id>`) |
 | Background shells | Count (`shell`) | Output lines, exit code, the guessed port |
 | Monitors | Count (`monitor`) | Each line with the time Rabe received it |

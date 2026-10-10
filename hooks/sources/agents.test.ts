@@ -99,10 +99,28 @@ test('the meta path comes from the transcript or the parent workflow folder', ()
     title: 'review',
     status: 'running',
     seenAt: 1,
-    detail: { runId: 'wf_1', transcriptDir: '/s/subagents/workflows/wf_1' },
+    detail: {
+      runId: 'wf_1',
+      transcriptDir: '/s/subagents/workflows/wf_1',
+      scriptPath: '/s/workflows/scripts/review.js',
+    },
   }
   const child = { ...agent, parentId: 'workflow:wf_1' }
   expect(metaPath(child, [run])).toBe('/s/subagents/workflows/wf_1/agent-a1.meta.json')
+  const workflowChild = {
+    ...child,
+    detail: { agentId: 'a1', transcriptPath: '/s/agent-a1.jsonl' },
+  }
+  expect(metaPath(workflowChild, [run])).toBe('/s/subagents/workflows/wf_1/agent-a1.meta.json')
+  const unknownDirectory = { ...run, detail: { runId: 'wf_1' } }
+  expect(metaPath(workflowChild, [unknownDirectory])).toBe('/s/agent-a1.meta.json')
+  const withoutTranscriptDir = {
+    ...run,
+    detail: { runId: 'wf_1', scriptPath: '/s/workflows/scripts/review.js' },
+  }
+  expect(metaPath(child, [withoutTranscriptDir])).toBe(
+    '/s/subagents/workflows/wf_1/agent-a1.meta.json',
+  )
   expect(metaPath(agent, [run])).toBeUndefined()
 })
 
@@ -222,11 +240,32 @@ test('SubagentStart during the spawn keeps the transcript once the spawn adds th
 
     return { model: 'claude-opus-5-5', agentId: 'a1' }
   })
-  await $.agent.spawn(SPAWN)
+  await $.agent.spawn({ ...SPAWN, workflow: undefined })
   expect(held.items).toHaveLength(1)
   expect(held.items?.[0]).toMatchObject({
     title: 'verify:db.ts',
     detail: { agentId: 'a1', transcriptPath: '/p/s1/subagents/agent-a1.jsonl', cwd: '/repo' },
+  })
+})
+
+test('a workflow spawn moves its transcript into the run directory', async ($, on) => {
+  const held = watch(on)
+  mock.clock(on, { now: 5000 })
+  on('classic.SubagentStart', async () => ({}))
+  on('agent.spawn', async () => {
+    await $.classic.SubagentStart({
+      agent_id: 'a1',
+      agent_type: 'workflow-subagent',
+      transcript_path: '/p/s1.jsonl',
+    })
+
+    return { model: 'claude-opus-5-5', agentId: 'a1' }
+  })
+  await $.agent.spawn(SPAWN)
+
+  expect(held.items?.[0]).toMatchObject({
+    parentId: 'workflow:wf_1',
+    detail: { transcriptPath: '/p/s1/subagents/workflows/wf_1/agent-a1.jsonl' },
   })
 })
 
@@ -751,6 +790,75 @@ test('the poll adds listed agents and reads the meta file of running ones', asyn
     ['agent:a2', 'done', 'agent:a1'],
   ])
   expect(list[0]?.detail).toMatchObject({ worktreePath: '/wt/a1', worktreeBranch: 'wt-a1' })
+})
+
+test('the poll reads phase metadata for workflow agents that already ended', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const workflow: RabeItem = {
+    id: 'workflow:wf_1',
+    kind: 'workflow',
+    title: 'review',
+    status: 'done',
+    seenAt: 900,
+    endedAt: 900,
+    detail: { runId: 'wf_1', scriptPath: '/p/workflows/scripts/wf_1.js', phases: ['Draft'] },
+  }
+  const endedAgent: RabeItem = {
+    ...agent,
+    status: 'done',
+    endedAt: 900,
+    parentId: workflow.id,
+  }
+  state['rabe.items'] = { value: [workflow, endedAgent], version: 1 }
+  core(on)
+  on('agent.list', async () => ({
+    value: [{ id: 'a1', description: 'draft', type: 'workflow-subagent', status: 'completed' }],
+  }))
+  on('fs.read', async (_$, e) =>
+    e.path === '/p/subagents/workflows/wf_1/agent-a1.meta.json'
+      ? { value: '{"workflowPhase":"Draft"}' }
+      : { deny: 'missing' },
+  )
+
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+
+  expect(state['rabe.items']?.value).toEqual([
+    workflow,
+    { ...endedAgent, detail: { ...endedAgent.detail, workflowPhase: 'Draft' } },
+  ])
+  const written = state['rabe.items']
+  await clock.advance(3000)
+  expect(state['rabe.items']).toBe(written)
+})
+
+test('the poll stops retrying ended workflow agents when the workflow has no phases', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const workflow: RabeItem = {
+    id: 'workflow:wf_1',
+    kind: 'workflow',
+    title: 'review',
+    status: 'done',
+    seenAt: 900,
+    detail: { runId: 'wf_1', scriptPath: '/p/workflows/scripts/wf_1.js', phases: [] },
+  }
+  state['rabe.items'] = {
+    value: [workflow, { ...agent, status: 'done', endedAt: 900, parentId: workflow.id }],
+    version: 1,
+  }
+  core(on)
+  on('agent.list', async () => ({ value: [] }))
+  const reads: string[] = []
+  on('fs.read', async (_$, e) => {
+    reads.push(e.path)
+    return { deny: 'missing' }
+  })
+
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await clock.advance(3000)
+
+  expect(reads).toEqual([])
 })
 
 function completed(count: number) {

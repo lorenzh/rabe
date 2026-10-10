@@ -79,12 +79,19 @@ export function metaPatch(text: string): Partial<AgentItem['detail']> | undefine
 }
 
 export function metaPath(item: AgentItem, items: RabeItem[]): string | undefined {
-  if (item.detail.transcriptPath)
-    return item.detail.transcriptPath.replace(/\.jsonl$/, '.meta.json')
   const parent = items.find(one => one.id === item.parentId)
-  if (parent?.kind !== 'workflow' || !parent.detail.transcriptDir) return undefined
+  if (parent?.kind === 'workflow') {
+    const folder =
+      parent.detail.transcriptDir ??
+      parent.detail.scriptPath?.replace(
+        /\/workflows\/scripts\/[^/]+$/,
+        `/subagents/workflows/${parent.detail.runId}`,
+      )
+    if (folder && folder !== parent.detail.scriptPath)
+      return `${folder}/agent-${item.detail.agentId}.meta.json`
+  }
 
-  return `${parent.detail.transcriptDir}/agent-${item.detail.agentId}.meta.json`
+  return item.detail.transcriptPath?.replace(/\.jsonl$/, '.meta.json')
 }
 
 export function agentTranscript(path: string, agentId: string): string | undefined {
@@ -92,6 +99,17 @@ export function agentTranscript(path: string, agentId: string): string | undefin
   if (!path.endsWith('.jsonl')) return undefined
 
   return `${path.slice(0, -'.jsonl'.length)}/subagents/agent-${agentId}.jsonl`
+}
+
+function workflowTranscript(
+  path: string | undefined,
+  agentId: string,
+  runId: string,
+): string | undefined {
+  const generic = `/subagents/agent-${agentId}.jsonl`
+  return path?.endsWith(generic)
+    ? `${path.slice(0, -generic.length)}/subagents/workflows/${runId}/agent-${agentId}.jsonl`
+    : path
 }
 
 // The file an Edit or Write changed: the engine ran it (a result, no error) and
@@ -427,7 +445,15 @@ async function refresh($: EngineInterface): Promise<void> {
   })
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   for (const item of items) {
-    if (item.kind === 'agent' && item.status === 'running') await readMeta($, item.id)
+    if (item.kind !== 'agent') continue
+    const workflow = items.find(parent => parent.id === item.parentId && parent.kind === 'workflow')
+    if (
+      item.status === 'running' ||
+      (workflow?.kind === 'workflow' &&
+        workflow.detail.phases?.length &&
+        item.detail.workflowPhase === undefined)
+    )
+      await readMeta($, item.id)
   }
 }
 
@@ -481,6 +507,11 @@ export function agents(on: On, file: string): void {
     const now = await $.clock.now()
     const runId = e.workflow?.runId
     const parent = e.parentAgentId ? itemId('agent', e.parentAgentId) : undefined
+    const id = itemId('agent', agentId)
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const transcriptPath = runId
+      ? workflowTranscript(asAgent(items, id)?.detail.transcriptPath, agentId, runId)
+      : undefined
     await write($, items =>
       addItem(
         items,
@@ -493,6 +524,7 @@ export function agents(on: On, file: string): void {
           parentId: runId ? itemId('workflow', runId) : parent,
           detail: {
             agentId,
+            ...(transcriptPath && { transcriptPath }),
             type: e.subagentType,
             model: result.model,
             description: e.description,
