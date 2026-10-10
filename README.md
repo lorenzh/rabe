@@ -73,7 +73,7 @@ A deleted cron job shows no next runs, and its delete button stays dim. The prev
 
 The buttons under the tabs show the keys of the current tab. A key that cannot act now is dim, and pressing it does nothing. A letter with no button goes to the prompt.
 
-An opened agent or Codex job keeps all recorded turns or steps in its detail. Use ↑↓, PageUp, PageDown or the wheel to scroll. Claude Code sets the pane's height.
+An opened item keeps its recorded turns, steps or output lines in its detail. Use ↑↓, PageUp, PageDown or the wheel to scroll. Claude Code sets the pane's height. The split preview says how many older lines it hides. Press Enter to open the full detail.
 
 Agent answers keep their full text. Markdown stays plain text. A wrapped list keeps its marker beside the start of a long path. Answers already shortened by an older version stay shortened.
 

@@ -19,7 +19,7 @@ import {
   verify,
 } from '../fixtures'
 import { isPress, type Model, NO_SELECTION, rowKeys, type Size } from '../view'
-import { detailView } from './detail'
+import { detailLines, detailView } from './detail'
 import { itemsView } from './items'
 import { paneView } from './pane'
 
@@ -325,7 +325,7 @@ test('a wakeup shows the one time it fires', () => {
   expect(lines(open(model([wake]), wake.id).grid)).toContain('  10:53  in 1:30')
 })
 
-test('a short detail keeps the head and the newest body lines', () => {
+test('a short opened shell keeps its head and every output line for scrolling', () => {
   const m = model(ALL, {
     lines: {
       [lint.id]: {
@@ -336,11 +336,34 @@ test('a short detail keeps the head and the newest body lines', () => {
   })
   const { grid: g } = open(m, lint.id, { ...TERMINAL, rows: 14 })
   const shown = lines(g)
-  expect(g.rows).toBe(14)
+  expect(g.rows).toBeGreaterThan(14)
   expect(shown[0]).toMatch(/^✗ shell · bun run lint/)
   expect(shown).toContain('▸ output · newest last · 40 lines')
   expect(shown).toContain('line 39')
-  expect(shown).not.toContain('line 0')
+  expect(shown).toContain('line 0')
+})
+
+test('an opened monitor keeps all eight lines in a short pane at both widths', () => {
+  const m = model([ci], {
+    lines: {
+      [ci.id]: {
+        seen: 8,
+        lines: Array.from({ length: 8 }, (_, i) => ({ at: NOW, text: `output ${i + 1}` })),
+      },
+    },
+  })
+  for (const columns of [96, 196]) {
+    const shown = lines(open(m, ci.id, { ...TERMINAL, columns, rows: 10 }).grid)
+    expect(shown.filter(line => /output \d/.test(line))).toHaveLength(8)
+  }
+  for (const rows of [1, 10]) {
+    const preview = detailLines(m, ci, rows, 96)
+    const shown = lines(gridOf({ nodes: preview, buttons: [] }).grid)
+    const hidden = Number(shown.join('\n').match(/(\d+) older lines hidden/)?.[1] ?? 0)
+    expect(hidden).toBeGreaterThan(0)
+    expect(hidden + shown.filter(line => /output \d/.test(line)).length).toBe(8)
+    expect(shown.some(line => line.includes('enter opens full detail'))).toBe(true)
+  }
 })
 
 test('the split shows the same detail beside the list', () => {

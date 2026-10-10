@@ -263,7 +263,7 @@ function cronLines(model: Model, item: RabeItem): Line[] {
   }))
 }
 
-// The body of one item's detail, newest last; callers keep the tail that fits.
+// The body of one item's detail, newest last.
 export function bodyLines(model: Model, item: RabeItem, columns: number, sel?: Selection): Line[] {
   switch (item.kind) {
     case 'agent':
@@ -279,8 +279,7 @@ export function bodyLines(model: Model, item: RabeItem, columns: number, sel?: S
   }
 }
 
-// One item: head, the fixed top, then the newest body lines that fit in
-// `rows`. The head and top are never cut: what does not fit scrolls.
+// The split preview keeps the tail and says how many older lines it hides.
 export function detailLines(
   model: Model,
   item: RabeItem,
@@ -289,10 +288,21 @@ export function detailLines(
   sel?: Selection,
 ): Line[] {
   const top = [...headLines(model, item, columns), ...topLines(model, item, columns)]
-  const room = rows - top.length
-  const body = room > 0 ? bodyLines(model, item, columns, sel).slice(-room) : []
+  const body = bodyLines(model, item, columns, sel)
+  const room = Math.max(0, rows - top.length)
+  const hasHidden = body.length > room
+  const shown = Math.max(0, room - (hasHidden ? 1 : 0))
+  const note = hasHidden
+    ? [
+        {
+          spans: [
+            [`${body.length - shown} older lines hidden · enter opens full detail`, dim],
+          ] as Span[],
+        },
+      ]
+    : []
 
-  return [...top, ...body]
+  return [...top, ...note, ...(shown > 0 ? body.slice(-shown) : [])]
 }
 
 // A control that copies the command resuming `id`; its key names the id.
@@ -412,14 +422,11 @@ function detailButtons(
 export const detailView: View = (model, size, sel): Drawn => {
   const item = model.items.find(one => one.id === sel.open)
   if (!item) return { nodes: [], buttons: [] }
-  const shown =
-    item.kind === 'workflow' || item.kind === 'agent' || item.kind === 'codex'
-      ? [
-          ...headLines(model, item, size.columns),
-          ...topLines(model, item, size.columns),
-          ...bodyLines(model, item, size.columns, sel),
-        ]
-      : detailLines(model, item, size.rows, size.columns)
+  const shown = [
+    ...headLines(model, item, size.columns),
+    ...topLines(model, item, size.columns),
+    ...bodyLines(model, item, size.columns, sel),
+  ]
   const inputs: ViewInput[] =
     item.kind === 'agent' && item.status === 'running' && size.hasInput && !isWorkflowAgent(item)
       ? [
