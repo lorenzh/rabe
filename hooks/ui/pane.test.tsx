@@ -909,10 +909,10 @@ const ARROW = {
   origin: { kind: 'person' },
 } as const
 
-// The pane's arrow hook answers a one-row move without a pointer itself and
+// The pane's arrow hook answers a row move without a pointer itself and
 // moves the focus (the kit cannot answer a plugin's $.ui.focus, so that call
 // is left to the live engine); the rest scrolls on.
-test('an arrow key in a pane taller than its body is kept from scrolling; the wheel and pages pass', async ($, on) => {
+test('summed arrows move focus; the wheel and page scroll pass', async ($, on) => {
   hold(on, ALL, { selected: dev.id })
   const passed: number[] = []
   on('ui.scroll', async (_$, e) => {
@@ -921,9 +921,10 @@ test('an arrow key in a pane taller than its body is kept from scrolling; the wh
   })
   expect(await $.ui.scroll({ ...ARROW, by: 1 })).toEqual({})
   expect(await $.ui.scroll({ ...ARROW, by: -1 })).toEqual({})
-  await $.ui.scroll({ ...ARROW, by: 3 })
+  expect(await $.ui.scroll({ ...ARROW, by: 2 })).toEqual({})
+  await $.ui.scroll({ ...ARROW, by: 10 })
   await $.ui.scroll({ ...ARROW, by: 1, pointer: { column: 2, row: 4 } })
-  expect(passed).toEqual([3, 1])
+  expect(passed).toEqual([10, 1])
 })
 
 test('an arrow past the last row scrolls the pane on', async ($, on) => {

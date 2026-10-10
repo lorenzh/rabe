@@ -3,6 +3,7 @@ import type { EngineInterface, On, RenderSurface } from 'claude-code'
 import type { RabeItem, RabePrevious } from '../../types'
 import { KIND_LABEL, kept, matches, orderOf, previousOf, rowOf } from './lists'
 import { type At, type Held, hold, isRowKey, render, shifts } from './render'
+import { sequence } from './sequence'
 import {
   type Action,
   type ArmEvent,
@@ -433,7 +434,8 @@ async function carry<R>($: EngineInterface, at: At, run: () => Promise<R>): Prom
     if (rest.length > 0) waiting.set(key, rest)
     else waiting.delete(key)
   }
-  if (mine.press && !isHeldBack(at)) await act($, mine.press.action, mine.press.surface)
+  const press = mine.press
+  if (press && !isHeldBack(at)) await sequence(() => act($, press.action, press.surface))
 
   return result
 }
@@ -538,8 +540,8 @@ export function pane(on: On, hours = baseHours): void {
   )
 
   on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
-    if (e.pointer || Math.abs(e.by) !== 1) return next(e)
-    if (await arrow($, e.by, e.bodyRows).catch(() => false)) return {}
+    if (e.pointer || e.by === 0 || Math.abs(e.by) >= e.bodyRows) return next(e)
+    if (await sequence(() => arrow($, e.by, e.bodyRows)).catch(() => false)) return {}
 
     return next(e)
   })

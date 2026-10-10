@@ -50,7 +50,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 
 | Key | What it does |
 |---|---|
-| ↑ / ↓ | Move to the previous / next row; the detail beside the list follows. Each arrow waits for its focus move before the next key is handled |
+| ↑ / ↓ | Move to the previous / next row; the detail beside the list follows. Each arrow waits for the previous arrow's focus move to finish |
 | Enter | Open the row that has the focus, also after a click selected another row |
 | Click on a row | Select the row; click it again to open it. A click on the row that has the focus opens it at once |
 | Tab / Shift+Tab | Move the focus through rows, tabs and buttons |

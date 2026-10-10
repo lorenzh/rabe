@@ -9,7 +9,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - After a message to an agent is sent, the keys go back to the pane: the focus moves from the message field to `m: message`, so `b`, `c` and the other keys act again. ([#64](https://github.com/lorenzh/rabe/pull/64), fixes [#62](https://github.com/lorenzh/rabe/issues/62))
 - Keep workflow agents in their declared phase when they finish before the next poll. ([#61](https://github.com/lorenzh/rabe/issues/61), fixes #61)
 - Workflow agents show under their declared phase. (fixes #61)
-- Arrow presses in a tall pane wait for their focus move to finish before the next key is handled (fixes #37)
+- Presses and row arrows wait for focus moves to finish; summed arrows move by their combined row count (fixes #37)
 
 ## [0.4.3] - 2026-10-10
 

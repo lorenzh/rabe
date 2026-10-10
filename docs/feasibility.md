@@ -182,7 +182,7 @@ Only Button and Markdown links take a press, so a row is one pressable thing, wi
 
 Where the window stands comes from the Pane's `scroll.offset` (d.ts `SiteScroll`): the first row of the tree it showed when the hook was asked. A scroll through `ui.scroll` asks again; on the terminal the engine's own moves (following the focus, a clamp) do not, so a draw may read the offset from before the focus moved. Rabe adds what the engine does to keep the focused row in view (see the split in architecture).
 
-The test kit cannot answer a plugin's `$.ui.focus` (nothing beneath the plugins answers it, and a test hook on `ui.focus` is not reached), so the focus moves of the arrow fix and after a change of the view are checked only live; `landing` names the keys in a pure function with its own test.
+The test kit cannot answer a plugin's `$.ui.focus` (nothing beneath the plugins answers it, and a test hook on `ui.focus` is not reached), so the focus moves of the arrow fix and after a change of the view are checked only live; `landing` names the keys in a pure function with its own test. On 2026-10-10, I tried the #37 sequence on Claude Code 2.1.296 under the isolated `bug37` tmux socket with six shell rows. The pane opened and the rows rendered, but after returning from the slash-command turn the terminal did not reliably route the rapid keys to the pane, so this attempt does not verify the focus landing. The run was stopped and its temporary tasks and folder were removed.
 
 ### The Claude desktop app
 

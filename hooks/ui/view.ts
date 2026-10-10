@@ -207,7 +207,7 @@ export function rowKeys(drawn: Drawn | Piece[]): string[] {
 // the first row when the focus is on none; undefined past either end.
 export function stepRow(keys: string[], selected: string, by: number): string | undefined {
   const at = keys.indexOf(`row:${selected}`)
-  if (at === -1) return by > 0 ? keys[0] : undefined
+  if (at === -1) return by > 0 ? keys[by - 1] : undefined
 
   return keys[at + by]
 }
