@@ -54,6 +54,22 @@ test('the time axis names each clock time once, in order, before now', () => {
   }
 })
 
+test('a short timeline shows its start even when no round clock label fits', () => {
+  const now = new Date(2026, 9, 10, 6, 40).getTime()
+  for (const columns of [40, 60, 100, 160]) {
+    for (const items of [[], [{ ...dev, startedAt: undefined, seenAt: now }]]) {
+      for (const window of [undefined, windowOf(4, now)]) {
+        const model = { ...MODEL, items, now }
+        const size = { ...SIZE, columns }
+        const sel = { ...NO_SELECTION, window }
+        const axis = lines(gridOf(timelineView(model, size, sel)).grid)[3]
+        expect(axis?.trim()).toMatch(/^06:39 +now$/)
+        expect(axis?.length).toBe(columns)
+      }
+    }
+  }
+})
+
 test('each item gets a bar over its run, colored by kind while it runs, then by its end', () => {
   const { grid } = gridOf(timelineView(MODEL, SIZE, NO_SELECTION))
   const shown = lines(grid)

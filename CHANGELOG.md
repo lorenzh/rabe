@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Fixed
+
+- When no round clock label fits, the Timeline axis shows its range start. The first draw after a reload uses this fallback. (fixes [#53](https://github.com/lorenzh/rabe/issues/53))
+
 ## [0.4.2] - 2026-10-10
 
 ### Fixed
