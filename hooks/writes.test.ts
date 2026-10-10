@@ -119,6 +119,8 @@ test('lists and continuations after an OR branch keep their candidates', () => {
   expect(paths('true || cd /elsewhere; touch relative /tmp/absolute', '/repo')).toEqual([
     '/tmp/absolute',
   ])
+  expect(paths('true || pushd /x; touch rel', '/repo')).toEqual([])
+  expect(paths('true || popd; touch rel', '/repo')).toEqual([])
   expect(paths('true || exit 0\ntouch /tmp/after')).toEqual([])
   expect(paths('true || if false; then touch /tmp/skip; fi\ntouch /tmp/after')).toEqual([])
   expect(paths('touch /tmp/before || echo fallback &\ntouch /tmp/after')).toEqual([])

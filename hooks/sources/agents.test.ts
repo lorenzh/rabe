@@ -413,6 +413,34 @@ test('OR writes count only when the candidate changed on disk', async ($, on) =>
   expect(held.edits).toEqual([{ path: '/tmp/f.txt', at: 5000, via: 'shell' }])
 })
 
+test('shell calls read the current folder only for relative candidates', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const held = watch(on)
+  let reads = 0
+  on('session.cwd', async () => {
+    reads++
+    return { value: '/repo' }
+  })
+  shell(on, {
+    'touch /tmp/f.txt': one => one.set('/tmp/f.txt', file(2)),
+    'cd /known && touch f.txt': one => one.set('/known/f.txt', file(2)),
+  })
+  for (const command of [
+    'true',
+    'touch /tmp/f.txt',
+    'cd /known && touch f.txt',
+    'true || pushd /x; touch rel',
+    'true || popd; touch rel',
+  ]) {
+    await $.tool.call({ tool: 'Bash', command } as never)
+  }
+  expect(reads).toBe(0)
+  expect(held.edits).toEqual([
+    { path: '/tmp/f.txt', at: 5000, via: 'shell' },
+    { path: '/known/f.txt', at: 5000, via: 'shell' },
+  ])
+})
+
 test('relative shell writes use the main session current folder', async ($, on) => {
   mock.clock(on, { now: 5000 })
   const held = watch(on)

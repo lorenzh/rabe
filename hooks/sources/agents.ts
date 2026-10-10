@@ -377,16 +377,18 @@ async function beforeBash(
   agentId: string | undefined,
 ): Promise<Looked | undefined> {
   const home = await $.env.get('HOME')
-  let cwd: string | undefined
-  if (agentId) {
-    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
-    cwd = asAgent(items, itemId('agent', agentId))?.detail.cwd
-  } else {
-    cwd = await $.session.cwd().catch(() => undefined)
+  let candidates = shellWrites(command, undefined, home)
+  if (candidates.some(one => !one.path.startsWith('/'))) {
+    let cwd: string | undefined
+    if (agentId) {
+      const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+      cwd = asAgent(items, itemId('agent', agentId))?.detail.cwd
+    } else {
+      cwd = await $.session.cwd().catch(() => undefined)
+    }
+    candidates = shellWrites(command, cwd, home)
   }
-  const paths = shellWrites(command, cwd, home)
-    .map(one => one.path)
-    .filter(path => path.startsWith('/'))
+  const paths = candidates.map(one => one.path).filter(path => path.startsWith('/'))
   if (paths.length === 0 || paths.length > MAX_CHECKS) return undefined
   const seen = await look($, paths)
 
