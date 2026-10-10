@@ -29,7 +29,7 @@ const LEGEND: [string, Style][] = [
   ['claude', CHIP.agent],
   ['codex', CHIP.codex],
   ['monitor', CHIP.monitor],
-  ['cron run', CHIP.cron],
+  ['scheduled run', CHIP.cron],
   ['done', CHIP.done],
   ['failed', CHIP.failed],
 ]
@@ -51,7 +51,7 @@ function color(item: RabeItem): number {
 }
 
 // One cell per slice of the window: a bar over the run, or for a cron job a
-// tick at each run its schedule had since Rabe saw it (jitter not counted).
+// tick at each scheduled run since Rabe saw it (jitter not counted).
 // What began before the window starts with `◂` at the left edge.
 function track(item: RabeItem, start: number, now: number, width: number): string {
   const out = cells(item, start, now, width)

@@ -6,6 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
+- The Timeline legend says "scheduled run" for cron ticks. Ticks come from the schedule, without actual firing times or idle delays. (fixes #34)
 - The Cost tab says "sorted by tokens when opened" while it holds the opening order. New workers follow the held rows. (fixes #33)
 - Deleted cron jobs say `deleted`, hide future runs and keep delete dim. Delete errors show plain text. The previous-session summary counts only crons still running at session end. (fixes #28)
 - The Effects tab finds shell writes on independent lists after `||`, including later lines with here-docs. Conditional writes stay hidden. (fixes #27)
