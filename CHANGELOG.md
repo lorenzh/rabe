@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Added
+
+- README shows a demo GIF per tab.
+
 ### Fixed
 
 - After a message to an agent is sent, the keys go back to the pane: the focus moves from the message field to `m: message`, so `b`, `c` and the other keys act again. ([#64](https://github.com/lorenzh/rabe/pull/64), fixes [#62](https://github.com/lorenzh/rabe/issues/62))
