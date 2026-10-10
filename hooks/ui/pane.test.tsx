@@ -1397,7 +1397,7 @@ test('failed multiline copies flatten the fallback on every surface', async ($, 
   ])
 })
 
-test('dim and absent pane keys stay bound and inert on every surface', async ($, on) => {
+test('dim owned pane keys stay bound and inert without binding absent controls on every surface', async ($, on) => {
   const state = hold(on, ALL, { selected: dev.id })
   const calls: unknown[] = []
   on('tool.call', async (_$, e) => {
@@ -1410,7 +1410,7 @@ test('dim and absent pane keys stay bound and inert on every surface', async ($,
   })
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
-    for (const hotkey of ['x', 'g', 'r', 'a', 'd', 'm', 'c', 'b', 'f', 'w']) {
+    for (const hotkey of ['x', 'g', 'r', 'a']) {
       const buttons = await ui.findAll({ type: 'Button' })
       const bound = buttons.filter(one => one.props.hotkey === hotkey)
       expect(bound).toHaveLength(1)
@@ -1426,10 +1426,7 @@ test('dim and absent pane keys stay bound and inert on every surface', async ($,
         const bound = (await ui.findAll({ type: 'Button' })).filter(
           one => one.props.hotkey === hotkey,
         )
-        expect(bound).toHaveLength(1)
-        expect(bound[0]?.props).toMatchObject({ label: ' ', plain: true, dimColor: true })
-        const key = bound[0]?.key
-        if (key) await ui.press({ key })
+        expect(bound).toHaveLength(0)
       }
     }
     expect(state.toasts).toBeUndefined()

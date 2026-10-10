@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import type { RabeItem, RabeItemOf } from '../model'
 import { type Grid, grid, lines, safe, write } from './cells/grid'
-import { ALL, babysit, ci, dev, explore, flow, NOW, plan, raster, review } from './fixtures'
+import { ALL, babysit, ci, dev, explore, flow, NOW, raster, review } from './fixtures'
 import { orderOf } from './lists'
 import { type Held, hold, render, shifts, type Ui } from './render'
 import {
@@ -160,18 +160,14 @@ const agentOf = (id: string, extra: Partial<RabeItemOf<'agent'>['detail']> = {})
     detail: { agentId: id, cwd: '/repo', ...extra },
   }) as RabeItem
 
-test('blank key bindings fit a narrow toolbar and stay blank when their action appears', () => {
+test('owned controls fit a narrow toolbar and keep visible labels when dim', () => {
   const size = { ...SIZE, columns: 40 }
   const sel = { ...OPEN, tab: 'cost' as const }
   const first = draw(model([]), size, sel)
-  expect(controlRows(paneView(model([]), size, sel), size)).toBe(1)
+  expect(controlRows(paneView(model([]), size, sel), size)).toBe(0)
   const later = draw({ ...model([]), sessionId: 'new-session' }, size, sel, first.held)
   expect(later.keys.slice(0, first.keys.length)).toEqual(first.keys)
-  expect(later.tree.find(one => one.props.key === 'inert-c')?.props).toMatchObject({
-    label: ' ',
-    plain: true,
-    dimColor: true,
-  })
+  expect(later.keys.some(key => key.startsWith('inert-'))).toBe(false)
   expect(later.tree.find(one => one.props.key === 'resume:new-session')?.props).toMatchObject({
     label: 'c: copy resume',
     hotkey: 'c',
@@ -729,7 +725,7 @@ test('walking the list keeps exactly one x and one g', () => {
   expect(last.tree.filter(one => String(one.props.label).startsWith('x:'))).toHaveLength(1)
 })
 
-test('pane keys stay unique across views without moving held focus indices', () => {
+test('no view has a focusable control without a visible label, including held slots', () => {
   for (const size of [
     SIZE,
     { ...SIZE, columns: 80, hasInput: false, surface: 'desktop' as const },
@@ -737,10 +733,7 @@ test('pane keys stay unique across views without moving held focus indices', () 
     let held: Held[] | undefined
     for (const selection of [
       { ...NO_SELECTION },
-      { ...NO_SELECTION, open: explore.id, isArmed: true },
-      { ...NO_SELECTION, open: plan.id, isArmed: true },
-      { ...NO_SELECTION, open: babysit.id, isArmed: true },
-      { ...NO_SELECTION, open: review.id },
+      ...ALL.map(item => ({ ...NO_SELECTION, open: item.id })),
       { ...NO_SELECTION, tab: 'cost' as const },
       { ...NO_SELECTION, tab: 'effects' as const },
       { ...NO_SELECTION, tab: 'timeline' as const },
@@ -757,9 +750,17 @@ test('pane keys stay unique across views without moving held focus indices', () 
       )
       for (const hotkey of ['x', 'g', 'r', 'a', 'd', 'm', 's', 'c', 'b', 'f', 'w']) {
         const bound = presses.filter(one => one.hotkey === hotkey)
-        expect(bound).toHaveLength(1)
+        expect(bound.length).toBeLessThanOrEqual(1)
         for (const one of drawn.buttons)
-          if (one.hotkey === hotkey && one.dim) expect(one.action.type).toBe('none')
+          if (one.dim && one.label.startsWith(`${hotkey}:`)) {
+            expect(one.hotkey).toBe(hotkey)
+            expect(one.action.type).toBe('none')
+          }
+      }
+      const rendered = elements(render(UI, size.surface, next.list, () => {}))
+      for (const one of rendered) {
+        expect(String(one.props.label ?? '').trim().length).toBeGreaterThan(0)
+        expect(String(one.props.key).startsWith('inert-')).toBe(false)
       }
       expect(drawn.buttons.filter(one => one.autoFocus).map(one => one.key)).toEqual(
         selection.open ? ['back'] : [],

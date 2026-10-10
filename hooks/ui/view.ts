@@ -100,8 +100,7 @@ export type Action =
 // What a control that is not available now does: nothing. It keeps its slot.
 export const NONE: Action = { type: 'none' }
 
-// A toolbar control, drawn `[ label ]`, or a one-cell blank with `plain`.
-// The label carries the key
+// A toolbar control, drawn `[ label ]`. The label carries the key
 // ("x: stop"): the engine does not draw hotkeys. Hotkeys are one digit or one
 // lowercase letter. A control that is not available now is `dim` with the
 // action `NONE`; the pane keeps its hotkey bound and its place.
@@ -110,7 +109,6 @@ export type ViewButton = {
   label: string
   action: Action
   hotkey?: string
-  plain?: true
   autoFocus?: true
   dim?: true
 }
@@ -369,12 +367,12 @@ export const targetsOf = (drawn: Drawn): string[] =>
     )
 
 // Rows the toolbar takes: wrapped Buttons ("[ label ]" and a
-// gap), one-cell plain bindings and one row per Input.
+// gap) and one row per Input.
 export function controlRows(drawn: Omit<Drawn, 'nodes'>, size: Size): number {
   let rows = 0
   let used = Infinity
   for (const button of drawn.buttons) {
-    const width = button.label.length + (button.plain ? 1 : 5)
+    const width = button.label.length + 5
     if (used + width > size.columns) {
       rows += 1
       used = 0

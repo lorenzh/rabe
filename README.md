@@ -71,7 +71,23 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 
 A deleted cron job shows no next runs, and its delete button stays dim. The previous-session summary counts only cron jobs still running when the session ends. Delete failures show plain text.
 
-The buttons under the tabs show the actions of the current view. Unavailable actions keep their labels and stay dim. Keys for actions outside the view use blank buttons that do nothing. While the pane holds the keys outside input fields, `x g r a d m s c b f w` stay bound. All other letters go to the prompt because the mod API has no key hook to catch them.
+The buttons under the tabs show the actions of the current view. Unavailable controls keep their visible labels and stay dim. Their hotkeys do nothing and stay caught while the pane holds the keys outside input fields. Rabe adds no blank buttons for letters a view does not own.
+
+| View | Letters caught outside input fields |
+|------|-------------------------------------|
+| Items list | `x g r a`; `s` where search is available |
+| Agent detail | `b c x`; `m` on surfaces that support input fields |
+| Workflow agent detail | `b c`; `g` when the parent run is known; no `x` or `m` |
+| Workflow detail | `b g` |
+| Shell or monitor detail | `b x`; `c` when a command is known |
+| Codex detail | `b x`; `c` when a thread id is known; `f` when a forwarder is known |
+| Cron job detail | `b c d` |
+| Scheduled wakeup detail | `b c`; no `d` |
+| Cost | `c` when the current session id is known |
+| Effects | `c` on the first port's SSH row while that port exists |
+| Timeline | `w` when `timelineHours` is greater than zero; `c` when the previous session id is known |
+
+Other letters still reach the prompt because the mod API has no key hook. The letters above also reach the prompt in views without their control. For example, `x` reaches the prompt on Cost and `w` does so on Timeline with `timelineHours: 0`. A focused input field takes every key.
 
 An opened item keeps its recorded turns, steps or output lines in its detail. Use ↑↓, PageUp, PageDown or the wheel to scroll. The scroll hint shows only when the opened detail needs scrolling. Claude Code sets the pane's height. The split preview marks hidden agent text or counts older output lines. Press Enter to open the full detail.
 
