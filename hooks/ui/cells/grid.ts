@@ -223,7 +223,7 @@ export function wrap(text: string, width: number): string[] {
     let rest = safe(para).trimEnd()
     while (rest.length > width) {
       const cut = rest.slice(0, width + 1).lastIndexOf(' ')
-      const at = cut > 0 ? cut : width
+      const at = cut > 0 && !/^\s*[-*+]$/.test(rest.slice(0, cut)) ? cut : width
       out.push(rest.slice(0, at).trimEnd())
       rest = rest.slice(at).trimStart()
     }

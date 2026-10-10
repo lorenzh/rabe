@@ -139,7 +139,7 @@ test('a spawn adds a running agent under its workflow', async ($, on) => {
   ])
 })
 
-test('a long answer is kept cut with an ellipsis', async ($, on) => {
+test('a long final report is kept in full', async ($, on) => {
   const held = engine(on, 'a1')
   // biome-ignore lint/correctness/useYield: the engine's stand-in answers without chunks
   on('turn.step', async function* (_$, e) {
@@ -162,8 +162,7 @@ test('a long answer is kept cut with an ellipsis', async ($, on) => {
   const stream = $.turn.step({ turnId: 't1', index: 0, model: 'm', messageCount: 1, agentId: 'a1' })
   for await (const _ of stream);
   const text = held.turns?.['agent:a1']?.[0]?.text ?? ''
-  expect(text.length).toBe(300)
-  expect(text.endsWith('…')).toBe(true)
+  expect(text).toBe('word '.repeat(100))
 })
 
 test('a spawn from another agent names that agent as parent', async ($, on) => {

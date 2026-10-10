@@ -32,7 +32,6 @@ const MAX_EDITS = 100
 const MAX_CALLS = 10
 const MAX_CHECKS = 20
 const LOOK_MS = 1000
-const MAX_TEXT = 300
 const MAX_PROMPT = 600
 const MAX_SUMMARY = 80
 const SUMMARY_FIELDS = ['file_path', 'command', 'pattern', 'path', 'url', 'query', 'description']
@@ -448,7 +447,7 @@ async function recordStep(
   if (!result.answer && tools.length === 0) return
   await writeTurns($, turns => {
     const index = (turns[id]?.at(-1)?.index ?? 0) + 1
-    const turn = { index, at: now, text: clip(result.answer, MAX_TEXT), tools }
+    const turn = { index, at: now, text: result.answer, tools }
 
     return addTurn(turns, id, turn)
   })

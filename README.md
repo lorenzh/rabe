@@ -75,6 +75,8 @@ The buttons under the tabs show the keys of the current tab. A key that cannot a
 
 An opened agent or Codex job keeps all recorded turns or steps in its detail. Use ↑↓, PageUp, PageDown or the wheel to scroll. Claude Code sets the pane's height.
 
+Agent answers keep their full text. Markdown stays plain text. A wrapped list keeps its marker beside the start of a long path. Answers already shortened by an older version stay shortened.
+
 With the mouse, click a row once to select it and again to open it. Click a tab to switch to it, a group name to fold the group, a button to press it, or a row on the other tabs to open it. The wheel scrolls the pane. A click does not move the focus, so Enter still opens the row that has the focus. A click also does not give the pane the keys: `ctrl+x tab` does. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
 
 On the list, the stop keys `x` and `g` and the remove key `r` work only after you move onto a row yourself, with an arrow, Tab or a click. Until then, and after the view or the selected row changes without you, they are dim, so a key press never stops something you did not pick. If they stay dim after a click, the pane does not have the keys yet: press `ctrl+x tab`, then move onto the row with Tab or an arrow.

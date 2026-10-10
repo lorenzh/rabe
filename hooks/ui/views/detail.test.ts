@@ -137,6 +137,24 @@ test('a long brief keeps three lines', () => {
   expect(shown[at + 4]).toBe('')
 })
 
+test('an opened final report keeps its end and no list marker stands alone', () => {
+  const agent = { ...explore, status: 'done' } as RabeItem
+  const path = `/abs/${'long-path/'.repeat(20)}file.ts`
+  const m = model([agent], {
+    turns: {
+      [agent.id]: [
+        { index: 1, at: NOW, text: `**Files:**\n- \`${path}\`\nReport end.`, tools: [] },
+      ],
+    },
+  })
+  for (const columns of [72, 196]) {
+    const shown = lines(open(m, agent.id, { ...TERMINAL, columns }).grid)
+    expect(shown.some(line => line.trim() === '-')).toBe(false)
+    expect(shown).toContain('     Report end.')
+    expect(shown.some(line => line.includes('- `/abs/'))).toBe(true)
+  }
+})
+
 test('an agent without turns and a price says n/a', () => {
   const bare = { ...verify, costUsd: undefined }
   const shown = lines(open(model([bare]), verify.id).grid)

@@ -125,3 +125,12 @@ test('wrap splits at spaces, breaks long words and keeps line breaks', () => {
   expect(wrap('one\ntwo', 10)).toEqual(['one', 'two'])
   expect(wrap('x', 0)).toEqual([])
 })
+
+test('wrap keeps a list marker with the start of a long file path', () => {
+  for (const marker of ['-', '*', '+']) {
+    expect(wrap(`${marker} /abs/path/to/file.ts`, 12)).toEqual([
+      `${marker} /abs/path/`,
+      'to/file.ts',
+    ])
+  }
+})

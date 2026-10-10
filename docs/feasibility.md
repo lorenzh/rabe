@@ -223,7 +223,7 @@ The views read no files. The sources keep what the views show in session state:
 
 | Data | Where the views read it | Written by |
 |---|---|---|
-| Agent turns | `rabe.turns` | `turn.step` with `agentId` (agents source); agents that ran before Rabe loaded have no turns |
+| Agent turns and full answer text | `rabe.turns` | `turn.step` with `agentId` (agents source); agents that ran before Rabe loaded have no turns |
 | Codex steps, prompt, model | the item's `detail` (`steps`, `prompt`, `model`, `effort`) | the Codex source, from the Codex session file |
 | Shell and monitor output | `rabe.lines` | the shells and monitors sources, from the task output file |
 | Git worktrees | `rabe.worktrees` (`Model.worktrees`) | the worktrees source, from `git worktree list --porcelain` |
