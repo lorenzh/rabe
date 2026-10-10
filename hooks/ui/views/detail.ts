@@ -2,7 +2,7 @@ import type { RabeItem } from '../../model'
 import { nextRuns } from '../../schedule'
 import { type Span, wrap } from '../cells/grid'
 import { C, type Style } from '../cells/palette'
-import { ago, clockTime, countdown, tokens, usd } from '../format'
+import { ago, clockTime, duration, tokens, usd } from '../format'
 import {
   byStart,
   children,
@@ -165,7 +165,7 @@ function agentLines(model: Model, item: RabeItem, columns: number, rows = Infini
     const tools = turn.tools.slice(Math.max(0, turn.tools.length - room))
     const textRows = room - tools.length
     const limit = textRows * Math.max(1, columns - 5)
-    const value = textRows > 0 ? turn.text || '(tools only)' : ''
+    const value = textRows > 0 ? turn.text : ''
     const cut = value.length > limit
     const lines = [
       ...(textRows > 0
@@ -287,7 +287,7 @@ function cronLines(model: Model, item: RabeItem): Line[] {
   if (runs.length === 0) return [{ spans: [['Next runs n/a: the schedule is not known.', dim]] }]
 
   return runs.map(at => ({
-    spans: [[`  ${clockTime(at).slice(0, 5)}`], [`  in ${countdown(at - model.now)}`, dim]],
+    spans: [[`  ${clockTime(at).slice(0, 5)}`], [`  in ${duration(at - model.now)}`, dim]],
   }))
 }
 

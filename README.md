@@ -33,7 +33,7 @@ The pane has four tabs:
 
   ![The Items tab: agents, shells, a monitor and a cron job grouped by kind; the arrow keys move the focus and the detail beside the list follows; Enter opens a workflow with its agents under the phases Draft and Check, then a running agent with its brief and turns, and b goes back](docs/assets/tab-items.gif)
 
-  All items grouped by kind, with a search field. Shells and monitors that an agent started show under the name of that agent. A Codex job shows under the agent that started it, also when it starts while the pane is open. The Codex plugin starts its jobs through a Claude agent that only passes the request on (`codex:codex-rescue`); that agent has no row of its own, and its tokens and cost count toward the job. Rabe links the two only when the evidence fits one job: the agent's command named the job, or the job started while the command ran and has its prompt or its thread. A link made by the prompt is checked again when the command returns: if it names another job or thread, the link moves to that job, and while two jobs fit, neither is linked. In the job's detail, `f` opens the agent, with its turns, id and transcript. If the pane is 90 columns or wider, the selected item shows beside the list.
+  All items grouped by kind, with a search field. Shells and monitors that an agent started show under the name of that agent. A Codex job shows under the agent that started it, also when it starts while the pane is open. The Codex plugin starts its jobs through a Claude agent that only passes the request on (`codex:codex-rescue`); that agent has no row of its own, and its tokens and cost count toward the job. Rabe links the two only when the evidence fits one job: the agent's command named the job, or the job started while the command ran and has its prompt or its thread. A link made by the prompt is checked again when the command returns: if it names another job or thread, the link moves to that job, and while two jobs fit, neither is linked. In the job's detail, `f` opens the agent, with its turns, id and transcript. If the pane is 90 columns or wider, the selected item shows beside the list. The group-stop button shows how many rows `g` will stop.
 - **Cost**
 
   ![The Cost tab: the session cost, the estimated dollars of the Claude agents, the session id, and a token bar with an estimate per agent; c copies the resume command](docs/assets/tab-cost.gif)
@@ -74,7 +74,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | `1` to `4` | Switch tab and focus its marked row. An empty tab keeps the focus on its label |
 | `s` | Focus search. Enter returns to the marked row |
 | `x` | Stop the selected item |
-| `g` | Stop the group the selected row is in (the rows the search shows), or the workflow run of the selected run or workflow agent |
+| `g` | Stop the group the selected row is in (the button shows its count), or the workflow run of the selected run or workflow agent |
 | `r` | Remove the selected row once it is done, failed or stopped |
 | `a` | Remove every done, failed or stopped row the search shows |
 | `m` | Send a message to an agent. Enter sends it and gives the keys back to the pane |

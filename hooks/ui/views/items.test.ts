@@ -106,7 +106,7 @@ test('each row is a plain Button keyed by its item that opens it; the selected o
   expect(keys(drawn.buttons)).toEqual([
     's: search',
     'x: stop',
-    'g: stop group',
+    'g: stop 3',
     'r: remove',
     'a: remove ended',
   ])
@@ -140,7 +140,7 @@ test('below 90 columns the list fills the width, drops the gaps and ends with on
   expect(cell(grid, 0, end).slice(1)).toEqual([C.yellow, C.panel])
   expect(cell(grid, 79, end)[2]).toBe(C.panel)
   expect(cell(grid, at(shown, end, '≈'), end)[1]).toBe(C.bright)
-  expect(keys(buttons)).toEqual(['s', 'x: stop', 'g: stop group', 'r: remove', 'a: remove ended'])
+  expect(keys(buttons)).toEqual(['s', 'x: stop', 'g: stop 3', 'r: remove', 'a: remove ended'])
 })
 
 test('below 90 columns a list that fits keeps the gaps between groups', () => {
@@ -356,6 +356,7 @@ test('x and g keep their keys and act on the selected row', () => {
   const [, x, g] = itemsView(model, WIDE, sel).buttons
   expect(x).toMatchObject({ key: 'stop', action: { type: 'stop', ids: [explore.id] } })
   expect(g?.key).toBe('stop-group')
+  expect(g?.label).toBe('g: stop 3')
   const [, other] = itemsView(model, WIDE, { ...sel, selected: review.id }).buttons
   expect(other).toMatchObject({ key: 'stop', action: { type: 'stop', ids: [review.id] } })
   const ended = itemsView(model, WIDE, { ...sel, selected: lint.id }).buttons
@@ -377,9 +378,7 @@ test('a disarmed pane keeps stop and delete hotkeys bound without an action', ()
   expect(cron.buttons.find(one => one.key.startsWith('delete:'))?.action).toEqual(NONE)
   expect(cron.buttons.find(one => one.key.startsWith('copy:'))?.action.type).toBe('copy')
   const hint = (drawn: Drawn) => lines(gridOf(drawn).grid).at(-1)?.trim()
-  expect(hint(armed)).toBe(
-    '↑↓ move · enter open · x stop · g stop group · a remove ended · esc close',
-  )
+  expect(hint(armed)).toBe('↑↓ move · enter open · x stop · g stop 3 · a remove ended · esc close')
   expect(hint(disarmed)).toBe('↑↓ move · enter open · esc close')
   // a acts on every ended row, not on the selection: the ring alone arms it.
   const list = paneView(model, WIDE, { ...sel, isArmed: true })
