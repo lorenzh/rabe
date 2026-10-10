@@ -1,0 +1,46 @@
+---
+title: Files and runtime limits
+description: What files Rabe reads, which writes it can detect, and what still needs live testing.
+tags: [feasibility, files, limits]
+keywords: [shell writes, files outside the project, runtime testing]
+---
+
+# Files and runtime limits
+
+## Files written outside Edit and Write
+
+An agent can write files through Bash (`cat > ~/.agents/skills/x/SKILL.md <<'EOF'`), and Codex through its own patch tool. Neither is an `Edit` or `Write` call, so the Effects tab once missed them (issue #9).
+
+- **Candidates, then the disk.** The command text alone never proves a write: `false && touch x || true` and `cp missing out; true` succeed without writing, `touch -c absent` and `rm -f absent` change nothing, `cp src dir` writes `dir/src`, `sed -i q a b` never touches `b`, and `HOME=/tmp` moves `~`. So `hooks/writes.ts` only proposes candidates, each a write or a delete, and the file system decides. A false entry can show a false conflict, so a missed file is the better error.
+- **Bash calls.** Before the call runs, the Bash `tool.call` hook stats each absolute candidate (kind, size, mtime). A failed stat alone does not mean the path is missing: in 2.1.295 the error is a `HooksError` without `code`, and its message is free text that any `fs.stat` hook can set (a denial can end in `ENOENT`). So the path counts as missing only when `$.fs.list` of its parent folder succeeds and does not name it, or the parent is missing by the same rule. A listing that fails or is denied (no permission, the parent is a file) or that still names the path, also in another letter case or Unicode form (case-insensitive and normalizing disks such as macOS or Windows), leaves it unknown. Each folder is listed once per look, and the listings count toward the 1 s limit. `$.fs.exists` is no help: it also answers false for a file in a folder it may not read. After a call that ran to its end it stats them again. A path is written when it was not there and is a file now, or its mtime or size changed; deleted when it was there and is gone; else nothing. A stat error leaves that path out. Over 20 candidates, or looks that take over 1 s, record nothing for the call. Main session and agents work the same way.
+- **Codex commands.** A rollout is read after the command, so there is no look before. A candidate counts when it is a file now and its mtime lies within the command's run (`started_at_ms` to `completed_at_ms` plus 2 s). A poll stats each path once, and its checks stop after 1 s in all: a path whose stat has not come back is left out. A delete leaves nothing to look at, so deletes come only from `FileChange` records, which stay the main Codex source. `mv` keeps the old mtime, so a Codex `mv` target is missed.
+- **Shell commands.** What the parser proposes: `>`, `>>`, `>|`, `&>`, `&>>` and `N>`/`N>>` redirections to a file (not `/dev/…`, not a dup like `>&2`; `<`, `<>` and `<<<` never), and a fixed table of commands with their options: `tee`, `sed -i` (also `--in-place`, `-e`/`--expression`, `-f`), `touch` (`-r`/`--reference`, `-d`), `rm`, and `cp`, `mv`, `install`, `ln` (`-t`/`--target-directory`, `-T`). `mv` and `rm` delete. `rtk proxy`, `command`, `builtin`, `env`, `nice`, `nohup`, `time`, `sudo` and `VAR=val` are unwrapped first. `~/` takes `HOME` from `$.env`; when the command assigns `HOME` anywhere, every `~` is skipped. `cp a b` proposes both `b` and `b/a`, since `b` may be a folder; multi-file `sed -i` proposes every file.
+- **What it skips.** Words are read with bash quoting (single, double, backslash, `$'…'`), and command substitutions keep their own quotes. The parser proposes candidates from lists joined by `&&`, `||`, `;` and newlines, up to the first `&`, `if`, `while`, `until`, `for`, `case`, `function`, `{ }` or `( )` group, `[[`, `[` or `test`, `exit` or `exec`; nothing after that counts, and a list sent to the background counts not at all. Both sides of `||` propose candidates for the disk check. Directory changes on either side leave later relative paths unknown. A later absolute `cd` followed by `&&` can establish the directory again. A newline directly after a list operator or pipe continues its command. In a pipeline only redirections and `tee` count. A here-doc body is skipped up to its delimiter after bash quote removal (`<<E"OF"` ends at `EOF`); with no delimiter nothing from the here-doc on counts. A path with `$`, `` ` ``, a glob (`*`, `?`, `[`), braces, `~user`, a bare `~` or a process substitution is skipped. A command with an option the table does not know (`cp --parents`, `rm -i`), or with a word that could expand into an option, is skipped. A substitution that holds a here-doc or a `case` makes the whole line count nothing. After a `cd` that the next command does not depend on through `&&`, relative paths are skipped.
+- **The working folder.** The Bash `tool.call` input carries no cwd. When a candidate needs its folder, the main session uses `$.session.cwd()` (types/claude-code.d.ts:2747). Live tests do not check whether `$.session.cwd()` follows a shell `cd`. An agent uses its item's `detail.cwd` from `classic.SubagentStart` or its meta file. An agent without a cwd never uses the main folder as a fallback. An unknown folder leaves relative paths out. Rabe does not resolve relative shell paths from Windows drive folders such as `C:\repo`. A `cd /abs` followed by `&&` can set the folder within the same command. Directory changes inside an OR branch leave relative paths unknown. Codex's `CommandExecution` has its `cwd`.
+- **Limits.** The tab marks these `via shell`. A file written and put back to the same mtime and size within one command is missed. A file whose name is not on the command line stays invisible, since only candidates are looked at: a script's `open(…, 'w')` in Python, a build tool, a formatter, `git checkout`, a `curl -o`. A command that failed (`isError`, or a Codex exit code other than 0) records nothing, even when it wrote a file before it failed. A Codex file changed again after its command ended falls out of that command's window.
+- **The main session.** Its `Edit`, `Write` and Bash calls (no `agentId`) go to `$.state` key `rabe.edits`, so the tab shows its files and a file the main session and an agent both changed as a conflict.
+
+
+## Files outside the project
+
+Tested: `$.fs.stat` and `$.fs.read` read files under `~/.codex/sessions` and `/tmp/claude-<uid>/…/tasks/` without a prompt or a denial.
+
+
+## Still to test at runtime
+
+- Does Rabe's own turn line (`✻ Brewed for 5s`, one empty line above) sit where the engine's did, in every transcript layout?
+- Which words does the hint use for agents, workflows and teammates in its task part? `stripTasks` drops parts like `1 background agent`; others stay.
+- Is the pane readable in light terminal themes? Plain text and the background use the terminal's default; chips, panels and the selected row use fixed dark 256-color backgrounds.
+- A subagent's monitor ends from its output file only once Rabe knows some task output path (a shell's, or a monitor end notification's), since the Monitor result carries none. Does a subagent ever start a monitor before any such path is known?
+
+- Does `$.session.usage().cost` count the subagents' requests as well as the main thread's? Rabe labels it the session cost either way.
+- Does `CronList` also list `ScheduleWakeup` wakeups, and with which id?
+- Is a `prompt.submit` raised for a task notification delivered into a running turn, as for one dequeued when idle?
+- What does the output file of a monitor that hit its timeout end with?
+- Is Codex's `cache_write_input_tokens` part of `input_tokens`, as `cached_input_tokens` is? Every record seen so far had 0 writes.
+- Does Claude Code ever give a subagent 1-hour cache writes on purpose (a setting, a model), which Rabe bills at the 5-minute price?
+
+- Do `TaskStop` and `CronList` run without a prompt in auto mode too?
+- Does a live `codex:codex-rescue` run fold into its job within one poll, in the foreground, in the background and after the Bash timeout? Does `$.ui.copy` reach the clipboard over SSH (OSC 52) in the terminals people use?
+- Does the pane's `x: stop` on a Codex job act during a turn? It runs `/rabe-stop` through `$.command.run`, which the API says is "queued and run once the session is idle" (d.ts `command.run`); the command is registered with `immediate: true`, which may or may not apply to a plugin's call.
+- How much does a band redraw every second cost while the user types?

@@ -198,7 +198,7 @@ async function focusOn($: EngineInterface, key: string): Promise<boolean> {
 // Puts the ring back on the element rows came above, a moment after the
 // drawing: a move asked while the hook draws resolves against the tree
 // before the one it returns, where the element still stands at its old
-// index. From a timer the move reaches no hook (see feasibility), so the
+// index. From a timer the move reaches no hook (see docs/feasibility/ui.md), so the
 // engine's answer is the evidence: a move it refuses or abandons counts as a
 // refused landing, and the next drawing asks again, at most three times. A
 // landing the focus hook saw since (the person's arrow) makes the move moot.

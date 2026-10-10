@@ -1147,7 +1147,7 @@ function stops(on: On): unknown[] {
 }
 
 // The ring keeps an index the pane cannot see, so a stop acts only once the
-// ring is known to sit on a safe element (see arming in docs/architecture.md).
+// ring is known to sit on a safe element (see arming in docs/architecture/focus-order.md).
 test('the pane opens disarmed: a stop does nothing until the person moves the ring', async ($, on) => {
   hold(on, ALL, { selected: dev.id })
   on('ui.open', async () => ({ value: { isPlaced: true as const } }))
@@ -1187,7 +1187,7 @@ test('an open item that is gone disarms the list the view falls back to', async 
   await ui.unmount()
 })
 
-// The kit answers no plugin's own $.ui.focus (see feasibility): the landing
+// The kit answers no plugin's own $.ui.focus (see docs/feasibility/ui.md): the landing
 // fails, as one another hook refuses does.
 test('a change of the view disarms until the ring lands; a failed landing keeps it so', async ($, on) => {
   hold(on, ALL, { selected: dev.id })

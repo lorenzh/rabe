@@ -160,13 +160,13 @@ Rabe gets most data from the mod API: hooks for tool calls, agent starts, agent 
 
 Rabe cannot see some things:
 
-- Dollars per agent or per Codex job. No source gives them; Rabe estimates them from its price table (see The cost estimate).
+- Dollars per agent or per Codex job. No source gives them; Rabe estimates them from its price table (see [the cost estimate](docs/architecture/prices.md)).
 - Work that started before Rabe loaded shows only what the agent list, `CronList` and the files tell.
 - The port of a shell is a guess from its output.
 - Codex jobs started outside the Codex plugin, and Codex sessions that Codex already deleted.
 - Retries inside a workflow. Rabe can stop a whole workflow run, but not one agent of it.
 
-[What Rabe can see](docs/feasibility.md) lists each source and each limit.
+[What Rabe can see](docs/feasibility.md) links to each source and its limits.
 
 ## Privacy
 
@@ -205,7 +205,7 @@ Run all checks (lint, type check, manifest check and tests), as CI does:
 bun run check
 ```
 
-[AGENTS.md](AGENTS.md) has the rules for contributors and coding agents. [How Rabe is built](docs/architecture.md) describes the code.
+[AGENTS.md](AGENTS.md) has the rules for contributors and coding agents. [The documentation index](docs/README.md) links to the architecture and feasibility guides.
 
 ## Feedback and bugs
 

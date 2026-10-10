@@ -194,7 +194,7 @@ function summaryLine(model: Model, item: RabeItem): Line {
 // x, g, r and a keep their slots while they cannot act: dim, their hotkey bound to nothing.
 // x, g and r each keep one key (`stop`, `stop-group`, `remove`) and act on the
 // selection, so the person walks the list without leaving slots; a target that
-// changes without the person disarms them (see arming in docs/architecture.md).
+// changes without the person disarms them (see arming in docs/architecture/focus-order.md).
 function listButtons(
   model: Model,
   size: Size,

@@ -350,7 +350,7 @@ test('the split detail sits in the rows the pane shows, where the focus took the
 })
 
 // The list's x and g keep one key each and act on the selected row, so
-// walking the list leaves no slots (see arming in docs/architecture.md).
+// walking the list leaves no slots (see arming in docs/architecture/focus-order.md).
 test('x and g keep their keys and act on the selected row', () => {
   const sel = { ...NO_SELECTION, selected: explore.id }
   const [, x, g] = itemsView(model, WIDE, sel).buttons
@@ -373,7 +373,7 @@ test('x and g keep their keys and act on the selected row', () => {
 })
 
 // Until the ring is known to sit on a safe element, stop and delete are drawn
-// but do nothing (see arming in docs/architecture.md).
+// but do nothing (see arming in docs/architecture/focus-order.md).
 test('a disarmed pane keeps stop and delete hotkeys bound without an action', () => {
   const sel = { ...NO_SELECTION, selected: explore.id, isFocused: true }
   const armed = paneView(model, WIDE, { ...sel, isArmed: true, isListArmed: true })

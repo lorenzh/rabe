@@ -1,0 +1,72 @@
+---
+title: Codex and background work
+description: Data available for Codex jobs, shells, monitors, cron jobs, and loops.
+tags: [feasibility, Codex, background-work]
+keywords: [Codex jobs, shells, monitors, cron jobs, loops]
+---
+
+# Codex and background work
+
+## Codex jobs
+
+| Data | Source |
+|---|---|
+| Jobs, status, title, prompt | The Codex plugin's files under `<claude dir>/plugins/data/codex-openai-codex/state/<slug>-<hash>/`: `state.json` (the last 50 jobs of the workspace, short entries) and `jobs/<id>.json` and `.log` (one job, full). `<slug>` is the base name of the workspace's git root and `<hash>` the first 16 hex digits of the SHA-256 of its real path, so Rabe lists the folders instead of computing the name. Poll every 1 to 2 seconds. |
+| Which session | `sessionId` in the job is the Claude Code session id (the plugin's `SessionStart` hook puts it in `CODEX_COMPANION_SESSION_ID`); compare with `$.session.id()`. `state.json` can hold a bare status patch without `sessionId`; the job file has it. `$.session.usage().startedAt` skips the folders whose `state.json` did not change during this session. |
+| Status | `queued`, `running`, `completed`, `failed`, `cancelled`. `completedAt` and `startedAt` are ISO times. `summary` in the job file is the prompt's start; in `state.json` it is the result's first line once the job ended. `kindLabel` is `rescue`, `review` or `adversarial-review`. Only background jobs keep `request.model`, `request.effort` and `request.prompt`. |
+| Model, effort, tokens per request | Codex's own session file `<codex home>/sessions/YYYY/MM/DD/rollout-<local time>-<threadId>.jsonl` (`CODEX_HOME`, default `~/.codex`; the folder date is local time). The job file has the `threadId`. Records: `turn_context` (`model`, `effort`, `sandbox_policy.type`), `token_count` (`info.last_token_usage`, one model request, and `info.total_token_usage`, the sum, each with `input_tokens`, `cached_input_tokens`, `cache_write_input_tokens`, `output_tokens`, `reasoning_output_tokens`). Tested: the file grows during the run, one `token_count` per step, so tokens update live. In 40 rollouts of 2026-10-09 the `last_token_usage` of the records whose total changed added up to the final total, and no record repeated a total; Rabe still counts a record only when its total changed. `cache_write_input_tokens` was 0 in all 5,903 records seen. Each record has a `timestamp`. The total counts the whole thread: in a rollout with three turns of 2026-10-06 it grew across turns (15,383, 34,741, 56,347 input), and the companion's `task --resume-last` starts a new job on the same thread, so its file holds the earlier jobs' turns too. The job file's `startedAt` came about a second before the first record of its turn (2026-10-09), so Rabe counts only records from the job's start on, and its tokens as the total less the total at that start. A finished job also stops at its `completedAt`: a later job that resumed the thread adds records after it, and Rabe can find the finished job only then. A finished job without `completedAt`, or a running one, reads to the end of the file. |
+| Prompt | The first `event_msg` `item_completed` of type `UserMessage`. Also for foreground jobs, whose job file has no `request`. |
+| Progress text | `response_item` records of type `message` with role `assistant`, text in `content[].output_text`. |
+| Commands | `custom_tool_call` is written when a command starts; its `input` is a small script such as `text(await tools.exec_command({cmd:"git status"}))`, so the command is taken from `cmd`. `item_completed` of type `CommandExecution` (`command` as argv, `cwd`, `status`, `aggregated_output`, `exit_code`) comes about when it ends, then `custom_tool_call_output` with the same `call_id`, then `token_count`. `task_complete` comes last. There are no `exec_command_end` records. |
+| Reasoning summaries | `response_item` of type `reasoning`, `summary[].text`, only when `model_reasoning_summary` is set in the Codex config (for example `concise`). Without it `summary` is empty and the reasoning is encrypted. We tested both. |
+| File changes | `event_msg` `item_completed` of type `FileChange`: `item.changes` maps each absolute path to `{ type: 'add' \| 'update' \| 'delete', … }` (`content` for add and delete, `unified_diff` and `move_path` for update), with `item.status` (`completed`, `failed`) and the payload's `completed_at_ms`. A `move_path` that is not null would name a new path (all seen were null); Rabe then counts the old path deleted and the new one added. Rabe counts only completed ones. |
+| Files a command wrote | Candidates from a `CommandExecution` with `exit_code` 0: the script of `command` (`["/bin/bash", "-lc", "<script>"]`), with relative paths taken against its `cwd` (a `file://` URL, decoded per path segment). A candidate counts when it is a file whose mtime lies between the record's `started_at_ms` and its `completed_at_ms` plus 2 s. |
+| Who started a job | The plugin's `codex:codex-rescue` agent (plugin 1.0.6; the only agent it ships) forwards the request with one Bash call, `node ".../scripts/codex-companion.mjs" task [--write] [--model m] [--effort e] [--resume-last] "<prompt>"`, and returns its stdout. `/codex:review` and `/codex:adversarial-review` run the companion from the main session, and the plugin's stop-gate hook from a hook; neither is an agent. The job file names no agent, so Rabe links a job to the agent's Bash `tool.call` (`agentId`, the command line): a background launch prints `<title> started in the background as <job id>. Check /codex:status <job id> for progress.` on stdout; a foreground run prints its progress on stderr, among it `[codex] Thread ready (<thread id>).`, and the Bash result holds stdout and stderr. Its stdout is only Codex's final message. The job's `summary` (`shorten(prompt)`: spaces collapsed, cut at 96 with `...`) is in the command line when the prompt is; `startedAt` is set when the job starts, so a foreground job starts while the Bash call runs. `kindLabel` follows the subcommand: `task` is `rescue`. Read in the plugin 1.0.6 source (`codex-companion.mjs`, `lib/codex.mjs`, `lib/tracked-jobs.mjs`) and in forwarder transcripts on disk. |
+| Resume a job's thread | `codex resume <thread id>`, the `threadId` of the job file. Rabe copies the command; it does not run it. |
+| Cancel | `node <plugin root>/scripts/codex-companion.mjs cancel <id> --json --cwd <workspaceRoot>` through `$.process.run` (d.ts:3472). Set `CLAUDE_PLUGIN_DATA` to the plugin's data folder: without it the script looks in `$TMPDIR/codex-companion` and finds no job. The plugin root is `installPath` of `codex@openai-codex` in `<claude dir>/plugins/installed_plugins.json`. |
+
+Limits of the link: a job started by a call that went to the background (`run_in_background`, or the 2-minute Bash timeout) links only by the prompt while that call runs, and a prompt passed in a file (`--prompt-file`) or through stdin links only through the thread id once the call returned. A job started by the main session's own companion call is not tracked as a call, so if it had the same prompt as a forwarder's call at the same time, the forwarder could take it until the call returns its job id or thread, or until the forwarder's own job shows too (two jobs fit, so neither is linked); the stop-gate hook's jobs have their own summary and never match. Without proof the forwarder and the job stay two rows.
+
+Limits: Codex deletes old session files, and their file changes with them; so older jobs show `n/a` for tokens and model. `$.fs` rejects reads over 4 MiB (d.ts:3200), and some session files are larger (seen: 4.9 MB): Rabe reads those with `grep -m 2` for the turn context and prompt and `tail -n 200` for the rest, through `$.process.run`, so the step list, the command count and the file changes cover the last 200 lines only.
+
+
+## Background shells
+
+| Data | Source |
+|---|---|
+| Command, task id | Bash `tool.call` input and result `backgroundTaskId` (d.ts:16032, d.ts:20215). Set for `run_in_background`, Ctrl+B (`backgroundedByUser`) and a timed-out command (`timedOutAfterMs`). |
+| Output file path | The result `text`: `Command running in background with ID: <id>. Output is being written to: <path>.` Tested. |
+| Output, exit code | `/tmp/claude-<uid>/<project>/<session>/tasks/<taskId>.output`. Live output, then an empty line and `[exited with code N]`, or `[killed]` for a stopped task. Tested. Read with `$.fs` up to 4 MiB, beyond that with `tail -c` through `$.process.run`. |
+| End | `prompt.submit` with `origin.kind` `task-notification`. Its text holds `<task-notification>` blocks with `<task-id>`, `<tool-use-id>`, `<output-file>`, `<status>` (`completed`, `failed`, `killed`) and `<summary>` (`… failed with exit code 3`). Tested. The `UserMessage` row's `task` (d.ts:14467) has the same fields and `durationMs`, but only while the row is drawn. |
+| Still running | `classic.Stop` `background_tasks` lists running work (`type` `shell` with `command`, `monitor`, `subagent`, `workflow`); a finished task is not in it. A Monitor tool task runs as a `local_bash` task, so it is listed as `shell` with a `command`; `monitor` is only an MCP or WebSocket monitor (checked in the 2.1.295 source, `local_bash: "shell"`, `monitor_mcp` and `monitor_ws: "monitor"`). |
+| Port | Not reported. Guessed from the output (`localhost:5173`, `127.0.0.1:8080`, `port 4000`). `ss -ltnp` is not used. |
+| Stop | `TaskStop`. |
+
+### A subagent's background tasks
+
+Tested in the same spike: a subagent's background `Bash` and `Monitor` calls reach the mod's `tool.call` hook with the subagent's `agentId` (the Bash result has `backgroundTaskId`, the Monitor result `taskId`). Their `tasks/<id>.output` files are in the main session's `tasks` folder. Their end notifications go only to the subagent: the main session gets only the agent's own task notifications. So Rabe ends a subagent's shells and monitors from the last line of the output file (`[exited with code N]`, `[killed]`), and does not end them at the main session's `Stop` when `background_tasks` leaves them out.
+
+
+## Monitors
+
+Command, description, timeout and `persistent` come from the Monitor tool input and result (d.ts:16231, d.ts:20620). A monitor has no interval: it is one command that streams lines.
+
+The result text (`Monitor started (task <id>, expires in …)`) has no file path. The output file sits beside the shells' files (`tasks/<taskId>.output`) and ends with the same exit line. Tested. Rabe takes the folder from a path it already knows; the end notification also carries `<output-file>`.
+
+Notifications: each batch of lines arrives as a `<task-notification>` with `<summary>Monitor event: "…"</summary>` and `<event>` lines and no `<status>`; the end has `<status>completed</status>` and `Monitor "…" stream ended`. Tested.
+
+Line times: task notifications are delayed and often carry several lines, so their time is not when the line was written. Follow the monitor's output file instead, and label the times "received".
+
+
+## Cron jobs and loops
+
+| Data | Source |
+|---|---|
+| New job | CronCreate input (`cron`, `prompt`, `recurring`) and result (`id`, `humanSchedule`) (d.ts:16050, d.ts:20291). |
+| Jobs made before Rabe loaded | `CronList`: id, `cron`, `humanSchedule`, prompt (d.ts:20300). Runs without a prompt (tested). |
+| Current list | `classic.Stop` `session_crons`: id, `schedule`, `recurring`, prompt; no `humanSchedule`. It also holds wakeups. |
+| Next run | Computed from the schedule in local time (`hooks/schedule.ts`). Claude Code adds up to 10 % jitter to recurring jobs (at most 15 min), and fires one-time jobs at :00 or :30 up to 90 s early. |
+| Loop wakeup | ScheduleWakeup result `scheduledFor` (d.ts:20956); `stop: true` ends the loop. No job id. |
+| Loop prompts | A `/loop` wakeup's prompt is the `/loop` input, passed verbatim each turn, so it fires as that text. An autonomous loop passes the sentinel `<<autonomous-loop-dynamic>>` to ScheduleWakeup, and the CronCreate mode uses `<<autonomous-loop>>` (d.ts:16436); both fire expanded, so their text matches no stored prompt. In Claude Code 2.1.295 the dynamic tick (`# Autonomous loop tick (dynamic pacing)`, with the loop preamble on its first fire) tells the model to call ScheduleWakeup again with the literal sentinel, so it names `<<autonomous-loop-dynamic>>`; the `loop.md` variant names `<<loop.md-dynamic>>`. The recurring tick (`# Autonomous loop tick`) names no sentinel. Read from the engine's bundled source; the text is not a contract and can change. |
+| Runs | Prompts with origin `scheduled-trigger` (d.ts:8840). This origin carries no job id. Equal prompts cannot prove which job fired. Rabe records no firing times. Timeline ticks come from the schedule and the legend says "scheduled run". Whether a run failed is unknown. |
+| End | A successful CronDelete records an explicit deletion (`detail.isDeleted`), ends the item and hides future runs. A failed or refused delete changes nothing. The previous-session count includes only crons still running at session end. A one-time job deletes itself after it fires; a recurring job expires after 7 days. Rabe sees the last two only as a job gone from `session_crons` or `CronList`. |
