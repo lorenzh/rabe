@@ -4,6 +4,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-10
+
 ### Fixed
 
 - The previous-session summary on the Timeline tab names the scope of each figure: `session ≈ $0.01 · 1m44s` for the whole session's cost and duration, `background 0 tok` for the tokens of the background items. It read as if background work cost $0.01 with no tokens. ([#47](https://github.com/lorenzh/rabe/pull/47), fixes [#46](https://github.com/lorenzh/rabe/issues/46))
@@ -91,7 +93,8 @@ The first public version.
 
 - Workflow agents no longer offer stop and message, which Claude Code does not support for a single workflow agent; their detail offers stopping the run. ([#8](https://github.com/lorenzh/rabe/pull/8))
 
-[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/lorenzh/rabe/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/lorenzh/rabe/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/lorenzh/rabe/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/lorenzh/rabe/compare/v0.1.0...v0.2.0
