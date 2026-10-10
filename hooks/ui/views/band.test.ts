@@ -51,6 +51,13 @@ test('the band shows the session cost when Rabe knows it', () => {
   expect(shown[1]).toContain('≈ $0.41 · 91k tok')
 })
 
+test('the band keeps the cost visible at 60 columns by shortening chip labels', () => {
+  const shown = lines(
+    gridOf(bandView({ ...model(), usd: 0.41 }, { ...SIZE, columns: 60 }, NO_SELECTION)).grid,
+  )
+  expect(shown[1]).toContain('≈ $0.41')
+})
+
 test('shells and monitors an agent started count with the others', () => {
   const mine = {
     ...dev,

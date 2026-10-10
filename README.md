@@ -25,7 +25,7 @@ Status: early development. See [releases](https://github.com/lorenzh/rabe/releas
 | Cron jobs and `/loop` wakeups | Count (`cron`) | The next five runs while running; deleted jobs say `deleted` |
 | Cost | Session cost and tokens of the background work | Cost tab: tokens and an estimate in dollars (`≈ $0.16`) per worker, workers that look stuck |
 
-The band is one line of counts, one chip per kind with failures from the last 10 minutes first, then the cost, under an empty row so the status line above does not touch it. When Claude Code gives the band only one row, the empty row goes. The names are in the pane. When nothing runs, it draws nothing.
+The band is one line of counts, one chip per kind with failures from the last 10 minutes first, then the cost, under an empty row so the status line above does not touch it. At 60 columns it shortens chip labels and puts the cost first so it stays visible. When Claude Code gives the band only one row, the empty row goes. The names are in the pane. When nothing runs, it draws nothing.
 
 The pane has four tabs:
 
@@ -38,7 +38,7 @@ The pane has four tabs:
 
   ![The Cost tab: the session cost, the estimated dollars of the Claude agents, the session id, and a token bar with an estimate per agent; c copies the resume command](docs/assets/tab-cost.gif)
 
-  The session cost as `/cost` totals it, this session's id (`c` copies `claude --resume <id>`), the estimated dollars of the Claude agents and of the Codex jobs, and per agent and Codex job a bar of tokens and its estimate. The header says "sorted by tokens when opened". Workers keep that order while the pane is open, and new workers follow them. Agents that look slow or stuck show under "Load".
+  The session cost as `/cost` totals it, this session's id (`c` copies `claude --resume <id>`), the estimated dollars of the Claude agents and of the Codex jobs when those sources exist, and per agent and Codex job a bar of tokens and its estimate. Worker names use more of the pane width. The header says "sorted by tokens when opened". Workers keep that order while the pane is open, and new workers follow them. Agents that look slow or stuck show under "Load".
 - **Effects**
 
   ![The Effects tab: the files raven.md and notes.md with the agent or main session that wrote them, the main worktree with who worked there, and port 4173 with its ssh -L line, which c copies](docs/assets/tab-effects.gif)

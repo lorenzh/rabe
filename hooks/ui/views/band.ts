@@ -14,6 +14,16 @@ const COUNT: Record<BandRow['kind'], [string, string]> = {
   cron: ['cron', 'cron'],
 }
 
+const SHORT: Record<BandRow['kind'], [string, string]> = {
+  failed: ['f', 'f'],
+  agent: ['cl', 'cl'],
+  codex: ['cx', 'cx'],
+  workflow: ['wf', 'wf'],
+  shell: ['sh', 'sh'],
+  monitor: ['m', 'm'],
+  cron: ['cr', 'cr'],
+}
+
 const cost = (parts: string[]): Span[] => [
   [parts[0] ?? '', { fg: C.bright }],
   [parts.length > 1 ? ` · ${parts.slice(1).join(' · ')}` : '', { fg: C.dim }],
@@ -28,9 +38,17 @@ export const bandView: View = (model, size) => {
   const g = grid(size.columns, top + 1)
   const chips = rows.flatMap((row): Span[] => {
     const n = row.count
-    return [[` ${row.glyph} ${n} ${COUNT[row.kind][n === 1 ? 0 : 1]} `, CHIP[row.kind]], [' ']]
+    const names = size.columns <= 60 ? SHORT : COUNT
+    return [[` ${row.glyph} ${n} ${names[row.kind][n === 1 ? 0 : 1]} `, CHIP[row.kind]], [' ']]
   })
-  spans(g, 0, top, [...chips, ...(money ? cost(money.slice(0, 2)) : [])])
+  spans(
+    g,
+    0,
+    top,
+    size.columns <= 60
+      ? [...(money ? cost(money.slice(0, 1)) : []), ...chips]
+      : [...chips, ...(money ? cost(money.slice(0, 2)) : [])],
+  )
 
   return { nodes: [{ chart: g }], buttons: [] }
 }

@@ -101,21 +101,24 @@ export const costView: View = (model, size, sel): Drawn => {
     .map(item => withForwarder(item, model.items))
   const list = stable(workers, sel.order?.cost, byTokens)
   const selected = list.find(item => item.id === sel.selected) ?? list[0]
-  const nameWidth = Math.max(12, Math.min(24, size.columns - RIGHT - 12))
+  const nameWidth = Math.max(12, Math.min(36, size.columns - RIGHT - 12))
   const room = size.columns - nameWidth - RIGHT - 1
   const barWidth = room >= 4 ? room : 0
   const max = Math.max(1, ...list.map(tokenSum))
   const session = model.usd === undefined ? 'session cost n/a' : `≈ ${usd(model.usd)} session`
   const sortLabel = sel.order?.cost ? 'tokens when opened' : 'tokens'
+  const totalsHead: Line['spans'] = [[` ${session} `, { fg: C.bright }]]
+  if (model.items.some(item => item.kind === 'agent')) {
+    totalsHead.push([' claude ', dim], [cost(sum.claude), { fg: C.orange }])
+  }
+  if (model.items.some(item => item.kind === 'codex')) {
+    totalsHead.push(['  codex ', dim], [cost(sum.codex), { fg: C.cyan }])
+  }
   const head: Line[] = [
     {
       bg: C.panel,
       spans: [
-        [` ${session} `, { fg: C.bright }],
-        [' claude ', dim],
-        [cost(sum.claude), { fg: C.orange }],
-        ['  codex ', dim],
-        [cost(sum.codex), { fg: C.cyan }],
+        ...totalsHead,
         ['  tokens ', dim],
         [tokens(sum.tokens), { fg: C.bright }],
         ['  running ', dim],
