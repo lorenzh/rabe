@@ -117,6 +117,65 @@ test('an agent shows a cost box, its brief and its turns from rabe.turns', () =>
   expect(buttons.find(b => b.key === `stop:${explore.id}`)?.label).toBe('x: stop')
 })
 
+test('an opened detail only hints at scrolling when it overflows', () => {
+  for (const surface of ['terminal', 'desktop'] as const) {
+    for (const rows of [10, 30]) {
+      const drawn = paneView(
+        model([ci]),
+        { ...TERMINAL, rows, surface },
+        { ...NO_SELECTION, open: ci.id, isFocused: true },
+      )
+      const hint = lines(gridOf(drawn).grid).at(-1)?.trim()
+      expect(hint).toBe(rows === 10 ? '↑↓ scroll · b back · esc close' : 'b back · esc close')
+    }
+  }
+})
+
+test('an agent preview skips older turns once the newest text fills its rows', () => {
+  const m = model([explore], {
+    turns: {
+      [explore.id]: [
+        {
+          index: 1,
+          at: NOW,
+          get text(): string {
+            throw new Error('The preview must not wrap this older turn.')
+          },
+          tools: [],
+        },
+        { index: 2, at: NOW, text: `${'word '.repeat(3200)}\nReport end.`, tools: [] },
+      ],
+    },
+  })
+  const preview = detailLines(m, explore, 17, 72)
+  const shown = lines(gridOf({ nodes: preview, buttons: [] }).grid)
+  expect(shown).toContain('Older text hidden · enter opens full detail')
+  expect(shown).toContain('     Report end.')
+  expect(shown.length).toBe(17)
+})
+
+test('an agent preview skips text when the newest tools fill its rows', () => {
+  const m = model([explore], {
+    turns: {
+      [explore.id]: [
+        {
+          index: 1,
+          at: NOW,
+          get text(): string {
+            throw new Error('Tool rows leave no room to wrap this text.')
+          },
+          tools: Array.from({ length: 20 }, (_, i) => ({ name: 'Read', summary: `file-${i}.ts` })),
+        },
+      ],
+    },
+  })
+  const preview = detailLines(m, explore, 17, 72)
+  const shown = lines(gridOf({ nodes: preview, buttons: [] }).grid)
+  expect(shown).toContain('Older text hidden · enter opens full detail')
+  expect(shown).toContain('     ⎿ Read file-19.ts')
+  expect(shown.length).toBe(17)
+})
+
 test('the brief of an agent is the prompt it was given when Rabe saw the spawn', () => {
   const agent = {
     ...explore,

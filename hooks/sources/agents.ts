@@ -28,6 +28,7 @@ type AgentItem = RabeItemOf<'agent'>
 
 const POLL_MS = 3000
 const MAX_TURNS = 30
+const MAX_ANSWER = 16000
 const MAX_EDITS = 100
 const MAX_CALLS = 10
 const MAX_CHECKS = 20
@@ -447,7 +448,7 @@ async function recordStep(
   if (!result.answer && tools.length === 0) return
   await writeTurns($, turns => {
     const index = (turns[id]?.at(-1)?.index ?? 0) + 1
-    const turn = { index, at: now, text: result.answer, tools }
+    const turn = { index, at: now, text: clip(result.answer, MAX_ANSWER), tools }
 
     return addTurn(turns, id, turn)
   })

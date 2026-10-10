@@ -254,7 +254,7 @@ test('a shell shows the lines its source read on every surface', async ($, on) =
     const shown = await screen(ui)
     expect(shown.some(line => /^✗ shell · bun run lint +failed · exit 2$/.test(line))).toBe(true)
     expect(shown).toContain(' 42:5 error Unexpected any')
-    expect(shown).toContain(' ↑↓ scroll · b back · esc close')
+    expect(shown).toContain(' b back · esc close')
     expect((await ui.find({ type: 'Button', key: `copy:${lint.id}` }))?.props.label).toBe(
       'c: copy command',
     )

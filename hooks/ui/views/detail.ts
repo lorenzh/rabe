@@ -143,26 +143,54 @@ function topLines(model: Model, item: RabeItem, columns: number): Line[] {
   }
 }
 
-function agentLines(model: Model, item: RabeItem, columns: number): Line[] {
+function agentLines(model: Model, item: RabeItem, columns: number, rows = Infinity) {
   const turns = model.turns[item.id] ?? []
-  if (turns.length === 0) return [{ spans: [['Turns n/a: none seen since Rabe loaded.', dim]] }]
+  if (turns.length === 0) {
+    return {
+      lines: [{ spans: [['Turns n/a: none seen since Rabe loaded.', dim]] } as Line],
+      hidden: false,
+    }
+  }
 
-  return turns.flatMap((turn, i) => {
+  const out: Line[] = []
+  let hidden = false
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const turn = turns[i]
+    if (!turn) continue
+    const room = rows - out.length
+    if (room <= 0) {
+      hidden = true
+      break
+    }
+    const tools = turn.tools.slice(Math.max(0, turn.tools.length - room))
+    const textRows = room - tools.length
+    const limit = textRows * Math.max(1, columns - 5)
+    const value = textRows > 0 ? turn.text || '(tools only)' : ''
+    const cut = value.length > limit
     const lines = [
-      ...lead(
-        [
-          [String(turn.index).padEnd(3), dim],
-          ['● ', { fg: C.orange }],
-        ],
-        turn.text || '(tools only)',
-        columns,
-      ),
-      ...turn.tools.map(tool => ({
+      ...(textRows > 0
+        ? lead(
+            cut
+              ? [['     ', dim]]
+              : [
+                  [String(turn.index).padEnd(3), dim],
+                  ['● ', { fg: C.orange }],
+                ],
+            cut ? value.slice(-limit) : value,
+            columns,
+          )
+        : []),
+      ...tools.map(tool => ({
         spans: [[`     ⎿ ${tool.name} ${tool.summary ?? ''}`.trimEnd(), dim]] as Span[],
       })),
     ]
-    return item.status === 'running' && i === turns.length - 1 ? raise(lines) : lines
-  })
+    hidden ||= cut || textRows === 0 || tools.length < turn.tools.length || lines.length > room
+    const shown = lines.slice(-room)
+    out.unshift(...(item.status === 'running' && i === turns.length - 1 ? raise(shown) : shown))
+    if (hidden) break
+  }
+
+  return { lines: out, hidden }
 }
 
 function commandLine(step: {
@@ -267,7 +295,7 @@ function cronLines(model: Model, item: RabeItem): Line[] {
 export function bodyLines(model: Model, item: RabeItem, columns: number, sel?: Selection): Line[] {
   switch (item.kind) {
     case 'agent':
-      return agentLines(model, item, columns)
+      return agentLines(model, item, columns).lines
     case 'codex':
       return codexLines(item, columns)
     case 'workflow':
@@ -288,15 +316,19 @@ export function detailLines(
   sel?: Selection,
 ): Line[] {
   const top = [...headLines(model, item, columns), ...topLines(model, item, columns)]
-  const body = bodyLines(model, item, columns, sel)
   const room = Math.max(0, rows - top.length)
-  const hasHidden = body.length > room
+  const preview = item.kind === 'agent' ? agentLines(model, item, columns, room + 1) : undefined
+  const body = preview?.lines ?? bodyLines(model, item, columns, sel)
+  const hasHidden = preview?.hidden || body.length > room
   const shown = Math.max(0, room - (hasHidden ? 1 : 0))
   const note = hasHidden
     ? [
         {
           spans: [
-            [`${body.length - shown} older lines hidden · enter opens full detail`, dim],
+            [
+              `${preview ? 'Older text hidden' : `${body.length - shown} older lines hidden`} · enter opens full detail`,
+              dim,
+            ],
           ] as Span[],
         },
       ]

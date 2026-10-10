@@ -12,8 +12,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - The Effects tab finds shell writes on independent lists after `||`, including later lines with here-docs. Conditional writes stay hidden. ([#49](https://github.com/lorenzh/rabe/pull/49), fixes [#27](https://github.com/lorenzh/rabe/issues/27))
 - Long Bash and other tool summaries end with `…` instead of stopping mid-word without a mark. (fixes #35)
 - Opened monitors and shells keep every stored output line for scrolling. Split previews say how many older lines they hide. (fixes #32)
-- Agent reports keep their full text instead of stopping at 300 characters. Wrapped list markers stay beside the start of long paths. (fixes #30)
-- Opened agents and Codex jobs keep all recorded turns and steps. The detail scrolls beyond the pane's height. (fixes #29)
+- Agent reports keep up to 16,000 characters instead of stopping at 300. Longer reports end with `…`. Split previews wrap only recent agent text and mark hidden text. Wrapped bullet and numbered list markers stay beside the start of long paths. (fixes #30)
+- Opened agents and Codex jobs keep all recorded turns and steps. The detail scrolls beyond the pane's height. The scroll hint shows only when the opened detail needs scrolling. (fixes #29)
 
 ## [0.4.1] - 2026-10-10
 

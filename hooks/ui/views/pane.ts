@@ -40,9 +40,16 @@ const hasRows = (nodes: Node[]) =>
 
 // The hint names the keys the tab binds: the arrows and Enter over its rows,
 // and x and g of its controls while they act.
-function hint(sel: Selection, isOpen: boolean, inner: Drawn): string {
+function hint(sel: Selection, isOpen: boolean, inner: Drawn, rows: number): string {
   if (!sel.isFocused) return 'tab to select · esc close'
-  if (isOpen) return `${hasRows(inner.nodes) ? '↑↓ move' : '↑↓ scroll'} · b back · esc close`
+  if (isOpen) {
+    const move = hasRows(inner.nodes)
+      ? ['↑↓ move']
+      : rowsOf(inner.nodes) > rows
+        ? ['↑↓ scroll']
+        : []
+    return [...move, 'b back', 'esc close'].join(' · ')
+  }
   const move = hasRows(inner.nodes) ? ['↑↓ move', 'enter open'] : []
   const keys = inner.buttons.flatMap(one =>
     ['x', 'g', 'r', 'a'].includes(one.hotkey ?? '') ? [one.label.replace(': ', ' ')] : [],
@@ -199,7 +206,7 @@ export const paneView: View = (model, size, sel): Drawn => {
     ...head,
     ...inner.nodes,
     ...Array.from({ length: pad }, (): Line => ({ spans: [] })),
-    fitLine({ spans: [[` ${hint(sel, isOpen, inner)}`, { fg: C.dim }]] }, size.columns),
+    fitLine({ spans: [[` ${hint(sel, isOpen, inner, rows)}`, { fg: C.dim }]] }, size.columns),
   ]
 
   return { nodes, buttons: inner.buttons, inputs: inner.inputs, toolbar: head.length }

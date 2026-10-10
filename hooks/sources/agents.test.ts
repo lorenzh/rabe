@@ -141,14 +141,14 @@ test('a spawn adds a running agent under its workflow', async ($, on) => {
   ])
 })
 
-test('a long final report is kept in full', async ($, on) => {
+test('agent answers keep up to 16000 characters and mark a cut', async ($, on) => {
   const held = engine(on, 'a1')
   // biome-ignore lint/correctness/useYield: the engine's stand-in answers without chunks
   on('turn.step', async function* (_$, e) {
     return {
       turnId: e.turnId,
       index: e.index,
-      answer: 'word '.repeat(100),
+      answer: 'x'.repeat([500, 16000, 16001, 50000][e.index] ?? 0),
       toolUses: [],
       stopReason: 'end_turn' as const,
       usage: {
@@ -161,10 +161,16 @@ test('a long final report is kept in full', async ($, on) => {
     }
   })
   await $.agent.spawn(SPAWN)
-  const stream = $.turn.step({ turnId: 't1', index: 0, model: 'm', messageCount: 1, agentId: 'a1' })
-  for await (const _ of stream);
-  const text = held.turns?.['agent:a1']?.[0]?.text ?? ''
-  expect(text).toBe('word '.repeat(100))
+  for (const index of [0, 1, 2, 3]) {
+    const stream = $.turn.step({ turnId: 't1', index, model: 'm', messageCount: 1, agentId: 'a1' })
+    for await (const _ of stream);
+  }
+  expect(held.turns?.['agent:a1']?.map(turn => turn.text)).toEqual([
+    'x'.repeat(500),
+    'x'.repeat(16000),
+    `${'x'.repeat(15999)}…`,
+    `${'x'.repeat(15999)}…`,
+  ])
 })
 
 test('a spawn from another agent names that agent as parent', async ($, on) => {
