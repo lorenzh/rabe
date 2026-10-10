@@ -3,6 +3,7 @@ import type { EngineInterface, On, RenderSurface } from 'claude-code'
 import type { RabeItem, RabePrevious } from '../../types'
 import { KIND_LABEL, kept, matches, orderOf, previousOf, rowOf } from './lists'
 import { type At, type Held, hold, isRowKey, render, shifts } from './render'
+import { reserve, sequence } from './sequence'
 import {
   type Action,
   type ArmEvent,
@@ -335,7 +336,7 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
           ? `Message sent to claude ${item.title}`
           : `Message not sent: ${sent.reason}`,
       )
-      return land($, landing(action, ''))
+      return sequence(() => land($, landing(action, '')))
     }
   }
 }
@@ -424,16 +425,38 @@ function leave(action: Action, at: At): void {
 async function carry<R>($: EngineInterface, at: At, run: () => Promise<R>): Promise<R> {
   const key = slotOf(at)
   const mine: Slot = {}
+  const focusTurn = reserve()
   waiting.set(key, [...(waiting.get(key) ?? []), mine])
   let result: R
   try {
     result = await run()
+  } catch (error) {
+    await focusTurn(async () => undefined)
+    throw error
   } finally {
     const rest = (waiting.get(key) ?? []).filter(one => one !== mine)
     if (rest.length > 0) waiting.set(key, rest)
     else waiting.delete(key)
   }
-  if (mine.press && !isHeldBack(at)) await act($, mine.press.action, mine.press.surface)
+  const press = mine.press
+  if (press && !isHeldBack(at)) {
+    const action = press.action
+    if (
+      action.type === 'tab' ||
+      action.type === 'fold' ||
+      action.type === 'open' ||
+      action.type === 'query' ||
+      action.type === 'window' ||
+      action.type === 'focus'
+    ) {
+      await focusTurn(() => act($, action, press.surface))
+    } else {
+      await focusTurn(async () => undefined)
+      await act($, action, press.surface)
+    }
+  } else {
+    await focusTurn(async () => undefined)
+  }
 
   return result
 }
@@ -457,7 +480,7 @@ async function arrow($: EngineInterface, by: number, bodyRows: number): Promise<
   )
   if (!key) return false
   feed($, { type: 'step', key })
-  void focusOn($, key)
+  await focusOn($, key)
 
   return true
 }
@@ -498,34 +521,37 @@ export function pane(on: On, hours = baseHours): void {
   // The ring lands where the engine's link received the move (`landingOf`),
   // maybe not `e.element`; the selection follows it. A move that never
   // reached the engine left the ring where it was, so the pane disarms.
-  on('ui.focus', { requestId: PANE }, async ($, e, next) => {
-    const { value: before = '' } = await $.state.get({ plugin: 'rabe', key: 'selected' })
-    const asked = e.element?.startsWith('row:') ? e.element.slice(4) : before
-    if (asked !== before) await $.state.set({ plugin: 'rabe', key: 'selected' }, asked)
-    const result = await next(e)
-    const landing = landingOf(next.trace, 'deny' in result && !!result.deny)
-    const landed = landing?.element
-    const selected = landed?.startsWith('row:') ? landed.slice(4) : before
-    if (selected !== asked) await $.state.set({ plugin: 'rabe', key: 'selected' }, selected)
-    landedOn = landed
-    if (landing) {
-      ringOn = landed
-      shifted = undefined
-    }
-    if (!landing) feed($, { type: 'landed', isMoved: false })
-    else if (landed) {
-      const { model, selection } = await look($, true)
-      feed($, {
-        type: 'focus',
-        byPerson: e.origin.kind === 'person',
-        key: landed,
-        requested: e.element,
-        isLiveRow: isLiveRow(model, selection, landed),
-        selected: selection.selected,
-      })
-    }
+  on('ui.focus', { requestId: PANE }, ($, e, next) => {
+    const focus = async () => {
+      const { value: before = '' } = await $.state.get({ plugin: 'rabe', key: 'selected' })
+      const asked = e.element?.startsWith('row:') ? e.element.slice(4) : before
+      if (asked !== before) await $.state.set({ plugin: 'rabe', key: 'selected' }, asked)
+      const result = await next(e)
+      const landing = landingOf(next.trace, 'deny' in result && !!result.deny)
+      const landed = landing?.element
+      const selected = landed?.startsWith('row:') ? landed.slice(4) : before
+      if (selected !== asked) await $.state.set({ plugin: 'rabe', key: 'selected' }, selected)
+      landedOn = landed
+      if (landing) {
+        ringOn = landed
+        shifted = undefined
+      }
+      if (!landing) feed($, { type: 'landed', isMoved: false })
+      else if (landed) {
+        const { model, selection } = await look($, true)
+        feed($, {
+          type: 'focus',
+          byPerson: e.origin.kind === 'person',
+          key: landed,
+          requested: e.element,
+          isLiveRow: isLiveRow(model, selection, landed),
+          selected: selection.selected,
+        })
+      }
 
-    return result
+      return result
+    }
+    return e.origin.kind === 'person' && ringOn && e.element !== ringOn ? sequence(focus) : focus()
   }).catch((_$, e, next) => next(e))
 
   // Rabe's own `$.ui.focus` from a Button's or Input's closure reaches no
@@ -538,8 +564,8 @@ export function pane(on: On, hours = baseHours): void {
   )
 
   on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
-    if (e.pointer || Math.abs(e.by) !== 1) return next(e)
-    if (await arrow($, e.by, e.bodyRows).catch(() => false)) return {}
+    if (e.pointer || e.by === 0 || Math.abs(e.by) >= e.bodyRows) return next(e)
+    if (await sequence(() => arrow($, e.by, e.bodyRows)).catch(() => false)) return {}
 
     return next(e)
   })

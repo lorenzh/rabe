@@ -330,6 +330,32 @@ test('stop calls TaskStop with the task id on every surface', async ($, on) => {
   expect(stopped).toEqual(['bg_2', 'bg_2'])
 })
 
+test('a pending stop does not hold row arrows behind it', async ($, on) => {
+  hold(on, ALL, { selected: dev.id })
+  let begin!: () => void
+  let finish!: () => void
+  const started = new Promise<void>(resolve => {
+    begin = resolve
+  })
+  const pending = new Promise<void>(resolve => {
+    finish = resolve
+  })
+  on('tool.call', async (_$, e, next) => {
+    if (e.tool !== 'TaskStop') return next(e)
+    begin()
+    await pending
+    return { result: {}, text: 'stopped' }
+  })
+  await arm($, `row:${dev.id}`)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  const stop = ui.press({ key: 'stop' })
+  await started
+  await $.ui.scroll({ ...ARROW, by: 1 })
+  finish()
+  await stop
+  await ui.unmount()
+})
+
 test('a long list draws every row, and the selected row takes the focus', async ($, on) => {
   const many = Array.from(
     { length: 350 },
@@ -909,10 +935,10 @@ const ARROW = {
   origin: { kind: 'person' },
 } as const
 
-// The pane's arrow hook answers a one-row move without a pointer itself and
+// The pane's arrow hook answers a row move without a pointer itself and
 // moves the focus (the kit cannot answer a plugin's $.ui.focus, so that call
 // is left to the live engine); the rest scrolls on.
-test('an arrow key in a pane taller than its body is kept from scrolling; the wheel and pages pass', async ($, on) => {
+test('summed arrows move focus; the wheel and page scroll pass', async ($, on) => {
   hold(on, ALL, { selected: dev.id })
   const passed: number[] = []
   on('ui.scroll', async (_$, e) => {
@@ -921,9 +947,10 @@ test('an arrow key in a pane taller than its body is kept from scrolling; the wh
   })
   expect(await $.ui.scroll({ ...ARROW, by: 1 })).toEqual({})
   expect(await $.ui.scroll({ ...ARROW, by: -1 })).toEqual({})
-  await $.ui.scroll({ ...ARROW, by: 3 })
+  expect(await $.ui.scroll({ ...ARROW, by: 2 })).toEqual({})
+  await $.ui.scroll({ ...ARROW, by: 10 })
   await $.ui.scroll({ ...ARROW, by: 1, pointer: { column: 2, row: 4 } })
-  expect(passed).toEqual([3, 1])
+  expect(passed).toEqual([10, 1])
 })
 
 test('an arrow past the last row scrolls the pane on', async ($, on) => {
@@ -1308,16 +1335,36 @@ for (const [name, element, wrote] of OVERLAPS) {
           [goFold, fold],
           [goOther, other],
         ] as const
-        for (const [go, done] of order === 'first' ? runs : [...runs].reverse()) {
-          go()
-          await done
-        }
+        for (const [go] of order === 'first' ? runs : [...runs].reverse()) go()
+        await Promise.all(runs.map(([, done]) => done))
         expect(state).toMatchObject({ folded: ['shells'], ...wrote })
         await ui.unmount()
       },
     )
   }
 }
+
+test(
+  'an arrow waits for a press held open beneath the pane',
+  { plugins: [gate] },
+  async ($, on) => {
+    hold(on, ALL, { selected: explore.id })
+    const gated = gates(on)
+    const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    const press = ui.press({ key: 'group-shells' })
+    const release = await gated('group-shells')
+    let moved = false
+    const scroll = $.ui.scroll({ ...ARROW, by: 1 }).then(() => {
+      moved = true
+    })
+    await ui.redraw()
+    expect(moved).toBe(false)
+    release()
+    await Promise.all([press, scroll])
+    expect(moved).toBe(true)
+    await ui.unmount()
+  },
+)
 
 // Issue #24: an item found after the open stands in its group, maybe above the
 // row that holds the focus ring. The ring keeps its index, so until Rabe puts

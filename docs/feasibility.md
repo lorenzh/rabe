@@ -182,7 +182,7 @@ Only Button and Markdown links take a press, so a row is one pressable thing, wi
 
 Where the window stands comes from the Pane's `scroll.offset` (d.ts `SiteScroll`): the first row of the tree it showed when the hook was asked. A scroll through `ui.scroll` asks again; on the terminal the engine's own moves (following the focus, a clamp) do not, so a draw may read the offset from before the focus moved. Rabe adds what the engine does to keep the focused row in view (see the split in architecture).
 
-The test kit cannot answer a plugin's `$.ui.focus` (nothing beneath the plugins answers it, and a test hook on `ui.focus` is not reached), so the focus moves of the arrow fix and after a change of the view are checked only live; `landing` names the keys in a pure function with its own test.
+The test kit cannot answer a plugin's `$.ui.focus` (nothing beneath the plugins answers it, and a test hook on `ui.focus` is not reached), so engine focus landings need live verification; `landing` names the keys in a pure function with its own test. On 2026-10-10, Claude Code 2.1.296 reproduced the lost `Down` after `b` in one baseline trial at 120 columns: focus remained on `sleep 32` instead of moving to `sleep 31`. In another trial, `b` then `Down` moved from `sleep 31` to `sleep 30`, but a later trial from `sleep 30` stayed on that row. The scrolling (arrow) path is not verified live. The Enter-after-tab case was not verified. Three temporary shell rows were used, and the run was stopped.
 
 ### The Claude desktop app
 
