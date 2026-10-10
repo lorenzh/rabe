@@ -11,7 +11,7 @@ const prefix = (part: Part) => (isPress(part) && part.hotkey ? part.hotkey.lengt
 const width = (list: Part[]) =>
   list.reduce((n, part) => n + prefix(part) + [...(isPress(part) ? part.label : part[0])].length, 0)
 
-const cut = (text: string, room: number) => {
+export const cut = (text: string, room: number) => {
   const chars = [...safe(text)]
   return chars.length > room ? `${chars.slice(0, room - 1).join('')}…` : chars.join('')
 }

@@ -31,7 +31,7 @@ import {
   type ViewInput,
 } from '../view'
 import { detailLines } from './detail'
-import { beside, fitLine, focusOn, itemLine, plain } from './lines'
+import { beside, cut, fitLine, focusOn, itemLine, plain } from './lines'
 
 const GROUP_COLOR: Record<Group, number> = {
   failed: C.red,
@@ -226,7 +226,11 @@ function listButtons(
     ? [
         {
           key: 'find',
-          label: query ? `s: search "${query}"` : isSplit(size) ? 's: search' : 's',
+          label: query
+            ? `s: search "${cut(query, Math.min(16, Math.max(1, size.columns - 17)))}"`
+            : isSplit(size)
+              ? 's: search'
+              : 's',
           hotkey: 's',
           action: { type: 'focus', key: 'search' },
         },

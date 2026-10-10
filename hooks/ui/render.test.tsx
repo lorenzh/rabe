@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import type { RabeItem, RabeItemOf } from '../model'
 import { type Grid, grid, lines, safe, write } from './cells/grid'
-import { ALL, babysit, ci, dev, explore, flow, NOW, raster, review } from './fixtures'
+import { ALL, babysit, ci, dev, explore, flow, NOW, plan, raster, review } from './fixtures'
 import { orderOf } from './lists'
 import { type Held, hold, render, shifts, type Ui } from './render'
 import {
@@ -698,4 +698,44 @@ test('walking the list keeps exactly one x and one g', () => {
   expect(last.keys.filter(key => key === 'stop-group')).toHaveLength(1)
   expect(last.keys.filter(key => key === 'remove')).toHaveLength(1)
   expect(last.tree.filter(one => String(one.props.label).startsWith('x:'))).toHaveLength(1)
+})
+
+test('pane keys stay unique across views without moving held focus indices', () => {
+  for (const size of [
+    SIZE,
+    { ...SIZE, columns: 80, hasInput: false, surface: 'desktop' as const },
+  ]) {
+    let held: Held[] | undefined
+    for (const selection of [
+      { ...NO_SELECTION },
+      { ...NO_SELECTION, open: explore.id, isArmed: true },
+      { ...NO_SELECTION, open: plan.id, isArmed: true },
+      { ...NO_SELECTION, open: babysit.id, isArmed: true },
+      { ...NO_SELECTION, open: review.id },
+      { ...NO_SELECTION, tab: 'cost' as const },
+      { ...NO_SELECTION, tab: 'effects' as const },
+      { ...NO_SELECTION, tab: 'timeline' as const },
+      { ...NO_SELECTION, isArmed: true, isListArmed: true, selected: dev.id },
+    ]) {
+      const drawn = paneView(model(ALL), size, selection)
+      const next = hold(layout(drawn), held, seatsRows(selection))
+      if (held)
+        expect(next.held.slice(0, held.length).map(one => one.key)).toEqual(
+          held.map(one => one.key),
+        )
+      const presses = next.list.flatMap(piece =>
+        'button' in piece ? [piece.button] : 'spans' in piece ? piece.spans.filter(isPress) : [],
+      )
+      for (const hotkey of ['x', 'g', 'r', 'a', 'd', 'm', 's', 'c']) {
+        const bound = presses.filter(one => one.hotkey === hotkey)
+        expect(bound).toHaveLength(1)
+        for (const one of drawn.buttons)
+          if (one.hotkey === hotkey && one.dim) expect(one.action.type).toBe('none')
+      }
+      expect(drawn.buttons.filter(one => one.autoFocus).map(one => one.key)).toEqual(
+        selection.open ? ['back'] : [],
+      )
+      held = next.held
+    }
+  }
 })

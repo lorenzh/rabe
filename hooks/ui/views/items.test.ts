@@ -364,13 +364,13 @@ test('x and g keep their keys and act on the selected row', () => {
 
 // Until the ring is known to sit on a safe element, stop and delete are drawn
 // but do nothing (see arming in docs/architecture.md).
-test('a disarmed pane draws its stops and deletes dim, without action or hotkey', () => {
+test('a disarmed pane keeps stop and delete hotkeys bound without an action', () => {
   const sel = { ...NO_SELECTION, selected: explore.id, isFocused: true }
   const armed = paneView(model, WIDE, { ...sel, isArmed: true, isListArmed: true })
   const disarmed = paneView(model, WIDE, sel)
   expect(disarmed.buttons.map(one => one.key)).toEqual(armed.buttons.map(one => one.key))
   expect(disarmed.buttons.slice(1)).toEqual(
-    armed.buttons.slice(1).map(({ hotkey: _, ...one }) => ({ ...one, action: NONE, dim: true })),
+    armed.buttons.slice(1).map(one => ({ ...one, action: NONE, dim: true })),
   )
   expect(disarmed.buttons[0]).toEqual(armed.buttons[0])
   const cron = paneView(model, WIDE, { ...sel, open: babysit.id })
@@ -486,4 +486,16 @@ test('below 90 columns the summary of a folded job counts its forwarder, and onl
   )
   const blind = { ...forwarder, costUsd: undefined, tokens: undefined } as RabeItem
   expect(end([plan, blind, job])).toBe('◐ review auth.ts · gpt-6.1-sol · cost n/a · running')
+})
+
+test('a long search query is capped with an ellipsis at wide and narrow widths', () => {
+  const query = 'verify'.repeat(100)
+  for (const size of [WIDE, NARROW, DESKTOP, { ...NARROW, columns: 24 }]) {
+    const drawn = itemsView(model, size, { ...NO_SELECTION, query })
+    const label = drawn.buttons.find(one => one.key === 'find')?.label ?? ''
+    expect(label).toMatch(/^s: search "verify.*…"$/)
+    expect(label.length + 5).toBeLessThanOrEqual(size.columns)
+    expect(label.length).toBeLessThanOrEqual(32)
+    expect(drawn.inputs?.[0]?.value).toBe(query)
+  }
 })

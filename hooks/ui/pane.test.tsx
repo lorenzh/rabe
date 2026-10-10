@@ -369,6 +369,9 @@ test('a narrow pane puts a one-line summary under the list and short key labels'
     'g: stop group',
     'r: remove',
     'a: remove ended',
+    'd: delete job',
+    'm: message',
+    'c: copy',
   ])
   await ui.unmount()
 })
@@ -753,7 +756,7 @@ test('g on a workflow agent stops its run on every surface', async ($, on) => {
       hotkey: 'g',
     })
     const x = await ui.find({ type: 'Button', key: 'stop' })
-    expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, undefined])
+    expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, 'x'])
     expect(await screen(ui)).toContain(
       ' ↑↓ move · enter open · g stop run · a remove ended · esc close',
     )
@@ -944,7 +947,7 @@ test('the pane opens disarmed: a stop does nothing until the person moves the ri
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
     const x = await ui.find({ type: 'Button', key: 'stop' })
-    expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, undefined])
+    expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, 'x'])
     await ui.press({ key: 'stop' })
     await ui.unmount()
   }
@@ -966,7 +969,7 @@ test('an open item that is gone disarms the list the view falls back to', async 
   items.splice(items.indexOf(dev), 1)
   await ui.redraw()
   const x = await ui.find({ type: 'Button', key: 'stop' })
-  expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, undefined])
+  expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, 'x'])
   await arm($, `row:${explore.id}`)
   await ui.redraw()
   expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBe('x')
@@ -983,7 +986,7 @@ test('a change of the view disarms until the ring lands; a failed landing keeps 
   await ui.press({ key: 'tab-cost' })
   await ui.press({ key: 'tab-items' })
   const x = await ui.find({ type: 'Button', key: 'stop' })
-  expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, undefined])
+  expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, 'x'])
   await ui.unmount()
 })
 
@@ -1017,7 +1020,7 @@ test(
     const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
     for (const key of ['stop', 'stop-group']) {
       const one = await ui.find({ type: 'Button', key })
-      expect([key, one?.props.hotkey]).toEqual([key, undefined])
+      expect(one?.props).toMatchObject({ hotkey: key === 'stop' ? 'x' : 'g', dimColor: true })
     }
     await ui.press({ key: 'stop' })
     expect(stopped).toEqual([])
@@ -1038,7 +1041,7 @@ test('a selected row that is gone disarms x and g; the next focus by the person 
   await ui.redraw()
   for (const key of ['stop', 'stop-group']) {
     const one = await ui.find({ type: 'Button', key })
-    expect([key, one?.props.hotkey]).toEqual([key, undefined])
+    expect(one?.props).toMatchObject({ hotkey: key === 'stop' ? 'x' : 'g', dimColor: true })
   }
   await arm($, `row:${explore.id}`)
   await ui.redraw()
@@ -1061,7 +1064,7 @@ test('a person focus on a gone slot or a group header leaves x and g inert', asy
     await ui.redraw()
     for (const key of ['stop', 'stop-group']) {
       const one = await ui.find({ type: 'Button', key })
-      expect([element, key, one?.props.hotkey]).toEqual([element, key, undefined])
+      expect(one?.props).toMatchObject({ hotkey: key === 'stop' ? 'x' : 'g', dimColor: true })
     }
   }
   await arm($, `row:${explore.id}`)
@@ -1098,7 +1101,7 @@ test(
     await ui.redraw()
     for (const key of ['stop', 'stop-group']) {
       const one = await ui.find({ type: 'Button', key })
-      expect([key, one?.props.hotkey]).toEqual([key, undefined])
+      expect(one?.props).toMatchObject({ hotkey: key === 'stop' ? 'x' : 'g', dimColor: true })
     }
     await ui.press({ key: 'stop' })
     expect(stopped).toEqual([])
@@ -1117,7 +1120,10 @@ test('a press on another row selects it and arms x for it; on the selected row i
   const stopped = stops(on)
   await arm($)
   const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
-  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBeUndefined()
+  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props).toMatchObject({
+    hotkey: 'x',
+    dimColor: true,
+  })
   await ui.press({ key: `row:${ci.id}` })
   expect([state.selected, state.open]).toEqual([ci.id, undefined])
   await ui.redraw()
@@ -1247,7 +1253,10 @@ test('a row found above the focused row holds Enter back until the ring is seen 
   await ui.redraw()
   await held?.advance(200)
   await ui.redraw()
-  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBeUndefined()
+  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props).toMatchObject({
+    hotkey: 'x',
+    dimColor: true,
+  })
   for (const key of [`row:${late.id}`, `row:${a.id}`, 'group-agents']) {
     await ui.press({ key })
     expect([key, state.selected, state.open, state.folded]).toEqual([
@@ -1368,4 +1377,58 @@ test('a removed workflow agent still counts in its run and the cost', async ($, 
   const band = await $.ui.mount(BAND as never)
   expect((await screen(band)).join('\n')).toContain('123k tok')
   await band.unmount()
+})
+
+test('failed multiline copies flatten the fallback on every surface', async ($, on) => {
+  const command = 'echo ready\n\tsleep 1'
+  const shell = { ...dev, detail: { ...dev.detail, command } } as RabeItemOf<'shell'>
+  const state = hold(on, [shell], { open: shell.id })
+  const copies: string[] = []
+  on('ui.copy', async (_$, e) => {
+    copies.push(e.text)
+    return { value: { isCopied: false as const, reason: 'no-clipboard' as const } }
+  })
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    await ui.press({ key: `copy:${shell.id}` })
+    await ui.unmount()
+  }
+  expect(copies).toEqual([command, command])
+  expect(state.toasts).toEqual([
+    'Copy failed: no-clipboard. Select it: echo ready sleep 1',
+    'Copy failed: no-clipboard. Select it: echo ready sleep 1',
+  ])
+})
+
+test('dim and absent pane keys stay bound and inert on every surface', async ($, on) => {
+  const state = hold(on, ALL, { selected: dev.id })
+  const calls: unknown[] = []
+  on('tool.call', async (_$, e) => {
+    calls.push(e)
+    return { result: {} }
+  })
+  on('ui.copy', async (_$, e) => {
+    calls.push(e)
+    return { value: { isCopied: true as const } }
+  })
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    for (const hotkey of ['x', 'g', 'r', 'a', 'd', 'm', 'c']) {
+      const buttons = await ui.findAll({ type: 'Button' })
+      const bound = buttons.filter(one => one.props.hotkey === hotkey)
+      expect(bound).toHaveLength(1)
+      expect(bound[0]?.props.dimColor).toBe(true)
+      const key = bound[0]?.key
+      if (key) await ui.press({ key })
+    }
+    await ui.press({ key: 'tab-cost' })
+    const search = (await ui.findAll({ type: 'Button' })).find(one => one.props.hotkey === 's')
+    expect(search?.props.dimColor).toBe(true)
+    if (search?.key) await ui.press({ key: search.key })
+    expect(state.toasts).toBeUndefined()
+    expect(state.removed).toBeUndefined()
+    await ui.press({ key: 'tab-items' })
+    await ui.unmount()
+  }
+  expect(calls).toEqual([])
 })

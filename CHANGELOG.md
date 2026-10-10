@@ -6,8 +6,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
-- Search shows its active query after Enter and reopening. Enter returns the keys to the marked filtered row. An empty search clears the filter. (fixes [#26](https://github.com/lorenzh/rabe/issues/26))
-
+- Inactive pane keys `x`, `g`, `r`, `a`, `d`, `m`, `s` and `c` stay bound and do nothing. Missing controls keep these letters in the pane. Letters Rabe never binds still go to the prompt. (fixes [#25](https://github.com/lorenzh/rabe/issues/25))
+- Search shows its active query after Enter and reopening, capped with `…` in the toolbar at every width. Enter returns the keys to the marked filtered row. An empty search clears the filter. (fixes [#26](https://github.com/lorenzh/rabe/issues/26))
 - The Timeline legend says "scheduled run" for cron ticks. Ticks come from the schedule, without actual firing times or idle delays. ([#49](https://github.com/lorenzh/rabe/pull/49), fixes [#34](https://github.com/lorenzh/rabe/issues/34))
 - The Cost tab says "sorted by tokens when opened" while it holds the opening order. New workers follow the held rows. ([#49](https://github.com/lorenzh/rabe/pull/49), fixes [#33](https://github.com/lorenzh/rabe/issues/33))
 - Deleted cron jobs say `deleted`, hide future runs and keep delete dim. Delete errors show plain text. The previous-session summary counts only crons still running at session end. ([#49](https://github.com/lorenzh/rabe/pull/49), fixes [#28](https://github.com/lorenzh/rabe/issues/28))
@@ -16,7 +16,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - Opened monitors and shells keep every stored output line for scrolling. Split previews say how many older lines they hide. ([#50](https://github.com/lorenzh/rabe/pull/50), fixes [#32](https://github.com/lorenzh/rabe/issues/32))
 - Agent reports keep up to 16,000 characters instead of stopping at 300. Longer reports end with `…`. Split previews wrap only recent agent text and mark hidden text. Wrapped bullet and numbered list markers stay beside the start of long paths. ([#50](https://github.com/lorenzh/rabe/pull/50), fixes [#30](https://github.com/lorenzh/rabe/issues/30))
 - Opened agents and Codex jobs keep all recorded turns and steps. The detail scrolls beyond the pane's height. The scroll hint shows only when the opened detail needs scrolling. ([#50](https://github.com/lorenzh/rabe/pull/50), fixes [#29](https://github.com/lorenzh/rabe/issues/29))
-- Copy success toasts show line breaks and tabs as spaces. The clipboard keeps the original text. (fixes [#36](https://github.com/lorenzh/rabe/issues/36))
+- Copy success and failure toasts show line breaks and tabs as spaces. The clipboard keeps the original text. (fixes [#36](https://github.com/lorenzh/rabe/issues/36))
 - Tab switches focus the marked row after a safe move through the tab label. Enter opens that row at once. (fixes [#31](https://github.com/lorenzh/rabe/issues/31))
 
 ## [0.4.1] - 2026-10-10

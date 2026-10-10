@@ -71,15 +71,15 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 
 A deleted cron job shows no next runs, and its delete button stays dim. The previous-session summary counts only cron jobs still running when the session ends. Delete failures show plain text.
 
-The buttons under the tabs show the keys of the current tab. A key that cannot act now is dim, and pressing it does nothing. A letter with no button goes to the prompt.
+The buttons under the tabs show the keys of the current tab. A key that cannot act now is dim, and pressing it does nothing. While the pane holds the keys, `x`, `g`, `r`, `a`, `d`, `m`, `s` and `c` stay bound in every view. Unavailable keys do nothing. Letters Rabe never binds still go to the prompt: the mod API has no key hook to catch them.
 
 An opened item keeps its recorded turns, steps or output lines in its detail. Use ↑↓, PageUp, PageDown or the wheel to scroll. The scroll hint shows only when the opened detail needs scrolling. Claude Code sets the pane's height. The split preview marks hidden agent text or counts older output lines. Press Enter to open the full detail.
 
 Agent answers keep up to 16,000 characters each. Longer answers end with `…`. The transcript keeps the original answer. Markdown stays plain text. Wrapped bullet and numbered lists keep their markers beside the start of a long path. Long tool summaries end with `…`. Answers already shortened by an older version stay shortened.
 
-A successful copy shows the text on one line in its toast. The clipboard keeps the original line breaks and spaces.
+Copy success and failure toasts show the text on one line. The clipboard keeps the original line breaks and spaces.
 
-The search button shows the active query. The filter stays visible after Enter and after reopening the pane. To clear it, submit an empty search. Stop group and remove ended act only on the filtered rows.
+The search button shows the active query, cut with `…` when long. The search field keeps the full query at every width. The filter stays visible after Enter and after reopening the pane. To clear it, submit an empty search. Stop group and remove ended act only on the filtered rows.
 
 With the mouse, click a row once to select it and again to open it. Click a tab to switch to it, a group name to fold the group, a button to press it, or a row on the other tabs to open it. The wheel scrolls the pane. A click does not move the focus, so Enter still opens the row that has the focus. A click also does not give the pane the keys: `ctrl+x tab` does. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
 

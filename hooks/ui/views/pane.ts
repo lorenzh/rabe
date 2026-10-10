@@ -52,7 +52,9 @@ function hint(sel: Selection, isOpen: boolean, inner: Drawn, rows: number): stri
   }
   const move = hasRows(inner.nodes) ? ['↑↓ move', 'enter open'] : []
   const keys = inner.buttons.flatMap(one =>
-    ['x', 'g', 'r', 'a'].includes(one.hotkey ?? '') ? [one.label.replace(': ', ' ')] : [],
+    !one.dim && ['x', 'g', 'r', 'a'].includes(one.hotkey ?? '')
+      ? [one.label.replace(': ', ' ')]
+      : [],
   )
 
   return [...move, ...keys, 'esc close'].join(' · ')
@@ -173,13 +175,40 @@ export function selectsOnPress(model: Model, sel: Selection, id: string, ring?: 
   return order.some(item => item.id === id) && selectedItem(order, sel)?.id !== id
 }
 
-// Stop, delete and remove drawn while the pane is disarmed: dim, no action,
-// no hotkey.
+// Stop, delete and remove stay bound while disarmed, with no action.
 const disarmed = (one: ViewButton): ViewButton => {
   if (!['stop', 'delete', 'remove', 'clear'].includes(one.action.type)) return one
-  const { hotkey: _, ...rest } = one
+  return { ...one, action: NONE, dim: true }
+}
 
-  return { ...rest, action: NONE, dim: true }
+// Missing keys use inert controls; hold appends new keys without moving old slots.
+function bind(drawn: Drawn): Drawn {
+  const labels = [
+    'x: stop',
+    'g: stop group',
+    'r: remove',
+    'a: remove ended',
+    'd: delete job',
+    'm: message',
+    's: search',
+    'c: copy',
+  ]
+  const buttons = drawn.buttons.map(one =>
+    one.dim && one.action.type === 'none' && labels.some(label => label[0] === one.label[0])
+      ? { ...one, hotkey: one.label.slice(0, 1) }
+      : one,
+  )
+  const keys = [
+    ...buttons,
+    ...drawn.nodes.flatMap(node => ('spans' in node ? node.spans.filter(isPress) : [])),
+  ].map(one => one.hotkey)
+  for (const label of labels) {
+    const hotkey = label.slice(0, 1)
+    if (!keys.includes(hotkey))
+      buttons.push({ key: `inert-${hotkey}`, label, hotkey, action: NONE, dim: true })
+  }
+
+  return { ...drawn, buttons }
 }
 
 export const paneView: View = (model, size, sel): Drawn => {
@@ -191,10 +220,10 @@ export const paneView: View = (model, size, sel): Drawn => {
     rows: Math.max(1, rows),
     ...(size.window && { window: { ...size.window, top: size.window.top - above } }),
   })
-  const first = body(model, room(size.rows - head.length - HINT, head.length), sel)
+  const first = bind(body(model, room(size.rows - head.length - HINT, head.length), sel))
   const tools = controlRows(first, size)
   const rows = size.rows - head.length - tools - HINT
-  const drawn = body(model, room(rows, head.length + tools), sel)
+  const drawn = bind(body(model, room(rows, head.length + tools), sel))
   const isInert = (one: ViewButton) =>
     !sel.isArmed || (!sel.isListArmed && LIST_KEYS.includes(one.key))
   const inner = {

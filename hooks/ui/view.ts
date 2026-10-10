@@ -103,7 +103,7 @@ export const NONE: Action = { type: 'none' }
 // A control of the toolbar, drawn `[ label ]`. The label carries the key
 // ("x: stop"): the engine does not draw hotkeys. Hotkeys are one digit or one
 // lowercase letter. A control that is not available now is `dim` with the
-// action `NONE` and no hotkey, so it keeps its place.
+// action `NONE`; the pane keeps its hotkey bound and its place.
 export type ViewButton = {
   key: string
   label: string

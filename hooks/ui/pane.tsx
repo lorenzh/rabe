@@ -313,7 +313,7 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       $.ui.toast(
         result.isCopied
           ? `Copied: ${action.text.replace(/\s+/g, ' ')}`
-          : `Copy failed: ${result.reason}. Select it: ${action.text}`,
+          : `Copy failed: ${result.reason}. Select it: ${action.text}`.replace(/\s+/g, ' '),
       )
       return
     }
