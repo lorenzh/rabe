@@ -19,8 +19,9 @@ import {
   verify,
 } from '../fixtures'
 import { isPress, type Model, NO_SELECTION, rowKeys, type Size } from '../view'
-import { detailView } from './detail'
+import { detailLines, detailView } from './detail'
 import { itemsView } from './items'
+import { paneView } from './pane'
 
 const TERMINAL: Size = { columns: 60, rows: 30, surface: 'terminal', hasInput: false }
 
@@ -43,6 +44,36 @@ function find(g: Grid, text: string): [x: number, y: number] {
 
 const fg = (g: Grid, at: [number, number]) => cell(g, at[0], at[1])[1]
 const bg = (g: Grid, at: [number, number]) => cell(g, at[0], at[1])[2]
+
+test('an opened agent keeps every turn in a 17-row inline pane at 100 terminal columns', () => {
+  const agent = {
+    ...explore,
+    status: 'done',
+    detail: { ...explore.detail, transcriptPath: `/session/${'deep/'.repeat(20)}agent-a1.jsonl` },
+  } as RabeItem
+  const m = model([agent], {
+    turns: {
+      [agent.id]: Array.from({ length: 20 }, (_, i) => ({
+        index: i + 1,
+        at: NOW,
+        text: i === 19 ? 'Final report.' : `Turn ${i + 1}.`,
+        tools: [],
+      })),
+    },
+  })
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const drawn = paneView(
+      m,
+      { ...TERMINAL, columns: 96, rows: 17, surface },
+      { ...NO_SELECTION, open: agent.id, isFocused: true },
+    )
+    const shown = lines(gridOf(drawn).grid)
+    expect(shown).toContain('1  ● Turn 1.')
+    expect(shown).toContain('20 ● Final report.')
+    expect(shown.some(line => line.includes('↑↓ scroll'))).toBe(true)
+    expect(shown.length).toBeGreaterThan(17)
+  }
+})
 
 test('an agent shows a cost box, its brief and its turns from rabe.turns', () => {
   const agent = {
@@ -86,6 +117,65 @@ test('an agent shows a cost box, its brief and its turns from rabe.turns', () =>
   expect(buttons.find(b => b.key === `stop:${explore.id}`)?.label).toBe('x: stop')
 })
 
+test('an opened detail only hints at scrolling when it overflows', () => {
+  for (const surface of ['terminal', 'desktop'] as const) {
+    for (const rows of [10, 30]) {
+      const drawn = paneView(
+        model([ci]),
+        { ...TERMINAL, rows, surface },
+        { ...NO_SELECTION, open: ci.id, isFocused: true },
+      )
+      const hint = lines(gridOf(drawn).grid).at(-1)?.trim()
+      expect(hint).toBe(rows === 10 ? '↑↓ scroll · b back · esc close' : 'b back · esc close')
+    }
+  }
+})
+
+test('an agent preview skips older turns once the newest text fills its rows', () => {
+  const m = model([explore], {
+    turns: {
+      [explore.id]: [
+        {
+          index: 1,
+          at: NOW,
+          get text(): string {
+            throw new Error('The preview must not wrap this older turn.')
+          },
+          tools: [],
+        },
+        { index: 2, at: NOW, text: `${'word '.repeat(3200)}\nReport end.`, tools: [] },
+      ],
+    },
+  })
+  const preview = detailLines(m, explore, 17, 72)
+  const shown = lines(gridOf({ nodes: preview, buttons: [] }).grid)
+  expect(shown).toContain('Older text hidden · enter opens full detail')
+  expect(shown).toContain('     Report end.')
+  expect(shown.length).toBe(17)
+})
+
+test('an agent preview skips text when the newest tools fill its rows', () => {
+  const m = model([explore], {
+    turns: {
+      [explore.id]: [
+        {
+          index: 1,
+          at: NOW,
+          get text(): string {
+            throw new Error('Tool rows leave no room to wrap this text.')
+          },
+          tools: Array.from({ length: 20 }, (_, i) => ({ name: 'Read', summary: `file-${i}.ts` })),
+        },
+      ],
+    },
+  })
+  const preview = detailLines(m, explore, 17, 72)
+  const shown = lines(gridOf({ nodes: preview, buttons: [] }).grid)
+  expect(shown).toContain('Older text hidden · enter opens full detail')
+  expect(shown).toContain('     ⎿ Read file-19.ts')
+  expect(shown.length).toBe(17)
+})
+
 test('the brief of an agent is the prompt it was given when Rabe saw the spawn', () => {
   const agent = {
     ...explore,
@@ -104,6 +194,24 @@ test('a long brief keeps three lines', () => {
   const at = shown.indexOf('▸ brief')
   expect(shown[at + 3]?.endsWith('…')).toBe(true)
   expect(shown[at + 4]).toBe('')
+})
+
+test('an opened final report keeps its end and no list marker stands alone', () => {
+  const agent = { ...explore, status: 'done' } as RabeItem
+  const path = `/abs/${'long-path/'.repeat(20)}file.ts`
+  const m = model([agent], {
+    turns: {
+      [agent.id]: [
+        { index: 1, at: NOW, text: `**Files:**\n- \`${path}\`\nReport end.`, tools: [] },
+      ],
+    },
+  })
+  for (const columns of [72, 196]) {
+    const shown = lines(open(m, agent.id, { ...TERMINAL, columns }).grid)
+    expect(shown.some(line => line.trim() === '-')).toBe(false)
+    expect(shown).toContain('     Report end.')
+    expect(shown.some(line => line.includes('- `/abs/'))).toBe(true)
+  }
 })
 
 test('an agent without turns and a price says n/a', () => {
@@ -276,7 +384,7 @@ test('a wakeup shows the one time it fires', () => {
   expect(lines(open(model([wake]), wake.id).grid)).toContain('  10:53  in 1:30')
 })
 
-test('a short detail keeps the head and the newest body lines', () => {
+test('a short opened shell keeps its head and every output line for scrolling', () => {
   const m = model(ALL, {
     lines: {
       [lint.id]: {
@@ -287,11 +395,34 @@ test('a short detail keeps the head and the newest body lines', () => {
   })
   const { grid: g } = open(m, lint.id, { ...TERMINAL, rows: 14 })
   const shown = lines(g)
-  expect(g.rows).toBe(14)
+  expect(g.rows).toBeGreaterThan(14)
   expect(shown[0]).toMatch(/^✗ shell · bun run lint/)
   expect(shown).toContain('▸ output · newest last · 40 lines')
   expect(shown).toContain('line 39')
-  expect(shown).not.toContain('line 0')
+  expect(shown).toContain('line 0')
+})
+
+test('an opened monitor keeps all eight lines in a short pane at both widths', () => {
+  const m = model([ci], {
+    lines: {
+      [ci.id]: {
+        seen: 8,
+        lines: Array.from({ length: 8 }, (_, i) => ({ at: NOW, text: `output ${i + 1}` })),
+      },
+    },
+  })
+  for (const columns of [96, 196]) {
+    const shown = lines(open(m, ci.id, { ...TERMINAL, columns, rows: 10 }).grid)
+    expect(shown.filter(line => /output \d/.test(line))).toHaveLength(8)
+  }
+  for (const rows of [1, 10]) {
+    const preview = detailLines(m, ci, rows, 96)
+    const shown = lines(gridOf({ nodes: preview, buttons: [] }).grid)
+    const hidden = Number(shown.join('\n').match(/(\d+) older lines hidden/)?.[1] ?? 0)
+    expect(hidden).toBeGreaterThan(0)
+    expect(hidden + shown.filter(line => /output \d/.test(line)).length).toBe(8)
+    expect(shown.some(line => line.includes('enter opens full detail'))).toBe(true)
+  }
 })
 
 test('the split shows the same detail beside the list', () => {

@@ -28,11 +28,11 @@ type AgentItem = RabeItemOf<'agent'>
 
 const POLL_MS = 3000
 const MAX_TURNS = 30
+const MAX_ANSWER = 16000
 const MAX_EDITS = 100
 const MAX_CALLS = 10
 const MAX_CHECKS = 20
 const LOOK_MS = 1000
-const MAX_TEXT = 300
 const MAX_PROMPT = 600
 const MAX_SUMMARY = 80
 const SUMMARY_FIELDS = ['file_path', 'command', 'pattern', 'path', 'url', 'query', 'description']
@@ -63,7 +63,7 @@ export function toolSummary(input: unknown): string | undefined {
   const line = String(fields[name]).split('\n')[0] ?? ''
 
   // Effects tells files apart by the whole path.
-  return name === 'file_path' ? line : line.slice(0, MAX_SUMMARY)
+  return name === 'file_path' ? line : clip(line, MAX_SUMMARY)
 }
 
 export function metaPatch(text: string): Partial<AgentItem['detail']> | undefined {
@@ -448,7 +448,7 @@ async function recordStep(
   if (!result.answer && tools.length === 0) return
   await writeTurns($, turns => {
     const index = (turns[id]?.at(-1)?.index ?? 0) + 1
-    const turn = { index, at: now, text: clip(result.answer, MAX_TEXT), tools }
+    const turn = { index, at: now, text: clip(result.answer, MAX_ANSWER), tools }
 
     return addTurn(turns, id, turn)
   })

@@ -809,6 +809,17 @@ test('an arrow past the last row scrolls the pane on', async ($, on) => {
   expect(passed).toEqual([1])
 })
 
+test('arrows and pages scroll an opened agent instead of moving the list focus', async ($, on) => {
+  hold(on, ALL, { open: explore.id, selected: explore.id })
+  const passed: number[] = []
+  on('ui.scroll', async (_$, e) => {
+    passed.push(e.by)
+    return {}
+  })
+  for (const by of [1, 1, -1, 10]) await $.ui.scroll({ ...ARROW, by })
+  expect(passed).toEqual([1, 1, -1, 10])
+})
+
 test('a workflow agent row is a plain Button that opens that agent on every surface', async ($, on) => {
   const state = hold(on, ALL, { open: flow.id, selected: flow.id })
   for (const surface of SURFACES) {

@@ -10,6 +10,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - The Cost tab says "sorted by tokens when opened" while it holds the opening order. New workers follow the held rows. ([#49](https://github.com/lorenzh/rabe/pull/49), fixes [#33](https://github.com/lorenzh/rabe/issues/33))
 - Deleted cron jobs say `deleted`, hide future runs and keep delete dim. Delete errors show plain text. The previous-session summary counts only crons still running at session end. ([#49](https://github.com/lorenzh/rabe/pull/49), fixes [#28](https://github.com/lorenzh/rabe/issues/28))
 - The Effects tab finds shell writes on independent lists after `||`, including later lines with here-docs. Conditional writes stay hidden. ([#49](https://github.com/lorenzh/rabe/pull/49), fixes [#27](https://github.com/lorenzh/rabe/issues/27))
+- Long Bash and other tool summaries end with `…` instead of stopping mid-word without a mark. ([#50](https://github.com/lorenzh/rabe/pull/50), fixes [#35](https://github.com/lorenzh/rabe/issues/35))
+- Opened monitors and shells keep every stored output line for scrolling. Split previews say how many older lines they hide. ([#50](https://github.com/lorenzh/rabe/pull/50), fixes [#32](https://github.com/lorenzh/rabe/issues/32))
+- Agent reports keep up to 16,000 characters instead of stopping at 300. Longer reports end with `…`. Split previews wrap only recent agent text and mark hidden text. Wrapped bullet and numbered list markers stay beside the start of long paths. ([#50](https://github.com/lorenzh/rabe/pull/50), fixes [#30](https://github.com/lorenzh/rabe/issues/30))
+- Opened agents and Codex jobs keep all recorded turns and steps. The detail scrolls beyond the pane's height. The scroll hint shows only when the opened detail needs scrolling. ([#50](https://github.com/lorenzh/rabe/pull/50), fixes [#29](https://github.com/lorenzh/rabe/issues/29))
 
 ## [0.4.1] - 2026-10-10
 
