@@ -112,11 +112,10 @@ test('who started what sits beside the previous session on a wide pane', () => {
   expect(shown[head]).toMatch(/^WHO STARTED WHAT\? {2}agents and their children +PREVIOUS SESSION$/)
   expect(shown[head + 1]).toMatch(/^main session +this project · ended yesterday 17:40$/)
   expect(shown[head + 2]).toMatch(/├─ ◐ Explore verifyToken +✓ 6 agents · 2 codex · 4 shells$/)
-  expect(shown[head + 3]).toMatch(/├─ ✓ Plan auth split +≈ \$0\.32 · 800k tok · 1h12m$/)
-  expect(shown[head + 4]).toMatch(/├─ ◐ review auth\.ts \(codex\) +✗ failed migrate\.ts agent$/)
-  expect(shown[head + 5]).toMatch(
-    /├─ ▶ bun run dev \(shell\) +⟳ 1 cron job ended with the session$/,
-  )
+  expect(shown[head + 3]).toMatch(/├─ ✓ Plan auth split +session ≈ \$0\.32 · 1h12m$/)
+  expect(shown[head + 4]).toMatch(/├─ ◐ review auth\.ts \(codex\) +background 800k tok$/)
+  expect(shown[head + 5]).toMatch(/├─ ▶ bun run dev \(shell\) +✗ failed migrate\.ts agent$/)
+  expect(shown.some(line => / {2}⟳ 1 cron job ended with the session$/.test(line))).toBe(true)
   expect(shown.some(line => /^└─ ⧉ review-changes \(workflow\)$/.test(line))).toBe(true)
   expect(shown.some(line => /^ {3}└─ ✓ review:bugs$/.test(line))).toBe(true)
   expect(cell(grid, 60, head)[2]).toBe(C.raised)
@@ -130,6 +129,19 @@ test('on a narrow pane the previous session follows the tree; without one it say
   const prev = find(shown, 'PREVIOUS SESSION')
   expect(prev).toBeGreaterThan(find(shown, 'review:bugs'))
   expect(shown[prev + 1]).toBe(' No earlier session with background work in this project.')
+})
+
+// The cost and duration are the whole session's, the tokens only the
+// background items': each line names its scope (#46).
+test('the previous session names the scope of its cost and its tokens', () => {
+  const size = { ...SIZE, columns: 60, rows: 60 }
+  const unknown = { ...PREVIOUS, usd: undefined, startedAt: undefined }
+  const shown = lines(
+    gridOf(timelineView({ ...MODEL, previous: unknown }, size, NO_SELECTION)).grid,
+  )
+  const prev = find(shown, 'PREVIOUS SESSION')
+  expect(shown[prev + 3]).toBe(' session cost n/a')
+  expect(shown[prev + 4]).toBe(' background 800k tok')
 })
 
 test('the timeline draws every bar; the pane scrolls what is below its body', () => {

@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Fixed
+
+- The previous-session summary on the Timeline tab names the scope of each figure: `session ≈ $0.01 · 1m44s` for the whole session's cost and duration, `background 0 tok` for the tokens of the background items. It read as if background work cost $0.01 with no tokens. ([#47](https://github.com/lorenzh/rabe/pull/47), fixes [#46](https://github.com/lorenzh/rabe/issues/46))
+
 ## [0.4.0] - 2026-10-10
 
 ### Added

@@ -112,10 +112,7 @@ function previousLines(model: Model, width: number): Line[] {
     return n ? [`${n} ${n === 1 ? one : many}`] : []
   })
   const crons = prev.counts.cron ?? 0
-  const spend = [
-    `${tokens(prev.tokens)} tok`,
-    ...(prev.startedAt === undefined ? [] : [duration(prev.endedAt - prev.startedAt)]),
-  ]
+  const took = prev.startedAt === undefined ? '' : ` · ${duration(prev.endedAt - prev.startedAt)}`
   const failed = prev.failed
     .slice(0, 2)
     .map((title): Line => ({ spans: [[' ✗ failed', { fg: C.red }], [` ${title}`]] }))
@@ -127,10 +124,12 @@ function previousLines(model: Model, width: number): Line[] {
     { spans: [[' ✓', { fg: C.green }], [` ${counts.join(' · ') || 'no items'}`]] },
     {
       spans: [
-        [` ${prev.usd === undefined ? 'cost n/a' : `≈ ${usd(prev.usd)}`}`, { fg: C.bright }],
-        [` · ${spend.join(' · ')}`, dim],
+        [' session ', dim],
+        [prev.usd === undefined ? 'cost n/a' : `≈ ${usd(prev.usd)}`, { fg: C.bright }],
+        [took, dim],
       ],
     },
+    { spans: [[` background ${tokens(prev.tokens)} tok`, dim]] },
     ...failed,
     ...(more ? [{ spans: [[` +${more} more failed`, dim]] } as Line] : []),
     ...(crons
