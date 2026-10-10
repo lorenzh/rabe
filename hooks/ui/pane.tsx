@@ -335,7 +335,7 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
           ? `Message sent to claude ${item.title}`
           : `Message not sent: ${sent.reason}`,
       )
-      return
+      return land($, landing(action, ''))
     }
   }
 }

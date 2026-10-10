@@ -32,6 +32,9 @@ test('a change of the view lands the focus ring on the active tab, then where it
   expect(landing({ type: 'fold', group: 'shells' }, '')).toEqual(['tab-items', 'group-shells'])
   expect(landing({ type: 'query', text: 'dev' }, '')).toEqual(['search'])
   expect(landing({ type: 'stop', ids: ['shell:a'] }, '')).toEqual([])
+  expect(landing({ type: 'message', id: 'agent:a1', text: 'hi' }, '')).toEqual([
+    'message-agent:agent:a1',
+  ])
 })
 
 test('switching tabs lands on the marked row after the safe tab detour', () => {

@@ -215,6 +215,7 @@ export function stepRow(keys: string[], selected: string, by: number): string | 
 // Where the focus ring goes, key by key, after `action` changed the view
 // (the item `open` was open): the active tab's Button, then the element the
 // change leads to. Search edits keep its Input focused; Enter returns to rows.
+// A sent message returns the keys to the agent's `m: message`.
 export function landing(action: Action, open: string, drawn?: Drawn): string[] {
   const target =
     drawn?.buttons.find(one => one.autoFocus)?.key ??
@@ -234,6 +235,8 @@ export function landing(action: Action, open: string, drawn?: Drawn): string[] {
       return action.isSubmit ? ['tab-items', target ?? 'find'] : ['search']
     case 'window':
       return ['tab-timeline', 'window']
+    case 'message':
+      return [`message-agent:${action.id}`]
     default:
       return []
   }
