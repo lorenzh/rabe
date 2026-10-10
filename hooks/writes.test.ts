@@ -77,9 +77,13 @@ test('nothing inside a command substitution is a write of the outer command', ()
   expect(paths('diff <(sort a) >(tee /tmp/p) > /tmp/d')).toEqual(['/tmp/d'])
 })
 
-test('branches that may not run, test syntax and background lists record nothing', () => {
-  expect(paths('true || touch /tmp/never')).toEqual([])
-  expect(paths('touch /tmp/sure || touch /tmp/never')).toEqual(['/tmp/sure'])
+test('OR branches propose candidates for the disk to check', () => {
+  expect(paths('false || echo x > f.txt', '/repo')).toEqual(['/repo/f.txt'])
+  expect(paths('true || touch /tmp/never')).toEqual(['/tmp/never'])
+  expect(paths('touch /tmp/sure || touch /tmp/never')).toEqual(['/tmp/sure', '/tmp/never'])
+})
+
+test('test syntax and background lists record nothing', () => {
   expect(paths('if false; then touch /tmp/never; fi')).toEqual([])
   expect(paths('touch /tmp/a; while read l; do echo > /tmp/w; done; touch /tmp/b')).toEqual([
     '/tmp/a',
@@ -98,7 +102,7 @@ test('branches that may not run, test syntax and background lists record nothing
   expect(paths('$CMD > /tmp/r; touch /tmp/after')).toEqual(['/tmp/r'])
 })
 
-test('a list after an OR branch is parsed without guessing its writes or cwd', () => {
+test('lists and continuations after an OR branch keep their candidates', () => {
   expect(
     paths(
       "ss -ltn | grep -q ':8765 ' && echo busy || echo free\ncat > /tmp/a/config.json <<EOF\n{}\nEOF\n",
@@ -106,20 +110,29 @@ test('a list after an OR branch is parsed without guessing its writes or cwd', (
   ).toEqual(['/tmp/a/config.json'])
   expect(
     paths('touch /tmp/before || touch /tmp/skip && touch /tmp/also-skip; touch /tmp/after'),
-  ).toEqual(['/tmp/before', '/tmp/after'])
+  ).toEqual(['/tmp/before', '/tmp/skip', '/tmp/also-skip', '/tmp/after'])
   expect(paths('true || cat > /tmp/skip <<EOF\ntouch /tmp/body\nEOF\ntouch /tmp/after')).toEqual([
+    '/tmp/skip',
     '/tmp/after',
   ])
-  expect(paths('true ||\n touch /tmp/skip\ntouch /tmp/after')).toEqual(['/tmp/after'])
+  expect(paths('true ||\n touch /tmp/skip\ntouch /tmp/after')).toEqual(['/tmp/skip', '/tmp/after'])
   expect(paths('true || cd /elsewhere; touch relative /tmp/absolute', '/repo')).toEqual([
     '/tmp/absolute',
   ])
+  expect(paths('true || pushd /x; touch rel', '/repo')).toEqual([])
+  expect(paths('true || popd; touch rel', '/repo')).toEqual([])
   expect(paths('true || exit 0\ntouch /tmp/after')).toEqual([])
   expect(paths('true || if false; then touch /tmp/skip; fi\ntouch /tmp/after')).toEqual([])
   expect(paths('touch /tmp/before || echo fallback &\ntouch /tmp/after')).toEqual([])
 })
 
 test('an OR fallback can mask a failed directory change on its left', () => {
+  expect(paths('false || cd /elsewhere && touch relative /tmp/absolute', '/repo')).toEqual([
+    '/tmp/absolute',
+  ])
+  expect(paths('cd /elsewhere && echo ok || touch relative /tmp/absolute', '/repo')).toEqual([
+    '/tmp/absolute',
+  ])
   expect(
     paths('cd /elsewhere && echo ok || echo failed; touch relative /tmp/absolute', '/repo'),
   ).toEqual(['/tmp/absolute'])

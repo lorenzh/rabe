@@ -400,6 +400,112 @@ function shell(on: On, effects: Record<string, Effect> = {}): { disk: Disk; stat
 
 const HEREDOC = "cat > ~/.agents/skills/demo/SKILL.md <<'EOF'\n# demo > x\nEOF\nrm /tmp/old.md"
 
+test('OR writes count only when the candidate changed on disk', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const held = watch(on)
+  on('session.cwd', async () => ({ value: '/repo' }))
+  const { disk } = shell(on, {
+    'false || echo x > /tmp/f.txt': one => one.set('/tmp/f.txt', file(2)),
+  })
+  disk.set('/tmp/kept.txt', file(2))
+  await $.tool.call({ tool: 'Bash', command: 'false || echo x > /tmp/f.txt' } as never)
+  await $.tool.call({ tool: 'Bash', command: 'true || echo x > /tmp/kept.txt' } as never)
+  expect(held.edits).toEqual([{ path: '/tmp/f.txt', at: 5000, via: 'shell' }])
+})
+
+test('shell calls read the current folder only for relative candidates', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const held = watch(on)
+  let reads = 0
+  on('session.cwd', async () => {
+    reads++
+    return { value: '/repo' }
+  })
+  shell(on, {
+    'touch /tmp/f.txt': one => one.set('/tmp/f.txt', file(2)),
+    'cd /known && touch f.txt': one => one.set('/known/f.txt', file(2)),
+  })
+  for (const command of [
+    'true',
+    'touch /tmp/f.txt',
+    'cd /known && touch f.txt',
+    'true || pushd /x; touch rel',
+    'true || popd; touch rel',
+  ]) {
+    await $.tool.call({ tool: 'Bash', command } as never)
+  }
+  expect(reads).toBe(0)
+  expect(held.edits).toEqual([
+    { path: '/tmp/f.txt', at: 5000, via: 'shell' },
+    { path: '/known/f.txt', at: 5000, via: 'shell' },
+  ])
+})
+
+test('relative shell writes use the main session current folder', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const held = watch(on)
+  let cwd = '/repo'
+  on('session.cwd', async () => ({ value: cwd }))
+  const { disk } = shell(on, {
+    'echo x > f.txt': one => one.set('/repo/f.txt', file(2)),
+    'false || echo x > f.txt': one => one.set('/other/f.txt', file(2)),
+    'cd "$UNKNOWN"; echo x > skipped.txt': one => one.set('/other/skipped.txt', file(2)),
+  })
+  disk.set('/repo', dir)
+  disk.set('/other', dir)
+  await $.tool.call({ tool: 'Bash', command: 'echo x > f.txt' } as never)
+  cwd = '/other'
+  await $.tool.call({ tool: 'Bash', command: 'false || echo x > f.txt' } as never)
+  await $.tool.call({ tool: 'Bash', command: 'true || echo x > f.txt' } as never)
+  await $.tool.call({ tool: 'Bash', command: 'cd "$UNKNOWN"; echo x > skipped.txt' } as never)
+  expect(held.edits).toEqual([
+    { path: '/repo/f.txt', at: 5000, via: 'shell' },
+    { path: '/other/f.txt', at: 5000, via: 'shell' },
+  ])
+})
+
+test('relative shell writes use the agent cwd and never the main folder as a fallback', async ($, on) => {
+  const held = engine(on, 'a1')
+  on('session.cwd', async () => ({ value: '/repo' }))
+  const { disk } = shell(on, {
+    'echo x > f.txt': one => one.set('/repo/f.txt', file(2)),
+    'echo x > plain.txt': one => one.set('/wt/a1/plain.txt', file(2)),
+    'false || echo x > f.txt': one => one.set('/wt/a1/f.txt', file(2)),
+  })
+  disk.set('/repo', dir)
+  disk.set('/wt/a1', dir)
+  await $.agent.spawn(SPAWN)
+  await $.tool.call({ tool: 'Bash', command: 'echo x > f.txt', agentId: 'a1' } as never)
+  expect((held.items?.[0] as RabeItemOf<'agent'>).detail.edits).toBeUndefined()
+  await $.classic.SubagentStart({
+    agent_id: 'a1',
+    agent_type: 'general-purpose',
+    cwd: '/wt/a1',
+    transcript_path: '/p/s1.jsonl',
+  })
+  await $.tool.call({ tool: 'Bash', command: 'echo x > plain.txt', agentId: 'a1' } as never)
+  await $.tool.call({ tool: 'Bash', command: 'false || echo x > f.txt', agentId: 'a1' } as never)
+  expect((held.items?.[0] as RabeItemOf<'agent'>).detail.edits).toEqual([
+    { path: '/wt/a1/plain.txt', at: 5000, via: 'shell' },
+    { path: '/wt/a1/f.txt', at: 5000, via: 'shell' },
+  ])
+  expect(held.edits).toBeUndefined()
+})
+
+test('an unknown main folder skips relative paths but still checks absolute paths', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const held = watch(on)
+  on('session.cwd', async () => ({ deny: 'unknown folder' }))
+  const { stats } = shell(on, {
+    'echo x > f.txt': one => one.set('/repo/f.txt', file(2)),
+    'echo x > /tmp/f.txt': one => one.set('/tmp/f.txt', file(2)),
+  })
+  await $.tool.call({ tool: 'Bash', command: 'echo x > f.txt' } as never)
+  expect(stats).toEqual([])
+  await $.tool.call({ tool: 'Bash', command: 'echo x > /tmp/f.txt' } as never)
+  expect(held.edits).toEqual([{ path: '/tmp/f.txt', at: 5000, via: 'shell' }])
+})
+
 test('a background teammate writing files through Bash shows them as shell edits', async ($, on) => {
   const held = engine(on, 'a1')
   const { disk } = shell(on, {

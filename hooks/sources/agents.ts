@@ -371,12 +371,24 @@ async function look($: EngineInterface, paths: string[]): Promise<Seen[] | undef
 
 type Looked = { paths: string[]; seen: Seen[] }
 
-// The call carries no cwd, so only absolute candidates are looked at.
-async function beforeBash($: EngineInterface, command: string): Promise<Looked | undefined> {
+async function beforeBash(
+  $: EngineInterface,
+  command: string,
+  agentId: string | undefined,
+): Promise<Looked | undefined> {
   const home = await $.env.get('HOME')
-  const paths = shellWrites(command, undefined, home)
-    .map(one => one.path)
-    .filter(path => path.startsWith('/'))
+  let candidates = shellWrites(command, undefined, home)
+  if (candidates.some(one => !one.path.startsWith('/'))) {
+    let cwd: string | undefined
+    if (agentId) {
+      const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+      cwd = asAgent(items, itemId('agent', agentId))?.detail.cwd
+    } else {
+      cwd = await $.session.cwd().catch(() => undefined)
+    }
+    candidates = shellWrites(command, cwd, home)
+  }
+  const paths = candidates.map(one => one.path).filter(path => path.startsWith('/'))
   if (paths.length === 0 || paths.length > MAX_CHECKS) return undefined
   const seen = await look($, paths)
 
@@ -542,7 +554,9 @@ export function agents(on: On, file: string): void {
   // link the job it starts (see forwarders.ts).
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const before =
-      e.tool === 'Bash' ? await beforeBash($, e.command).catch(() => undefined) : undefined
+      e.tool === 'Bash'
+        ? await beforeBash($, e.command, e.agentId).catch(() => undefined)
+        : undefined
     const call = e.tool === 'Bash' && e.agentId ? companionCall(e.command) : undefined
     const id = itemId('agent', e.agentId ?? '')
     const at = call && (await $.clock.now().catch(() => undefined))
