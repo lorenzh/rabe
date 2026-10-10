@@ -223,20 +223,28 @@ function listed(
       {
         id,
         kind: 'agent',
-        title: info.description || info.type,
+        title: info.name || info.description || info.type,
         status,
         ...(status !== 'running' && { endedAt: end }),
         parentId: info.parentId ? itemId('agent', info.parentId) : undefined,
-        detail: { agentId: info.id, type: info.type, description: info.description },
+        detail: {
+          agentId: info.id,
+          ...(info.name && { name: info.name }),
+          type: info.type,
+          description: info.description,
+        },
       },
       now,
     )
   }
+  const named = info.name
+    ? updateItem(items, id, { title: info.name, detail: { name: info.name } })
+    : items
   if (held.status !== 'running' && RESUMED.includes(info.status)) {
-    return updateItem(items, id, { status: 'running', endedAt: undefined })
+    return updateItem(named, id, { status: 'running', endedAt: undefined })
   }
 
-  return status === 'running' ? items : endItem(items, id, status, now)
+  return status === 'running' ? named : endItem(named, id, status, now)
 }
 
 function stepped(

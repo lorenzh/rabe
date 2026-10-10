@@ -207,7 +207,7 @@ test('the items tab groups items, failed first, with status words, the same on e
     const ui = await $.ui.mount({ surface, ...PANE } as never)
     const shown = (await screen(ui)).map(line => line.trim())
     expect(shown).toContain('▾ FAILED 1')
-    expect(shown).toContain('▾ AGENTS 4 claude · 1 codex · 1 workflow')
+    expect(shown).toContain('▾ AGENTS 4 running · 2 ended · 4 claude · 1 codex · 1 workflow')
     expect(shown.some(line => /^▌✗ bun run lint exit 2 +failed 2m ago$/.test(line))).toBe(true)
     expect(shown.some(line => /^▶ bun run dev :5173 +≥ 40m$/.test(line))).toBe(true)
     expect(shown).toContain('↑↓ move · enter open · esc close')
@@ -268,7 +268,7 @@ test('a shell without lines says its output is n/a on every surface', async ($, 
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...PANE } as never)
     const shown = await screen(ui)
-    expect(shown).toContain('Output n/a: no line read yet.')
+    expect(shown).toContain('No output yet')
     expect(shown).toContain('started before Rabe loaded · start time not known')
     await ui.unmount()
   }
@@ -316,13 +316,23 @@ test('a pending message does not move focus after the person changes view', asyn
 })
 
 test('a completed message returns focus to its message control without navigation', async ($, on) => {
-  hold(on, ALL, { open: explore.id, selected: explore.id })
+  const named = {
+    ...explore,
+    title: 'impl-auth',
+    detail: { ...explore.detail, name: 'impl-auth' },
+  } as RabeItem
+  const state = hold(
+    on,
+    ALL.map(item => (item.id === explore.id ? named : item)),
+    { open: explore.id, selected: explore.id },
+  )
   on('session.send', async () => ({ isDelivered: true }))
   const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
   await arm($, `message:${explore.id}`)
   await ui.input({ key: `message:${explore.id}`, text: 'hello', kind: 'submit' })
   await ui.redraw()
   expect(await ui.find({ type: 'Input', key: `message:${explore.id}` })).toBeDefined()
+  expect(state.toasts).toContain('Message sent to claude impl-auth')
   await ui.unmount()
 })
 
@@ -1646,7 +1656,7 @@ test('a removed workflow agent still counts in its run and the cost', async ($, 
   expect(shown).not.toContain('review:bugs')
   await ui.unmount()
   const band = await $.ui.mount(BAND as never)
-  expect((await screen(band)).join('\n')).toContain('123k tok')
+  expect((await screen(band)).join('\n')).toContain('session n/a')
   await band.unmount()
 })
 

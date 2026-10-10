@@ -5,7 +5,6 @@ import type { View } from '../view'
 
 // The one-line band names each count: [one, more].
 const COUNT: Record<BandRow['kind'], [string, string]> = {
-  failed: ['failed', 'failed'],
   agent: ['claude', 'claude'],
   codex: ['codex', 'codex'],
   workflow: ['workflow', 'workflows'],
@@ -15,7 +14,6 @@ const COUNT: Record<BandRow['kind'], [string, string]> = {
 }
 
 const SHORT: Record<BandRow['kind'], [string, string]> = {
-  failed: ['fail', 'fail'],
   agent: ['agent', 'agent'],
   codex: ['codex', 'codex'],
   workflow: ['flow', 'flow'],
@@ -39,7 +37,11 @@ export const bandView: View = (model, size) => {
   const chips = (names: typeof COUNT) =>
     rows.flatMap((row): Span[] => {
       const n = row.count
-      return [[` ${row.glyph} ${n} ${names[row.kind][n === 1 ? 0 : 1]} `, CHIP[row.kind]], [' ']]
+      const label = names[row.kind][n === 1 ? 0 : 1]
+      return [
+        [` ${row.glyph} ${n} ${row.failed ? `${label} failed` : label} `, CHIP[row.kind]],
+        [' '],
+      ]
     })
   const full = [...chips(COUNT), ...(money ? cost(money.slice(0, 2)) : [])]
   const short = [...chips(SHORT), ...(money ? cost(money.slice(0, 2)) : [])]

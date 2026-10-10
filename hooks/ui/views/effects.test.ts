@@ -77,7 +77,9 @@ test('files touched list each file with who edited it and how often, conflicts f
   const head = shown.indexOf('FILES TOUCHED 4  from edits, Codex and shell commands')
   expect(head).toBeGreaterThan(0)
   expect(shown[head + 1]).toMatch(/^ {2}FILE +BY +CHANGE$/)
-  expect(shown[head + 2]).toMatch(/^▌ src\/logger\.ts +Plan auth split, logger in api +3× edit$/)
+  expect(shown[head + 2]).toMatch(
+    /^▌ src\/logger\.ts +Plan auth split, logger in api +3 changes: edit$/,
+  )
   expect(shown[head + 3]).toMatch(/^ {2}src\/api\/server\.ts +logger in api +edit$/)
   expect(shown.some(line => /^ {2}src\/db\/pool\.ts +Explore verifyToken +edit$/.test(line))).toBe(
     true,
@@ -334,13 +336,25 @@ test('files from Codex jobs, the main session and shell commands show who and ho
   const row = (name: string) =>
     shown.find(line => line.includes(name) && !line.includes('conflict')) ?? ''
   expect(row('src/gen.ts')).toMatch(
-    /src\/gen\.ts +review auth\.ts, main session +2× codex add, edit$/,
+    /src\/gen\.ts +review auth\.ts, main session +2 changes: codex add, edit$/,
   )
   expect(row('src/old.ts')).toMatch(/src\/old\.ts +review auth\.ts +deleted · codex delete$/)
-  expect(row('SKILL.md')).toMatch(/ …[^ ]*\/skills\/demo\/SKILL\.md +Plan auth split +via shell$/)
+  expect(row('SKILL.md')).toMatch(/\/home\/u\/.*…demo\/SKILL\.md +Plan auth split +via shell$/)
   expect(row('notes.md')).toMatch(/ out\/notes\.md +Plan auth split +via shell$/)
   expect(row('plan.md')).toMatch(/^ {2}plan\.md +main session +write$/)
   expect(shown[0]).toBe(' ⚠ conflict  src/gen.ts is edited by review auth.ts and main session')
+})
+
+test('a long path keeps both its start and file name', () => {
+  const long = editing(api, [NOW, `/outside/${'folder/'.repeat(12)}final.ts`])
+  const shown = lines(
+    gridOf(effectsView({ ...OTHERS, items: [long], edits: [] }, SIZE, NO_SELECTION)).grid,
+  )
+  expect(
+    shown.some(
+      line => line.includes('/outside/') && line.includes('…') && line.includes('final.ts'),
+    ),
+  ).toBe(true)
 })
 
 test('a main session row copies the path; a Codex row opens the job', () => {

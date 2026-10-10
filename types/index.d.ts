@@ -29,6 +29,7 @@ export type RabeCodexCall = {
 
 export type RabeAgentDetail = {
   agentId: string
+  name?: string
   type?: string
   model?: string
   description?: string

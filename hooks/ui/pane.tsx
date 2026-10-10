@@ -370,7 +370,7 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       const sent = await $.session.send({ to: { agentId: item.detail.agentId }, text: action.text })
       $.ui.toast(
         sent.isDelivered
-          ? `Message sent to claude ${item.title}`
+          ? `Message sent to claude ${item.detail.name || item.title}`
           : `Message not sent: ${sent.reason}`,
       )
       if (sent.isDelivered)

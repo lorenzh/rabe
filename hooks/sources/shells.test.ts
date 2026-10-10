@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
-
+import type { RabeItem } from '../model'
 import { MAX_ENDED } from '../registry'
 import { core, files, memoryState } from '../testing'
 
@@ -8,7 +8,12 @@ const DIR = '/tmp/claude-1000/-home-me-app/5f1c/tasks'
 
 function bash(on: On) {
   on('tool.call', { tool: 'Bash' }, async (_$, e) => {
-    const taskId = e.tool === 'Bash' && e.run_in_background ? (e.description ?? 'b1') : undefined
+    const taskId =
+      e.tool === 'Bash' && e.run_in_background
+        ? e.description === 'Starting the API dev server'
+          ? 'b1'
+          : (e.description ?? 'b1')
+        : undefined
 
     return {
       result: {
@@ -27,7 +32,7 @@ function bash(on: On) {
 const running = {
   id: 'shell:b1',
   kind: 'shell',
-  title: 'bun run dev',
+  title: 'bun run dev · b1',
   status: 'running',
   seenAt: 1000,
   startedAt: 1000,
@@ -41,6 +46,23 @@ test('a background Bash call adds a running shell with its output file', async (
   core(on)
   await $.tool.call({ tool: 'Bash', command: 'bun run dev', run_in_background: true })
   expect(state['rabe.items']?.value).toEqual([running])
+})
+
+test('a background Bash row uses its description and keeps the original command', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  await $.tool.call({
+    tool: 'Bash',
+    command: 'while true; do\n  echo ready; done',
+    description: 'Starting the API dev server',
+    run_in_background: true,
+  })
+  expect((state['rabe.items']?.value as RabeItem[] | undefined)?.[0]).toMatchObject({
+    title: 'Starting the API dev server · b1',
+    detail: { command: 'while true; do\n  echo ready; done' },
+  })
 })
 
 test('a Bash call in the foreground adds nothing', async ($, on) => {
@@ -203,7 +225,7 @@ test('at Stop a shell started before Rabe loaded is added', async ($, on) => {
     {
       id: 'shell:b0',
       kind: 'shell',
-      title: 'tsc -w',
+      title: 'watch · b0',
       status: 'running',
       seenAt: 1000,
       detail: { command: 'tsc -w', taskId: 'b0', outputPath: `${DIR}/b0.output` },

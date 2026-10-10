@@ -43,13 +43,14 @@ test('the band draws nothing while nothing runs on every surface', async ($, on)
 
 test('the band is one line of count chips and the cost under an empty row on every surface', async ($, on) => {
   holdItems(on, PRICED)
+  on('session.usage', async () => ({ value: { cost: { usd: 0.31 } } }) as never)
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ surface, ...BAND } as never)
     const shown = await screen(ui)
     expect(shown).toHaveLength(2)
     expect(shown[0]?.trim()).toBe('')
-    expect(shown[1]).toMatch(/^ ✗ 1 failed {3}◐ 2 claude {3}◐ 1 codex {3}⧉ 1 workflow {3}▶ 1 shell/)
-    expect(shown[1]).toContain('≈ $0.31 · 91k tok')
+    expect(shown[1]).toMatch(/^ session ≈ \$0\.31 ✗ 1 shell failed/)
+    expect(shown[1]).toContain('◐ 2 agent')
     await ui.unmount()
   }
 })
