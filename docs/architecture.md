@@ -83,7 +83,7 @@ type RabeItem = { [K in RabeItemKind]: RabeItemOf<K> }[RabeItemKind]
 
 | Kind | Detail fields |
 |---|---|
-| `agent` | `agentId`, `type?`, `model?`, `description?`, `transcriptPath?`, `cwd?`, `worktreePath?`, `worktreeBranch?`, `workflowPhase?`, `workflowIndex?`, `toolCount?`, `lastTool?`, `lastToolAt?`, `edits?` (`RabeEdit[]`, the newest 100 file changes, see below), `codexCalls?` (`RabeCodexCall[]`, the newest 10 calls of the Codex companion, see Forwarders) |
+| `agent` | `agentId`, `name?`, `type?`, `model?`, `description?`, `transcriptPath?`, `cwd?`, `worktreePath?`, `worktreeBranch?`, `workflowPhase?`, `workflowIndex?`, `toolCount?`, `lastTool?`, `lastToolAt?`, `edits?` (`RabeEdit[]`, the newest 100 file changes, see below), `codexCalls?` (`RabeCodexCall[]`, the newest 10 calls of the Codex companion, see Forwarders) |
 | `workflow` | `runId`, `taskId?`, `scriptPath?`, `transcriptDir?`, `phases?` |
 | `codex` | `jobId`, `jobKind?`, `threadId?`, `model?`, `effort?`, `sandbox?`, `prompt?`, `workspaceRoot?`, `logPath?`, `sessionPath?`, `sessionUpdatedAt?`, `isSessionMissing?`, `isSessionPartial?`, `commandCount?`, `steps?`, `edits?` (`RabeEdit[]`, from the rollout) |
 | `shell` | `command`, `taskId?`, `outputPath?`, `exitCode?`, `port?`, `portAt?` (when the poll found the port) |
@@ -170,7 +170,7 @@ type RabeToolUse = { name: string; summary?: string }   // 'Read', 'src/db.ts'
 type RabeTurn = { index: number; at: number; text: string; tools: RabeToolUse[] }
 ```
 
-`index` counts from 1 and keeps counting when old turns are dropped. `text` comes from `TurnStepResult.answer`. The source keeps at most 16,000 characters per answer with `clip`. A longer answer ends with `…`. The opened detail wraps all stored text as plain text. Bullet and numbered list markers stay with the first part of a long path. `summary` is the first of the tool's `file_path`, `command`, `pattern`, `path`, `url`, `query` or `description`, on one line of at most 80 characters. A longer summary ends with `…`. A `file_path` stays whole because the Effects tab tells files apart by it. Each item keeps its newest 30 turns. The turns of an item dropped from `rabe.items` go with it (see The write loop).
+`index` counts from 1 and keeps counting when old turns are dropped. `text` comes from `TurnStepResult.answer`. The source keeps at most 16,000 characters per answer with `clip`. A longer answer ends with `…`. The opened detail wraps all stored text as plain text. Bullet and numbered list markers stay with the first part of a long path. `summary` is the first of the tool's `file_path`, `command`, `pattern`, `path`, `url`, `query` or `description`, on one line of at most 80 characters. A longer summary ends with `…`. A `file_path` stays whole in state; the detail shows project-relative paths and shortens long paths with a middle ellipsis. Each item keeps its newest 30 turns. The turns of an item dropped from `rabe.items` go with it (see The write loop).
 
 ## The source contract
 
@@ -202,6 +202,8 @@ The pane stops agents, shells, monitors and workflows itself: it calls `TaskStop
 ### Claude subagents: `hooks/sources/agents.ts`
 
 One `agent` item per subagent, id `agent:<agentId>`. It covers agents the model starts, agents of workflows and teammates.
+
+The agent-list poll stores an API-provided `name` and uses it for the title and message toast. Without a name, the title uses the task description or agent type. Turn tool paths stay whole in `rabe.turns`; the detail shows project-relative paths and uses a middle ellipsis for long paths.
 
 | Hook | What it does |
 |---|---|
@@ -247,9 +249,11 @@ The next three sources follow the work Claude Code runs as background tasks. Eac
 
 ### Shells: `hooks/sources/shells.ts`
 
+A shell title uses the normalized Bash description when present, else the normalized command, followed by the task id. The detail keeps the original command. An empty output view says `No output yet`.
+
 | Hook | What it does |
 |---|---|
-| `tool.call` `{ tool: 'Bash' }` | After `next(e)`: a result with `backgroundTaskId` adds `shell:<taskId>`, title the command. `outputPath` comes from the result text (`Output is being written to: …`). This covers `run_in_background`, Ctrl+B and a timed-out command. In a subagent, `parentId` is `agent:<agentId>`. |
+| `tool.call` `{ tool: 'Bash' }` | After `next(e)`: a result with `backgroundTaskId` adds `shell:<taskId>`, title the normalized description or command and task id. `outputPath` comes from the result text (`Output is being written to: …`). This covers `run_in_background`, Ctrl+B and a timed-out command. In a subagent, `parentId` is `agent:<agentId>`. |
 | `prompt.submit` `{ origin: { kind: 'task-notification' } }` | Each `<task-notification>` with a `<status>` ends its shell: `completed` is done, `failed` failed, `killed` stopped. The exit code comes from the summary (`failed with exit code 3`). It reads the output file once more first, so a shell that ended between two polls keeps its last lines. |
 | `session.start` | Starts a poll every 2 s. It reads the output file of each running shell, keeps its lines in `rabe.lines` (as the monitors source does), guesses a port (`localhost:5173`, `port 4000`) and keeps the time it found it as `portAt`, and ends the shell at the last line `[exited with code N]` or `[killed]`. A file over 4 MiB is read with `tail -c` for the port and the exit line only, so its lines stop at what the poll read before. |
 | `classic.Stop` | A running shell missing from `background_tasks` ends by its exit line, else as stopped. A shell a subagent started (`parentId` `agent:…`) is skipped: it may be missing from the main session's list while it runs, and the poll ends it from its file. A shell in `background_tasks` that Rabe never saw is added, without `startedAt`. Claude Code lists a Monitor tool task with type `shell` too, so a task id Rabe already has as `monitor:<id>` is skipped; a monitor started before Rabe loaded still shows as a shell. |
@@ -407,7 +411,7 @@ The Items tab splits into list and detail side by side when `bodyColumns` is at 
 
 ### The band
 
-A `ui.render` hook on `AbovePrompt`. With no running item, or while a survey holds the band, it calls `next(e)` and draws nothing. Otherwise `bandView` draws an empty line, so the status line above does not touch the band, and one line of count chips, one per kind that has something to show, failed (ended in the last 10 minutes) first, then `claude`, `codex`, `workflow`, `shell`, `monitor` and `cron`, then the cost when any tokens are known. Each chip is `◐ 2 claude` in its kind's colors (`CHIP`). The band uses full labels and the dollar and token cost when they fit; if they do not, it tries readable short labels, then puts the dollar amount first and drops the token part. This adapts to the chip count and available width instead of using a fixed column cutoff. The amount is the session's cost from `$.session.usage().cost.usd`, as `/cost` totals it, when the host has one; else the sum of the items' dollars. The band never grows with the number of items. With a `maxRows` of 1 (a small terminal or a multiline prompt) it leaves out the empty line: a taller tree would give that row to the engine's `n more` mark and hide the chips. Names, ports and the next cron run are in the pane. Nothing in the band is pressed, so it is one chart.
+A `ui.render` hook on `AbovePrompt`. With no running item, or while a survey holds the band, it calls `next(e)` and draws nothing. Otherwise `bandView` draws an empty line, so the status line above does not touch the band, and one line of count chips, failed (ended in the last 10 minutes) first, then `claude`, `codex`, `workflow`, `shell`, `monitor` and `cron`, then the cost when any tokens are known. A failed chip names its kind (`✗ 1 shell failed`). Each chip uses its kind's colors (`CHIP`). The cost names its scope (`session ≈ $0.31 · bg 91k tok`) and adds the cached share when known. The band keeps full labels and the dollar and token cost when they fit; if they do not, it tries short chip labels, then puts the dollar amount first and drops the token part. This adapts to the chip count and available width instead of using a fixed column cutoff. The amount is the session's cost from `$.session.usage().cost.usd`, as `/cost` totals it, when the host has one; else the sum of the items' dollars. The band never grows with the number of items. With a `maxRows` of 1 (a small terminal or a multiline prompt) it leaves out the empty line: a taller tree would give that row to the engine's `n more` mark and hide the chips. Names, ports and the next cron run are in the pane. Nothing in the band is pressed, so it is one chart.
 
 The grid is `bodyColumns` wide and exactly as tall as its lines. The band before drew padded `Text` labels in a row; beside an open pane the band is narrow, a label wrapped its trailing spaces, and the band drew an empty line. The engine owns collapsing (ctrl+x ctrl+a); the hook gets no collapsed flag.
 
@@ -565,3 +569,4 @@ Claude Code shows background work itself: a pill in the hint under the prompt (`
 - The agent list under the prompt stays: no component and no setting hides it (see feasibility).
 
 Both views are tested on the `terminal` and `desktop` surfaces. Tests feed the session values with test hooks on `state.get`, fix the time with `mock.clock`, and read a drawing with `screen(ui)` from `fixtures.ts`: each row Box as one line, a Raster decoded, each control alone. The views can also be called directly with a model, since they are plain functions: `gridOf(drawn)` lays a view's lines into a grid as the terminal does, so `views/*.test.ts` check the text and the colors at positions. The test kit cannot answer a plugin's `$.ui.focus` (the call fails, as a refused one does), so the pane's tests check that the arrow hook keeps a one-row scroll and passes the rest, that a change of the view leaves the stops disarmed, that a person's `ui.focus` (raised by the test) arms them, that a plugin loaded beneath Rabe (`plugins` of the test, `append` tier) that sends the move onto another row, refuses it or swallows it leaves the selection on where the ring is and `x` and `g` inert, and that a press on another row selects it and arms `x` for it while a press on the selected row opens it; `view.test.ts` checks `stepRow` and `arm`, also the events the arrow hook feeds (`step`, the plugin's focus, `landed`), since the kit runs no hook for the plugin's own `$.ui.focus`.
+A shell title uses the normalized Bash description when present, else the normalized command, followed by the task id. The detail keeps the original command. An empty output view says `No output yet`.

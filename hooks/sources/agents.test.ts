@@ -766,7 +766,13 @@ test('the poll adds listed agents and reads the meta file of running ones', asyn
   on('classic.SubagentStart', async () => ({}))
   on('agent.list', async () => ({
     value: [
-      { id: 'a1', description: 'migrate logger', type: 'Explore', status: 'running' as const },
+      {
+        id: 'a1',
+        name: 'impl-logger',
+        description: 'migrate logger',
+        type: 'Explore',
+        status: 'running' as const,
+      },
       { id: 'a2', description: 'plan', type: 'Plan', status: 'completed' as const, parentId: 'a1' },
     ],
   }))
@@ -790,6 +796,7 @@ test('the poll adds listed agents and reads the meta file of running ones', asyn
     ['agent:a2', 'done', 'agent:a1'],
   ])
   expect(list[0]?.detail).toMatchObject({ worktreePath: '/wt/a1', worktreeBranch: 'wt-a1' })
+  expect(list[0]).toMatchObject({ title: 'impl-logger', detail: { name: 'impl-logger' } })
 })
 
 test('the poll reads phase metadata for workflow agents that already ended', async ($, on) => {

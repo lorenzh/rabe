@@ -423,17 +423,20 @@ export function byParent(list: RabeItem[], items: RabeItem[]): Family[] {
 
 export function groupNote(id: Group, items: RabeItem[]): string {
   if (id === 'failed') return ''
+  const running = items.filter(item => item.status === 'running').length
+  const ended = items.length - running
+  const state = [running && `${running} running`, ended && `${ended} ended`]
+    .filter(Boolean)
+    .join(' · ')
   if (id === 'agents') {
-    return (['agent', 'codex', 'workflow'] as const)
+    const kinds = (['agent', 'codex', 'workflow'] as const)
       .map(kind => [items.filter(item => item.kind === kind).length, KIND_LABEL[kind]] as const)
       .filter(([count]) => count > 0)
       .map(([count, label]) => `${count} ${label}`)
       .join(' · ')
+    return [state, kinds].filter(Boolean).join(' · ')
   }
-  const running = items.filter(item => item.status === 'running').length
-  const ended = items.length - running
-
-  return [running && `${running} running`, ended && `${ended} ended`].filter(Boolean).join(' · ')
+  return state
 }
 
 export function children(items: RabeItem[], id: string): RabeItem[] {
@@ -533,26 +536,33 @@ export function share(items: RabeItem[], item: RabeItem): string {
 export function costLine(items: RabeItem[], session?: number): string | undefined {
   const sum = totals(items)
   if (sum.tokens === 0) return undefined
-  const top = byTokens(items)[0]
-  const topText = top?.tokens ? ` · top: ${top.title} ${tokens(tokenSum(top))}` : ''
+  const dollars = session === undefined ? 'n/a' : `≈ ${usd(session)}`
+  const cached = items.reduce((n, item) => n + (item.tokens?.cached ?? 0), 0)
+  const cacheText =
+    sum.tokens > 0 && cached > 0 ? `, ${Math.round((cached / sum.tokens) * 100)}% cached` : ''
 
-  const known = session ?? sum.usd
-  const dollars = known === undefined ? 'cost n/a' : `≈ ${usd(known)}`
-
-  return `${dollars} · ${tokens(sum.tokens)} tok${topText}`
+  return `session ${dollars} · bg ${tokens(sum.tokens)} tok${cacheText}`
 }
 
-export type BandRow = { glyph: string; kind: RabeItemKind | 'failed'; count: number }
+export type BandRow = { glyph: string; kind: RabeItemKind; count: number; failed?: boolean }
 
 // What the band counts per kind, failed (in the last 10 minutes) first.
 export function bandRows(items: RabeItem[], now: number): BandRow[] {
   const running = (kind: RabeItemKind) =>
     shown(items).filter(item => item.kind === kind && item.status === 'running').length
-  const failed = items.filter(
-    item => item.status === 'failed' && now - (item.endedAt ?? item.seenAt) < 10 * 60_000,
-  ).length
+  const failed = (['agent', 'codex', 'workflow', 'shell', 'monitor', 'cron'] as const).flatMap(
+    kind => {
+      const count = items.filter(
+        item =>
+          item.kind === kind &&
+          item.status === 'failed' &&
+          now - (item.endedAt ?? item.seenAt) < 10 * 60_000,
+      ).length
+      return count ? [{ glyph: '✗', kind, count, failed: true }] : []
+    },
+  )
   const rows: BandRow[] = [
-    { glyph: '✗', kind: 'failed', count: failed },
+    ...failed,
     ...(['agent', 'codex', 'workflow', 'shell', 'monitor', 'cron'] as const).map(kind => ({
       glyph: RUNNING_GLYPH[kind],
       kind,
@@ -560,7 +570,7 @@ export function bandRows(items: RabeItem[], now: number): BandRow[] {
     })),
   ]
 
-  return rows.filter(row => row.count > 0)
+  return rows.filter(row => row.failed || row.count > 0)
 }
 
 export type TreeLine = { prefix: string; item: RabeItem }

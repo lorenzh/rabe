@@ -72,9 +72,9 @@ test('at 90 columns and more the list and the selected item sit side by side', (
   expect(shown[0]?.[42]).toBe('│')
   expect(shown[1]).toMatch(/^▌✗ bun run lint exit 2 +failed 2m ago │ command bun run lint$/)
   expect(shown[2]?.slice(0, 42).trim()).toBe('')
-  expect(shown[3]?.startsWith('▾ AGENTS 4 claude · 1 codex · 1 workflow')).toBe(true)
+  expect(shown[3]?.startsWith('▾ AGENTS 4 running · 2 ended')).toBe(true)
   expect(cell(grid, 0, 3)[1]).toBe(C.orange)
-  expect(cell(grid, at(shown, 3, '4 claude'), 3)[1]).toBe(C.dim)
+  expect(cell(grid, at(shown, 3, '4 running'), 3)[1]).toBe(C.dim)
 })
 
 test('the selected row has a marker and a background; the other names are dim', () => {
@@ -159,7 +159,7 @@ test('a folded group shows its header only', () => {
   const { grid } = gridOf(itemsView(model, NARROW, { ...NO_SELECTION, folded: ['failed'] }))
   expect(lines(grid).slice(0, 2)).toEqual([
     '▸ FAILED 1',
-    '▾ AGENTS 4 claude · 1 codex · 1 workflow',
+    '▾ AGENTS 4 running · 2 ended · 4 claude · 1 codex · 1 workflow',
   ])
 })
 
@@ -293,7 +293,7 @@ test('a held list puts new items in the group of their kind, after its held rows
   const shown = lines(gridOf(drawn).grid).map(line => line.trimEnd())
   expect(shown.some(line => line.includes('NEW'))).toBe(false)
   expect(shown.filter(line => line.startsWith('▾ '))).toEqual([
-    '▾ AGENTS 2 claude',
+    '▾ AGENTS 2 running · 2 claude',
     '▾ SHELLS 3 running',
     '▾ MONITORS 1 running',
   ])
@@ -466,7 +466,7 @@ const child = { ...review, parentId: forwarder.id, startedAt: NOW - 1000 } as Ra
 test('an agent that only forwarded to Codex has no row: its job stands for both', () => {
   const drawn = itemsView({ ...model, items: [plan, forwarder, child] }, NARROW, NO_SELECTION)
   expect(rowKeys(drawn)).toEqual([`row:${child.id}`, `row:${plan.id}`])
-  expect(lines(gridOf(drawn).grid)[0]).toBe('▾ AGENTS 1 claude · 1 codex')
+  expect(lines(gridOf(drawn).grid)[0]).toBe('▾ AGENTS 1 running · 1 ended · 1 claude · 1 codex')
 })
 
 test('a Codex job sits indented under the agent that started it and did other work', () => {

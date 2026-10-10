@@ -51,7 +51,9 @@ test('groups put failed first and running before ended', () => {
   expect(groups.map(g => g.id)).toEqual(['failed', 'agents', 'shells', 'monitors', 'cron'])
   expect(groups[0]?.items).toEqual([lint])
   expect(groups[1]?.items.at(-1)).toBe(plan)
-  expect(groupNote('agents', groups[1]?.items ?? [])).toBe('4 claude · 1 codex · 1 workflow')
+  expect(groupNote('agents', groups[1]?.items ?? [])).toBe(
+    '4 running · 2 ended · 4 claude · 1 codex · 1 workflow',
+  )
   expect(groupNote('shells', [dev, { ...dev, status: 'done' }])).toBe('1 running · 1 ended')
 })
 
@@ -141,7 +143,7 @@ test('search matches title, kind and command', () => {
 test('the band counts each kind that runs, failed first', () => {
   const rows = bandRows(ALL, NOW)
   expect(rows.map(row => [row.kind, row.glyph, row.count])).toEqual([
-    ['failed', '✗', 1],
+    ['shell', '✗', 1],
     ['agent', '◐', 2],
     ['codex', '◐', 1],
     ['workflow', '⧉', 1],
@@ -150,6 +152,12 @@ test('the band counts each kind that runs, failed first', () => {
     ['cron', '⟳', 1],
   ])
   expect(bandRows([{ ...lint, endedAt: NOW - 11 * 60_000 }], NOW)).toEqual([])
+})
+
+test('agent group note splits running and ended counts like the other groups', () => {
+  expect(groupNote('agents', [explore, review, plan])).toBe(
+    '2 running · 1 ended · 2 claude · 1 codex',
+  )
 })
 
 test('cost totals sum tokens and dollars and count unknowns', () => {
@@ -162,7 +170,7 @@ test('cost totals sum tokens and dollars and count unknowns', () => {
 test('a worker with tokens but no price makes its side and the sum n/a, not smaller', () => {
   const unpriced = ALL.map(item => (item.id === verify.id ? { ...item, costUsd: undefined } : item))
   expect(totals(unpriced)).toEqual({ tokens: 91_000, unknown: 2, codex: 0.09 })
-  expect(costLine(unpriced)).toBe('cost n/a · 91k tok · top: Explore verifyToken 41k')
+  expect(costLine(unpriced)).toBe('session n/a · bg 91k tok, 20% cached')
 })
 
 test('a worker without a dollar amount, tokens or not, makes its side n/a', () => {
@@ -182,8 +190,14 @@ test('a worker without a dollar amount, tokens or not, makes its side n/a', () =
 test('without any dollar amount the cost is n/a, not $0.00', () => {
   const unpriced = ALL.map(({ costUsd: _, ...item }) => item as RabeItem)
   expect(totals(unpriced)).toEqual({ tokens: 91_000, unknown: 2 })
-  expect(costLine(unpriced)).toBe('cost n/a · 91k tok · top: Explore verifyToken 41k')
-  expect(costLine(unpriced, 0.41)).toBe('≈ $0.41 · 91k tok · top: Explore verifyToken 41k')
+  expect(costLine(unpriced)).toBe('session n/a · bg 91k tok, 20% cached')
+  expect(costLine(unpriced, 0.41)).toBe('session ≈ $0.41 · bg 91k tok, 20% cached')
+})
+
+test('the band reports the cached share of background tokens', () => {
+  expect(
+    costLine([{ ...explore, tokens: { input: 457_000, output: 59_000, cached: 417_000 } }], 0.16),
+  ).toBe('session ≈ $0.16 · bg 516k tok, 81% cached')
 })
 
 test('workflow phases follow the agents in them', () => {

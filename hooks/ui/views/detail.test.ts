@@ -328,8 +328,25 @@ test('a shell that printed one line says 1 line', () => {
   expect(lines(open(m, lint.id).grid)).toContain('▸ output · newest last · 1 line')
 })
 
-test('a shell without lines says its output is n/a', () => {
-  expect(lines(open(model(), dev.id).grid)).toContain('Output n/a: no line read yet.')
+test('a shell without lines says no output yet', () => {
+  expect(lines(open(model(), dev.id).grid)).toContain('No output yet')
+})
+
+test('agent turn summaries show project-relative paths', () => {
+  const m = model([explore], {
+    cwd: '/repo',
+    turns: {
+      [explore.id]: [
+        {
+          index: 1,
+          at: NOW,
+          text: 'Done.',
+          tools: [{ name: 'Write', summary: '/repo/src/deep/file.ts' }],
+        },
+      ],
+    },
+  })
+  expect(lines(open(m, explore.id).grid)).toContain('     ⎿ Write src/deep/file.ts')
 })
 
 test('a monitor shows each line with the time it was received', () => {

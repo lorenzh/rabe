@@ -20,7 +20,10 @@ const TAIL_BYTES = '1048576'
 const ANY_START = { isInteractive: [true, false] }
 const ANY_STOP = { stop_hook_active: [true, false] }
 
-type BackgroundTask = { id: string; type: string; command?: string }
+type BackgroundTask = { id: string; type: string; description?: string; command?: string }
+
+const shellTitle = (description: string | undefined, command: string, id: string) =>
+  `${(description || command).replace(/\s+/g, ' ').trim()} · ${id}`
 
 async function write($: Pick<EngineInterface, 'state'>, change: Change): Promise<void> {
   for (;;) {
@@ -184,7 +187,7 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
         {
           id,
           kind: 'shell',
-          title: task.command,
+          title: shellTitle(task.description, task.command, task.id),
           status: 'running',
           detail: { command: task.command, taskId: task.id, ...(outputPath && { outputPath }) },
         },
@@ -209,7 +212,7 @@ export function shells(on: On): void {
             {
               id: itemId('shell', taskId),
               kind: 'shell',
-              title: e.command,
+              title: shellTitle(e.description, e.command, taskId),
               status: 'running',
               startedAt: now,
               ...(e.agentId && { parentId: itemId('agent', e.agentId) }),

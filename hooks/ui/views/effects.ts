@@ -7,7 +7,7 @@ import type { Drawn, Line, Model, View } from '../view'
 import { fitLine, focusOn } from './lines'
 
 const dim = { fg: C.dim }
-const CHANGE = 24
+const CHANGE = 29
 
 const and = (names: string[]) =>
   names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : (names[0] ?? '')
@@ -48,29 +48,31 @@ const mark = (isSelected: boolean): Span => [isSelected ? '▌' : ' ', { fg: C.o
 type Widths = { file: number; by: number }
 
 function widths(columns: number): Widths {
-  const inner = Math.max(2, columns - 2 - Math.min(CHANGE, Math.floor(columns / 4)) - 2)
-  const file = Math.ceil(inner / 2)
+  const inner = Math.max(2, columns - 2 - Math.min(CHANGE, Math.floor(columns / 3)) - 2)
+  const file = Math.ceil(inner * 0.47)
 
   return { file, by: inner - file }
 }
 
 // The start of a long path is cut, so the file name stays.
-function head(path: string, width: number): string {
+function middle(path: string, width: number): string {
   const chars = [...path]
-
-  return chars.length > width ? `…${chars.slice(chars.length - width + 1).join('')}` : path
+  if (chars.length <= width) return path
+  const left = Math.ceil((width - 1) / 2)
+  const right = Math.floor((width - 1) / 2)
+  return `${chars.slice(0, left).join('')}…${right ? chars.slice(-right).join('') : ''}`
 }
 
 // How the file changed; a shell write is a guess.
 function how(file: Touched): string {
-  const count = file.edits > 1 ? `${file.edits}× ` : ''
+  const count = file.edits > 1 ? `${file.edits} changes: ` : ''
 
   return `${count}${file.hows.join(', ')}`
 }
 
 function fileRow(file: Touched, w: Widths, selected: string): Line {
   const isSelected = file.id === selected
-  const name = head(file.rel, w.file)
+  const name = middle(file.rel, w.file)
   const gone = 'deleted · '
   return {
     spans: [

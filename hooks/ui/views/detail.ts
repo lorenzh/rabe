@@ -1,4 +1,4 @@
-import type { RabeItem } from '../../model'
+import { isInside, type RabeItem } from '../../model'
 import { nextRuns } from '../../schedule'
 import { type Span, wrap } from '../cells/grid'
 import { C, type Style } from '../cells/palette'
@@ -46,6 +46,16 @@ function lead(first: Span[], value: string, columns: number, style: Style = {}):
 }
 
 const raise = (lines: Line[]): Line[] => lines.map(line => ({ ...line, bg: C.raised }))
+
+function turnPath(summary: string, cwd: string | undefined, width: number): string {
+  const base = cwd?.replace(/[\\/]+$/, '')
+  const path = base && isInside(summary, base) ? summary.slice(base.length + 1) : summary
+  const chars = [...path]
+  if (chars.length <= width) return path
+  const left = Math.ceil((width - 1) / 2)
+  const right = Math.floor((width - 1) / 2)
+  return `${chars.slice(0, left).join('')}…${right ? chars.slice(-right).join('') : ''}`
+}
 
 // Spend and activity on a panel: agents and Codex jobs their own, a workflow its agents'.
 // A Codex job counts the agent that only forwarded it.
@@ -181,7 +191,12 @@ function agentLines(model: Model, item: RabeItem, columns: number, rows = Infini
           )
         : []),
       ...tools.map(tool => ({
-        spans: [[`     ⎿ ${tool.name} ${tool.summary ?? ''}`.trimEnd(), dim]] as Span[],
+        spans: [
+          [
+            `     ⎿ ${tool.name} ${tool.summary ? turnPath(tool.summary, model.cwd, Math.max(8, columns - tool.name.length - 8)) : ''}`.trimEnd(),
+            dim,
+          ],
+        ] as Span[],
       })),
     ]
     hidden ||= cut || textRows === 0 || tools.length < turn.tools.length || lines.length > room
@@ -262,7 +277,7 @@ function outputLines(model: Model, item: RabeItem): Line[] {
   const held = model.lines[item.id]?.lines ?? []
   const out: Line[] =
     held.length === 0
-      ? [{ spans: [['Output n/a: no line read yet.', dim]] }]
+      ? [{ spans: [['No output yet', dim]] }]
       : held.map(line => ({
           spans:
             item.kind === 'monitor'
