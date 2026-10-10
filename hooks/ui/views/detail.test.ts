@@ -343,11 +343,11 @@ test('a monitor shows each line with the time it was received', () => {
   expect(fg(g, [at[0] + 9, at[1]])).toBe(C.text)
 })
 
-test('a cron job lists its next runs with a countdown', () => {
+test('a cron job lists its next runs with the pane duration format', () => {
   const shown = lines(open(model(), babysit.id).grid)
   expect(shown).toContain('▸ next runs')
-  expect(shown).toContain('  10:55  in 3:00')
-  expect(shown).toContain('  11:15  in 23:00')
+  expect(shown).toContain('  10:55  in 3m00s')
+  expect(shown).toContain('  11:15  in 23m00s')
 })
 
 test('an ended cron has no forecast and keeps an inert delete slot', () => {
@@ -381,7 +381,21 @@ test('a wakeup shows the one time it fires', () => {
     ...babysit,
     detail: { jobId: 'w', prompt: 'check', scheduledFor: NOW + 90_000 },
   } as RabeItem
-  expect(lines(open(model([wake]), wake.id).grid)).toContain('  10:53  in 1:30')
+  expect(lines(open(model([wake]), wake.id).grid)).toContain('  10:53  in 1m30s')
+})
+
+test('an agent turn with only tools shows its tool line without an empty header', () => {
+  const m = model([explore], {
+    turns: {
+      [explore.id]: [
+        { index: 1, at: NOW, text: '', tools: [{ name: 'Read', summary: 'file.ts' }] },
+      ],
+    },
+  })
+  const shown = lines(open(m, explore.id).grid)
+  expect(shown).toContain('     ⎿ Read file.ts')
+  expect(shown.some(line => line.includes('(tools only)'))).toBe(false)
+  expect(shown.some(line => line.includes('●'))).toBe(false)
 })
 
 test('a short opened shell keeps its head and every output line for scrolling', () => {

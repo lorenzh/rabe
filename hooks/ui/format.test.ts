@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { ago, clockTime, countdown, day, duration, short, tokens, usd } from './format'
+import { ago, clockTime, day, duration, short, tokens, usd } from './format'
 
 test('duration reads seconds, minutes and hours', () => {
   expect(duration(52_000)).toBe('52s')
@@ -20,11 +20,6 @@ test('ago says how long since', () => {
   expect(ago(3_000)).toBe('just now')
   expect(ago(120_000)).toBe('2m ago')
   expect(ago(7_200_000)).toBe('2h ago')
-})
-
-test('countdown reads minutes and seconds', () => {
-  expect(countdown(134_000)).toBe('2:14')
-  expect(countdown(3_725_000)).toBe('1:02:05')
 })
 
 test('tokens and dollars read short', () => {

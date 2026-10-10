@@ -245,7 +245,11 @@ function listButtons(
     ),
     run
       ? slot('stop-group', 'g: stop run', canStop(run) ? [run.id] : undefined)
-      : slot('stop-group', 'g: stop group', group.length > 1 ? group : undefined),
+      : slot(
+          'stop-group',
+          group.length > 1 ? `g: stop ${group.length}` : 'g: stop group',
+          group.length > 1 ? group : undefined,
+        ),
     slot(
       'remove',
       'r: remove',

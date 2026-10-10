@@ -432,7 +432,7 @@ test('a narrow pane puts a one-line summary under the list and short key labels'
   expect(buttons.map(one => one.props.label)).toEqual([
     's',
     'x: stop',
-    'g: stop group',
+    'g: stop 3',
     'r: remove',
     'a: remove ended',
   ])
