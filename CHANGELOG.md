@@ -7,8 +7,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 ### Fixed
 
 - The next prompt tells Claude which items Rabe successfully stopped or deleted, and when Rabe sent an agent a message. Notes contain only item ids and titles. ([#85](https://github.com/lorenzh/rabe/pull/85), fixes [#38](https://github.com/lorenzh/rabe/issues/38))
-- The Cost tab gives worker names more room and hides totals for sources that are absent; at 60 columns, the band shortens chip labels to keep the cost visible. (part of #42)
-- The Cost tab gives worker names more room and hides totals for sources that are absent; the band shortens chip labels only when needed to keep the cost visible. (part of #42)
+- The Cost tab gives worker names more room and hides totals for sources that are absent; at 60 columns, the band shortens chip labels to keep the cost visible. ([#86](https://github.com/lorenzh/rabe/pull/86), part of #42)
+- The Cost tab gives worker names more room and hides totals for sources that are absent; the band shortens chip labels only when needed to keep the cost visible. ([#86](https://github.com/lorenzh/rabe/pull/86), part of #42)
 
 ## [0.4.4] - 2026-10-10
 
