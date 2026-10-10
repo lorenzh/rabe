@@ -408,16 +408,16 @@ function detailButtons(
   return buttons
 }
 
-// One item in full, in place of the list: facts, then the newest body lines.
+// One item in full, in place of the list.
 export const detailView: View = (model, size, sel): Drawn => {
   const item = model.items.find(one => one.id === sel.open)
   if (!item) return { nodes: [], buttons: [] }
   const shown =
-    item.kind === 'workflow'
+    item.kind === 'workflow' || item.kind === 'agent' || item.kind === 'codex'
       ? [
           ...headLines(model, item, size.columns),
           ...topLines(model, item, size.columns),
-          ...workflowLines(model, item, size.columns, sel),
+          ...bodyLines(model, item, size.columns, sel),
         ]
       : detailLines(model, item, size.rows, size.columns)
   const inputs: ViewInput[] =

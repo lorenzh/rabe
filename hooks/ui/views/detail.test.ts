@@ -21,6 +21,7 @@ import {
 import { isPress, type Model, NO_SELECTION, rowKeys, type Size } from '../view'
 import { detailView } from './detail'
 import { itemsView } from './items'
+import { paneView } from './pane'
 
 const TERMINAL: Size = { columns: 60, rows: 30, surface: 'terminal', hasInput: false }
 
@@ -43,6 +44,36 @@ function find(g: Grid, text: string): [x: number, y: number] {
 
 const fg = (g: Grid, at: [number, number]) => cell(g, at[0], at[1])[1]
 const bg = (g: Grid, at: [number, number]) => cell(g, at[0], at[1])[2]
+
+test('an opened agent keeps every turn in a 17-row inline pane at 100 terminal columns', () => {
+  const agent = {
+    ...explore,
+    status: 'done',
+    detail: { ...explore.detail, transcriptPath: `/session/${'deep/'.repeat(20)}agent-a1.jsonl` },
+  } as RabeItem
+  const m = model([agent], {
+    turns: {
+      [agent.id]: Array.from({ length: 20 }, (_, i) => ({
+        index: i + 1,
+        at: NOW,
+        text: i === 19 ? 'Final report.' : `Turn ${i + 1}.`,
+        tools: [],
+      })),
+    },
+  })
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const drawn = paneView(
+      m,
+      { ...TERMINAL, columns: 96, rows: 17, surface },
+      { ...NO_SELECTION, open: agent.id, isFocused: true },
+    )
+    const shown = lines(gridOf(drawn).grid)
+    expect(shown).toContain('1  ● Turn 1.')
+    expect(shown).toContain('20 ● Final report.')
+    expect(shown.some(line => line.includes('↑↓ scroll'))).toBe(true)
+    expect(shown.length).toBeGreaterThan(17)
+  }
+})
 
 test('an agent shows a cost box, its brief and its turns from rabe.turns', () => {
   const agent = {

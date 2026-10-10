@@ -42,7 +42,7 @@ const hasRows = (nodes: Node[]) =>
 // and x and g of its controls while they act.
 function hint(sel: Selection, isOpen: boolean, inner: Drawn): string {
   if (!sel.isFocused) return 'tab to select · esc close'
-  if (isOpen) return 'b back · esc close'
+  if (isOpen) return `${hasRows(inner.nodes) ? '↑↓ move' : '↑↓ scroll'} · b back · esc close`
   const move = hasRows(inner.nodes) ? ['↑↓ move', 'enter open'] : []
   const keys = inner.buttons.flatMap(one =>
     ['x', 'g', 'r', 'a'].includes(one.hotkey ?? '') ? [one.label.replace(': ', ' ')] : [],

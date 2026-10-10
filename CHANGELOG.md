@@ -10,6 +10,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - The Cost tab says "sorted by tokens when opened" while it holds the opening order. New workers follow the held rows. ([#49](https://github.com/lorenzh/rabe/pull/49), fixes [#33](https://github.com/lorenzh/rabe/issues/33))
 - Deleted cron jobs say `deleted`, hide future runs and keep delete dim. Delete errors show plain text. The previous-session summary counts only crons still running at session end. ([#49](https://github.com/lorenzh/rabe/pull/49), fixes [#28](https://github.com/lorenzh/rabe/issues/28))
 - The Effects tab finds shell writes on independent lists after `||`, including later lines with here-docs. Conditional writes stay hidden. ([#49](https://github.com/lorenzh/rabe/pull/49), fixes [#27](https://github.com/lorenzh/rabe/issues/27))
+- Opened agents and Codex jobs keep all recorded turns and steps. The detail scrolls beyond the pane's height. (fixes #29)
 
 ## [0.4.1] - 2026-10-10
 
