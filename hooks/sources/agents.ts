@@ -79,12 +79,19 @@ export function metaPatch(text: string): Partial<AgentItem['detail']> | undefine
 }
 
 export function metaPath(item: AgentItem, items: RabeItem[]): string | undefined {
-  if (item.detail.transcriptPath)
-    return item.detail.transcriptPath.replace(/\.jsonl$/, '.meta.json')
   const parent = items.find(one => one.id === item.parentId)
-  if (parent?.kind !== 'workflow' || !parent.detail.transcriptDir) return undefined
+  if (parent?.kind === 'workflow') {
+    const folder =
+      parent.detail.transcriptDir ??
+      parent.detail.scriptPath?.replace(
+        /\/workflows\/scripts\/[^/]+$/,
+        `/subagents/workflows/${parent.detail.runId}`,
+      )
+    if (folder && folder !== parent.detail.scriptPath)
+      return `${folder}/agent-${item.detail.agentId}.meta.json`
+  }
 
-  return `${parent.detail.transcriptDir}/agent-${item.detail.agentId}.meta.json`
+  return item.detail.transcriptPath?.replace(/\.jsonl$/, '.meta.json')
 }
 
 export function agentTranscript(path: string, agentId: string): string | undefined {
@@ -427,7 +434,13 @@ async function refresh($: EngineInterface): Promise<void> {
   })
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   for (const item of items) {
-    if (item.kind === 'agent' && item.status === 'running') await readMeta($, item.id)
+    if (
+      item.kind === 'agent' &&
+      (item.status === 'running' ||
+        (item.detail.workflowPhase === undefined &&
+          items.some(parent => parent.id === item.parentId && parent.kind === 'workflow')))
+    )
+      await readMeta($, item.id)
   }
 }
 
