@@ -121,6 +121,7 @@ test('completed file changes are edits; shell writes are files to check on disk'
     command('echo x > /work/broken.txt && false', 1, 5000),
     command('rm /work/gone.txt; cp a.md out', 0, 6000, '/plain'),
     command('touch x', 0, 7000, 'file:///work/a%23b%3Fc%20d'),
+    command('false || echo x > fallback.txt', 0, 8000),
   ].join('\n')
   const { edits, checks } = parseRollout(rollout, '/home/u')
   expect(edits).toEqual([
@@ -135,6 +136,7 @@ test('completed file changes are edits; shell writes are files to check on disk'
     { path: '/plain/out', from: 5500, to: 6000 },
     { path: '/plain/out/a.md', from: 5500, to: 6000 },
     { path: '/work/a#b?c d/x', from: 6500, to: 7000 },
+    { path: '/work/fallback.txt', from: 7500, to: 8000 },
   ])
 })
 

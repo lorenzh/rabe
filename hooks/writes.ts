@@ -561,15 +561,11 @@ function put(run: Run, word: Word | undefined, isDeleted?: boolean) {
 }
 
 // One pipeline; false when the rest of the line may not run as written.
-function pipeline(run: Run, segments: Tok[][], isSure: boolean, isSkipped = false): boolean {
+function pipeline(run: Run, segments: Tok[][], isSure: boolean, isOrBranch: boolean): boolean {
   const commands = segments.map(simple)
   if (commands.some(one => one === 'stop')) return false
   const isPiped = commands.length > 1
   for (const command of commands as Simple[]) {
-    if (isSkipped) {
-      if (!isPiped && ['cd', 'pushd', 'popd'].includes(command.name ?? '')) run.isLost = true
-      continue
-    }
     for (const word of command.writes) put(run, word)
     const { name, args } = command
     if (name === 'cd' && !isPiped) {
@@ -578,7 +574,7 @@ function pipeline(run: Run, segments: Tok[][], isSure: boolean, isSkipped = fals
       const dir =
         args.length < 2 && target?.known && !target.text.startsWith('-') && place(run, target.text)
       run.dir = dir || run.dir
-      run.isLost = !dir || !isSure
+      run.isLost = !dir || !isSure || isOrBranch
     } else if (name === 'pushd' || name === 'popd') {
       if (!isPiped) run.isLost = true
     } else if (name && (!isPiped || name === 'tee')) {
@@ -610,7 +606,7 @@ function parse(command: string, cwd?: string, home?: string): ShellWrite[] {
     }
   }
   let segments: Tok[][] = [[]]
-  let isSkipped = false
+  let isOrBranch = false
   let needsCommand = false
   for (let k = 0; k <= toks.length; k++) {
     const tok = toks[k] ?? { op: '\n' }
@@ -627,16 +623,16 @@ function parse(command: string, cwd?: string, home?: string): ShellWrite[] {
       continue
     }
     const isList = op === '&&' || op === ';' || op === '\n'
-    const goes = (isList || op === '||') && pipeline(run, segments, op === '&&', isSkipped)
+    const goes = (isList || op === '||') && pipeline(run, segments, op === '&&', isOrBranch)
     segments = [[]]
     if (goes && (isList || op === '||')) {
       needsCommand = op === '&&' || op === '||'
       if (op === '||') {
-        isSkipped = true
+        isOrBranch = true
         if (run.hasCd) run.isLost = true
       } else if (op !== '&&') {
         commit()
-        isSkipped = false
+        isOrBranch = false
         run.hasCd = false
       }
       continue
