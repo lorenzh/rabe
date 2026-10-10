@@ -175,6 +175,7 @@ function axis(start: number, span: number, labelWidth: number, columns: number):
     last = label
     end = x + label.length + 1
   }
+  if (!last && labelWidth + 5 <= columns - 4) put(labelWidth, clockTime(start).slice(0, 5))
   put(columns - 3, 'now')
 
   return cells.join('')

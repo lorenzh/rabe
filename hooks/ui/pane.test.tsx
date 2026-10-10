@@ -497,6 +497,20 @@ test('enter on a timeline row opens that item on every surface', async ($, on) =
   }
 })
 
+test('a retained timeline shows its start on the first draw without writing state', async ($, on) => {
+  const state = hold(on, [{ ...dev, startedAt: undefined, seenAt: NOW }], {
+    tab: 'timeline',
+    window: { base: 4, hours: 4, since: NOW - 4 * 3_600_000 },
+  })
+  session(on)
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    expect((await screen(ui)).some(line => /^ +10:51 +now$/.test(line))).toBe(true)
+    await ui.unmount()
+  }
+  expect(state).toEqual({})
+})
+
 const edited: RabeItem = {
   ...(plan as RabeItemOf<'agent'>),
   detail: { ...(plan as RabeItemOf<'agent'>).detail, edits: [{ path: '/repo/src/a.ts', at: NOW }] },

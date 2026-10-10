@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Fixed
+
+- A short Timeline window shows its start time when no round clock label fits. ([#56](https://github.com/lorenzh/rabe/pull/56), fixes [#53](https://github.com/lorenzh/rabe/issues/53))
+
 ## [0.4.2] - 2026-10-10
 
 ### Fixed
