@@ -547,7 +547,7 @@ On `session.end` (`{ reason: /^/ }`) `pane.tsx` keeps a summary of the session i
 
 **Actions.** Stop calls `TaskStop` with the task id (shells, monitors, workflows) or the agent id, and runs `/rabe-stop <item id>` for a Codex job. Delete calls `CronDelete` only while the current job is still running. Refusals show plain text without the tool error tags. Remove and remove ended write `rabe.removed` (see Removing ended items). Message calls `$.session.send` to the agent. Copy calls `$.ui.copy` on the surface that was pressed. Each answers with a toast: "Stopping …", "Stop refused: …", "Stopped 7 of 9; 2 had already finished", "Message sent to …".
 
-Copy actions pass the original text to `$.ui.copy`. Success toasts flatten whitespace and pass the preview through `safe()`. Unsafe characters become `?`, including control and format characters. A failure toast always shows the API reason or caught error through the same safe display. It says `Copy failed: <reason>.`. When the safe preview equals the original text, the toast appends `Select it: <text>`.
+Copy actions pass the original text to `$.ui.copy`. Toasts use native text and keep wide and combining characters. `toastText` flattens whitespace to one space and replaces only Unicode control (`Cc`) and format (`Cf`) characters with `?`. Success toasts show this preview. Failure toasts use `Copy failed: <reason>.` with the filtered API reason or caught error. When the filtered preview equals the original text, the toast appends `Select it: <text>`.
 
 ### Hiding Claude Code's own count
 

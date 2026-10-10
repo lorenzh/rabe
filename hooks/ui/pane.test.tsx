@@ -616,8 +616,9 @@ test('a multiline copy keeps the clipboard text and shows spaces in the success 
   ])
 })
 
-test('copy success toasts replace unsafe characters and keep the original clipboard text', async ($, on) => {
-  const command = 'echo\u001b[31m\u0000\u007f\u0085\u009b\u200b\u202e\u2066\u{e0001}\n  café'
+test('copy success toasts replace control and format characters and keep other Unicode', async ($, on) => {
+  const command =
+    'echo\u001b[31m\u0000\u007f\u0085\u009b\u200b\u202e\u2066\u{e0001}\n  日本/x 🚀 e\u0301'
   const shell = { ...dev, detail: { ...dev.detail, command } } as RabeItemOf<'shell'>
   const state = hold(on, [shell], { open: shell.id })
   const copies: string[] = []
@@ -631,8 +632,34 @@ test('copy success toasts replace unsafe characters and keep the original clipbo
     await ui.unmount()
   }
   expect(copies).toEqual([command, command])
-  expect(state.toasts).toEqual(['Copied: echo?[31m???????? café', 'Copied: echo?[31m???????? café'])
+  expect(state.toasts).toEqual([
+    'Copied: echo?[31m???????? 日本/x 🚀 e\u0301',
+    'Copied: echo?[31m???????? 日本/x 🚀 e\u0301',
+  ])
 })
+
+for (const isCopied of [true, false] as const) {
+  test(`Unicode paths stay in ${isCopied ? 'success' : 'failure'} copy toasts on every surface`, async ($, on) => {
+    const command = '日本/x 🚀 e\u0301'
+    const shell = { ...dev, detail: { ...dev.detail, command } } as RabeItemOf<'shell'>
+    const state = hold(on, [shell], { open: shell.id })
+    const copies: string[] = []
+    on('ui.copy', async (_$, e) => {
+      copies.push(e.text)
+      return { value: { isCopied, reason: 'no-clipboard' as const } }
+    })
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ surface, ...PANE } as never)
+      await ui.press({ key: `copy:${shell.id}` })
+      await ui.unmount()
+    }
+    const toast = isCopied
+      ? `Copied: ${command}`
+      : `Copy failed: no-clipboard. Select it: ${command}`
+    expect(copies).toEqual([command, command])
+    expect(state.toasts).toEqual([toast, toast])
+  })
+}
 
 for (const reason of ['no-surface', 'no-clipboard', 'refused'] as const) {
   test(`failed multiline copies show ${reason} on every surface`, async ($, on) => {

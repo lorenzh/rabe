@@ -1,7 +1,6 @@
 import type { EngineInterface, On, RenderSurface } from 'claude-code'
 
 import type { RabeItem, RabePrevious } from '../../types'
-import { safe } from './cells/grid'
 import { KIND_LABEL, kept, matches, orderOf, previousOf, rowOf } from './lists'
 import { type At, type Held, hold, isRowKey, render, shifts } from './render'
 import {
@@ -29,6 +28,10 @@ const PANE = 'rabe'
 // The option `timelineHours`, set by `pane(on, hours)`: the Timeline's window
 // when the pane opens.
 let baseHours = 4
+
+function toastText(text: string): string {
+  return text.replace(/\s+/g, ' ').replace(/[\p{Cc}\p{Cf}]/gu, '?')
+}
 
 // Esc may have closed the pane before the delayed focus call.
 async function refocus($: EngineInterface): Promise<void> {
@@ -311,12 +314,12 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       const result = await $.ui
         .copy({ text: action.text, surface })
         .catch((error: unknown) => ({ isCopied: false as const, reason: String(error) }))
-      const preview = safe(action.text.replace(/\s+/g, ' '))
+      const preview = toastText(action.text)
       const selectable = preview === action.text
       $.ui.toast(
         result.isCopied
           ? `Copied: ${preview}`
-          : `Copy failed: ${safe(result.reason.replace(/\s+/g, ' '))}.${selectable ? ` Select it: ${action.text}` : ''}`,
+          : `Copy failed: ${toastText(result.reason)}.${selectable ? ` Select it: ${action.text}` : ''}`,
       )
       return
     }
