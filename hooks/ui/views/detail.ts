@@ -455,7 +455,7 @@ export const detailView: View = (model, size, sel): Drawn => {
   const item = model.items.find(one => one.id === sel.open)
   if (!item) return { nodes: [], buttons: [] }
   const shown = [
-    ...headLines(model, item, size.columns, true),
+    ...headLines(model, item, size.columns),
     ...topLines(model, item, size.columns),
     ...bodyLines(model, item, size.columns, sel),
   ]

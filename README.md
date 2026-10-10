@@ -63,7 +63,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | `a` | Remove every done, failed or stopped row the search shows |
 | `m` | Send a message to an agent |
 | `f` | Open the Claude agent that forwarded a Codex job (it has no row of its own); `b` then goes back to the job's row |
-| `c` | Copy the command, the prompt, the `ssh -L` line, an agent's id, or the command that resumes a session or a Codex thread. If the clipboard cannot be reached (for example over SSH in a terminal without OSC 52), a message shows the text to select or points to the exact text in the opened detail |
+| `c` | Copy the command, the prompt, the `ssh -L` line, an agent's id, or the command that resumes a session or a Codex thread. If the clipboard cannot be reached (for example over SSH in a terminal without OSC 52), a message shows the text to select |
 | `d` | Delete a running cron job |
 | `w` | On the Timeline tab: show more time (4 h, 12 h, the whole session, then 4 h again) |
 | Mouse wheel | Scroll the pane |
@@ -93,7 +93,7 @@ An opened item keeps its recorded turns, steps or output lines in its detail. Us
 
 Agent answers keep up to 16,000 characters each. Longer answers end with `…`. The transcript keeps the original answer. Markdown stays plain text. Wrapped bullet and numbered lists keep their markers beside the start of a long path. Long tool summaries end with `…`. Answers already shortened by an older version stay shortened.
 
-Copy toasts stay on one line. The clipboard keeps the original line breaks and spaces. If a failed copy cannot show the exact text on one line, select it in the opened detail. Commands, cron prompts and agent ids keep their full text there. If necessary, scroll the detail.
+Copy success and failure toasts show the text on one line. The clipboard keeps the original line breaks and spaces.
 
 The search button shows the active query, cut with `…` when long. The search field keeps the full query at every width. The filter stays visible after Enter and after reopening the pane. To clear it, submit an empty search. Stop group and remove ended act only on the filtered rows.
 

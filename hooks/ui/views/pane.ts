@@ -61,7 +61,7 @@ function hint(sel: Selection, isOpen: boolean, inner: Drawn, rows: number): stri
 }
 
 const rowsOf = (nodes: Node[]) =>
-  nodes.reduce((n, node) => n + ('chart' in node ? node.chart.rows : (node.verbatim ?? 1)), 0)
+  nodes.reduce((n, node) => n + ('chart' in node ? node.chart.rows : 1), 0)
 
 // A plain Button with a hotkey is drawn `1: label`.
 const PREFIX = 3
