@@ -6,7 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Added
 
-- README shows a demo GIF per tab.
+- README shows a demo GIF per tab. ([#68](https://github.com/lorenzh/rabe/pull/68))
 
 ### Fixed
 
