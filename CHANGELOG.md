@@ -4,6 +4,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-10
+
 ### Fixed
 
 - Partly fixed #25: dim controls keep their visible labels and catch their hotkeys without acting. Blank inert buttons are removed because Tab and arrows stop on them. Letters without a control in the current view still reach the prompt. The mod API has no key hook. ([#51](https://github.com/lorenzh/rabe/pull/51), refs [#25](https://github.com/lorenzh/rabe/issues/25))
@@ -108,7 +110,8 @@ The first public version.
 
 - Workflow agents no longer offer stop and message, which Claude Code does not support for a single workflow agent; their detail offers stopping the run. ([#8](https://github.com/lorenzh/rabe/pull/8))
 
-[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/lorenzh/rabe/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/lorenzh/rabe/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/lorenzh/rabe/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/lorenzh/rabe/compare/v0.2.0...v0.3.0
