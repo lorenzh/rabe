@@ -93,7 +93,7 @@ An opened item keeps its recorded turns, steps or output lines in its detail. Us
 
 Agent answers keep up to 16,000 characters each. Longer answers end with `…`. The transcript keeps the original answer. Markdown stays plain text. Wrapped bullet and numbered lists keep their markers beside the start of a long path. Long tool summaries end with `…`. Answers already shortened by an older version stay shortened.
 
-Copy success and failure toasts show the text on one line. The clipboard keeps the original line breaks and spaces.
+Copy success toasts show a flattened preview. The clipboard keeps the original line breaks and spaces. When the clipboard cannot be reached, the failure toast offers the exact text only if one line can show it unchanged. Text with line breaks, tabs, control characters or repeated whitespace gets only the failure message.
 
 The search button shows the active query, cut with `…` when long. The search field keeps the full query at every width. The filter stays visible after Enter and after reopening the pane. To clear it, submit an empty search. Stop group and remove ended act only on the filtered rows.
 
