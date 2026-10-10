@@ -286,6 +286,45 @@ test('an agent shows its turns from rabe.turns on every surface', async ($, on) 
   }
 })
 
+test('a pending message does not move focus after the person changes view', async ($, on) => {
+  hold(on, ALL, { open: explore.id, selected: explore.id })
+  let release!: () => void
+  on('session.send', async () => {
+    await new Promise<void>(resolve => {
+      release = resolve
+    })
+    return { isDelivered: true }
+  })
+  const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await arm($, `message:${explore.id}`)
+  const sending = ui.input({ key: `message:${explore.id}`, text: 'hello', kind: 'submit' })
+  while (!release) await Promise.resolve()
+
+  await ui.press({ key: 'tab-cost' })
+  await ui.press({ key: 'tab-items' })
+  await ui.press({ key: 'back' })
+  await ui.press({ key: `row:${lint.id}` })
+  await ui.redraw()
+  release()
+  await sending
+  await ui.redraw()
+
+  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.hotkey).toBe('x')
+  expect((await ui.find({ type: 'Button', key: 'remove' }))?.props.hotkey).toBe('r')
+  await ui.unmount()
+})
+
+test('a completed message returns focus to its message control without navigation', async ($, on) => {
+  hold(on, ALL, { open: explore.id, selected: explore.id })
+  on('session.send', async () => ({ isDelivered: true }))
+  const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await arm($, `message:${explore.id}`)
+  await ui.input({ key: `message:${explore.id}`, text: 'hello', kind: 'submit' })
+  await ui.redraw()
+  expect(await ui.find({ type: 'Input', key: `message:${explore.id}` })).toBeDefined()
+  await ui.unmount()
+})
+
 test('a codex job shows its steps from the item on every surface', async ($, on) => {
   hold(on, ALL, { open: review.id })
   for (const surface of SURFACES) {
@@ -962,6 +1001,39 @@ test('an arrow past the last row scrolls the pane on', async ($, on) => {
   })
   await $.ui.scroll({ ...ARROW, by: 1 })
   expect(passed).toEqual([1])
+})
+
+test('a combined arrow passes leftover scrolling from the current viewport offset', async ($, on) => {
+  hold(on, ALL, { open: flow.id, selected: flow.id })
+  const passed: { by: number; offset: number }[] = []
+  on('ui.scroll', async (_$, e) => {
+    passed.push({ by: e.by, offset: e.offset })
+    return {}
+  })
+  await $.ui.scroll({ ...ARROW, offset: 13, by: 3 })
+  expect(passed).toEqual([{ by: 3, offset: 11 }])
+})
+
+test('a combined arrow at the top keeps the saturated viewport offset', async ($, on) => {
+  hold(on, ALL, { open: flow.id, selected: reviewed.id })
+  const offsets: number[] = []
+  on('ui.scroll', async (_$, e) => {
+    offsets.push(e.offset)
+    return {}
+  })
+  await $.ui.scroll({ ...ARROW, offset: 0, by: -3 })
+  expect(offsets).toEqual([0])
+})
+
+test('a combined arrow at the bottom keeps the saturated viewport offset', async ($, on) => {
+  hold(on, ALL, { open: flow.id, selected: reviewed.id })
+  const offsets: number[] = []
+  on('ui.scroll', async (_$, e) => {
+    offsets.push(e.offset)
+    return {}
+  })
+  await $.ui.scroll({ ...ARROW, offset: 30, by: 3 })
+  expect(offsets).toEqual([30])
 })
 
 test('arrows and pages scroll an opened agent instead of moving the list focus', async ($, on) => {

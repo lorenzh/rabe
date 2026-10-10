@@ -4,6 +4,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-10-10
+
 ### Added
 
 - README shows a demo GIF per tab. ([#68](https://github.com/lorenzh/rabe/pull/68))
@@ -11,8 +13,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 ### Fixed
 
 - After a message to an agent is sent, the keys go back to the pane: the focus moves from the message field to `m: message`, so `b`, `c` and the other keys act again. ([#64](https://github.com/lorenzh/rabe/pull/64), fixes [#62](https://github.com/lorenzh/rabe/issues/62))
-- Keep workflow agents in their declared phase when they finish before the next poll. ([#61](https://github.com/lorenzh/rabe/issues/61), fixes #61)
-- Workflow agents show under their declared phase. (fixes #61)
+- Workflow agents show under their declared phase, also when they finish before the next poll. ([#65](https://github.com/lorenzh/rabe/pull/65), fixes [#61](https://github.com/lorenzh/rabe/issues/61))
 - Serialize row arrows with view-changing presses in scrolling panes; pending stop, delete and message calls do not hold focus moves. The all-fit arrow case remains open. ([#66](https://github.com/lorenzh/rabe/pull/66), [#37](https://github.com/lorenzh/rabe/issues/37), partial fix)
 - A press or search edit whose handler disappears during a redraw is dropped without losing the pane's keys. ([#67](https://github.com/lorenzh/rabe/pull/67), fixes [#60](https://github.com/lorenzh/rabe/issues/60))
 
@@ -130,7 +131,8 @@ The first public version.
 
 - Workflow agents no longer offer stop and message, which Claude Code does not support for a single workflow agent; their detail offers stopping the run. ([#8](https://github.com/lorenzh/rabe/pull/8))
 
-[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.4.4...HEAD
+[0.4.4]: https://github.com/lorenzh/rabe/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/lorenzh/rabe/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/lorenzh/rabe/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/lorenzh/rabe/compare/v0.4.0...v0.4.1
