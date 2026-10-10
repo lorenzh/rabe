@@ -9,7 +9,6 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 ### Fixed
 
 - A short Timeline window shows its start time when no round clock label fits. ([#56](https://github.com/lorenzh/rabe/pull/56), fixes [#53](https://github.com/lorenzh/rabe/issues/53))
-- Copy success toasts replace unsafe characters with `?`. Failure toasts show the reason and offer only text that safe display leaves unchanged. The clipboard keeps the original text. ([#57](https://github.com/lorenzh/rabe/pull/57), fixes [#54](https://github.com/lorenzh/rabe/issues/54))
 - Copy toasts flatten whitespace and replace only Unicode control and format characters with `?`. Wide characters, emoji and combining marks stay. Failure toasts show the reason and offer text that the filter leaves unchanged. The clipboard keeps the original text. ([#57](https://github.com/lorenzh/rabe/pull/57), fixes [#54](https://github.com/lorenzh/rabe/issues/54))
 - The Effects tab shows changed shell files after `||` and at relative paths in known session or agent folders. Unknown folders and unchanged files show nothing. ([#58](https://github.com/lorenzh/rabe/pull/58), fixes [#55](https://github.com/lorenzh/rabe/issues/55))
 
