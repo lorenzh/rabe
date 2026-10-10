@@ -561,6 +561,27 @@ test('the cost tab names this session and copies its resume command, or shows it
   await ui.unmount()
 })
 
+test('a multiline copy keeps the clipboard text and shows spaces in the success toast', async ($, on) => {
+  const command = 'while true; do\n  echo ready\r\n  sleep 1\tdone'
+  const shell = { ...dev, detail: { ...dev.detail, command } } as RabeItemOf<'shell'>
+  const state = hold(on, [shell], { open: shell.id })
+  const copies: string[] = []
+  on('ui.copy', async (_$, e) => {
+    copies.push(e.text)
+    return { value: { isCopied: true as const } }
+  })
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    await ui.press({ key: `copy:${shell.id}` })
+    await ui.unmount()
+  }
+  expect(copies).toEqual([command, command])
+  expect(state.toasts).toEqual([
+    'Copied: while true; do echo ready sleep 1 done',
+    'Copied: while true; do echo ready sleep 1 done',
+  ])
+})
+
 test('a summary from an older Rabe or of another shape shows no session id', async ($, on) => {
   hold(on, ALL, { tab: 'timeline' })
   const store = session(on)

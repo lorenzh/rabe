@@ -14,6 +14,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - Opened monitors and shells keep every stored output line for scrolling. Split previews say how many older lines they hide. ([#50](https://github.com/lorenzh/rabe/pull/50), fixes [#32](https://github.com/lorenzh/rabe/issues/32))
 - Agent reports keep up to 16,000 characters instead of stopping at 300. Longer reports end with `…`. Split previews wrap only recent agent text and mark hidden text. Wrapped bullet and numbered list markers stay beside the start of long paths. ([#50](https://github.com/lorenzh/rabe/pull/50), fixes [#30](https://github.com/lorenzh/rabe/issues/30))
 - Opened agents and Codex jobs keep all recorded turns and steps. The detail scrolls beyond the pane's height. The scroll hint shows only when the opened detail needs scrolling. ([#50](https://github.com/lorenzh/rabe/pull/50), fixes [#29](https://github.com/lorenzh/rabe/issues/29))
+- Copy success toasts show line breaks and tabs as spaces. The clipboard keeps the original text. (fixes [#36](https://github.com/lorenzh/rabe/issues/36))
 
 ## [0.4.1] - 2026-10-10
 

@@ -306,7 +306,7 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
         .catch((error: unknown) => ({ isCopied: false as const, reason: String(error) }))
       $.ui.toast(
         result.isCopied
-          ? `Copied: ${action.text}`
+          ? `Copied: ${action.text.replace(/\s+/g, ' ')}`
           : `Copy failed: ${result.reason}. Select it: ${action.text}`,
       )
       return

@@ -77,6 +77,8 @@ An opened item keeps its recorded turns, steps or output lines in its detail. Us
 
 Agent answers keep up to 16,000 characters each. Longer answers end with `…`. The transcript keeps the original answer. Markdown stays plain text. Wrapped bullet and numbered lists keep their markers beside the start of a long path. Long tool summaries end with `…`. Answers already shortened by an older version stay shortened.
 
+A successful copy shows the text on one line in its toast. The clipboard keeps the original line breaks and spaces.
+
 With the mouse, click a row once to select it and again to open it. Click a tab to switch to it, a group name to fold the group, a button to press it, or a row on the other tabs to open it. The wheel scrolls the pane. A click does not move the focus, so Enter still opens the row that has the focus. A click also does not give the pane the keys: `ctrl+x tab` does. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
 
 On the list, the stop keys `x` and `g` and the remove key `r` work only after you move onto a row yourself, with an arrow, Tab or a click. Until then, and after the view or the selected row changes without you, they are dim, so a key press never stops something you did not pick. If they stay dim after a click, the pane does not have the keys yet: press `ctrl+x tab`, then move onto the row with Tab or an arrow.
