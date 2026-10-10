@@ -15,17 +15,17 @@ const COUNT: Record<BandRow['kind'], [string, string]> = {
 }
 
 const SHORT: Record<BandRow['kind'], [string, string]> = {
-  failed: ['f', 'f'],
-  agent: ['cl', 'cl'],
-  codex: ['cx', 'cx'],
-  workflow: ['wf', 'wf'],
-  shell: ['sh', 'sh'],
-  monitor: ['m', 'm'],
-  cron: ['cr', 'cr'],
+  failed: ['fail', 'fail'],
+  agent: ['agent', 'agent'],
+  codex: ['codex', 'codex'],
+  workflow: ['flow', 'flow'],
+  shell: ['shell', 'shell'],
+  monitor: ['mon', 'mon'],
+  cron: ['cron', 'cron'],
 }
 
-const cost = (parts: string[]): Span[] => [
-  [parts[0] ?? '', { fg: C.bright }],
+const cost = (parts: string[], leading = ''): Span[] => [
+  [`${leading}${parts[0] ?? ''}`, { fg: C.bright }],
   [parts.length > 1 ? ` · ${parts.slice(1).join(' · ')}` : '', { fg: C.dim }],
 ]
 
@@ -36,19 +36,21 @@ export const bandView: View = (model, size) => {
   const money = costLine(model.items, model.usd)?.split(' · ')
   const top = size.rows >= 2 ? 1 : 0
   const g = grid(size.columns, top + 1)
-  const chips = rows.flatMap((row): Span[] => {
-    const n = row.count
-    const names = size.columns <= 60 ? SHORT : COUNT
-    return [[` ${row.glyph} ${n} ${names[row.kind][n === 1 ? 0 : 1]} `, CHIP[row.kind]], [' ']]
-  })
-  spans(
-    g,
-    0,
-    top,
-    size.columns <= 60
-      ? [...(money ? cost(money.slice(0, 1)) : []), ...chips]
-      : [...chips, ...(money ? cost(money.slice(0, 2)) : [])],
-  )
+  const chips = (names: typeof COUNT) =>
+    rows.flatMap((row): Span[] => {
+      const n = row.count
+      return [[` ${row.glyph} ${n} ${names[row.kind][n === 1 ? 0 : 1]} `, CHIP[row.kind]], [' ']]
+    })
+  const full = [...chips(COUNT), ...(money ? cost(money.slice(0, 2)) : [])]
+  const short = [...chips(SHORT), ...(money ? cost(money.slice(0, 2)) : [])]
+  const width = (parts: Span[]) => parts.reduce((n, [text]) => n + [...text].length, 0)
+  const layout =
+    width(full) <= size.columns
+      ? full
+      : width(short) <= size.columns
+        ? short
+        : [...(money ? cost(money.slice(0, 1), ' ') : []), ...chips(SHORT)]
+  spans(g, 0, top, layout)
 
   return { nodes: [{ chart: g }], buttons: [] }
 }

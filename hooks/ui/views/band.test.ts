@@ -51,11 +51,37 @@ test('the band shows the session cost when Rabe knows it', () => {
   expect(shown[1]).toContain('≈ $0.41 · 91k tok')
 })
 
-test('the band keeps the cost visible at 60 columns by shortening chip labels', () => {
+test('the band keeps full labels and token cost when they fit at 60 columns', () => {
+  const shown = lines(
+    gridOf(
+      bandView({ ...model([explore, dev]), usd: 0.41 }, { ...SIZE, columns: 60 }, NO_SELECTION),
+    ).grid,
+  )
+  expect(shown[1]).toContain('◐ 1 claude')
+  expect(shown[1]).toContain('▶ 1 shell')
+  expect(shown[1]).toContain('≈ $0.41 · 41k tok')
+  expect(shown[1]).not.toContain(' cl ')
+})
+
+test('the band shortens readable labels before dropping token cost when space is tight', () => {
   const shown = lines(
     gridOf(bandView({ ...model(), usd: 0.41 }, { ...SIZE, columns: 60 }, NO_SELECTION)).grid,
   )
   expect(shown[1]).toContain('≈ $0.41')
+  expect(shown[1]).not.toContain('tok')
+  expect(shown[1]).toContain('1 fail')
+  expect(shown[1]).toContain('2 agent')
+  expect(shown[1]).not.toContain(' f ')
+})
+
+test('the band shortens labels at 100 columns to keep token cost when full labels do not fit', () => {
+  const shown = lines(
+    gridOf(bandView({ ...model(), usd: 0.41 }, { ...SIZE, columns: 100 }, NO_SELECTION)).grid,
+  )
+  expect(shown[1]).toContain('◐ 2 agent')
+  expect(shown[1]).toContain('◉ 1 mon')
+  expect(shown[1]).toContain('≈ $0.41 · 91k tok')
+  expect(shown[1]).not.toContain('monitors')
 })
 
 test('shells and monitors an agent started count with the others', () => {
