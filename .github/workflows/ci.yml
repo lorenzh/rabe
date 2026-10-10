@@ -34,9 +34,9 @@ jobs:
         if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'no-docs')
         run: |
           changed=$(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD")
-          code=$(printf '%s\n' "$changed" | grep '^hooks/' | grep -v -E '\.test\.tsx?$' || true)
-          docs=$(printf '%s\n' "$changed" | grep -E '^(docs/|README\.md$)' || true)
+          code=$(printf '%s\n' "$changed" | grep -E '^(hooks/|commands/|types/index\.d\.ts$|data/|\.claude-plugin/)' | grep -v -E '\.test\.tsx?$' || true)
+          docs=$(printf '%s\n' "$changed" | grep -E '^(docs/|README\.md$|CHANGELOG\.md$|RELEASING\.md$|AGENTS\.md$|CONTRIBUTING\.md$)' || true)
           if [ -n "$code" ] && [ -z "$docs" ]; then
-            echo "::error::Code under hooks/ changed without a change in docs/ or README.md. Update the docs, or add the no-docs label for a pure refactor."
+            echo "::error::A pull request that changes code must also change docs/, README.md, CHANGELOG.md, RELEASING.md, AGENTS.md, or CONTRIBUTING.md. Update the docs, or add the no-docs label with a reason in the PR body."
             exit 1
           fi

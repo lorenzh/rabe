@@ -51,6 +51,7 @@
 - Workflows: pin actions to full SHAs, least-privilege `permissions`.
 
 ## Documentation
+- Every pull request creates or updates documentation in `docs/`, `README.md`, `CHANGELOG.md`, `RELEASING.md`, `AGENTS.md`, or a new doc. The only exception is a PR labelled `no-docs`, with the reason in the PR body.
 - Read the docs before the code: start with the table under External References.
 - Every change updates the docs in the same pull request: behaviour, data sources, hooks, modules, commands and settings.
 - The first code that adds a module also creates `docs/architecture.md`; each later module adds its section there.
@@ -59,7 +60,7 @@
 - User-visible changes add a line under `## [Unreleased]` in `CHANGELOG.md`, with the pull request link.
 - Each file in `docs/` starts with frontmatter: `title`, `description`, `tags`, `keywords`.
 - Docs say what a part does and why; code comments do not repeat them.
-- CI fails a pull request that changes code under `hooks/` but not `docs/` or `README.md`. A pure refactor gets the `no-docs` label.
+- CI enforces documentation changes for code under `hooks/`, `commands/`, `types/index.d.ts`, `data/`, and `.claude-plugin/`; add the `no-docs` label only with a reason in the PR body.
 
 ## Commits and PRs
 - Conventional Commits, imperative, lower case, no period.
