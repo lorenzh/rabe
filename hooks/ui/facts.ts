@@ -1,6 +1,6 @@
 import type { RabeItem } from '../model'
 import { clockTime, duration } from './format'
-import { children, forwarderOf, glyph, KIND_LABEL, nextAt } from './lists'
+import { children, forwarderOf, glyph, KIND_LABEL, nextAt, statusLabel } from './lists'
 
 // `long` is the last fact, drawn in full across lines: a path that a cut would lose.
 export type Facts = { title: string; status: string; lines: string[]; long?: string }
@@ -11,7 +11,7 @@ const base = (path: string) => path.split('/').filter(Boolean).at(-1) ?? path
 function statusWord(item: RabeItem, now: number): string {
   if (item.status !== 'running') {
     const exit = item.kind === 'shell' && item.detail.exitCode !== undefined
-    return exit ? `${item.status} · exit ${item.detail.exitCode}` : item.status
+    return exit ? `${item.status} · exit ${item.detail.exitCode}` : statusLabel(item)
   }
   if (item.kind === 'monitor') return 'watching'
   if (item.kind === 'cron') {

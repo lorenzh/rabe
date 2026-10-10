@@ -453,3 +453,14 @@ test('a forwarder whose cost or tokens are not known makes its job’s not known
   expect(other.tokens).toBeUndefined()
   expect(other.costUsd).toBeUndefined()
 })
+
+test('only cron jobs still running count as ended with the session', () => {
+  const ended = ['done', 'stopped', 'failed'].map(status => ({
+    ...babysit,
+    id: `cron:${status}`,
+    status,
+    endedAt: NOW,
+  })) as RabeItem[]
+  expect(previousOf([...ended, babysit], NOW, {}).counts.cron).toBe(1)
+  expect(previousOf(ended, NOW, {}).counts.cron ?? 0).toBe(0)
+})

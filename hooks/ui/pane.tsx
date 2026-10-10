@@ -284,10 +284,19 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
     case 'delete': {
       const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
       const item = items.find(one => one.id === action.id)
-      if (item?.kind !== 'cron' || item.detail.scheduledFor !== undefined) return
+      if (
+        item?.kind !== 'cron' ||
+        item.status !== 'running' ||
+        item.detail.scheduledFor !== undefined
+      )
+        return
       const result = await $.tool.call({ tool: 'CronDelete', id: item.detail.jobId })
       const reason = result.deny ?? (result.isError ? (result.text ?? 'n/a') : undefined)
-      $.ui.toast(reason ? `Delete refused: ${reason}` : `Deleted cron ${item.title}`)
+      $.ui.toast(
+        reason
+          ? `Delete refused: ${reason.replace(/<\/?tool_use_error>/g, '').trim()}`
+          : `Deleted cron ${item.title}`,
+      )
       return
     }
     case 'copy': {

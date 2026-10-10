@@ -22,7 +22,7 @@ Status: early development. See [releases](https://github.com/lorenzh/rabe/releas
 | Codex jobs (from the Codex plugin) | Count (`codex`) | Model, effort and sandbox, tokens, the prompt, each message and command with its exit code, the thread id (`c` copies `codex resume <thread id>`) |
 | Background shells | Count (`shell`) | Output lines, exit code, the guessed port |
 | Monitors | Count (`monitor`) | Each line with the time Rabe received it |
-| Cron jobs and `/loop` wakeups | Count (`cron`) | The next five runs |
+| Cron jobs and `/loop` wakeups | Count (`cron`) | The next five runs while running; deleted jobs say `deleted` |
 | Cost | Session cost and tokens of the background work | Cost tab: tokens and an estimate in dollars (`≈ $0.16`) per worker, workers that look stuck |
 
 The band is one line of counts, one chip per kind with failures from the last 10 minutes first, then the cost, under an empty row so the status line above does not touch it. When Claude Code gives the band only one row, the empty row goes. The names are in the pane. When nothing runs, it draws nothing.
@@ -64,10 +64,12 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | `m` | Send a message to an agent |
 | `f` | Open the Claude agent that forwarded a Codex job (it has no row of its own); `b` then goes back to the job's row |
 | `c` | Copy the command, the prompt, the `ssh -L` line, an agent's id, or the command that resumes a session or a Codex thread. If the clipboard cannot be reached (for example over SSH in a terminal without OSC 52), a message shows the text to select |
-| `d` | Delete a cron job |
+| `d` | Delete a running cron job |
 | `w` | On the Timeline tab: show more time (4 h, 12 h, the whole session, then 4 h again) |
 | Mouse wheel | Scroll the pane |
 | Esc | Close the pane |
+
+A deleted cron job shows no next runs, and its delete button stays dim. The previous-session summary counts only cron jobs still running when the session ends. Delete failures show plain text.
 
 The buttons under the tabs show the keys of the current tab. A key that cannot act now is dim, and pressing it does nothing. A letter with no button goes to the prompt.
 

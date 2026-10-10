@@ -106,6 +106,7 @@ export type RabeCronDetail = {
   schedule?: string
   humanSchedule?: string
   scheduledFor?: number
+  isDeleted?: boolean
 }
 
 export type RabeItemDetails = {

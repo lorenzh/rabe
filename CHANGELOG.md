@@ -6,6 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
+- Deleted cron jobs say `deleted`, hide future runs and keep delete dim. Delete errors show plain text. The previous-session summary counts only crons still running at session end. (fixes #28)
 - The Effects tab finds shell writes on independent lists after `||`, including later lines with here-docs. Conditional writes stay hidden. (fixes #27)
 
 ## [0.4.1] - 2026-10-10

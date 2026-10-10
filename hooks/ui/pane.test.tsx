@@ -607,6 +607,45 @@ test('a cron job offers delete on every surface', async ($, on) => {
   }
 })
 
+test('a refused cron deletion shows plain text and leaves the job running', async ($, on) => {
+  const state = hold(on, [babysit], { open: babysit.id })
+  let calls = 0
+  on('tool.call', { tool: 'CronDelete' }, async () => {
+    calls++
+    return {
+      result: { id: 'c1' },
+      isError: true,
+      text: '<tool_use_error>No scheduled job with id c1</tool_use_error>',
+    }
+  })
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    await arm($)
+    await ui.press({ key: `delete:${babysit.id}` })
+    expect((state.toasts as string[]).at(-1)).toBe('Delete refused: No scheduled job with id c1')
+    expect((await screen(ui)).join('\n')).toContain('next runs')
+    await ui.unmount()
+  }
+  expect(calls).toBe(2)
+})
+
+test('a stale delete control cannot delete an ended cron again', async ($, on) => {
+  const items: RabeItem[] = [babysit]
+  const state = hold(on, items, { open: babysit.id })
+  let calls = 0
+  on('tool.call', { tool: 'CronDelete' }, async () => {
+    calls++
+    return { result: { id: 'c1' } }
+  })
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await arm($)
+  items[0] = { ...babysit, status: 'stopped', endedAt: NOW }
+  await ui.press({ key: `delete:${babysit.id}` })
+  expect(calls).toBe(0)
+  expect(state.toasts).toBeUndefined()
+  await ui.unmount()
+})
+
 const focus = (element: string) =>
   ({
     component: 'Pane',

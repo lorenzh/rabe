@@ -1,7 +1,7 @@
 import type { EngineInterface, On } from 'claude-code'
 
 import { type EndStatus, itemId, type RabeItem, type RabeItemOf } from '../model'
-import { addItem, type Change, commit, endItem, prune } from '../registry'
+import { addItem, type Change, commit, endItem, prune, updateItem } from '../registry'
 
 const LOOP_SENTINEL = '<<autonomous-loop-dynamic>>'
 const SENTINEL = /^<<[\w.-]+>>$/
@@ -164,7 +164,10 @@ export function crons(on: On): void {
     try {
       if (e.tool === 'CronDelete' && answer.result && !answer.isError) {
         const now = await $.clock.now()
-        await write($, held => endItem(held, itemId('cron', e.id), 'stopped', now))
+        const id = itemId('cron', e.id)
+        await write($, held =>
+          updateItem(endItem(held, id, 'stopped', now), id, { detail: { isDeleted: true } }),
+        )
       }
     } catch {}
 
