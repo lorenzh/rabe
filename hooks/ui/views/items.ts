@@ -191,7 +191,7 @@ function summaryLine(model: Model, item: RabeItem): Line {
 // g stops the run of a workflow or its agent, else the rows of the group the
 // selected row is shown in (`shown`). r removes the selected row once it
 // ended, a every ended row shown. Below the split, s keeps only its letter.
-// x, g, r and a keep their slots while they cannot act: dim, without a hotkey.
+// x, g, r and a keep their slots while they cannot act: dim, their hotkey bound to nothing.
 // x, g and r each keep one key (`stop`, `stop-group`, `remove`) and act on the
 // selection, so the person walks the list without leaving slots; a target that
 // changes without the person disarms them (see arming in docs/architecture.md).
