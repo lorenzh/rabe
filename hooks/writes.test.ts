@@ -98,6 +98,40 @@ test('branches that may not run, test syntax and background lists record nothing
   expect(paths('$CMD > /tmp/r; touch /tmp/after')).toEqual(['/tmp/r'])
 })
 
+test('a list after an OR branch is parsed without guessing its writes or cwd', () => {
+  expect(
+    paths(
+      "ss -ltn | grep -q ':8765 ' && echo busy || echo free\ncat > /tmp/a/config.json <<EOF\n{}\nEOF\n",
+    ),
+  ).toEqual(['/tmp/a/config.json'])
+  expect(
+    paths('touch /tmp/before || touch /tmp/skip && touch /tmp/also-skip; touch /tmp/after'),
+  ).toEqual(['/tmp/before', '/tmp/after'])
+  expect(paths('true || cat > /tmp/skip <<EOF\ntouch /tmp/body\nEOF\ntouch /tmp/after')).toEqual([
+    '/tmp/after',
+  ])
+  expect(paths('true ||\n touch /tmp/skip\ntouch /tmp/after')).toEqual(['/tmp/after'])
+  expect(paths('true || cd /elsewhere; touch relative /tmp/absolute', '/repo')).toEqual([
+    '/tmp/absolute',
+  ])
+  expect(paths('true || exit 0\ntouch /tmp/after')).toEqual([])
+  expect(paths('true || if false; then touch /tmp/skip; fi\ntouch /tmp/after')).toEqual([])
+  expect(paths('touch /tmp/before || echo fallback &\ntouch /tmp/after')).toEqual([])
+})
+
+test('an OR fallback can mask a failed directory change on its left', () => {
+  expect(
+    paths('cd /elsewhere && echo ok || echo failed; touch relative /tmp/absolute', '/repo'),
+  ).toEqual(['/tmp/absolute'])
+  expect(
+    paths('cd /elsewhere && cd /repo && echo ok || echo failed; touch relative', '/repo'),
+  ).toEqual([])
+  expect(paths('echo ok || echo failed; touch relative', '/repo')).toEqual(['/repo/relative'])
+  expect(
+    paths('cd /elsewhere && echo ok || echo failed; cd /known && touch relative', '/repo'),
+  ).toEqual(['/known/relative'])
+})
+
 test('tee, sed -i, touch', () => {
   expect(paths('ls | tee -a /tmp/a /tmp/b | tee - >/dev/null')).toEqual(['/tmp/a', '/tmp/b'])
   expect(paths("sed -i 's/a/b/' /tmp/x /tmp/y")).toEqual(['/tmp/x', '/tmp/y'])

@@ -60,7 +60,7 @@ test('a CronCreate call adds a running cron job', async ($, on) => {
   expect(state['rabe.items']?.value).toEqual([cron])
 })
 
-test('a CronDelete call stops the job', async ($, on) => {
+test('a CronDelete call records that the job was deleted', async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const state = memoryState(on)
   tools(on)
@@ -68,7 +68,9 @@ test('a CronDelete call stops the job', async ($, on) => {
   await $.tool.call({ tool: 'CronCreate', cron: '*/5 * * * *', prompt: '/babysit-prs' })
   await clock.set(2000)
   await $.tool.call({ tool: 'CronDelete', id: 'c1' })
-  expect(state['rabe.items']?.value).toEqual([{ ...cron, status: 'stopped', endedAt: 2000 }])
+  expect(state['rabe.items']?.value).toEqual([
+    { ...cron, status: 'stopped', endedAt: 2000, detail: { ...cron.detail, isDeleted: true } },
+  ])
 })
 
 test('a wakeup shows when it fires, and the next one replaces it', async ($, on) => {

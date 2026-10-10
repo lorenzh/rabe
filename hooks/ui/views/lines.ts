@@ -2,7 +2,7 @@ import type { RabeItem } from '../../model'
 import { type Span, safe, wrap } from '../cells/grid'
 import { C, type Style, tone } from '../cells/palette'
 import { facts } from '../facts'
-import { glyph, nameSpans, timeLabel } from '../lists'
+import { glyph, nameSpans, statusLabel, timeLabel } from '../lists'
 import { isPress, type Line, type Model, type Part } from '../view'
 
 // A plain Button with a hotkey draws `c: ` before its label.
@@ -87,7 +87,7 @@ export function text(
 // dim at rest.
 export function itemLine(item: RabeItem, now: number, isSelected = false): Line {
   const time = timeLabel(item, now)
-  const right = item.status === 'running' ? time : `${item.status} ${time}`
+  const right = item.status === 'running' ? time : `${statusLabel(item)} ${time}`
   const [name, ...after] = nameSpans(item)
 
   return {

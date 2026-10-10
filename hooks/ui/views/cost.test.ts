@@ -63,6 +63,7 @@ test('a held order keeps the workers in place as their tokens grow', () => {
   expect(rowKeys(drawn)).toEqual(
     [plan, verify, explore, review, reviewed].map(item => `row:${item.id}`),
   )
+  expect(lines(gridOf(drawn).grid)[2]).toBe('by worker · sorted by tokens when opened')
 })
 
 test('load notes name a long tool call and an agent with no step for a while', () => {

@@ -106,6 +106,7 @@ export const costView: View = (model, size, sel): Drawn => {
   const barWidth = room >= 4 ? room : 0
   const max = Math.max(1, ...list.map(tokenSum))
   const session = model.usd === undefined ? 'session cost n/a' : `≈ ${usd(model.usd)} session`
+  const sortLabel = sel.order?.cost ? 'tokens when opened' : 'tokens'
   const head: Line[] = [
     {
       bg: C.panel,
@@ -123,7 +124,7 @@ export const costView: View = (model, size, sel): Drawn => {
       ],
     },
     { spans: [[` session ${model.sessionId ?? 'n/a'}`, dim]] },
-    { spans: [['by worker · sorted by tokens', dim]] },
+    { spans: [[`by worker · sorted by ${sortLabel}`, dim]] },
     {
       spans: [
         [

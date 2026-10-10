@@ -242,6 +242,32 @@ test('a cron job lists its next runs with a countdown', () => {
   expect(shown).toContain('  11:15  in 23:00')
 })
 
+test('an ended cron has no forecast and keeps an inert delete slot', () => {
+  for (const status of ['stopped', 'done'] as const) {
+    const item = {
+      ...babysit,
+      status,
+      endedAt: NOW,
+      detail: { ...babysit.detail, isDeleted: status === 'stopped' },
+    } as RabeItem
+    const m = model([item])
+    const drawn = detailView(m, TERMINAL, { ...NO_SELECTION, open: item.id, isArmed: true })
+    const shown = lines(gridOf(drawn).grid).join('\n')
+    expect(shown).not.toContain('next runs')
+    expect(shown).not.toContain('  in ')
+    expect(shown).toContain(status === 'stopped' ? 'deleted' : 'done')
+    expect(drawn.buttons.find(button => button.key === `delete:${item.id}`)).toEqual({
+      key: `delete:${item.id}`,
+      label: 'd: delete job',
+      action: { type: 'none' },
+      dim: true,
+    })
+    expect(lines(gridOf(itemsView(m, TERMINAL, { ...NO_SELECTION })).grid).join('\n')).toContain(
+      status === 'stopped' ? 'deleted' : 'done',
+    )
+  }
+})
+
 test('a wakeup shows the one time it fires', () => {
   const wake = {
     ...babysit,

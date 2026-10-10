@@ -27,7 +27,7 @@ test('the timeline heads with the window, a color legend and a time axis', () =>
   const { grid } = gridOf(timelineView(MODEL, SIZE, NO_SELECTION))
   const shown = lines(grid)
   expect(shown[0]).toBe('WHEN DID THINGS RUN?  this session, last 40 min')
-  expect(shown[1]).toBe(' shell   claude   codex   monitor   cron run   done   failed')
+  expect(shown[1]).toBe(' shell   claude   codex   monitor   scheduled run   done   failed')
   expect(cell(grid, 1, 1)).toEqual(['s'.codePointAt(0), CHIP.shell.fg, CHIP.shell.bg])
   expect(cell(grid, 9, 1)).toEqual(['c'.codePointAt(0), CHIP.agent.fg, CHIP.agent.bg])
   expect(shown[3]).toMatch(/^ +10:20 +10:30 +10:40 +now$/)
@@ -76,7 +76,7 @@ test('a long name is cut and keeps a space before its bar', () => {
   expect(shown[4]).toMatch(/^▌python3 -u -m http\.se… █+$/)
 })
 
-test('a cron job draws one tick per run since Rabe saw it', () => {
+test('a cron job draws schedule ticks even without observed runs', () => {
   const { grid } = gridOf(timelineView(MODEL, SIZE, NO_SELECTION))
   const shown = lines(grid)
   const at = find(shown, babysit.title)

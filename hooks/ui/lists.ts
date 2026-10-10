@@ -41,6 +41,10 @@ export function glyph(item: RabeItem): string {
   return RUNNING_GLYPH[item.kind]
 }
 
+export function statusLabel(item: RabeItem): string {
+  return item.kind === 'cron' && item.detail.isDeleted ? 'deleted' : item.status
+}
+
 export function nextRun(item: RabeItem, now: number): number | undefined {
   if (item.kind !== 'cron') return undefined
   if (item.detail.scheduledFor !== undefined) return item.detail.scheduledFor
@@ -666,7 +670,10 @@ export function previousOf(
   sessionId?: string,
 ): RabePrevious {
   const counts: RabePrevious['counts'] = {}
-  for (const item of items) counts[item.kind] = (counts[item.kind] ?? 0) + 1
+  for (const item of items) {
+    if (item.kind === 'cron' && item.status !== 'running') continue
+    counts[item.kind] = (counts[item.kind] ?? 0) + 1
+  }
 
   return {
     ...(sessionId && { sessionId }),

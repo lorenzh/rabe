@@ -137,7 +137,9 @@ function topLines(model: Model, item: RabeItem, columns: number): Line[] {
     case 'monitor':
       return [label('lines received · newest last')]
     case 'cron':
-      return [label(item.detail.scheduledFor === undefined ? 'next runs' : 'fires')]
+      return item.status === 'running'
+        ? [label(item.detail.scheduledFor === undefined ? 'next runs' : 'fires')]
+        : []
   }
 }
 
@@ -250,7 +252,7 @@ function outputLines(model: Model, item: RabeItem): Line[] {
 }
 
 function cronLines(model: Model, item: RabeItem): Line[] {
-  if (item.kind !== 'cron') return []
+  if (item.kind !== 'cron' || item.status !== 'running') return []
   const { schedule, scheduledFor } = item.detail
   const runs =
     scheduledFor !== undefined ? [scheduledFor] : schedule ? nextRuns(schedule, model.now, 5) : []
@@ -355,20 +357,21 @@ function detailButtons(
       action: { type: 'open', id: forwarder.id },
     })
   }
-  if (item.kind === 'cron' && item.detail.scheduledFor === undefined) {
-    buttons.push({
-      key: `delete:${item.id}`,
-      label: 'd: delete job',
-      hotkey: 'd',
-      action: { type: 'delete', id: item.id },
-    })
-  }
-  // Message and stop keep their slots once the item ended: dim, no hotkey.
+  // Ended controls keep their slots once the item ended: dim, no hotkey.
   // Each key names the item it acts on (see `listButtons` in items.ts).
   const slot = (key: string, label: string, action: Action | undefined): ViewButton =>
     action
       ? { key, label, hotkey: label.slice(0, 1), action }
       : { key, label, action: NONE, dim: true }
+  if (item.kind === 'cron' && item.detail.scheduledFor === undefined) {
+    buttons.push(
+      slot(
+        `delete:${item.id}`,
+        'd: delete job',
+        item.status === 'running' ? { type: 'delete', id: item.id } : undefined,
+      ),
+    )
+  }
   if (item.kind === 'agent' && hasInput && !isWorkflowAgent(item)) {
     const isOn = item.status === 'running'
     buttons.push(

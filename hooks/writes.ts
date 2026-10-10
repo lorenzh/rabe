@@ -545,7 +545,7 @@ function simple(segment: Tok[]): Simple | 'stop' {
   }
 }
 
-type Run = { dir?: string; isLost: boolean; home?: string; pending: ShellWrite[] }
+type Run = { dir?: string; isLost: boolean; hasCd: boolean; home?: string; pending: ShellWrite[] }
 
 function place(run: Run, text: string): string | undefined {
   if (text.startsWith('/')) return normalize(text)
@@ -561,14 +561,19 @@ function put(run: Run, word: Word | undefined, isDeleted?: boolean) {
 }
 
 // One pipeline; false when the rest of the line may not run as written.
-function pipeline(run: Run, segments: Tok[][], isSure: boolean): boolean {
+function pipeline(run: Run, segments: Tok[][], isSure: boolean, isSkipped = false): boolean {
   const commands = segments.map(simple)
   if (commands.some(one => one === 'stop')) return false
   const isPiped = commands.length > 1
   for (const command of commands as Simple[]) {
+    if (isSkipped) {
+      if (!isPiped && ['cd', 'pushd', 'popd'].includes(command.name ?? '')) run.isLost = true
+      continue
+    }
     for (const word of command.writes) put(run, word)
     const { name, args } = command
     if (name === 'cd' && !isPiped) {
+      run.hasCd = true
       const target = args.length ? args[0] : run.home ? literal(run.home) : undefined
       const dir =
         args.length < 2 && target?.known && !target.text.startsWith('-') && place(run, target.text)
@@ -597,7 +602,7 @@ function parse(command: string, cwd?: string, home?: string): ShellWrite[] {
   const out = new Map<string, ShellWrite>()
   const toks = lex(command, home)
   if (!toks) return []
-  const run: Run = { dir: cwd, isLost: false, home, pending: [] }
+  const run: Run = { dir: cwd, isLost: false, hasCd: false, home, pending: [] }
   const commit = () => {
     for (const write of run.pending.splice(0)) {
       out.delete(write.path)
@@ -605,22 +610,35 @@ function parse(command: string, cwd?: string, home?: string): ShellWrite[] {
     }
   }
   let segments: Tok[][] = [[]]
+  let isSkipped = false
+  let needsCommand = false
   for (let k = 0; k <= toks.length; k++) {
     const tok = toks[k] ?? { op: '\n' }
     const op = 'op' in tok ? tok.op : undefined
     if (op === undefined || REDIRECTS.has(op)) {
       segments.at(-1)?.push(tok)
+      needsCommand = false
       continue
     }
+    if (op === '\n' && needsCommand) continue
     if (op === '|' || op === '|&') {
       segments.push([])
+      needsCommand = true
       continue
     }
     const isList = op === '&&' || op === ';' || op === '\n'
-    const goes = (isList || op === '||') && pipeline(run, segments, op === '&&')
+    const goes = (isList || op === '||') && pipeline(run, segments, op === '&&', isSkipped)
     segments = [[]]
-    if (goes && isList) {
-      if (op !== '&&') commit()
+    if (goes && (isList || op === '||')) {
+      needsCommand = op === '&&' || op === '||'
+      if (op === '||') {
+        isSkipped = true
+        if (run.hasCd) run.isLost = true
+      } else if (op !== '&&') {
+        commit()
+        isSkipped = false
+        run.hasCd = false
+      }
       continue
     }
     // A later `&` may put this whole list in the background.
