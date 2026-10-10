@@ -267,7 +267,7 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
     }
     case 'query':
       await $.state.set({ plugin: 'rabe', key: 'query' }, action.text)
-      return land($, landing(action, ''))
+      return action.isSubmit ? landView($, action, surface) : land($, landing(action, ''))
     case 'window': {
       const now = await $.clock.now()
       const { value = windowOf(baseHours, now) } = await $.state.get({

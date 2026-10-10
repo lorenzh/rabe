@@ -386,6 +386,26 @@ test('the search narrows the list on every surface', async ($, on) => {
   }
 })
 
+test('a submitted search stays visible after Enter and reopening; clearing it shows all rows', async ($, on) => {
+  const state = hold(on, ALL)
+  for (const surface of SURFACES) {
+    let ui: Mounted<typeof surface> = await $.ui.mount({ surface, ...PANE } as never)
+    await ui.input({ key: 'search', text: 'verify', kind: 'change' })
+    await ui.input({ key: 'search', text: 'verify', kind: 'submit' })
+    expect(state.query).toBe('verify')
+    expect((await ui.find({ type: 'Button', key: 'find' }))?.props.label).toBe('s: search "verify"')
+    expect(await ui.find({ type: 'Button', key: `row:${dev.id}` })).toBeUndefined()
+    await ui.unmount()
+    ui = await $.ui.mount({ surface, ...PANE } as never)
+    expect((await ui.find({ type: 'Input', key: 'search' }))?.props.value).toBe('verify')
+    expect((await ui.find({ type: 'Button', key: 'find' }))?.props.label).toBe('s: search "verify"')
+    await ui.input({ key: 'search', text: '', kind: 'submit' })
+    expect(state.query).toBe('')
+    expect(await ui.find({ type: 'Button', key: `row:${dev.id}` })).toBeDefined()
+    await ui.unmount()
+  }
+})
+
 test('a group header folds on every surface', async ($, on) => {
   hold(on, ALL)
   for (const surface of SURFACES) {

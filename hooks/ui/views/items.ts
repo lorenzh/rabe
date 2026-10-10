@@ -200,6 +200,7 @@ function listButtons(
   size: Size,
   selected: RabeItem | undefined,
   shown: RabeItem[][],
+  query: string,
 ) {
   const run =
     selected?.kind === 'workflow'
@@ -225,7 +226,7 @@ function listButtons(
     ? [
         {
           key: 'find',
-          label: isSplit(size) ? 's: search' : 's',
+          label: query ? `s: search "${query}"` : isSplit(size) ? 's: search' : 's',
           hotkey: 's',
           action: { type: 'focus', key: 'search' },
         },
@@ -262,7 +263,7 @@ const search = (sel: Selection): ViewInput => ({
   submitLabel: 'filter',
   value: sel.query,
   isLive: true,
-  action: text => ({ type: 'query', text }),
+  action: (text, kind) => ({ type: 'query', text, ...(kind === 'submit' && { isSubmit: true }) }),
 })
 
 // The Items tab: the grouped list, and beside it (split) or under it (one
@@ -277,12 +278,15 @@ export const itemsView: View = (model, size, sel): Drawn => {
     inputs,
   })
   if (kept(model.items, model.removed).length === 0) {
-    return note(' Nothing runs in the background.', listButtons(model, size, undefined, []))
+    return note(
+      ' Nothing runs in the background.',
+      listButtons(model, size, undefined, [], sel.query),
+    )
   }
   const split = isSplit(size)
   const { lines, order, shown } = listLines(model, sel, split ? size.rows : size.rows - 2)
   const selected = selectedItem(order, sel)
-  const buttons = listButtons(model, size, selected, shown)
+  const buttons = listButtons(model, size, selected, shown, sel.query)
   if (lines.length === 0) return note(` No item matches "${sel.query}".`, buttons)
   if (selected && split) {
     const listWidth = Math.min(48, Math.floor(size.columns * 0.42))

@@ -83,7 +83,7 @@ export type Action =
   | { type: 'tab'; tab: RabeTab }
   | { type: 'open'; id: string }
   | { type: 'fold'; group: string }
-  | { type: 'query'; text: string }
+  | { type: 'query'; text: string; isSubmit?: true }
   // Widen the Timeline's window (`widen` in views/timeline.ts).
   | { type: 'window' }
   | { type: 'focus'; key: string }
@@ -122,7 +122,7 @@ export type ViewInput = {
   value?: string
   // Also sent on each change, not only on Enter.
   isLive?: boolean
-  action: (text: string) => Action
+  action: (text: string, kind?: 'change' | 'submit') => Action
 }
 
 // A plain Button inside a line: the one pressable thing of a selectable row
@@ -214,7 +214,7 @@ export function stepRow(keys: string[], selected: string, by: number): string | 
 
 // Where the focus ring goes, key by key, after `action` changed the view
 // (the item `open` was open): the active tab's Button, then the element the
-// change leads to. The search keeps the ring in its Input, which never moves.
+// change leads to. Search edits keep its Input focused; Enter returns to rows.
 export function landing(action: Action, open: string, drawn?: Drawn): string[] {
   const target =
     drawn?.buttons.find(one => one.autoFocus)?.key ??
@@ -231,7 +231,7 @@ export function landing(action: Action, open: string, drawn?: Drawn): string[] {
     case 'fold':
       return ['tab-items', `group-${action.group}`]
     case 'query':
-      return ['search']
+      return action.isSubmit ? ['tab-items', target ?? 'find'] : ['search']
     case 'window':
       return ['tab-timeline', 'window']
     default:

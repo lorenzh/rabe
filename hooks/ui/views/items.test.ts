@@ -17,7 +17,16 @@ import {
   verify,
 } from '../fixtures'
 import { grouped, orderOf } from '../lists'
-import { controlRows, type Drawn, isPress, NO_SELECTION, NONE, rowKeys, type Size } from '../view'
+import {
+  controlRows,
+  type Drawn,
+  isPress,
+  landing,
+  NO_SELECTION,
+  NONE,
+  rowKeys,
+  type Size,
+} from '../view'
 import { itemsView } from './items'
 import { fallbackOf, isLiveRow, paneView } from './pane'
 
@@ -28,6 +37,32 @@ const model = { items: ALL, turns: {}, lines: {}, now: NOW }
 
 const at = (shown: string[], y: number, text: string) => shown[y]?.indexOf(text) ?? -1
 const keys = (buttons: { key: string; label: string }[]) => buttons.map(one => one.label)
+
+test('Enter in search returns to the filtered row while changes keep the field focused', () => {
+  const sel = { ...NO_SELECTION, query: 'verify', selected: explore.id, isFocused: true }
+  for (const size of [NARROW, WIDE, DESKTOP]) {
+    const drawn = paneView(model, size, sel)
+    const input = drawn.inputs?.[0]
+    expect(input).toBeDefined()
+    const change = input?.action('verify', 'change')
+    const submit = input?.action('verify', 'submit')
+    expect(change).toEqual({ type: 'query', text: 'verify' })
+    expect(submit).toEqual({ type: 'query', text: 'verify', isSubmit: true })
+    if (!change || !submit) return
+    expect(landing(change, '', drawn)).toEqual(['search'])
+    expect(landing(submit, '', drawn)).toEqual(['tab-items', `row:${explore.id}`])
+    expect(landing(submit, '', paneView(model, size, { ...sel, selected: '' }))).toEqual([
+      'tab-items',
+      `row:${verify.id}`,
+    ])
+    expect(drawn.buttons.find(one => one.key === 'find')?.label).toBe('s: search "verify"')
+    const empty = paneView(model, size, { ...sel, query: 'no such item' })
+    expect(landing({ type: 'query', text: 'no such item', isSubmit: true }, '', empty)).toEqual([
+      'tab-items',
+      'find',
+    ])
+  }
+})
 
 test('at 90 columns and more the list and the selected item sit side by side', () => {
   const { grid } = gridOf(itemsView(model, WIDE, NO_SELECTION))

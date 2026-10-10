@@ -56,7 +56,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | Tab / Shift+Tab | Move the focus through rows, tabs and buttons |
 | `b` | Go back to the list |
 | `1` to `4` | Switch tab and focus its marked row. An empty tab keeps the focus on its label |
-| `s` | Search |
+| `s` | Focus search. Enter returns to the marked row |
 | `x` | Stop the selected item |
 | `g` | Stop the group the selected row is in (the rows the search shows), or the workflow run of the selected run or workflow agent |
 | `r` | Remove the selected row once it is done, failed or stopped |
@@ -78,6 +78,8 @@ An opened item keeps its recorded turns, steps or output lines in its detail. Us
 Agent answers keep up to 16,000 characters each. Longer answers end with `…`. The transcript keeps the original answer. Markdown stays plain text. Wrapped bullet and numbered lists keep their markers beside the start of a long path. Long tool summaries end with `…`. Answers already shortened by an older version stay shortened.
 
 A successful copy shows the text on one line in its toast. The clipboard keeps the original line breaks and spaces.
+
+The search button shows the active query. The filter stays visible after Enter and after reopening the pane. To clear it, submit an empty search. Stop group and remove ended act only on the filtered rows.
 
 With the mouse, click a row once to select it and again to open it. Click a tab to switch to it, a group name to fold the group, a button to press it, or a row on the other tabs to open it. The wheel scrolls the pane. A click does not move the focus, so Enter still opens the row that has the focus. A click also does not give the pane the keys: `ctrl+x tab` does. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
 
