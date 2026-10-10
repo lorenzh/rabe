@@ -140,7 +140,7 @@ test('a row gone while the pane is open keeps its slot until /rabe opens it anew
   hold(on, items)
   on('ui.open', async () => ({ value: { isPlaced: true as const } }))
   const draw = async () => {
-    const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
     const shown = await screen(ui)
     const slot = await ui.find({ type: 'Button', key: `row:${other.id}` })
     await ui.unmount()
@@ -1264,6 +1264,56 @@ test('Enter after a click on another row opens the focused row; a second click o
   expect([state.selected, state.open]).toEqual([ci.id, ci.id])
   await ui.unmount()
 })
+
+test(
+  'stale press and input handlers are dropped after a redraw without losing pane keys',
+  {
+    plugins: [
+      {
+        name: 'stale-handle',
+        tier: 'append',
+        register(on) {
+          on('ui.press', { requestId: 'rabe' }, async ($, e, next) => {
+            if (e.element !== 'row:shell:bg_2') return next(e)
+            await $.store.get(`gate:${e.element}`)
+            return next(e)
+          })
+          on('ui.input', { requestId: 'rabe' }, async ($, e, next) => {
+            if (e.element !== 'search') return next(e)
+            await $.store.get(`gate:${e.element}`)
+            return next(e)
+          })
+        },
+      },
+    ],
+  },
+  async ($, on) => {
+    const state = hold(on, ALL, { selected: dev.id })
+    const stopped = stops(on)
+    const gated = gates(on)
+    await arm($, `row:${dev.id}`)
+    const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+
+    const press = ui.press({ key: `row:${dev.id}` })
+    const releasePress = await gated(`row:${dev.id}`)
+    dev.title = 'bun run dev finished'
+    await ui.redraw()
+    releasePress()
+    await expect(press).resolves.toBeDefined()
+
+    const input = ui.input({ key: 'search', text: 'changed', kind: 'change' })
+    const releaseInput = await gated('search')
+    dev.title = 'bun run dev'
+    await ui.redraw()
+    releaseInput()
+    await expect(input).resolves.toBeDefined()
+    expect(state.open).toBeUndefined()
+    expect(state.query).toBeUndefined()
+    await ui.press({ key: 'stop' })
+    expect(stopped).toEqual(['bg_2'])
+    await ui.unmount()
+  },
+)
 
 // GPT review round 11: a plugin beneath Rabe holds each press and Input event
 // open after its closure ran. A test plugin shares no memory with the test, so
