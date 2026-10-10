@@ -101,6 +101,17 @@ export function agentTranscript(path: string, agentId: string): string | undefin
   return `${path.slice(0, -'.jsonl'.length)}/subagents/agent-${agentId}.jsonl`
 }
 
+function workflowTranscript(
+  path: string | undefined,
+  agentId: string,
+  runId: string,
+): string | undefined {
+  const generic = `/subagents/agent-${agentId}.jsonl`
+  return path?.endsWith(generic)
+    ? `${path.slice(0, -generic.length)}/subagents/workflows/${runId}/agent-${agentId}.jsonl`
+    : path
+}
+
 // The file an Edit or Write changed: the engine ran it (a result, no error) and
 // did not only stage it for review. The path comes from the result when it has one.
 export function changedFile(
@@ -434,11 +445,13 @@ async function refresh($: EngineInterface): Promise<void> {
   })
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   for (const item of items) {
+    if (item.kind !== 'agent') continue
+    const workflow = items.find(parent => parent.id === item.parentId && parent.kind === 'workflow')
     if (
-      item.kind === 'agent' &&
-      (item.status === 'running' ||
-        (item.detail.workflowPhase === undefined &&
-          items.some(parent => parent.id === item.parentId && parent.kind === 'workflow')))
+      item.status === 'running' ||
+      (workflow?.kind === 'workflow' &&
+        workflow.detail.phases?.length &&
+        item.detail.workflowPhase === undefined)
     )
       await readMeta($, item.id)
   }
@@ -494,6 +507,11 @@ export function agents(on: On, file: string): void {
     const now = await $.clock.now()
     const runId = e.workflow?.runId
     const parent = e.parentAgentId ? itemId('agent', e.parentAgentId) : undefined
+    const id = itemId('agent', agentId)
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const transcriptPath = runId
+      ? workflowTranscript(asAgent(items, id)?.detail.transcriptPath, agentId, runId)
+      : undefined
     await write($, items =>
       addItem(
         items,
@@ -506,6 +524,7 @@ export function agents(on: On, file: string): void {
           parentId: runId ? itemId('workflow', runId) : parent,
           detail: {
             agentId,
+            ...(transcriptPath && { transcriptPath }),
             type: e.subagentType,
             model: result.model,
             description: e.description,
