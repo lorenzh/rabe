@@ -330,6 +330,32 @@ test('stop calls TaskStop with the task id on every surface', async ($, on) => {
   expect(stopped).toEqual(['bg_2', 'bg_2'])
 })
 
+test('a pending stop does not hold row arrows behind it', async ($, on) => {
+  hold(on, ALL, { selected: dev.id })
+  let begin!: () => void
+  let finish!: () => void
+  const started = new Promise<void>(resolve => {
+    begin = resolve
+  })
+  const pending = new Promise<void>(resolve => {
+    finish = resolve
+  })
+  on('tool.call', async (_$, e, next) => {
+    if (e.tool !== 'TaskStop') return next(e)
+    begin()
+    await pending
+    return { result: {}, text: 'stopped' }
+  })
+  await arm($, `row:${dev.id}`)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  const stop = ui.press({ key: 'stop' })
+  await started
+  await $.ui.scroll({ ...ARROW, by: 1 })
+  finish()
+  await stop
+  await ui.unmount()
+})
+
 test('a long list draws every row, and the selected row takes the focus', async ($, on) => {
   const many = Array.from(
     { length: 350 },
@@ -1309,10 +1335,8 @@ for (const [name, element, wrote] of OVERLAPS) {
           [goFold, fold],
           [goOther, other],
         ] as const
-        for (const [go, done] of order === 'first' ? runs : [...runs].reverse()) {
-          go()
-          await done
-        }
+        for (const [go] of order === 'first' ? runs : [...runs].reverse()) go()
+        await Promise.all(runs.map(([, done]) => done))
         expect(state).toMatchObject({ folded: ['shells'], ...wrote })
         await ui.unmount()
       },
