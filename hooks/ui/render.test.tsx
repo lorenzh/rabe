@@ -8,6 +8,7 @@ import { type Held, hold, render, shifts, type Ui } from './render'
 import {
   type Action,
   arm,
+  controlRows,
   DISARMED,
   type Drawn,
   isPress,
@@ -158,6 +159,30 @@ const agentOf = (id: string, extra: Partial<RabeItemOf<'agent'>['detail']> = {})
     title: `agent ${id}`,
     detail: { agentId: id, cwd: '/repo', ...extra },
   }) as RabeItem
+
+test('owned controls fit a narrow toolbar and keep visible labels when dim', () => {
+  const size = { ...SIZE, columns: 40 }
+  const sel = { ...OPEN, tab: 'cost' as const }
+  const first = draw(model([]), size, sel)
+  expect(controlRows(paneView(model([]), size, sel), size)).toBe(0)
+  const later = draw({ ...model([]), sessionId: 'new-session' }, size, sel, first.held)
+  expect(later.keys.slice(0, first.keys.length)).toEqual(first.keys)
+  expect(later.keys.some(key => key.startsWith('inert-'))).toBe(false)
+  expect(later.tree.find(one => one.props.key === 'resume:new-session')?.props).toMatchObject({
+    label: 'c: copy resume',
+    hotkey: 'c',
+  })
+  const items = draw(model([dev]), size, { ...OPEN, selected: dev.id, isArmed: false })
+  expect(items.tree.find(one => one.props.key === 'stop')?.props).toMatchObject({
+    label: 'x: stop',
+    dimColor: true,
+  })
+  const cron = draw(model([babysit]), size, { ...OPEN, open: babysit.id, isArmed: false })
+  expect(cron.tree.find(one => one.props.key === `delete:${babysit.id}`)?.props).toMatchObject({
+    label: 'd: delete job',
+    dimColor: true,
+  })
+})
 
 test('rows found after the open do not move the controls', () => {
   const items = [shell('a')]
@@ -698,4 +723,49 @@ test('walking the list keeps exactly one x and one g', () => {
   expect(last.keys.filter(key => key === 'stop-group')).toHaveLength(1)
   expect(last.keys.filter(key => key === 'remove')).toHaveLength(1)
   expect(last.tree.filter(one => String(one.props.label).startsWith('x:'))).toHaveLength(1)
+})
+
+test('no view has a focusable control without a visible label, including held slots', () => {
+  for (const size of [
+    SIZE,
+    { ...SIZE, columns: 80, hasInput: false, surface: 'desktop' as const },
+  ]) {
+    let held: Held[] | undefined
+    for (const selection of [
+      { ...NO_SELECTION },
+      ...ALL.map(item => ({ ...NO_SELECTION, open: item.id })),
+      { ...NO_SELECTION, tab: 'cost' as const },
+      { ...NO_SELECTION, tab: 'effects' as const },
+      { ...NO_SELECTION, tab: 'timeline' as const },
+      { ...NO_SELECTION, isArmed: true, isListArmed: true, selected: dev.id },
+    ]) {
+      const drawn = paneView(model(ALL), size, selection)
+      const next = hold(layout(drawn), held, seatsRows(selection))
+      if (held)
+        expect(next.held.slice(0, held.length).map(one => one.key)).toEqual(
+          held.map(one => one.key),
+        )
+      const presses = next.list.flatMap(piece =>
+        'button' in piece ? [piece.button] : 'spans' in piece ? piece.spans.filter(isPress) : [],
+      )
+      for (const hotkey of ['x', 'g', 'r', 'a', 'd', 'm', 's', 'c', 'b', 'f', 'w']) {
+        const bound = presses.filter(one => one.hotkey === hotkey)
+        expect(bound.length).toBeLessThanOrEqual(1)
+        for (const one of drawn.buttons)
+          if (one.dim && one.label.startsWith(`${hotkey}:`)) {
+            expect(one.hotkey).toBe(hotkey)
+            expect(one.action.type).toBe('none')
+          }
+      }
+      const rendered = elements(render(UI, size.surface, next.list, () => {}))
+      for (const one of rendered) {
+        expect(String(one.props.label ?? '').trim().length).toBeGreaterThan(0)
+        expect(String(one.props.key).startsWith('inert-')).toBe(false)
+      }
+      expect(drawn.buttons.filter(one => one.autoFocus).map(one => one.key)).toEqual(
+        selection.open ? ['back'] : [],
+      )
+      held = next.held
+    }
+  }
 })

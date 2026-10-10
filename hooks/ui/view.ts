@@ -83,7 +83,7 @@ export type Action =
   | { type: 'tab'; tab: RabeTab }
   | { type: 'open'; id: string }
   | { type: 'fold'; group: string }
-  | { type: 'query'; text: string }
+  | { type: 'query'; text: string; isSubmit?: true }
   // Widen the Timeline's window (`widen` in views/timeline.ts).
   | { type: 'window' }
   | { type: 'focus'; key: string }
@@ -100,10 +100,10 @@ export type Action =
 // What a control that is not available now does: nothing. It keeps its slot.
 export const NONE: Action = { type: 'none' }
 
-// A control of the toolbar, drawn `[ label ]`. The label carries the key
+// A toolbar control, drawn `[ label ]`. The label carries the key
 // ("x: stop"): the engine does not draw hotkeys. Hotkeys are one digit or one
 // lowercase letter. A control that is not available now is `dim` with the
-// action `NONE` and no hotkey, so it keeps its place.
+// action `NONE`; the pane keeps its hotkey bound and its place.
 export type ViewButton = {
   key: string
   label: string
@@ -122,7 +122,7 @@ export type ViewInput = {
   value?: string
   // Also sent on each change, not only on Enter.
   isLive?: boolean
-  action: (text: string) => Action
+  action: (text: string, kind?: 'change' | 'submit') => Action
 }
 
 // A plain Button inside a line: the one pressable thing of a selectable row
@@ -214,11 +214,16 @@ export function stepRow(keys: string[], selected: string, by: number): string | 
 
 // Where the focus ring goes, key by key, after `action` changed the view
 // (the item `open` was open): the active tab's Button, then the element the
-// change leads to. The search keeps the ring in its Input, which never moves.
-export function landing(action: Action, open: string): string[] {
+// change leads to. Search edits keep its Input focused; Enter returns to rows.
+export function landing(action: Action, open: string, drawn?: Drawn): string[] {
+  const target =
+    drawn?.buttons.find(one => one.autoFocus)?.key ??
+    drawn?.nodes
+      .flatMap(node => ('spans' in node ? node.spans.filter(isPress) : []))
+      .find(one => one.autoFocus)?.key
   switch (action.type) {
     case 'tab':
-      return [`tab-${action.tab}`]
+      return [`tab-${action.tab}`, ...(target ? [target] : [])]
     case 'open': {
       const next = action.id ? 'back' : open && `row:${open}`
       return ['tab-items', ...(next ? [next] : [])]
@@ -226,7 +231,7 @@ export function landing(action: Action, open: string): string[] {
     case 'fold':
       return ['tab-items', `group-${action.group}`]
     case 'query':
-      return ['search']
+      return action.isSubmit ? ['tab-items', target ?? 'find'] : ['search']
     case 'window':
       return ['tab-timeline', 'window']
     default:

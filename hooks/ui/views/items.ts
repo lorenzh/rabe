@@ -31,7 +31,7 @@ import {
   type ViewInput,
 } from '../view'
 import { detailLines } from './detail'
-import { beside, fitLine, focusOn, itemLine, plain } from './lines'
+import { beside, cut, fitLine, focusOn, itemLine, plain } from './lines'
 
 const GROUP_COLOR: Record<Group, number> = {
   failed: C.red,
@@ -191,7 +191,7 @@ function summaryLine(model: Model, item: RabeItem): Line {
 // g stops the run of a workflow or its agent, else the rows of the group the
 // selected row is shown in (`shown`). r removes the selected row once it
 // ended, a every ended row shown. Below the split, s keeps only its letter.
-// x, g, r and a keep their slots while they cannot act: dim, without a hotkey.
+// x, g, r and a keep their slots while they cannot act: dim, their hotkey bound to nothing.
 // x, g and r each keep one key (`stop`, `stop-group`, `remove`) and act on the
 // selection, so the person walks the list without leaving slots; a target that
 // changes without the person disarms them (see arming in docs/architecture.md).
@@ -200,6 +200,7 @@ function listButtons(
   size: Size,
   selected: RabeItem | undefined,
   shown: RabeItem[][],
+  query: string,
 ) {
   const run =
     selected?.kind === 'workflow'
@@ -225,7 +226,11 @@ function listButtons(
     ? [
         {
           key: 'find',
-          label: isSplit(size) ? 's: search' : 's',
+          label: query
+            ? `s: search "${cut(query, Math.min(16, Math.max(1, size.columns - 17)))}"`
+            : isSplit(size)
+              ? 's: search'
+              : 's',
           hotkey: 's',
           action: { type: 'focus', key: 'search' },
         },
@@ -262,7 +267,7 @@ const search = (sel: Selection): ViewInput => ({
   submitLabel: 'filter',
   value: sel.query,
   isLive: true,
-  action: text => ({ type: 'query', text }),
+  action: (text, kind) => ({ type: 'query', text, ...(kind === 'submit' && { isSubmit: true }) }),
 })
 
 // The Items tab: the grouped list, and beside it (split) or under it (one
@@ -277,12 +282,15 @@ export const itemsView: View = (model, size, sel): Drawn => {
     inputs,
   })
   if (kept(model.items, model.removed).length === 0) {
-    return note(' Nothing runs in the background.', listButtons(model, size, undefined, []))
+    return note(
+      ' Nothing runs in the background.',
+      listButtons(model, size, undefined, [], sel.query),
+    )
   }
   const split = isSplit(size)
   const { lines, order, shown } = listLines(model, sel, split ? size.rows : size.rows - 2)
   const selected = selectedItem(order, sel)
-  const buttons = listButtons(model, size, selected, shown)
+  const buttons = listButtons(model, size, selected, shown, sel.query)
   if (lines.length === 0) return note(` No item matches "${sel.query}".`, buttons)
   if (selected && split) {
     const listWidth = Math.min(48, Math.floor(size.columns * 0.42))

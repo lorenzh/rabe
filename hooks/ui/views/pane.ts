@@ -52,7 +52,9 @@ function hint(sel: Selection, isOpen: boolean, inner: Drawn, rows: number): stri
   }
   const move = hasRows(inner.nodes) ? ['↑↓ move', 'enter open'] : []
   const keys = inner.buttons.flatMap(one =>
-    ['x', 'g', 'r', 'a'].includes(one.hotkey ?? '') ? [one.label.replace(': ', ' ')] : [],
+    !one.dim && ['x', 'g', 'r', 'a'].includes(one.hotkey ?? '')
+      ? [one.label.replace(': ', ' ')]
+      : [],
   )
 
   return [...move, ...keys, 'esc close'].join(' · ')
@@ -173,13 +175,21 @@ export function selectsOnPress(model: Model, sel: Selection, id: string, ring?: 
   return order.some(item => item.id === id) && selectedItem(order, sel)?.id !== id
 }
 
-// Stop, delete and remove drawn while the pane is disarmed: dim, no action,
-// no hotkey.
+// Stop, delete and remove stay bound while disarmed, with no action.
 const disarmed = (one: ViewButton): ViewButton => {
   if (!['stop', 'delete', 'remove', 'clear'].includes(one.action.type)) return one
-  const { hotkey: _, ...rest } = one
+  return { ...one, action: NONE, dim: true }
+}
 
-  return { ...rest, action: NONE, dim: true }
+// Dim controls keep only the hotkeys their view owns.
+function bind(drawn: Drawn): Drawn {
+  const hotkeys = ['x', 'g', 'r', 'a', 'd', 'm', 's', 'c', 'b', 'f', 'w']
+  const buttons = drawn.buttons.map(one =>
+    one.dim && one.action.type === 'none' && hotkeys.includes(one.label.slice(0, 1))
+      ? { ...one, hotkey: one.label.slice(0, 1) }
+      : one,
+  )
+  return { ...drawn, buttons }
 }
 
 export const paneView: View = (model, size, sel): Drawn => {
@@ -191,10 +201,10 @@ export const paneView: View = (model, size, sel): Drawn => {
     rows: Math.max(1, rows),
     ...(size.window && { window: { ...size.window, top: size.window.top - above } }),
   })
-  const first = body(model, room(size.rows - head.length - HINT, head.length), sel)
+  const first = bind(body(model, room(size.rows - head.length - HINT, head.length), sel))
   const tools = controlRows(first, size)
   const rows = size.rows - head.length - tools - HINT
-  const drawn = body(model, room(rows, head.length + tools), sel)
+  const drawn = bind(body(model, room(rows, head.length + tools), sel))
   const isInert = (one: ViewButton) =>
     !sel.isArmed || (!sel.isListArmed && LIST_KEYS.includes(one.key))
   const inner = {

@@ -281,7 +281,7 @@ export function render(
                   value={input.value}
                   submitLabel={input.submitLabel}
                   onInput={input.isLive ? (text, at) => act(input.action(text), at) : undefined}
-                  onSubmit={(text, at) => act(input.action(text), at)}
+                  onSubmit={(text, at) => act(input.action(text, at.kind), at)}
                 />,
               ]
             : []

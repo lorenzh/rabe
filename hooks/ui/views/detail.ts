@@ -399,7 +399,7 @@ function detailButtons(
       action: { type: 'open', id: forwarder.id },
     })
   }
-  // Ended controls keep their slots once the item ended: dim, no hotkey.
+  // Ended controls keep their dim slots; the pane binds their hotkeys to NONE.
   // Each key names the item it acts on (see `listButtons` in items.ts).
   const slot = (key: string, label: string, action: Action | undefined): ViewButton =>
     action

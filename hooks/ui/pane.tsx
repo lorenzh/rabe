@@ -188,6 +188,12 @@ async function land($: EngineInterface, keys: string[]): Promise<void> {
   for (const key of keys) if (!(await focusOn($, key))) return
 }
 
+async function landView($: EngineInterface, action: Action, surface: RenderSurface): Promise<void> {
+  const { model, selection } = await look($, true)
+  const drawn = paneView(model, { columns: 80, rows: 24, surface, hasInput: true }, selection)
+  return land($, landing(action, selection.open, drawn))
+}
+
 // A press on a live row of the Items list away from the ring selects it: a
 // click moves no ring, so the press is the person's choice of that row. The
 // ring's row and the selected row open.
@@ -235,7 +241,7 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
   switch (action.type) {
     case 'tab':
       await $.state.set({ plugin: 'rabe', key: 'tab' }, action.tab)
-      return land($, landing(action, ''))
+      return landView($, action, surface)
     case 'fold': {
       const { value: folded = [] } = await $.state.get({ plugin: 'rabe', key: 'folded' })
       const next = folded.includes(action.group)
@@ -261,7 +267,7 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
     }
     case 'query':
       await $.state.set({ plugin: 'rabe', key: 'query' }, action.text)
-      return land($, landing(action, ''))
+      return action.isSubmit ? landView($, action, surface) : land($, landing(action, ''))
     case 'window': {
       const now = await $.clock.now()
       const { value = windowOf(baseHours, now) } = await $.state.get({
@@ -306,8 +312,8 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
         .catch((error: unknown) => ({ isCopied: false as const, reason: String(error) }))
       $.ui.toast(
         result.isCopied
-          ? `Copied: ${action.text}`
-          : `Copy failed: ${result.reason}. Select it: ${action.text}`,
+          ? `Copied: ${action.text.replace(/\s+/g, ' ')}`
+          : `Copy failed: ${result.reason}. Select it: ${action.text}`.replace(/\s+/g, ' '),
       )
       return
     }
