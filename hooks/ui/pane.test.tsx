@@ -1344,6 +1344,28 @@ for (const [name, element, wrote] of OVERLAPS) {
   }
 }
 
+test(
+  'an arrow waits for a press held open beneath the pane',
+  { plugins: [gate] },
+  async ($, on) => {
+    hold(on, ALL, { selected: explore.id })
+    const gated = gates(on)
+    const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    const press = ui.press({ key: 'group-shells' })
+    const release = await gated('group-shells')
+    let moved = false
+    const scroll = $.ui.scroll({ ...ARROW, by: 1 }).then(() => {
+      moved = true
+    })
+    await ui.redraw()
+    expect(moved).toBe(false)
+    release()
+    await Promise.all([press, scroll])
+    expect(moved).toBe(true)
+    await ui.unmount()
+  },
+)
+
 // Issue #24: an item found after the open stands in its group, maybe above the
 // row that holds the focus ring. The ring keeps its index, so until Rabe puts
 // it back (the kit refuses Rabe's own $.ui.focus) or sees it land, Enter on a
