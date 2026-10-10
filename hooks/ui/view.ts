@@ -146,7 +146,8 @@ export const isPress = (part: Part): part is Press => !Array.isArray(part)
 
 // One row of the body: Text parts and at most one Press per row (a tab bar
 // holds one per tab), then a part aligned to the right end. `bg` fills the row.
-export type Line = { spans: Part[]; right?: Span[]; bg?: number }
+// `verbatim` counts the rows of native text whose whitespace must stay intact.
+export type Line = { spans: Part[]; right?: Span[]; bg?: number; verbatim?: number }
 
 // What a body holds: lines, and charts nobody presses (a Raster on the
 // terminal, text elsewhere).

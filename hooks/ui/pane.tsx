@@ -306,14 +306,19 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       return
     }
     case 'copy': {
-      // Over SSH the clipboard needs the terminal's OSC 52; the toast then shows the text to select.
+      // Over SSH the clipboard needs the terminal's OSC 52.
       const result = await $.ui
         .copy({ text: action.text, surface })
         .catch((error: unknown) => ({ isCopied: false as const, reason: String(error) }))
+      const flat = action.text.replace(/\s+/g, ' ')
       $.ui.toast(
         result.isCopied
-          ? `Copied: ${action.text.replace(/\s+/g, ' ')}`
-          : `Copy failed: ${result.reason}. Select it: ${action.text}`.replace(/\s+/g, ' '),
+          ? `Copied: ${flat}`
+          : `Copy failed: ${String(result.reason).replace(/\s+/g, ' ')}. ${
+              flat === action.text
+                ? `Select it: ${action.text}`
+                : 'Select the exact text in the opened detail. Scroll to see the full text.'
+            }`,
       )
       return
     }

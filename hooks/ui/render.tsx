@@ -180,7 +180,7 @@ export function render(
       if (action.type !== 'none') act(action, press)
     }
 
-  const part = (one: Part, hasScope: boolean) =>
+  const part = (one: Part, hasScope: boolean, verbatim = false) =>
     isPress(one) ? (
       <Button
         key={one.key}
@@ -193,7 +193,11 @@ export function render(
         onPress={run(one.action)}
       />
     ) : (
-      <Text color={color(one[1]?.fg)} backgroundColor={color(one[1]?.bg)} wrap="truncate">
+      <Text
+        color={color(one[1]?.fg)}
+        backgroundColor={color(one[1]?.bg)}
+        wrap={verbatim ? 'wrap' : 'truncate'}
+      >
         {one[0]}
       </Text>
     )
@@ -212,7 +216,8 @@ export function render(
       if (last && last.bg === bg) last.parts.push(one)
       else runs.push({ bg, parts: [one] })
     }
-    const draw = (parts: Part[]) => parts.map(one => part(one, scope !== undefined))
+    const draw = (parts: Part[]) =>
+      parts.map(one => part(one, scope !== undefined, !!line.verbatim))
 
     return (
       <Box

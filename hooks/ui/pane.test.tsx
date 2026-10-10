@@ -1376,26 +1376,29 @@ test('a removed workflow agent still counts in its run and the cost', async ($, 
   await band.unmount()
 })
 
-test('failed multiline copies flatten the fallback on every surface', async ($, on) => {
-  const command = 'echo ready\n\tsleep 1'
-  const shell = { ...dev, detail: { ...dev.detail, command } } as RabeItemOf<'shell'>
-  const state = hold(on, [shell], { open: shell.id })
-  const copies: string[] = []
-  on('ui.copy', async (_$, e) => {
-    copies.push(e.text)
-    return { value: { isCopied: false as const, reason: 'no-clipboard' as const } }
+for (const command of ['echo ready\n\tsleep 1', 'echo first\necho second', "printf '%s' 'a  b'"]) {
+  test(`failed copies keep exact text in the detail: ${JSON.stringify(command)}`, async ($, on) => {
+    const shell = { ...dev, detail: { ...dev.detail, command } } as RabeItemOf<'shell'>
+    const state = hold(on, [shell], { open: shell.id })
+    const copies: string[] = []
+    on('ui.copy', async (_$, e) => {
+      copies.push(e.text)
+      return { value: { isCopied: false as const, reason: 'no-clipboard' as const } }
+    })
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ surface, ...PANE } as never)
+      await ui.press({ key: `copy:${shell.id}` })
+      const shown = await screen(ui)
+      expect(shown).toContain(`command ${command}`)
+      await ui.unmount()
+    }
+    expect(copies).toEqual([command, command])
+    expect(state.toasts).toEqual([
+      'Copy failed: no-clipboard. Select the exact text in the opened detail. Scroll to see the full text.',
+      'Copy failed: no-clipboard. Select the exact text in the opened detail. Scroll to see the full text.',
+    ])
   })
-  for (const surface of SURFACES) {
-    const ui = await $.ui.mount({ surface, ...PANE } as never)
-    await ui.press({ key: `copy:${shell.id}` })
-    await ui.unmount()
-  }
-  expect(copies).toEqual([command, command])
-  expect(state.toasts).toEqual([
-    'Copy failed: no-clipboard. Select it: echo ready sleep 1',
-    'Copy failed: no-clipboard. Select it: echo ready sleep 1',
-  ])
-})
+}
 
 test('dim owned pane keys stay bound and inert without binding absent controls on every surface', async ($, on) => {
   const state = hold(on, ALL, { selected: dev.id })

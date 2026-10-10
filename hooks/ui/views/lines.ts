@@ -20,6 +20,7 @@ export const cut = (text: string, room: number) => {
 // where they run out, the right part at the end, padded between. The line's
 // background moves onto each part, so lines can be set side by side.
 export function fitLine(line: Line, columns: number): Line {
+  if (line.verbatim) return line
   const right = line.right ?? []
   const rightWidth = width(right)
   const room = Math.max(0, columns - (rightWidth ? rightWidth + 1 : 0))
@@ -110,7 +111,7 @@ export function itemLine(item: RabeItem, now: number, isSelected = false): Line 
 
 // An item's title, status word and fact lines, then an empty line. The long
 // fact is cut into lines of `columns` cells, so none of it is lost.
-export function headLines(model: Model, item: RabeItem, columns: number): Line[] {
+export function headLines(model: Model, item: RabeItem, columns: number, isFull = false): Line[] {
   const f = facts(item, model.now, model.items, model.cwd)
   const chars = [...safe(f.long ?? '')]
   const n = Math.max(1, columns)
@@ -126,7 +127,15 @@ export function headLines(model: Model, item: RabeItem, columns: number): Line[]
       ],
       right: [[f.status.slice(2), { fg: tone(item) }]],
     },
-    ...[...f.lines, ...long].map(line => ({ spans: [[line, { fg: C.dim }]] as Span[] })),
+    ...f.lines.map(value => ({
+      spans: [[value, { fg: C.dim }]] as Span[],
+      ...(isFull && {
+        verbatim: value
+          .split('\n')
+          .reduce((rows, line) => rows + Math.max(1, Math.ceil([...line].length / n)), 0),
+      }),
+    })),
+    ...long.map(line => ({ spans: [[line, { fg: C.dim }]] as Span[] })),
     { spans: [] },
   ]
 }

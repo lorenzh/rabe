@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import type { RabeItem } from '../../model'
+import type { RabeItem, RabeItemOf } from '../../model'
 import { cell, type Grid, lines } from '../cells/grid'
 import { C } from '../cells/palette'
 import {
@@ -44,6 +44,38 @@ function find(g: Grid, text: string): [x: number, y: number] {
 
 const fg = (g: Grid, at: [number, number]) => cell(g, at[0], at[1])[1]
 const bg = (g: Grid, at: [number, number]) => cell(g, at[0], at[1])[2]
+
+test('opened commands, prompts and ids keep all their text beyond the pane height and width', () => {
+  const value = `echo first\necho second\n${"printf '%s' 'a  b'".repeat(30)}`
+  const items: RabeItem[] = [
+    { ...dev, detail: { ...dev.detail, command: value } } as RabeItemOf<'shell'>,
+    { ...ci, detail: { ...ci.detail, command: value } } as RabeItemOf<'monitor'>,
+    { ...babysit, detail: { ...babysit.detail, prompt: value } } as RabeItemOf<'cron'>,
+    { ...explore, detail: { ...explore.detail, agentId: 'a'.repeat(500) } } as RabeItemOf<'agent'>,
+  ]
+  for (const surface of ['terminal', 'desktop'] as const) {
+    for (const item of items) {
+      const prefix =
+        item.kind === 'cron' ? 'prompt ' : item.kind === 'agent' ? 'agent ' : 'command '
+      const expected = prefix + (item.kind === 'agent' ? item.detail.agentId : value)
+      const drawn = paneView(
+        model([item]),
+        { ...TERMINAL, columns: 30, rows: 10, surface },
+        { ...NO_SELECTION, open: item.id, isFocused: true },
+      )
+      const node = drawn.nodes.find(
+        one => 'spans' in one && one.spans.some(part => !isPress(part) && part[0] === expected),
+      )
+      expect(node && 'spans' in node ? node.verbatim : undefined).toBeGreaterThan(10)
+      const hint = drawn.nodes.at(-1)
+      expect(
+        hint &&
+          'spans' in hint &&
+          hint.spans.some(part => !isPress(part) && part[0].includes('↑↓ scroll')),
+      ).toBe(true)
+    }
+  }
+})
 
 test('an opened agent keeps every turn in a 17-row inline pane at 100 terminal columns', () => {
   const agent = {
