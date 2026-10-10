@@ -75,7 +75,7 @@ The buttons under the tabs show the keys of the current tab. A key that cannot a
 
 An opened item keeps its recorded turns, steps or output lines in its detail. Use ↑↓, PageUp, PageDown or the wheel to scroll. Claude Code sets the pane's height. The split preview says how many older lines it hides. Press Enter to open the full detail.
 
-Agent answers keep their full text. Markdown stays plain text. A wrapped list keeps its marker beside the start of a long path. Answers already shortened by an older version stay shortened.
+Agent answers keep their full text. Markdown stays plain text. A wrapped list keeps its marker beside the start of a long path. Long tool summaries end with `…`. Answers already shortened by an older version stay shortened.
 
 With the mouse, click a row once to select it and again to open it. Click a tab to switch to it, a group name to fold the group, a button to press it, or a row on the other tabs to open it. The wheel scrolls the pane. A click does not move the focus, so Enter still opens the row that has the focus. A click also does not give the pane the keys: `ctrl+x tab` does. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
 

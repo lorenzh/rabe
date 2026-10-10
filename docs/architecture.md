@@ -169,7 +169,7 @@ type RabeToolUse = { name: string; summary?: string }   // 'Read', 'src/db.ts'
 type RabeTurn = { index: number; at: number; text: string; tools: RabeToolUse[] }
 ```
 
-`index` counts from 1 and keeps counting when old turns are dropped. `text` is the full visible answer from `TurnStepResult.answer`. The source never cuts it to a summary. The detail wraps it as plain text. A list marker stays with the first part of a long path. `summary` is the first of the tool's `file_path`, `command`, `pattern`, `path`, `url`, `query` or `description`, on one line of at most 80 characters; a `file_path` is kept whole, since the Effects tab tells files apart by it. Each item keeps its newest 30 turns. The turns of an item dropped from `rabe.items` go with it (see The write loop).
+`index` counts from 1 and keeps counting when old turns are dropped. `text` is the full visible answer from `TurnStepResult.answer`. The source never cuts it to a summary. The detail wraps it as plain text. A list marker stays with the first part of a long path. `summary` is the first of the tool's `file_path`, `command`, `pattern`, `path`, `url`, `query` or `description`, on one line of at most 80 characters. A longer summary ends with `…`. A `file_path` stays whole because the Effects tab tells files apart by it. Each item keeps its newest 30 turns. The turns of an item dropped from `rabe.items` go with it (see The write loop).
 
 ## The source contract
 

@@ -62,7 +62,7 @@ export function toolSummary(input: unknown): string | undefined {
   const line = String(fields[name]).split('\n')[0] ?? ''
 
   // Effects tells files apart by the whole path.
-  return name === 'file_path' ? line : line.slice(0, MAX_SUMMARY)
+  return name === 'file_path' ? line : clip(line, MAX_SUMMARY)
 }
 
 export function metaPatch(text: string): Partial<AgentItem['detail']> | undefined {
