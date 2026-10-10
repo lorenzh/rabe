@@ -29,6 +29,10 @@ const PANE = 'rabe'
 // when the pane opens.
 let baseHours = 4
 
+function toastText(text: string): string {
+  return text.replace(/\s+/g, ' ').replace(/[\p{Cc}\p{Cf}]/gu, '?')
+}
+
 // Esc may have closed the pane before the delayed focus call.
 async function refocus($: EngineInterface): Promise<void> {
   const pane = (await $.ui.panes()).find(one => one.id === PANE)
@@ -310,14 +314,12 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       const result = await $.ui
         .copy({ text: action.text, surface })
         .catch((error: unknown) => ({ isCopied: false as const, reason: String(error) }))
-      const preview = action.text.replace(/\s+/g, ' ')
-      const selectable = preview === action.text && !/[\p{Cc}]/u.test(action.text)
+      const preview = toastText(action.text)
+      const selectable = preview === action.text
       $.ui.toast(
         result.isCopied
           ? `Copied: ${preview}`
-          : selectable
-            ? `Copy failed: ${result.reason}. Select it: ${action.text}`.replace(/\s+/g, ' ')
-            : 'Copy failed: the clipboard cannot be reached.',
+          : `Copy failed: ${toastText(result.reason)}.${selectable ? ` Select it: ${action.text}` : ''}`,
       )
       return
     }

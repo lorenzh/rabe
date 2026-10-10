@@ -616,6 +616,79 @@ test('a multiline copy keeps the clipboard text and shows spaces in the success 
   ])
 })
 
+test('copy success toasts replace control and format characters and keep other Unicode', async ($, on) => {
+  const command =
+    'echo\u001b[31m\u0000\u007f\u0085\u009b\u200b\u202e\u2066\u{e0001}\n  日本/x 🚀 e\u0301'
+  const shell = { ...dev, detail: { ...dev.detail, command } } as RabeItemOf<'shell'>
+  const state = hold(on, [shell], { open: shell.id })
+  const copies: string[] = []
+  on('ui.copy', async (_$, e) => {
+    copies.push(e.text)
+    return { value: { isCopied: true as const } }
+  })
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    await ui.press({ key: `copy:${shell.id}` })
+    await ui.unmount()
+  }
+  expect(copies).toEqual([command, command])
+  expect(state.toasts).toEqual([
+    'Copied: echo?[31m???????? 日本/x 🚀 e\u0301',
+    'Copied: echo?[31m???????? 日本/x 🚀 e\u0301',
+  ])
+})
+
+for (const isCopied of [true, false] as const) {
+  test(`Unicode paths stay in ${isCopied ? 'success' : 'failure'} copy toasts on every surface`, async ($, on) => {
+    const command = '日本/x 🚀 e\u0301'
+    const shell = { ...dev, detail: { ...dev.detail, command } } as RabeItemOf<'shell'>
+    const state = hold(on, [shell], { open: shell.id })
+    const copies: string[] = []
+    on('ui.copy', async (_$, e) => {
+      copies.push(e.text)
+      return { value: { isCopied, reason: 'no-clipboard' as const } }
+    })
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ surface, ...PANE } as never)
+      await ui.press({ key: `copy:${shell.id}` })
+      await ui.unmount()
+    }
+    const toast = isCopied
+      ? `Copied: ${command}`
+      : `Copy failed: no-clipboard. Select it: ${command}`
+    expect(copies).toEqual([command, command])
+    expect(state.toasts).toEqual([toast, toast])
+  })
+}
+
+for (const reason of ['no-surface', 'no-clipboard', 'refused'] as const) {
+  test(`failed multiline copies show ${reason} on every surface`, async ($, on) => {
+    const command = 'echo first\necho second'
+    const shell = { ...dev, detail: { ...dev.detail, command } } as RabeItemOf<'shell'>
+    const state = hold(on, [shell], { open: shell.id })
+    on('ui.copy', async () => ({ value: { isCopied: false as const, reason } }))
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ surface, ...PANE } as never)
+      await ui.press({ key: `copy:${shell.id}` })
+      await ui.unmount()
+    }
+    expect(state.toasts).toEqual([`Copy failed: ${reason}.`, `Copy failed: ${reason}.`])
+  })
+}
+
+test('copy errors show their reason on every surface without throwing from the press', async ($, on) => {
+  const state = hold(on, [explore], { open: explore.id })
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    await ui.press({ key: `copy:${explore.id}` })
+    await ui.unmount()
+  }
+  expect(state.toasts).toEqual([
+    'Copy failed: HooksError: no implementation for ui.copy. Select it: a1',
+    'Copy failed: HooksError: no implementation for ui.copy. Select it: a1',
+  ])
+})
+
 test('a summary from an older Rabe or of another shape shows no session id', async ($, on) => {
   hold(on, ALL, { tab: 'timeline' })
   const store = session(on)
@@ -1399,6 +1472,10 @@ for (const command of [
   'echo\u001b[31mready',
   'echo\u007fready',
   'echo\u0085ready',
+  'echo\u200bready',
+  'echo\u202eready',
+  'echo\u2066ready',
+  'echo\u{e0001}ready',
 ]) {
   test(`failed copy of ${JSON.stringify(command)} shows only the failure on every surface`, async ($, on) => {
     const shell = { ...dev, detail: { ...dev.detail, command } } as RabeItemOf<'shell'>
@@ -1414,10 +1491,7 @@ for (const command of [
       await ui.unmount()
     }
     expect(copies).toEqual([command, command])
-    expect(state.toasts).toEqual([
-      'Copy failed: the clipboard cannot be reached.',
-      'Copy failed: the clipboard cannot be reached.',
-    ])
+    expect(state.toasts).toEqual(['Copy failed: no-clipboard.', 'Copy failed: no-clipboard.'])
   })
 }
 
