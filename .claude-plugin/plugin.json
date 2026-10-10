@@ -1,6 +1,6 @@
 {
   "name": "rabe",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Watch Claude Code's background work: subagents, Codex jobs, shells, monitors, cron jobs and workflows.",
   "author": {
     "name": "Lorenz Hilpert"

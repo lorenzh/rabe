@@ -4,6 +4,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-10-10
+
 ### Fixed
 
 - A short Timeline window shows its start time when no round clock label fits. ([#56](https://github.com/lorenzh/rabe/pull/56), fixes [#53](https://github.com/lorenzh/rabe/issues/53))
@@ -117,7 +119,8 @@ The first public version.
 
 - Workflow agents no longer offer stop and message, which Claude Code does not support for a single workflow agent; their detail offers stopping the run. ([#8](https://github.com/lorenzh/rabe/pull/8))
 
-[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/lorenzh/rabe/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/lorenzh/rabe/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/lorenzh/rabe/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/lorenzh/rabe/compare/v0.3.0...v0.4.0
