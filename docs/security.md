@@ -78,7 +78,7 @@ Rabe sends nothing anywhere. It does not call `$.http.fetch`, and it does not ru
 - No runtime dependencies: the mod imports only from `claude-code` and from this repository.
 - Dev dependencies have exact versions in `package.json` and are installed with `bun install --frozen-lockfile` from `bun.lock`.
 - GitHub Actions use full commit SHAs, `permissions: contents: read` unless a job needs more, and `persist-credentials: false` on checkout.
-- Dependabot (`.github/dependabot.yml`) proposes updates to the dev dependencies and the actions each week. A Claude Code update also replaces `types/claude-code.d.ts` (see `RELEASING.md`).
+- Dependabot (`.github/dependabot.yml`) proposes updates to the dev dependencies and the actions each week. A Claude Code update also replaces `types/claude-code.d.ts` and `types/claude-code-tools.d.ts` (see `RELEASING.md`).
 
 ### Review
 
