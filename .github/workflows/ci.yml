@@ -30,6 +30,7 @@ jobs:
       - run: bun run typecheck
       - run: bun run validate
       - run: bun run test
+      - run: bun run test:scripts
       - name: Docs change with code
         if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'no-docs')
         run: |

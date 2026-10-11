@@ -196,7 +196,7 @@ Run all checks (lint, type check, manifest check and tests), as CI does:
 bun run check
 ```
 
-[AGENTS.md](AGENTS.md) has the rules for contributors and coding agents, and [Security guidelines](docs/security.md) the security rules for changes and review. [The documentation index](docs/README.md) links to the architecture and feasibility guides. See the [user guide](docs/guide.md) for options and common problems.
+[How to test Rabe](docs/testing.md) covers the tests and live checks with `scripts/live-check.sh`. [AGENTS.md](AGENTS.md) has the rules for contributors and coding agents, and [Security guidelines](docs/security.md) the security rules for changes and review. [The documentation index](docs/README.md) links to the architecture and feasibility guides. See the [user guide](docs/guide.md) for options and common problems.
 
 ## Feedback and bugs
 
