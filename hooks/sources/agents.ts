@@ -3,6 +3,7 @@ import type {
   AgentStatus,
   EngineInterface,
   On,
+  ToolResultOf,
   TurnCompleteReason,
   TurnStepResult,
   TurnUsage,
@@ -13,6 +14,7 @@ import { companionCall, companionOutput } from '../forwarders'
 import {
   clip,
   type EndStatus,
+  isAbsolute,
   itemId,
   type RabeItem,
   type RabeItemOf,
@@ -421,15 +423,40 @@ async function beforeBash(
   return seen && { paths, seen }
 }
 
-async function afterBash($: EngineInterface, agentId: string | undefined, before: Looked) {
-  const after = await look($, before.paths)
-  if (!after) return
+async function afterBash(
+  $: EngineInterface,
+  agentId: string | undefined,
+  before: Looked | undefined,
+  result: unknown,
+) {
+  const after = before && (await look($, before.paths).catch(() => undefined))
   const at = await $.clock.now()
-  const changes = before.paths.flatMap((path, n): RabeEdit[] => {
-    const change = changed(before.seen[n], after[n])
-    if (!change) return []
-    return [{ path, at, via: 'shell', ...(change === 'delete' && { change }) }]
-  })
+  const changes =
+    before && after
+      ? before.paths.flatMap((path, n): RabeEdit[] => {
+          const change = changed(before.seen[n], after[n])
+          if (!change) return []
+          return [{ path, at, via: 'shell', ...(change === 'delete' && { change }) }]
+        })
+      : []
+  const diff = (result as { bashEditDiff?: ToolResultOf<'Bash'>['bashEditDiff'] })?.bashEditDiff
+  if (
+    diff &&
+    !diff.shared &&
+    !diff.skipped &&
+    !diff.unavailable &&
+    Array.isArray(diff.changedFiles)
+  ) {
+    const paths = new Set(changes.map(one => one.path))
+    for (const path of diff.changedFiles) {
+      if (typeof path !== 'string' || !isAbsolute(path) || paths.has(path)) continue
+      const deleted =
+        Array.isArray(diff.files) &&
+        diff.files.some(file => file?.filePath === path && file?.deleted === true)
+      changes.push({ path, at, via: 'shell', ...(deleted && { change: 'delete' }) })
+      paths.add(path)
+    }
+  }
   await record($, agentId, changes)
 }
 
@@ -589,7 +616,7 @@ export function agents(on: On, file: string): void {
     return answer
   })
 
-  // The command line proposes files; a look on disk before and after decides.
+  // Host diffs name script edits; disk checks confirm command-line candidates.
   // A call of the Codex companion is kept on its agent, so the Codex source can
   // link the job it starts (see forwarders.ts).
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
@@ -611,7 +638,7 @@ export function agents(on: On, file: string): void {
       }
     } catch {}
     try {
-      if (before && ranBash(answer)) await afterBash($, e.agentId, before)
+      if (ranBash(answer)) await afterBash($, e.agentId, before, answer.result)
     } catch {}
 
     return answer
