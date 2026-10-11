@@ -54,6 +54,7 @@
 - Workflows: pin actions to full SHAs, least-privilege `permissions`.
 
 ## Documentation
+- Contributor setup and workflow: [CONTRIBUTING.md](CONTRIBUTING.md).
 - Every pull request creates or updates documentation in `docs/`, `README.md`, `CHANGELOG.md`, `RELEASING.md`, `AGENTS.md`, or a new doc. The only exception is a PR labelled `no-docs`, with the reason in the PR body.
 - Read the docs before the code: start with the table under External References.
 - Every change updates the docs in the same pull request: behaviour, data sources, hooks, modules, commands and settings.
