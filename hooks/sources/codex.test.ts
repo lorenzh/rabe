@@ -490,11 +490,13 @@ test('a running job of this session becomes a live codex item', async ($, on) =>
   })
 })
 
-test('a job id that leaves the jobs folder is skipped', async ($, on) => {
+test('a job id that is not a plain file name is skipped', async ($, on) => {
   const writes = watchItems(on)
+  // each id has a job file where the unchecked path would lead
+  const ids = ['../../x', 'a/b', '..', '-rf', '.hidden']
   const w = world(on, {
-    [`${WS}/state.json`]: { jobs: [{ id: '../../x', status: 'running' }] },
-    [`${WS}/jobs/../../x.json`]: job({ id: '../../x' }),
+    [`${WS}/state.json`]: { jobs: ids.map(id => ({ id, status: 'running' })) },
+    ...Object.fromEntries(ids.map(id => [`${WS}/jobs/${id}.json`, job({ id })])),
     [`${STATE}/x.json`]: job({ id: '../../x' }),
   })
   await startAndTick($, w)
@@ -701,7 +703,8 @@ test('/rabe-stop cancels the job through the companion script', async ($, on) =>
       env: { CLAUDE_PLUGIN_DATA: `${HOME}/.claude/plugins/data/codex-openai-codex` },
     },
   ])
-  expect(answer).toEqual({ text: 'Stopped codex Review pkg/auth after the logger migration.' })
+  // the answer is a transcript line the model reads: the job id, never the file's title
+  expect(answer).toEqual({ text: 'Stopped codex task-1' })
 })
 
 // A stop ends the item at once, and later polls skip it: its cost stays only

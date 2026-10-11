@@ -7,7 +7,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 ### Added
 
 - The user guide covers options, troubleshooting and common questions ([#91](https://github.com/lorenzh/rabe/pull/91), fixes [#78](https://github.com/lorenzh/rabe/issues/78))
-- Security guidelines for developing Rabe in `docs/security.md`, with a security item in the pull request template. Toasts now filter control characters in item titles and refusal reasons, and `tail` and `grep` take file paths after `--`. Copies replace control and format characters other than tabs and line breaks with `?`, notes to Claude carry only item kinds and ids, cron prompts stay out of toasts, Codex job ids that would leave the jobs folder are skipped, and poll commands stop after 5 seconds. Dependabot keeps dev dependencies and actions up to date. (fixes [#81](https://github.com/lorenzh/rabe/issues/81))
+- Security guidelines for developing Rabe in `docs/security.md`, with a security item in the pull request template. Toasts now filter control characters in item titles and refusal reasons, and `tail` and `grep` take file paths after `--`. Copies replace control and format characters other than tabs and line breaks with `?`, notes to Claude and the `/rabe-stop` answer carry only item kinds and ids, cron prompts stay out of toasts, Codex job ids that would leave the jobs folder are skipped, and poll commands stop after 5 seconds. Dependabot keeps dev dependencies and actions up to date. (fixes [#81](https://github.com/lorenzh/rabe/issues/81))
 
 ### Changed
 

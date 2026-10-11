@@ -45,7 +45,7 @@ Text from transcripts, meta files, output files, Codex files and workflow script
 ### Paths
 
 - Take paths from tool results and hook events. Build a path only when no result has it (AGENTS.md).
-- A path built from a file's field (a job id, a thread id, a folder name) must stay in the folder it is built under. Check that the field has no `/` and is not `..`, or check that the resolved path starts with the folder.
+- A path built from a file's field (a job id, a thread id, a folder name) must stay in the folder it is built under. Check that the field has no `/`, is not `..` and does not start with `-` (a Codex job id must match `^\w[\w.-]*$`), or check that the resolved path starts with the folder.
 - Read only the session, agent, task, Codex and project folders and the files the README lists under Privacy. A new place to read is a new data source: add it to `docs/feasibility.md` and to the README.
 - For a file that a shell command names, Rabe uses only `$.fs.stat` and `$.fs.list`. It never reads the content.
 
@@ -61,7 +61,7 @@ Rabe sends nothing anywhere. It does not call `$.http.fetch`, and it does not ru
 
 ### Secrets and privacy
 
-- Never put message text, prompts or tokens into `$.store`, toasts, bug reports or notes to Claude ([#38](https://github.com/lorenzh/rabe/issues/38)). Notes to Claude hold the kind and id of an item only: titles come from files (a Codex summary, a workflow script) or are prompts (a cron job's).
+- Never put message text, prompts or tokens into `$.store`, toasts, bug reports or notes to Claude ([#38](https://github.com/lorenzh/rabe/issues/38)). Notes to Claude hold the kind and id of an item only: titles come from files (a Codex summary, a workflow script) or are prompts (a cron job's). The `/rabe-stop` answer is a transcript line Claude reads, so it names a Codex job by its id too.
 - A toast names a cron job by its job id, since its title is its prompt, and a copied prompt shows `Copied prompt` without the text.
 - `$.store` lasts across sessions. Keep in it only what the README lists under Privacy.
 - Bug reports and feedback replace home paths, user and project names, ids and tokens with placeholders before the person sees the draft.
@@ -69,7 +69,7 @@ Rabe sends nothing anywhere. It does not call `$.http.fetch`, and it does not ru
 
 ### Destructive actions
 
-- Stop, stop group, stop run, delete, remove and clear run only after the person's own press on a button that the pane armed (see Arming in `docs/architecture.md`).
+- Stop, stop group, stop run, delete, remove and clear run only after the person's own press on a button that the pane armed (see [Focus order and arming](architecture/focus-order.md)).
 - A message to an agent is not armed. It goes only when the person submits text they typed in the agent's message field; the field's own submit is that choice, and the text is never prefilled from a file.
 - A poll, a file, a hook event or a note never starts any of them. Do not weaken the append-only focus order or the arming rules to make a control easier to reach.
 

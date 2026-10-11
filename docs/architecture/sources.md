@@ -30,7 +30,7 @@ A source owns the items of its kind. It uses `itemId(kind, nativeId)` for ids, s
 
 ### Stopping an item
 
-The pane stops agents, shells, monitors and workflows itself: it calls `TaskStop` through `$.tool.call` (see [Actions under The pane](focus-and-keys.md#the-pane)). A Codex job has no task id, so it stops through a command instead. `/rabe-stop <item id>` is registered by the Codex source (with `immediate: true`, so it also runs during a turn). It answers with a matcher on the id prefix, `{ command: 'rabe-stop', args: /^\s*codex:/ }`, and returns `{ text }` that says what happened. The person can type `/rabe-stop codex:<job id>`. The pane's `x: stop` on a Codex job runs the same command with `$.command.run({ command: 'rabe-stop', args: <item id> })` and shows its answer as a toast, so the cancel stays in the Codex source.
+The pane stops agents, shells, monitors and workflows itself: it calls `TaskStop` through `$.tool.call` (see [Actions under The pane](focus-and-keys.md#the-pane)). A Codex job has no task id, so it stops through a command instead. `/rabe-stop <item id>` is registered by the Codex source (with `immediate: true`, so it also runs during a turn). It answers with a matcher on the id prefix, `{ command: 'rabe-stop', args: /^\s*codex:/ }`, and returns `{ text }` that says what happened. The answer is a transcript line that Claude reads, so it names the job by its job id (`Stopped codex task-1`), never by its title. The person can type `/rabe-stop codex:<job id>`. The pane's `x: stop` on a Codex job runs the same command with `$.command.run({ command: 'rabe-stop', args: <item id> })` and shows its answer as a toast, so the cancel stays in the Codex source.
 
 
 ## The sources

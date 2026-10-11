@@ -603,7 +603,7 @@ async function cancel($: EngineInterface, id: string): Promise<{ text: string }>
     return isPriced ? ended : updateItem(ended, id, { costUsd: undefined })
   })
 
-  return { text: `Stopped codex ${item.title}` }
+  return { text: `Stopped codex ${item.detail.jobId}` }
 }
 
 export function codex(on: On, file: string): void {
