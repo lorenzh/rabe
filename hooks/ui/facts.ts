@@ -70,7 +70,8 @@ export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: stri
     }
     case 'workflow': {
       const d = item.detail
-      lines.push(`run ${d.runId} · ${children(items, item.id).length} agents`)
+      const count = children(items, item.id).length
+      lines.push(`run ${d.runId} · ${count} ${count === 1 ? 'agent' : 'agents'}`)
       if (d.scriptPath) lines.push(`script ${d.scriptPath}`)
       lines.push(ran(item, now))
       break
@@ -101,7 +102,11 @@ export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: stri
     case 'cron': {
       const d = item.detail
       if (d.scheduledFor !== undefined) lines.push(`fires at ${clockTime(d.scheduledFor)}`)
-      else lines.push(`schedule ${na(d.schedule)}${d.humanSchedule ? ` · ${d.humanSchedule}` : ''}`)
+      else {
+        const human =
+          d.humanSchedule && d.humanSchedule !== d.schedule ? ` · ${d.humanSchedule}` : ''
+        lines.push(`schedule ${na(d.schedule)}${human}`)
+      }
       lines.push(
         `prompt ${d.prompt}`,
         `job ${d.jobId}`,

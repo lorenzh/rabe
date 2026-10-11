@@ -27,6 +27,8 @@ Status: early development. See [releases](https://github.com/lorenzh/rabe/releas
 
 The band is one line of counts, one chip per kind with failures from the last 10 minutes first (`✗ 1 shell failed`), then the cost, under an empty row so the status line above does not touch it. Its cost label says `session`; its token label says `bg` and includes the cached share when known. It shows the session cost Claude Code reports, or `session n/a` when that cost is unknown; it does not replace it with a sum of worker estimates or show a top-agent suffix. It shortens readable chip labels only when the full labels and cost do not fit; when needed, it puts the dollar amount first and drops the token part. When Claude Code gives the band only one row, the empty row goes. The names are in the pane. When nothing runs, it draws nothing.
 
+When the readable form repeats the cron expression, cron detail shows the schedule once. Workflow detail says `1 agent` for one child in both the run facts and cost panel.
+
 The pane has four tabs:
 
 - **Items**
@@ -124,6 +126,8 @@ On the list, the stop keys `x` and `g` and the remove key `r` work only after yo
 While the pane is open, rows and buttons keep their places, so Enter acts on what you see under the focus. An item that starts after you open the pane goes into the group of its kind, after the rows already there; on the Effects tab, a new file or port goes into its section the same way. When it comes above the focused row, Rabe moves the focus back onto that row; until then, Enter on a row does nothing. A row that is gone stays as a dim `gone` slot. Type `/rabe` again to sort the lists.
 
 Removed rows stay off the list, the Cost and Timeline tabs, a workflow's agent rows and the band's counts for the rest of the session. They still count in a workflow's phases and tokens, in the cost totals and on the Effects tab, so a summary never loses work that ran. Running items are never removed; an item that runs again shows again. While the pane is open, a removed row stays as a dim `gone` slot; when it was the selected row, the keys go dim until you move onto a row again.
+
+Ended items keep their stop buttons in place. These buttons stay dim. Pressing them does nothing.
 
 Commands:
 

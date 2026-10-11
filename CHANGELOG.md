@@ -10,6 +10,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - Previous-session summaries keep failed item IDs and remove older stored titles. ([#113](https://github.com/lorenzh/rabe/pull/113), fixes [#94](https://github.com/lorenzh/rabe/issues/94))
 - Shells, monitors and workflows check output and script folders before reading, including resolved symlink targets. ([#113](https://github.com/lorenzh/rabe/pull/113), fixes [#95](https://github.com/lorenzh/rabe/issues/95))
 - `/rabe-stop` returns fixed refusal text to Claude and keeps companion errors in session state for the pane toast. ([#113](https://github.com/lorenzh/rabe/pull/113), fixes [#96](https://github.com/lorenzh/rabe/issues/96))
+- Cron detail omits duplicate schedule text. Workflow detail uses `1 agent` in its run facts and cost panel. (fixes #111)
+- Cron detail omits duplicate schedule text. Workflow detail uses `1 agent` in its run facts and cost panel. ([#114](https://github.com/lorenzh/rabe/pull/114), fixes [#111](https://github.com/lorenzh/rabe/issues/111))
 
 ## [0.5.0] - 2026-10-11
 

@@ -1,7 +1,20 @@
 import { expect, test } from 'claude-code/testing'
 
 import { facts } from './facts'
-import { ALL, babysit, ci, dev, explore, lint, NOW, plan, review, verify } from './fixtures'
+import {
+  ALL,
+  babysit,
+  ci,
+  dev,
+  explore,
+  flow,
+  lint,
+  NOW,
+  plan,
+  review,
+  reviewed,
+  verify,
+} from './fixtures'
 
 test('agent facts show type, model, worktree and start; spend is in the detail', () => {
   const { title, status, lines, long } = facts(explore, NOW, ALL)
@@ -37,6 +50,25 @@ test('shell, monitor and cron facts', () => {
   expect(facts(ci, NOW, ALL).lines).toContain('timeout 30m00s · 22m00s left')
   expect(facts(babysit, NOW, ALL).status).toBe('⟳ next 10:55')
   expect(facts(babysit, NOW, ALL).lines[0]).toBe('schedule */5 * * * * · every 5 minutes')
+})
+
+test('cron facts show the raw schedule once when the readable form repeats it', () => {
+  const schedule = '7,37 * * * *'
+  for (const humanSchedule of [schedule, '', undefined]) {
+    const cron = {
+      ...babysit,
+      detail: { ...babysit.detail, schedule, humanSchedule },
+    } as typeof babysit
+    expect(facts(cron, NOW, ALL).lines[0]).toBe(`schedule ${schedule}`)
+  }
+})
+
+test('workflow facts use agent for one child and agents for zero or several', () => {
+  for (const agents of [[], [verify], [verify, reviewed]]) {
+    expect(facts(flow, NOW, [flow, ...agents]).lines[0]).toBe(
+      `run wf1 · ${agents.length} ${agents.length === 1 ? 'agent' : 'agents'}`,
+    )
+  }
 })
 
 // Only the meta file names a worktree: a cwd that is not the session's may be

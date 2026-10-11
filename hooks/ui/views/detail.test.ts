@@ -288,6 +288,16 @@ test('a workflow shows its phases and each agent with tokens and time', () => {
   expect(buttons.find(b => b.key === `stop-run:${flow.id}`)?.label).toBe('g: stop run')
 })
 
+test('a workflow detail uses agent for one child and agents for zero or several', () => {
+  for (const agents of [[], [verify], [verify, reviewed]]) {
+    const shown = lines(open(model([flow, ...agents]), flow.id).grid)
+    expect(shown).toContain(
+      `run wf1 · ${agents.length} ${agents.length === 1 ? 'agent' : 'agents'}`,
+    )
+    expect(shown).toContain(` ${agents.length} ${agents.length === 1 ? 'agent' : 'agents'}`)
+  }
+})
+
 test('a workflow sums the cost of its agents once each one has a price', () => {
   const priced = { ...reviewed, tokens: { input: 1_000, output: 0 }, costUsd: 0.01 }
   const items = ALL.map(item => (item.id === reviewed.id ? priced : item))
