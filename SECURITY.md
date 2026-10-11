@@ -8,7 +8,7 @@ Include the affected Rabe version, the impact, and steps to reproduce. Remove se
 
 ## Privacy
 
-Rabe runs inside Claude Code. Its runtime hooks make no network requests and do not send session data anywhere. They read:
+Rabe runs inside Claude Code. Its runtime hooks make no network requests. Successful stop, delete, and message actions add notes with item IDs and titles to the next prompt sent to Claude. Other session data is not sent by Rabe. The hooks read:
 
 - Claude Code events for agents, workflows, turns, tool summaries, background tasks, cron jobs, session usage, and file changes.
 - Agent metadata files and background shell and monitor output files, plus workflow scripts. Agent turns arrive through Claude Code events; Rabe records transcript paths but does not read the transcript files.
@@ -26,7 +26,7 @@ Rabe uses the Claude Code plugin state keys declared in `types/index.d.ts`:
 | Key | Data |
 |---|---|
 | `items` | Background work details, which can include names, prompts, commands, IDs, file paths, token counts, and cost estimates. |
-| `turns` | Agent turns and tool names or summaries. |
+| `turns` | Agent reply text (up to 16,000 characters per turn) and tool names or summaries. |
 | `lines` | Background shell and monitor output lines. |
 | `edits` | File paths and timestamps for changes by the main session. |
 | `worktrees` | Git worktree paths and branches. |
