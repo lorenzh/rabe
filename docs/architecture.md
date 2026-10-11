@@ -2,7 +2,7 @@
 title: How Rabe is built
 description: Overview of Rabe's modules and links to the detailed architecture documents.
 tags: [architecture, modules]
-keywords: [architecture, module map, overview]
+keywords: [architecture, module map, overview, CronDelete, isDeleted, shellWrites, writes.ts, changed, beforeBash, afterBash, FileChange, arming, rabe.edits, resume, Raster, View, render, band, pane, register.tsx, $.state, prices.csv, pricesFile, CodexRequest, nextRun, parseWorktrees]
 ---
 
 # How Rabe is built
@@ -41,4 +41,4 @@ types/index.d.ts      the state contract: item types and the $.state keys
 data/prices.csv       list prices per model, read at run time for the cost estimate (see docs/feasibility/prices.md)
 ```
 
-The details are split by area: [state and items](architecture/state.md), [sources](architecture/sources.md), [prices](architecture/prices.md), [UI](architecture/ui.md), [focus and keys](architecture/focus-and-keys.md), and [view behavior](architecture/views.md).
+The details are split by area: [state and items](architecture/state.md), [sources](architecture/sources.md), [prices](architecture/prices.md), [UI](architecture/ui.md), [focus and keys](architecture/focus-and-keys.md), [focus order and arming](architecture/focus-order.md), and [view behavior](architecture/views.md).

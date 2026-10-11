@@ -2,7 +2,7 @@
 title: Codex and background work
 description: Data available for Codex jobs, shells, monitors, cron jobs, and loops.
 tags: [feasibility, Codex, background-work]
-keywords: [Codex jobs, shells, monitors, cron jobs, loops]
+keywords: [Codex jobs, shells, monitors, cron jobs, loops, resume-last, resumed thread, completedAt, FileChange, move_path, completed_at_ms, started_at_ms, background_tasks, session_crons, ScheduleWakeup, scheduledFor, scheduled-trigger, TaskStop, output-file, backgroundTaskId, task output, rollout, threadId, token_count, model_reasoning_summary, custom_tool_call, CommandExecution, cache_write_input_tokens, last_token_usage, CODEX_HOME, installed_plugins.json, CLAUDE_PLUGIN_DATA, codex-rescue, codex-companion, Thread ready, started in the background, kindLabel]
 ---
 
 # Codex and background work

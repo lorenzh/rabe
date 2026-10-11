@@ -2,7 +2,7 @@
 title: Price data
 description: How Rabe reads price data and supplies it to views.
 tags: [feasibility, prices]
-keywords: [prices.csv, pricesFile, views]
+keywords: [prices.csv, pricesFile, views, price table, cache write, long context, aliases, session.usage, cost.usd, costUsd, last_token_usage, cache_write_input_tokens, ephemeral_5m_input_tokens, ephemeral_1h_input_tokens]
 ---
 
 # Price data

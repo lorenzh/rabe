@@ -2,7 +2,7 @@
 title: Sources
 description: The source contract and how each source turns events and files into items.
 tags: [architecture, sources]
-keywords: [source contract, agents, workflows, Codex, shells, monitors, crons, worktrees]
+keywords: [source contract, agents, workflows, Codex, shells, monitors, crons, worktrees, Source, sources, register.tsx, agent.spawn, turn.step, turn.complete, SubagentStart, meta.json, task-notification, matcher, rabe-stop, parseRollout, codexItem, RabeCodexStep, RabeWorktree, shellWrites, changed, beforeBash, afterBash, CronList, CronDelete, isDeleted, ScheduleWakeup, worktrees.ts, parseWorktrees, FileChange, staged]
 ---
 
 # Sources
@@ -26,11 +26,11 @@ A source owns the items of its kind. It uses `itemId(kind, nativeId)` for ids, s
 
 ### Starting work: `session.start` with a matcher
 
-`pane.tsx` owns the plain `session.start` hook. Each source gives its own start hook a matcher (see the rule above): the agents source uses `{ cwd: /^/ }`, and the Codex and worktrees sources use `{ isInteractive: true }`, since only a person at the prompt sees the band and the pane.
+`pane.tsx` owns the plain `session.start` hook. Each source gives its own start hook a matcher (see [the engine's rule for `$`](state.md#the-engines-rule-for-)): the agents source uses `{ cwd: /^/ }`, and the Codex and worktrees sources use `{ isInteractive: true }`, since only a person at the prompt sees the band and the pane.
 
 ### Stopping an item
 
-The pane stops agents, shells, monitors and workflows itself: it calls `TaskStop` through `$.tool.call` (see Actions under The pane). A Codex job has no task id, so it stops through a command instead. `/rabe-stop <item id>` is registered by the Codex source (with `immediate: true`, so it also runs during a turn). It answers with a matcher on the id prefix, `{ command: 'rabe-stop', args: /^\s*codex:/ }`, and returns `{ text }` that says what happened. The person can type `/rabe-stop codex:<job id>`. The pane's `x: stop` on a Codex job runs the same command with `$.command.run({ command: 'rabe-stop', args: <item id> })` and shows its answer as a toast, so the cancel stays in the Codex source.
+The pane stops agents, shells, monitors and workflows itself: it calls `TaskStop` through `$.tool.call` (see [Actions under The pane](focus-and-keys.md#the-pane)). A Codex job has no task id, so it stops through a command instead. `/rabe-stop <item id>` is registered by the Codex source (with `immediate: true`, so it also runs during a turn). It answers with a matcher on the id prefix, `{ command: 'rabe-stop', args: /^\s*codex:/ }`, and returns `{ text }` that says what happened. The person can type `/rabe-stop codex:<job id>`. The pane's `x: stop` on a Codex job runs the same command with `$.command.run({ command: 'rabe-stop', args: <item id> })` and shows its answer as a toast, so the cancel stays in the Codex source.
 
 
 ## The sources
@@ -39,14 +39,16 @@ The pane stops agents, shells, monitors and workflows itself: it calls `TaskStop
 
 One `agent` item per subagent, id `agent:<agentId>`. It covers agents the model starts, agents of workflows and teammates.
 
+The agent-list poll stores an API-provided `name` and uses it for the title and message toast. Without a name, the title uses the task description or agent type. Turn tool paths stay whole in `rabe.turns`; the detail shows project-relative paths when it can, with a middle ellipsis for long paths.
+
 | Hook | What it does |
 |---|---|
 | `agent.spawn` | After `next(e)` gives the `agentId`, adds a running item: title from the description (else the type), type, model, the prompt (`detail.prompt`, cut to 600 characters), `startedAt`. A workflow agent gets `parentId` `workflow:<runId>` and `workflowIndex`; an agent started by another agent gets `agent:<parentAgentId>`. A refused spawn adds nothing. |
 | `classic.SubagentStart` | Fires inside the spawn, before `agent.spawn` adds the item, so it adds a running item (title the agent type) when none exists; the spawn then merges its fields in. Sets `transcriptPath` (`<session>/subagents/agent-<id>.jsonl`, built from the hook's `transcript_path`); `agent.spawn` moves a workflow agent's path into `<session>/subagents/workflows/<run-id>/`. It also sets `cwd`. It never sets `worktreePath`: a `cwd` that is not the session's may be the agent's worktree or a plain subfolder, and only the meta file or git tells them apart. |
-| `turn.step` with `agentId` | After the response, adds its tokens (`input` is uncached input plus cache writes plus cache reads, `cached` is the cache reads inside `input`, the same as Codex counts them) and its price (`claudeUsd` of the usage's model, see The cost estimate) to `costUsd`, sets `model`, `toolCount`, `lastTool` and `lastToolAt`, puts the item back to running, and adds a turn to `rabe.turns`. Steps of loops Rabe has no item for (forks for compaction or memory) are ignored. |
+| `turn.step` with `agentId` | After the response, adds its tokens (`input` is uncached input plus cache writes plus cache reads, `cached` is the cache reads inside `input`, the same as Codex counts them) and its price (`claudeUsd` of the usage's model, see [the cost estimate](prices.md#the-cost-estimate)) to `costUsd`, sets `model`, `toolCount`, `lastTool` and `lastToolAt`, puts the item back to running, and adds a turn to `rabe.turns`. Steps of loops Rabe has no item for (forks for compaction or memory) are ignored. |
 | `tool.call` for `Edit` and `Write` | After the call, when it changed the file (`changedFile`: a result, no error, and not `staged` for review), adds `{ path, at, via }` to the agent's `detail.edits`, or without `agentId` to the main session's `rabe.edits`; the path from the result's `filePath`. A refused, failed or staged edit adds nothing. The Effects tab reads these, not the turns: a turn lists the calls the model asks for, which may be refused. |
 | `tool.call` for `Bash` in a subagent, a Codex companion call | `companionCall(command)` (in `forwarders.ts`) finds a command line that runs the Codex plugin's `codex-companion.mjs` with `task`, `review` or `adversarial-review`. Before `next(e)` the agent's `detail.codexCalls` gains `{ at, command, text }` (the line cut to 600 characters, the newest 10 calls kept). After the call: a call moved to the background (`backgroundTaskId`, also a timeout) still runs and gets nothing; a refused one gets `endedAt`; one that ran, also with an error, gets `endedAt` and what `companionOutput` reads in its stdout and stderr: `jobId` from `started in the background as <id>.`, `threadId` from the progress line `[codex] Thread ready (<id>).`. The main session's calls are not kept (see Forwarders). |
-| `tool.call` for `Bash` | Before `next(e)`, `beforeBash` stats the absolute candidates of `shellWrites(command, cwd, HOME)` (at most 20; `look` gives up after 1 s). After a call that ran to its end (`ranBash`: a result, no error, not interrupted, not in the background), `afterBash` stats them again and adds each path `changed(before, after)` names (after a failed stat, `isMissing` lists the parent folder: a listing without the name, or a parent that is missing by the same rule, makes the path missing; a listing that fails or still has the name, in any letter case or Unicode form (NFC), leaves it unknown; one listing per folder per look, inside the 1 s limit; error text is never read), `via: 'shell'`, to the agent or the main session as above. When parsing without `cwd` leaves a relative candidate, the hook reads the folder. For the main session, `cwd` comes from `$.session.cwd()` at that call. For an agent, it comes from the item’s `detail.cwd`. An unknown folder leaves relative paths out (see feasibility). |
+| `tool.call` for `Bash` | Before `next(e)`, `beforeBash` stats the absolute candidates of `shellWrites(command, cwd, HOME)` (at most 20; `look` gives up after 1 s). After a call that ran to its end (`ranBash`: a result, no error, not interrupted, not in the background), `afterBash` stats them again and adds each path `changed(before, after)` names (after a failed stat, `isMissing` lists the parent folder: a listing without the name, or a parent that is missing by the same rule, makes the path missing; a listing that fails or still has the name, in any letter case or Unicode form (NFC), leaves it unknown; one listing per folder per look, inside the 1 s limit; error text is never read), `via: 'shell'`, to the agent or the main session as above. When parsing without `cwd` leaves a relative candidate, the hook reads the folder. For the main session, `cwd` comes from `$.session.cwd()` at that call. For an agent, it comes from the item’s `detail.cwd`. An unknown folder leaves relative paths out (see [feasibility](../feasibility.md)). |
 | `turn.complete` with `agentId` | Ends the item: `answer` is done, `aborted` is stopped, `refusal` and `error` are failed. Reads the meta file once more from the workflow directory for a workflow agent, else next to its transcript. |
 | `session.start` | Runs the poll once, then every 3 seconds with `$.clock.every`. |
 
@@ -83,14 +85,17 @@ The next three sources follow the work Claude Code runs as background tasks. Eac
 
 ### Shells: `hooks/sources/shells.ts`
 
+A shell title uses the normalized Bash description when present, else the normalized command, followed by the task id. The detail keeps the original command. An empty output view says `No output yet`.
+
+
 | Hook | What it does |
 |---|---|
-| `tool.call` `{ tool: 'Bash' }` | After `next(e)`: a result with `backgroundTaskId` adds `shell:<taskId>`, title the command. `outputPath` comes from the result text (`Output is being written to: …`). This covers `run_in_background`, Ctrl+B and a timed-out command. In a subagent, `parentId` is `agent:<agentId>`. |
+| `tool.call` `{ tool: 'Bash' }` | After `next(e)`: a result with `backgroundTaskId` adds `shell:<taskId>`, titled with the normalized description or command and task id. `outputPath` comes from the result text (`Output is being written to: …`). This covers `run_in_background`, Ctrl+B and a timed-out command. In a subagent, `parentId` is `agent:<agentId>`. |
 | `prompt.submit` `{ origin: { kind: 'task-notification' } }` | Each `<task-notification>` with a `<status>` ends its shell: `completed` is done, `failed` failed, `killed` stopped. The exit code comes from the summary (`failed with exit code 3`). It reads the output file once more first, so a shell that ended between two polls keeps its last lines. |
 | `session.start` | Starts a poll every 2 s. It reads the output file of each running shell, keeps its lines in `rabe.lines` (as the monitors source does), guesses a port (`localhost:5173`, `port 4000`) and keeps the time it found it as `portAt`, and ends the shell at the last line `[exited with code N]` or `[killed]`. A file over 4 MiB is read with `tail -c` for the port and the exit line only, so its lines stop at what the poll read before. |
 | `classic.Stop` | A running shell missing from `background_tasks` ends by its exit line, else as stopped. A shell a subagent started (`parentId` `agent:…`) is skipped: it may be missing from the main session's list while it runs, and the poll ends it from its file. A shell in `background_tasks` that Rabe never saw is added, without `startedAt`. Claude Code lists a Monitor tool task with type `shell` too, so a task id Rabe already has as `monitor:<id>` is skipped; a monitor started before Rabe loaded still shows as a shell. |
 
-A subagent's shells and monitors get no end notification in the main session: it goes only to the subagent (see feasibility). Their output files are in the main session's `tasks` folder, so the poll ends them from the file's last line, `[exited with code N]` or `[killed]`, as it does every shell.
+A subagent's shells and monitors get no end notification in the main session: it goes only to the subagent (see [feasibility](../feasibility.md)). Their output files are in the main session's `tasks` folder, so the poll ends them from the file's last line, `[exited with code N]` or `[killed]`, as it does every shell.
 
 ### Monitors: `hooks/sources/monitors.ts`
 
@@ -98,7 +103,7 @@ The same four hooks for the Monitor tool, with the same `classic.Stop` rule for 
 
 The end notification is handled only for task ids Rabe has as `monitor:<id>`: a shell's notification also carries an `<output-file>`, and reading it would file shell lines under a monitor id.
 
-Monitor lines are kept apart from the item, in the `$.state` key `rabe.lines`: `Record<itemId, { seen, lines: { at, text }[] }>`. `seen` counts the lines read from the file; `lines` holds the newest 200, each with the time the poll first read it ("received"). A last line read while it was still being written (`hel`, then `hello`) is updated in place and keeps its time. The poll and the end notification both read the file, so the last lines are kept even when the notification comes first. Notification `<event>` lines are not used: they come late and in batches. The lines of an item dropped from `rabe.items` go with it, in the write that drops it (see The write loop), as its turns do.
+Monitor lines are kept apart from the item, in the `$.state` key `rabe.lines`: `Record<itemId, { seen, lines: { at, text }[] }>`. `seen` counts the lines read from the file; `lines` holds the newest 200, each with the time the poll first read it ("received"). A last line read while it was still being written (`hel`, then `hello`) is updated in place and keeps its time. The poll and the end notification both read the file, so the last lines are kept even when the notification comes first. Notification `<event>` lines are not used: they come late and in batches. The lines of an item dropped from `rabe.items` go with it, in the write that drops it (see [the write loop](state.md#the-write-loop)), as its turns do.
 
 ### Cron jobs and loops: `hooks/sources/crons.ts`
 

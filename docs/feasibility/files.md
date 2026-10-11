@@ -2,7 +2,7 @@
 title: Files and runtime limits
 description: What files Rabe reads, which writes it can detect, and what still needs live testing.
 tags: [feasibility, files, limits]
-keywords: [shell writes, files outside the project, runtime testing]
+keywords: [shell writes, files outside the project, runtime testing, shellWrites, candidates, fs.stat, mtime, here-doc, redirection, glob, brace expansion, command substitution, FileChange, changed, beforeBash, afterBash, ranBash, rabe.edits, main session, via shell, Edit, Write, 4 MiB]
 ---
 
 # Files and runtime limits

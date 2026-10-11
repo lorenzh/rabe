@@ -29,7 +29,7 @@
 - `hooks/sources/<kind>.ts`: one module per source (agents, codex, shells, monitors, crons, workflows) that turns events and files into items, and `worktrees.ts`, which keeps the git worktrees in `rabe.worktrees`; `hooks/sources/index.ts` calls each one. Each file's `write($, change)` caps the list and drops the per-item state of the items it removed; a timer's write skips the plugin's own `state.set` hooks.
 - `hooks/tasks.ts`, `hooks/schedule.ts`: pure parsers for task notifications, task output files and cron schedules. `hooks/writes.ts`: pure, the files a shell command line may write (candidates the sources check on disk). `hooks/forwarders.ts`: pure, the Codex companion calls of agents and the jobs they started. Views read session state only, never files.
 - `hooks/testing.ts`: test helpers (`memoryState`, `files`, `core`); the test's `$` has no `state` noun.
-- `hooks/ui/`: band and pane drawing. Only `band.tsx`, `pane.tsx` and `builtin.tsx` touch `$`. Views are pure `View` functions in `hooks/ui/views/` that return lines (Text parts and one plain Button per selectable row) and their controls; `render.tsx` draws them; the cell engine in `hooks/ui/cells/` draws charts only (see `docs/architecture/focus-and-keys.md`).
+- `hooks/ui/`: band and pane drawing. Only `band.tsx`, `pane.tsx` and `builtin.tsx` touch `$`. Views are pure `View` functions in `hooks/ui/views/` that return lines (Text parts and one plain Button per selectable row) and their controls; `render.tsx` draws them; the cell engine in `hooks/ui/cells/` draws charts only (see [`docs/architecture/ui.md`](docs/architecture/ui.md)).
 - Colors: only xterm-256 entries from `hooks/ui/cells/palette.ts`; a list never reorders while the pane is open (`stable` in `hooks/ui/lists.ts`).
 - `$.state` keys: declare each in `types/index.d.ts` and name that file as `"types"` in `.claude-plugin/plugin.json`.
 - `data/prices.csv`: list prices per model. The agents and Codex sources read it at run time under `$.plugin.root`, with the user's file (option `pricesFile`) first; `hooks/prices.ts` parses and applies it (see `docs/feasibility/prices.md` and `docs/architecture/prices.md`).
@@ -38,8 +38,8 @@
 ## Key Conventions
 - Get data from the mod API first, then from files on disk, then from the Claude Code or Codex source. Record each new source in the relevant document under `docs/feasibility/` and add it to [`docs/README.md`](docs/README.md).
 - Hooks pass on with `next(e)` unless they answer on purpose.
-- Give each hook in a source a matcher: an event may have only one hook without a matcher in the whole module, or the module does not load. `pane.tsx` owns the plain `session.start` (see `docs/architecture/focus-and-keys.md`).
-- Helpers that take `$` are top-level function declarations in the same file as the hook; `claude plugin validate` refuses closures inside `register` that receive `$`, and the scan never follows `$` across an import. Shared code is pure; see [`docs/architecture/sources.md`](docs/architecture/sources.md).
+- Give each hook in a source a matcher: an event may have only one hook without a matcher in the whole module, or the module does not load. `pane.tsx` owns the plain `session.start` (see [`docs/architecture/sources.md`](docs/architecture/sources.md#starting-work-sessionstart-with-a-matcher)).
+- Helpers that take `$` are top-level function declarations in the same file as the hook; `claude plugin validate` refuses closures inside `register` that receive `$`, and the scan never follows `$` across an import. Shared code is pure; see [`docs/architecture/state.md`](docs/architecture/state.md#the-engines-rule-for-).
 - A `$.state` reference or atom is written in the file that uses it, with literal `plugin` and `key`.
 - Files on disk are undocumented: a missing file or field shows `n/a`. Never throw from a hook.
 - Take file paths from tool results; build a path only when no result carries it.

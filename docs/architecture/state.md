@@ -2,7 +2,7 @@
 title: State and items
 description: How Rabe models items and updates its session registry.
 tags: [architecture, state, items]
-keywords: [item model, registry, write loop, turns]
+keywords: [item model, registry, write loop, turns, RabeItem, RabeItemKind, RabeItemStatus, NewItem, ItemPatch, RabeCodexCall, codexCalls, itemId, addItem, updateItem, endItem, capEnded, commit, MAX_ENDED, ifVersion, $.state, rabe.edits, rabe.turns, RabeTurn, FileChange, cleanup, forget, prune, pastEnd, timer writes, CronDelete, isDeleted]
 ---
 
 # State and items
@@ -50,7 +50,7 @@ type RabeItem = { [K in RabeItemKind]: RabeItemOf<K> }[RabeItemKind]
 
 | Kind | Detail fields |
 |---|---|
-| `agent` | `agentId`, `type?`, `model?`, `description?`, `transcriptPath?`, `cwd?`, `worktreePath?`, `worktreeBranch?`, `workflowPhase?`, `workflowIndex?`, `toolCount?`, `lastTool?`, `lastToolAt?`, `edits?` (`RabeEdit[]`, the newest 100 file changes, see below), `codexCalls?` (`RabeCodexCall[]`, the newest 10 calls of the Codex companion, see Forwarders) |
+| `agent` | `agentId`, `name?`, `type?`, `model?`, `description?`, `transcriptPath?`, `cwd?`, `worktreePath?`, `worktreeBranch?`, `workflowPhase?`, `workflowIndex?`, `toolCount?`, `lastTool?`, `lastToolAt?`, `edits?` (`RabeEdit[]`, the newest 100 file changes, see below), `codexCalls?` (`RabeCodexCall[]`, the newest 10 calls of the Codex companion, see Forwarders) |
 | `workflow` | `runId`, `taskId?`, `scriptPath?`, `transcriptDir?`, `phases?` |
 | `codex` | `jobId`, `jobKind?`, `threadId?`, `model?`, `effort?`, `sandbox?`, `prompt?`, `workspaceRoot?`, `logPath?`, `sessionPath?`, `sessionUpdatedAt?`, `isSessionMissing?`, `isSessionPartial?`, `commandCount?`, `steps?`, `edits?` (`RabeEdit[]`, from the rollout) |
 | `shell` | `command`, `taskId?`, `outputPath?`, `exitCode?`, `port?`, `portAt?` (when the poll found the port) |
@@ -138,4 +138,4 @@ type RabeToolUse = { name: string; summary?: string }   // 'Read', 'src/db.ts'
 type RabeTurn = { index: number; at: number; text: string; tools: RabeToolUse[] }
 ```
 
-`index` counts from 1 and keeps counting when old turns are dropped. `text` comes from `TurnStepResult.answer`. The source keeps at most 16,000 characters per answer with `clip`. A longer answer ends with `…`. The opened detail wraps all stored text as plain text. Bullet and numbered list markers stay with the first part of a long path. `summary` is the first of the tool's `file_path`, `command`, `pattern`, `path`, `url`, `query` or `description`, on one line of at most 80 characters. A longer summary ends with `…`. A `file_path` stays whole because the Effects tab tells files apart by it. Each item keeps its newest 30 turns. The turns of an item dropped from `rabe.items` go with it (see The write loop).
+`index` counts from 1 and keeps counting when old turns are dropped. `text` comes from `TurnStepResult.answer`. The source keeps at most 16,000 characters per answer with `clip`. A longer answer ends with `…`. The opened detail wraps all stored text as plain text. Bullet and numbered list markers stay with the first part of a long path. `summary` is the first of the tool's `file_path`, `command`, `pattern`, `path`, `url`, `query` or `description`, on one line of at most 80 characters. A longer summary ends with `…`. A `file_path` stays whole in state; the detail shows project-relative paths when it can, with a middle ellipsis for long paths. Each item keeps its newest 30 turns. The turns of an item dropped from `rabe.items` go with it (see [the write loop](state.md#the-write-loop)).
