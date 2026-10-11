@@ -3,7 +3,7 @@ import type { RabeItem } from '../../model'
 import { nextRun } from '../../schedule'
 import { fit } from '../cells/grid'
 import { C, CHIP, type Style, tone } from '../cells/palette'
-import { clockTime, day, duration, tokens, usd } from '../format'
+import { clockTime, day, duration, tokens, usd, validId } from '../format'
 import {
   bar,
   byStart,
@@ -142,7 +142,7 @@ function previousLines(model: Model, width: number): Line[] {
           } as Line,
         ]
       : []),
-    { spans: [[` id ${prev.sessionId ?? 'n/a'}`, dim]] },
+    { spans: [[` id ${validId(prev.sessionId) ? prev.sessionId : 'n/a'}`, dim]] },
   ]
 
   return out.map(line => ({ ...line, bg: C.raised }))
@@ -312,7 +312,7 @@ export const timelineView: View = (model, size, sel): Drawn => {
       : []
 
   const id = model.previous?.sessionId
-  if (id) buttons.push(resumeButton(`claude --resume ${id}`, id))
+  if (validId(id)) buttons.push(resumeButton(`claude --resume ${id}`, id))
 
   return { nodes: [...lines.map(line => fitLine(line, size.columns)), ...below], buttons }
 }

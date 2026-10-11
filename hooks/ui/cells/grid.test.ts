@@ -39,7 +39,7 @@ test('write keeps the background a style leaves out', () => {
 })
 
 test('safe keeps width-1 BMP characters and replaces the rest', () => {
-  expect(safe('ok ◐ ▶ ✗ ◉ ⟳ ─│█')).toBe('ok ◐ ▶ ✗ ◉ ⟳ ─│█')
+  expect(safe('ok ◐ ▶ ✗ ◉ ⟳ ─│█ ↵')).toBe('ok ◐ ▶ ✗ ◉ ⟳ ─│█ ↵')
   expect(safe('a\tb\nc')).toBe('a b c')
   expect(safe('🚀 done')).toBe('? done')
   expect(safe('日本')).toBe('??')

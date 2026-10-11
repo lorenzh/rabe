@@ -22,10 +22,10 @@ The band and the pane read the sources' session values and draw. Neither writes 
 | `ui/views/items.ts` | `itemsView`: grouped list, split or one-line summary, list controls, search |
 | `ui/views/detail.ts` | `detailView`, `detailLines` and `bodyLines`: one item in full, per kind; `resumeButton`, the `c: copy resume` control the Cost and Timeline tabs use too |
 | `ui/views/cost.ts`, `effects.ts`, `timeline.ts` | The other tabs |
-| `ui/views/lines.ts` | `fitLine`, `beside`, `text`, `itemLine`, `headLines`, `focusOn`, `plain`: shared row drawing |
+| `ui/views/lines.ts` | `fitLine`, `beside`, `text`, `itemLine`, `headLines`, `focusOn`, `plain`: shared row drawing; `headLines` wraps full facts and marks line breaks with `↵` |
 | `ui/lists.ts` | Pure grouping, sorting, the held order (`stable`, `orderOf`), `byParent`, the forwarders folded into their Codex jobs (`isForwarder`, `shown`, `forwarderOf`, `rowOf`, `withForwarder`, `nest`), the files agents, Codex jobs and the main session changed (`touched`, `byConflict`), labels, the band's count per kind (`bandRows`), totals, phases, tree, bars |
-| `ui/facts.ts` | The fact lines of one item (model, worktree, ids, who started it, run time, exit code; an agent's transcript as the `long` fact) |
-| `ui/format.ts` | Durations, ages, token and dollar amounts |
+| `ui/facts.ts` | The fact lines of one item (model, worktree, ids, who started it, run time, exit code; transcripts, commands and cron prompts as the `long` fact) |
+| `ui/format.ts` | Durations, ages, token and dollar amounts; `validId`, the allow list for resume and agent ids |
 | `ui/fixtures.ts` | Fake items, `screen(ui)` and `raster(drawn)` / `gridOf(drawn)` for the tests; nothing else imports it |
 
 ### The view contract
@@ -103,7 +103,7 @@ A Raster is a fixed grid of terminal cells. Each cell is exactly `[codePoint, fo
 | `encode(g)` / `decode(columns, rows, base64)` | The Raster `cells` string: little-endian u32 triplets in padded base64 |
 | `lines(g)` | The text of each row, trailing spaces cut: the text fallback and the tests |
 
-`safe` keeps an allow list, not a deny list: a deny list missed characters such as `☰` (U+2630), which the engine takes as wide and refuses, naming the cell's index, so the whole Raster is lost. The list holds code points terminals draw one cell wide: printable ASCII, Latin-1 letters and punctuation, Latin Extended-A and B, Greek, Cyrillic, general punctuation (no spaces, zero-width or format characters), currency signs, arrows, box drawing and block elements, and the glyphs Rabe draws outside those ranges (`GLYPHS`: `◐ ● ▶ ✗ ✓ ⚠ ⟳ ≈` …). Unassigned code points, marks, format and control characters in those ranges are out. Other scripts, emoji and symbols show as `?`. `fitLine` uses it too, so a line's width in cells is its length. `render.test.tsx` draws every character `safe` keeps in one Raster through the pinned engine, which checks each cell. A new glyph in a view goes into `GLYPHS`, or it shows as `?`.
+`safe` keeps an allow list, not a deny list: a deny list missed characters such as `☰` (U+2630), which the engine takes as wide and refuses, naming the cell's index, so the whole Raster is lost. The list holds code points terminals draw one cell wide: printable ASCII, Latin-1 letters and punctuation, Latin Extended-A and B, Greek, Cyrillic, general punctuation (no spaces, zero-width or format characters), currency signs, arrows, box drawing and block elements, and the glyphs Rabe draws outside those ranges (`GLYPHS`: `◐ ● ▶ ✗ ✓ ⚠ ⟳ ≈` …). Unassigned code points, marks, format and control characters in those ranges are out. Other scripts, emoji and symbols show as `?`. `fitLine` uses it too, so a line's width in cells is its length. `render.test.tsx` draws every character `safe` keeps in one Raster through the pinned engine, which checks each cell. A new glyph outside the allow-list ranges goes into `GLYPHS`, or it shows as `?`. The line-break marker `↵` is in the arrows range.
 
 ### Sizing
 

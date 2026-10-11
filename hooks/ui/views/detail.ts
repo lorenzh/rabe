@@ -2,7 +2,7 @@ import { isInside, type RabeItem } from '../../model'
 import { nextRuns } from '../../schedule'
 import { type Span, wrap } from '../cells/grid'
 import { C, type Style } from '../cells/palette'
-import { ago, clockTime, duration, middleEllipsis, tokens, usd } from '../format'
+import { ago, clockTime, duration, middleEllipsis, tokens, usd, validId } from '../format'
 import {
   byStart,
   children,
@@ -355,7 +355,7 @@ export function resumeButton(command: string, id: string): ViewButton {
     key: `resume:${id}`,
     label: 'c: copy resume',
     hotkey: 'c',
-    action: { type: 'copy', text: command },
+    action: { type: 'copy', text: command, what: 'resume command' },
   }
 }
 
@@ -386,19 +386,19 @@ function detailButtons(
       key: `copy:${item.id}`,
       label,
       hotkey: 'c',
-      action: { type: 'copy', text: copy, ...(item.kind === 'cron' && { what: 'prompt' }) },
+      action: { type: 'copy', text: copy, what: item.kind === 'cron' ? 'prompt' : 'command' },
     })
   }
-  if (item.kind === 'agent') {
+  if (item.kind === 'agent' && validId(item.detail.agentId)) {
     buttons.push({
       key: `copy:${item.id}`,
       label: 'c: copy id',
       hotkey: 'c',
-      action: { type: 'copy', text: item.detail.agentId },
+      action: { type: 'copy', text: item.detail.agentId, what: 'id' },
     })
   }
   // The key names the thread it resumes; without a thread there is no key.
-  if (item.kind === 'codex' && item.detail.threadId) {
+  if (item.kind === 'codex' && validId(item.detail.threadId)) {
     buttons.push(resumeButton(`codex resume ${item.detail.threadId}`, item.detail.threadId))
   }
   // The agent folded into this job has no row; its detail opens from here.

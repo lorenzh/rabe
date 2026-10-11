@@ -2,7 +2,7 @@
 title: Security guidelines for developing Rabe
 description: The threat model of a mod that runs in every Claude Code session and the rules that contributors and coding agents follow when they change Rabe - file content as data, terminal output, commands, paths, process environments, network, secrets, destructive actions, supply chain and review.
 tags: [security, guidelines, review, contributing]
-keywords: [toasts, output, script, symlink, summary, stderr, clipText, bracketed paste, dependabot.yml, threat model, prompt injection, untrusted text, safe, toastText, control characters, escape sequences, OSC 52, $.process.run, argv, "--", option injection, timeoutMs, paths, path traversal, /proc, environ, session token, $.env.get, no network, $.http.fetch, $.store, secrets, privacy, notes to Claude, rabe.actions, arming, destructive actions, TaskStop, CronDelete, rabe-stop, supply chain, lockfile, GitHub Actions, SHA pinning, Dependabot, pull request template, security review]
+keywords: [clipboard, copy, validId, line breaks, toasts, output, script, symlink, summary, stderr, clipText, bracketed paste, dependabot.yml, threat model, prompt injection, untrusted text, safe, toastText, control characters, escape sequences, OSC 52, $.process.run, argv, "--", option injection, timeoutMs, paths, path traversal, /proc, environ, session token, $.env.get, no network, $.http.fetch, $.store, secrets, privacy, notes to Claude, rabe.actions, arming, destructive actions, TaskStop, CronDelete, rabe-stop, supply chain, lockfile, GitHub Actions, SHA pinning, Dependabot, pull request template, security review]
 ---
 
 # Security guidelines for developing Rabe
@@ -24,7 +24,7 @@ An attacker who controls some text in one of these files must not be able to:
 
 ### File content is data
 
-Text from transcripts, meta files, output files, Codex files and workflow scripts is shown, counted or parsed. Rabe never acts on it. A field read from a file can choose what a row shows. It never chooses a command, a flag, a tool call or a file to write.
+Text from transcripts, meta files, output files, Codex files and workflow scripts is shown, counted or parsed. Rabe never acts on it. A field read from a file can choose what a row shows. It never chooses a program, a flag, a tool call or a file to write. A copied resume command uses a fixed template with a checked id.
 
 ### Terminal output and the clipboard
 
@@ -33,7 +33,12 @@ Text from transcripts, meta files, output files, Codex files and workflow script
 - Every toast goes through `toast($, text)` in `hooks/ui/pane.tsx`, which applies `toastText`: whitespace becomes one space, and Unicode control (`Cc`) and format (`Cf`) characters become `?`. Do not call `$.ui.toast` directly.
 - Never pass raw ANSI from a file through to the terminal.
 - Copy puts text on the clipboard that the person may paste into a shell. Copy only an item's own command, prompt, path or id, or a fixed command around an id (`claude --resume <id>`).
-- Every copy goes through `clipText` in `hooks/ui/pane.tsx` before `$.ui.copy`: tabs and line breaks stay, and every other control and format character becomes `?`. A pasted escape could end the terminal's bracketed paste and run the rest, and bidirectional controls hide what a command does.
+- Every copy goes through `clipText` in `hooks/ui/pane.tsx` before `$.ui.copy`. Copy removes terminal control and format characters by replacing them with `?`. Tabs and line breaks stay in commands and prompts. A pasted escape can end bracketed paste. Bidirectional controls can hide what a command does.
+- Copy does not check commands or prompts. These can contain model-written instructions or prompt injection. Read the full text before pasting it into a shell. Pasted commands run with your shell's permissions.
+- Shell and monitor commands and cron prompts appear in full in the detail. Text wraps at the detail width. Each CR, LF or CRLF line break has a `↵` marker.
+- Every id in a fixed command passes `validId` in `hooks/ui/format.ts`. Agent ids use the same check. The allow list is `[A-Za-z0-9_][A-Za-z0-9_.-]*`. Whitespace, shell metacharacters and a leading `-` fail. Invalid ids show `n/a` with no copy button.
+- If a single-line field contains CR or LF, copy refuses it. These fields are ids, paths, `ssh -L` lines and resume commands.
+- A success toast names the field and counts the copied text: `Copied command · 3 lines · 412 chars`. Counts use the filtered clipboard text. CRLF counts as one line break. Characters are Unicode code points. Success toasts contain no copied text.
 
 ### Commands
 
@@ -65,7 +70,7 @@ Rabe sends nothing anywhere. It does not call `$.http.fetch`, and it does not ru
 ### Secrets and privacy
 
 - Never put message text, prompts or tokens into `$.store`, toasts, bug reports or notes to Claude ([#38](https://github.com/lorenzh/rabe/issues/38)). Notes to Claude hold the kind and id of an item only: titles come from files (a Codex summary, a workflow script) or are prompts (a cron job's). The `/rabe-stop` answer is a transcript line Claude reads, so it names a Codex job by its id too. A companion refusal returns fixed text. The first stderr or thrown error line stays in the item’s session state as `stopError` for the pane toast. The detail never enters the transcript answer or `$.store`.
-- A toast names a cron job by its job id, since its title is its prompt, and a copied prompt shows `Copied prompt` without the text.
+- A toast names a cron job by its job id. Its title is its prompt. A copied prompt toast names the field and counts its lines and characters without the text.
 - A previous-session summary stores failed item ids in `failedIds`, never titles. When reading an older summary, remove its `failed` field and save the cleaned record. Do this at an empty session’s end too.
 - `$.store` lasts across sessions. Keep in it only what the README lists under Privacy.
 - Bug reports and feedback replace home paths, user and project names, ids and tokens with placeholders before the person sees the draft.

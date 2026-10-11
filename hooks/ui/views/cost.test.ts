@@ -113,7 +113,7 @@ test('the head names this session, and c copies the command that resumes it', ()
       key: `resume:${sessionId}`,
       label: 'c: copy resume',
       hotkey: 'c',
-      action: { type: 'copy', text: `claude --resume ${sessionId}` },
+      action: { type: 'copy', text: `claude --resume ${sessionId}`, what: 'resume command' },
     },
   ])
   const none = costView(MODEL, SIZE, NO_SELECTION)

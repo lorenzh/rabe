@@ -70,7 +70,7 @@ test('at 90 columns and more the list and the selected item sit side by side', (
   expect(grid.columns).toBe(100)
   expect(shown[0]).toMatch(/^▾ FAILED 1 +│ ✗ shell · bun run lint/)
   expect(shown[0]?.[42]).toBe('│')
-  expect(shown[1]).toMatch(/^▌✗ bun run lint exit 2 +failed 2m ago │ command bun run lint$/)
+  expect(shown[1]).toMatch(/^▌✗ bun run lint exit 2 +failed 2m ago │ task bg_3$/)
   expect(shown[2]?.slice(0, 42).trim()).toBe('')
   expect(shown[3]?.startsWith('▾ AGENTS 4 running · 2 ended')).toBe(true)
   expect(cell(grid, 0, 3)[1]).toBe(C.orange)
