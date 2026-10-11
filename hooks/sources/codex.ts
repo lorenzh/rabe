@@ -474,9 +474,11 @@ async function readSession(
     return { path, updatedAt, rollout, usd: codexUsd(await prices($, file), rollout.requests) }
   }
   const head = await $.process
-    .run(['grep', '-m', '2', '-E', '"type":"(turn_context|UserMessage)"', path])
+    .run(['grep', '-m', '2', '-E', '"type":"(turn_context|UserMessage)"', '--', path])
     .catch(() => undefined)
-  const tail = await $.process.run(['tail', '-n', String(TAIL_LINES), path]).catch(() => undefined)
+  const tail = await $.process
+    .run(['tail', '-n', String(TAIL_LINES), '--', path])
+    .catch(() => undefined)
   if (!head || !tail || tail.exitCode !== 0) return { path }
 
   // the head and tail miss requests between them, so no usd

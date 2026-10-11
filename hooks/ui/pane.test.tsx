@@ -1763,3 +1763,15 @@ test('dim owned pane keys stay bound and inert without binding absent controls o
   }
   expect(calls).toEqual([])
 })
+
+test('toasts replace control and format characters in item titles', async ($, on) => {
+  const odd = { ...lint, title: 'lint\u001b[2J\u0007‮ done' } as RabeItem
+  const items = ALL.map(item => (item.id === lint.id ? odd : item))
+  const state = hold(on, items, { selected: lint.id, order: orderOf(items) })
+  on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await arm($, `row:${lint.id}`)
+  await ui.redraw()
+  await ui.press({ key: 'remove' })
+  expect(state.toasts).toEqual(['Removed shell lint?[2J?? done'])
+})

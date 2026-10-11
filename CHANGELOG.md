@@ -7,6 +7,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 ### Added
 
 - The user guide covers options, troubleshooting and common questions ([#91](https://github.com/lorenzh/rabe/pull/91), fixes [#78](https://github.com/lorenzh/rabe/issues/78))
+- Security guidelines for developing Rabe in `docs/security.md`, with a security item in the pull request template. Toasts now filter control characters in item titles and refusal reasons, and `tail` and `grep` take file paths after `--`. (fixes [#81](https://github.com/lorenzh/rabe/issues/81))
 
 ### Changed
 

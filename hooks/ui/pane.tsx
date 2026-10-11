@@ -36,6 +36,11 @@ function toastText(text: string): string {
   return text.replace(/\s+/g, ' ').replace(/[\p{Cc}\p{Cf}]/gu, '?')
 }
 
+// Titles and reasons come from files and tools.
+function toast($: EngineInterface, text: string): void {
+  $.ui.toast(toastText(text))
+}
+
 // Esc may have closed the pane before the delayed focus call.
 async function refocus($: EngineInterface): Promise<void> {
   const pane = (await $.ui.panes()).find(one => one.id === PANE)
@@ -83,7 +88,7 @@ async function stop($: EngineInterface, ids: string[]): Promise<void> {
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   const targets = items.filter(item => ids.includes(item.id))
   const one = targets.length === 1 ? targets[0] : undefined
-  if (one) $.ui.toast(`Stopping ${KIND_LABEL[one.kind]} ${one.title}…`)
+  if (one) toast($, `Stopping ${KIND_LABEL[one.kind]} ${one.title}…`)
   let stopped = 0
   const stoppedItems: RabeItem[] = []
   let ended = 0
@@ -119,12 +124,12 @@ async function stop($: EngineInterface, ids: string[]): Promise<void> {
   for (const item of stoppedItems) {
     await queueAction($, `Rabe: user stopped ${item.kind} ${item.id} (${item.title})`)
   }
-  if (one && refused) $.ui.toast(`Stop refused: ${refused}`)
-  else if (one) $.ui.toast(ended ? `${one.title} had already finished` : `Stopped ${one.title}`)
+  if (one && refused) toast($, `Stop refused: ${refused}`)
+  else if (one) toast($, ended ? `${one.title} had already finished` : `Stopped ${one.title}`)
   else {
     const done = ended ? `; ${ended} had already finished` : ''
     const no = refused ? `; refused: ${refused}` : ''
-    $.ui.toast(`Stopped ${stopped} of ${targets.length}${done}${no}`)
+    toast($, `Stopped ${stopped} of ${targets.length}${done}${no}`)
   }
 }
 
@@ -269,7 +274,8 @@ async function remove($: EngineInterface, action: Action & { type: 'remove' | 'c
     if (isSet) break
   }
   const [one] = gone
-  $.ui.toast(
+  toast(
+    $,
     gone.length === 1 && one
       ? `Removed ${KIND_LABEL[one.kind]} ${one.title}`
       : `Removed ${gone.length} ended items`,
@@ -339,7 +345,8 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
         return
       const result = await $.tool.call({ tool: 'CronDelete', id: item.detail.jobId })
       const reason = result.deny ?? (result.isError ? (result.text ?? 'n/a') : undefined)
-      $.ui.toast(
+      toast(
+        $,
         reason
           ? `Delete refused: ${reason.replace(/<\/?tool_use_error>/g, '').trim()}`
           : `Deleted cron ${item.title}`,
@@ -354,10 +361,11 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
         .catch((error: unknown) => ({ isCopied: false as const, reason: String(error) }))
       const preview = toastText(action.text)
       const selectable = preview === action.text
-      $.ui.toast(
+      toast(
+        $,
         result.isCopied
           ? `Copied: ${preview}`
-          : `Copy failed: ${toastText(result.reason)}.${selectable ? ` Select it: ${action.text}` : ''}`,
+          : `Copy failed: ${result.reason}.${selectable ? ` Select it: ${action.text}` : ''}`,
       )
       return
     }
@@ -368,7 +376,8 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       const item = items.find(one => one.id === action.id)
       if (item?.kind !== 'agent' || !action.text.trim()) return
       const sent = await $.session.send({ to: { agentId: item.detail.agentId }, text: action.text })
-      $.ui.toast(
+      toast(
+        $,
         sent.isDelivered
           ? `Message sent to claude ${item.detail.name || item.title}`
           : `Message not sent: ${sent.reason}`,

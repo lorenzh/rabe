@@ -113,7 +113,7 @@ An opened item keeps its recorded turns, steps or output lines in its detail. Us
 
 Agent answers keep up to 16,000 characters each. Longer answers end with `…`. The transcript keeps the original answer. Markdown stays plain text. Wrapped bullet and numbered lists keep their markers beside the start of a long path. Long tool summaries end with `…`. Answers already shortened by an older version stay shortened.
 
-Copy toasts flatten whitespace to one space and replace only Unicode control (`Cc`) and format (`Cf`) characters with `?`. Wide characters, emoji and combining marks stay. The clipboard keeps the original text. Failure toasts show the reason through the same filter. Reasons include `no-clipboard` and `refused`. If the filter leaves the copied text unchanged, the failure toast offers the exact text.
+Toasts flatten whitespace to one space and replace only Unicode control (`Cc`) and format (`Cf`) characters with `?`, also in item titles and refusal reasons. Wide characters, emoji and combining marks stay. The clipboard keeps the original text. Failure toasts show the reason through the same filter. Reasons include `no-clipboard` and `refused`. If the filter leaves the copied text unchanged, the failure toast offers the exact text.
 
 The search button shows the active query, cut with `…` when long. The search field keeps the full query at every width. The filter stays visible after Enter and after reopening the pane. To clear it, submit an empty search. Stop group and remove ended act only on the filtered rows.
 
@@ -194,7 +194,7 @@ Run all checks (lint, type check, manifest check and tests), as CI does:
 bun run check
 ```
 
-[AGENTS.md](AGENTS.md) has the rules for contributors and coding agents. [The documentation index](docs/README.md) links to the architecture and feasibility guides. See the [user guide](docs/guide.md) for options and common problems.
+[AGENTS.md](AGENTS.md) has the rules for contributors and coding agents, and [Security guidelines](docs/security.md) the security rules for changes and review. [The documentation index](docs/README.md) links to the architecture and feasibility guides. See the [user guide](docs/guide.md) for options and common problems.
 
 ## Feedback and bugs
 

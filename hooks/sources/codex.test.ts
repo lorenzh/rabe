@@ -643,6 +643,10 @@ test('a session file over 4 MiB is read with grep and tail', async ($, on) => {
   })
   await startAndTick($, w)
   expect(runs.map(argv => argv[0])).toEqual(['grep', 'tail'])
+  expect(runs.map(argv => argv.slice(-2))).toEqual([
+    ['--', ROLLOUT_PATH],
+    ['--', ROLLOUT_PATH],
+  ])
   expect(writes.at(-1)?.[0]).toMatchObject({
     detail: { model: 'gpt-6.1-sol', isSessionPartial: true, commandCount: 1 },
   })

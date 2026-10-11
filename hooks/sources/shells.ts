@@ -70,7 +70,7 @@ async function readWhole(
   try {
     const { size } = await $.fs.stat(path)
     if (size <= MAX_READ) return { text: String(await $.fs.read(path)), isWhole: true }
-    const { stdout } = await $.process.run(['tail', '-c', TAIL_BYTES, path])
+    const { stdout } = await $.process.run(['tail', '-c', TAIL_BYTES, '--', path])
 
     return { text: stdout, isWhole: false }
   } catch {
