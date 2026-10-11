@@ -30,6 +30,7 @@ hooks/
   testing.ts          test helpers: state in memory, files, core stubs
   ui/band.tsx         the band above the prompt
   ui/pane.tsx         the /rabe command, its pane and actions
+  ui/interaction.ts   pure state transitions for focus, held order, regain and arming
   ui/sequence.ts      serializes reserved press landings and focus moves
   ui/builtin.tsx      hides Claude Code's own count of background work
   ui/render.tsx       one renderer: lines as row Boxes of Text and plain Buttons, charts as a Raster
@@ -40,5 +41,7 @@ hooks/
 types/index.d.ts      the state contract: item types and the $.state keys
 data/prices.csv       list prices per model, read at run time for the cost estimate (see docs/feasibility/prices.md)
 ```
+
+The pure [interaction model](architecture/interaction.md) owns focus, held order, regain retries and arming. The pane feeds events and runs its effects.
 
 The details are split by area: [state and items](architecture/state.md), [sources](architecture/sources.md), [prices](architecture/prices.md), [UI](architecture/ui.md), [focus and keys](architecture/focus-and-keys.md), [focus order and arming](architecture/focus-order.md), and [view behavior](architecture/views.md).

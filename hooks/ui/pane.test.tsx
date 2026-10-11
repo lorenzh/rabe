@@ -127,6 +127,15 @@ test('/rabe opens the pane so that Esc closes it', async ($, on) => {
   for (const one of opens) expect(one).toMatchObject({ id: 'rabe', closeOnEscape: true })
 })
 
+test('/rabe asks for the keys as soon as the command has cleared the prompt', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const opens = opening(on, true)
+  await $.command.run({ command: 'rabe', args: '' } as never)
+  await clock.advance(100)
+  expect(opens).toHaveLength(2)
+  expect(opens[1]).toMatchObject({ focus: true })
+})
+
 test('/rabe opens immediately during a turn', async ($, on) => {
   mock.clock(on, { now: NOW })
   let command: unknown
@@ -1948,3 +1957,32 @@ test('the pane shows a Codex stop error from session state only', async ($, on) 
   expect(state.toasts).toContain('Stop refused: companion detail')
   await ui.unmount()
 })
+
+test(
+  'tab keys dispatch their fixed action without a drawing handler',
+  {
+    plugins: [
+      {
+        name: 'expired-tab',
+        tier: 'append',
+        register(on) {
+          on('ui.press', { requestId: 'rabe', element: /^tab-/ }, async (_$, e) => ({
+            element: e.element,
+          }))
+        },
+      },
+    ],
+  },
+  async ($, on) => {
+    const state = hold(on, ALL)
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ surface, ...PANE } as never)
+      await ui.press({ key: 'tab-cost' })
+      expect(state.tab).toBe('cost')
+      await ui.redraw()
+      await ui.press({ key: 'tab-items' })
+      expect(state.tab).toBe('items')
+      await ui.unmount()
+    }
+  },
+)
