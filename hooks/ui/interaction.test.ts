@@ -45,7 +45,7 @@ for (const [key, byPerson, isLiveRow, armed, listArmed] of [
 test('regain is bounded, retries after refusal and becomes stale after a person moves', () => {
   let state = interact(interact(IDLE, focus('row:a')).state, draw()).state
   for (let i = 1; i <= 3; i++) {
-    const result = interact(state, draw(true, 'dock', true))
+    const result = interact(state, draw(true, 'dock', i === 1))
     state = result.state
     expect(result.effects).toEqual([{ type: 'regain', want: state.shift }])
     expect(state.shift?.tries).toBe(i)
@@ -57,7 +57,7 @@ test('regain is bounded, retries after refusal and becomes stale after a person 
       isMoved: false,
     }).state
   }
-  expect(interact(state, draw(true, 'dock', true)).effects).toEqual([])
+  expect(interact(state, draw()).effects).toEqual([])
   const want = state.shift ?? { key: 'missing', isAsked: false, tries: 0 }
   state = interact(state, focus('row:b')).state
   expect(interact(state, { type: 'regained', want, isMoved: false }).state).toEqual(state)
@@ -137,6 +137,18 @@ test('opening clears the hold and keeps asking for keys only until the pane rece
   expect(interact(state, draw(false)).effects).toEqual([{ type: 'refocus', after: 50 }])
   state = interact(state, draw()).state
   expect(interact(state, draw(false)).effects).toEqual([])
+})
+
+test('closing drops held slots and focus evidence without losing pending press counts', () => {
+  let state = interact(IDLE, { type: 'opened' }).state
+  state = interact(state, focus('row:a')).state
+  state = interact(state, draw()).state
+  state = interact(state, draw(true, 'dock', true)).state
+  state = interact(state, { type: 'press-start' }).state
+  const closed = interact(state, { type: 'closed' })
+  expect(closed.state).toEqual({ ...IDLE, pressing: 1 })
+  expect(closed.effects).toEqual([])
+  expect(interact(closed.state, { type: 'press-end' }).state.pressing).toBe(0)
 })
 
 test('an all-fit arrow computed at the safe tab survives delivery after the press ended', () => {

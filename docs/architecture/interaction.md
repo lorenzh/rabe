@@ -2,7 +2,7 @@
 title: Pane interaction state
 description: The pure transitions that keep pane focus, held order, regain retries and destructive controls safe.
 tags: [architecture, focus, keys, state]
-keywords: [interaction, interaction.ts, state machine, focus, arming, hold, regain, arrow keys, all-fit, opening]
+keywords: [interaction, interaction.ts, state machine, focus, arming, hold, regain, arrow keys, all-fit, opening, closed, ui.close]
 ---
 
 # Pane interaction state
@@ -14,6 +14,7 @@ The state holds the ring key, the pending focus key and the last landing evidenc
 | Event | State change or effect |
 |-------|------------------------|
 | `opened` | Clear held order and landing evidence. Disarm and request the keyboard after 50 ms. |
+| `closed` | Clear the held order, landing evidence, pending regain and arming on every surface after a close the host carried out. Keep the count of pending presses. |
 | `refocused` | Stop opening retries when the pane has the keyboard or is closed. Otherwise request another drawing, up to 40 focus requests. |
 | `press-start`, `press-end` | Track presses whose focus work is pending. |
 | `reset` | Disarm and clear ring evidence and pending regain. Remember the prior key during a press. Keep held orders until the next view draws. |
@@ -35,7 +36,7 @@ If a carried arrow lands as asked on a live row, it arms list controls. Plugin l
 
 ## Safety rules
 
-The renderer keeps its append-only focus rule and inert gone slots. The Items and Effects lists can insert rows into their groups and drop gone rows. While a regain is pending or the ring's row was dropped, the pane holds back row and group presses.
+The renderer keeps its append-only focus rule and inert gone slots until the view changes or the pane closes. The Items and Effects lists can insert rows into their groups and drop gone rows. While a regain is pending or the ring's row was dropped, the pane holds back row and group presses.
 
 The press hook handles fixed tab actions directly. When a drawing releases a tab handler, its key still works. Item and Input handlers still expire with their drawings. The pane drops stale item and Input events.
 

@@ -2,7 +2,7 @@
 title: How to test Rabe
 description: How to test the Rabe mod - unit tests of pure functions, hook and UI tests with claude-code/testing, a failing test first for each bug, live checks in a real Claude Code session through tmux with scripts/live-check.sh, and what CI runs.
 tags: [testing, tdd, ci, live-check, tmux]
-keywords: [claude plugin test, claude-code/testing, mock.clock, advance, memoryState, files, core, state.set, tool.call, ui.mount, terminal, desktop, find, findAll, press, ui.focus, origin person, arm, arming, disarmed, focus order, append-only, stepRow, fixtures, live-check.sh, live-check.test.sh, test:scripts, tmux socket, send-keys, capture-pane, fake tmux, pane_pid, timeout, background shells, key handling, #37, bun run check, CI]
+keywords: [claude plugin test, ui.close, closer, regain, claude-code/testing, mock.clock, advance, memoryState, files, core, state.set, tool.call, ui.mount, terminal, desktop, find, findAll, press, ui.focus, origin person, arm, arming, disarmed, focus order, append-only, stepRow, fixtures, live-check.sh, live-check.test.sh, test:scripts, tmux socket, send-keys, capture-pane, fake tmux, pane_pid, timeout, background shells, key handling, #37, bun run check, CI]
 ---
 
 # How to test Rabe
@@ -102,6 +102,8 @@ for (const surface of SURFACES) {
 - `ui.press({ key })` presses a Button as the person would.
 - A focus move by the person is `$.ui.focus({ ..., element, origin: { kind: 'person' } })`. The `arm` helper in `hooks/ui/pane.test.tsx` does this; without it the pane stays disarmed and `x` does nothing, as it does for a real person.
 - `hold(on, items, seeds)` in `hooks/ui/pane.test.tsx` answers the sources' keys, seeds UI keys and records what the pane writes and toasts.
+
+The test's outer `$` has no `ui.close`. To raise it, pass a fixture plugin through the test's `plugins` option. Put the call in that plugin's `register` function so the host scan can allow it. The pane close tests use `closer` in `hooks/ui/pane.test.tsx` for this. The kit refuses Rabe's own `$.ui.focus` before any hook sees it, so a pane test checks a regain by its effect (a refused move disarms the pane) and `hooks/ui/interaction.test.ts` checks its target.
 
 A bug about focus or arming usually needs both: a pure test in `view.test.ts` for the rule, and a pane test that presses through the same steps as the report. See `the pane opens disarmed: a stop does nothing until the person moves the ring` in `hooks/ui/pane.test.tsx`.
 

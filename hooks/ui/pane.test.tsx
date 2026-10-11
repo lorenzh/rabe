@@ -1687,6 +1687,63 @@ test('a click on a row still selects it while the pane does not hold the keys', 
   await ui.unmount()
 })
 
+// Issue #122: a row that leaves above the focused row moves the ring off its
+// row, as a row found above does. Until Rabe puts the ring back on the chosen
+// row (the kit refuses Rabe's own move, and the refusal disarms the pane; the
+// target of the move is checked in interaction.test.ts) or the person moves
+// it, Enter on a row does nothing. When the ring's own row left, Rabe asks no
+// move, and Enter on a row waits for the person.
+test('a row that leaves above the focused row holds Enter back until the ring is back on its row', async ($, on) => {
+  const [a, b, c] = [shellNamed('a'), shellNamed('b'), shellNamed('c')]
+  const items = [explore, a, b, c]
+  const state = hold(on, items, { selected: b.id, order: orderOf(items) })
+  await arm($, `row:${b.id}`)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props.dimColor).toBeUndefined()
+  items.splice(items.indexOf(a), 1)
+  await ui.redraw()
+  expect(await ui.find({ type: 'Button', key: `row:${a.id}` })).toBeUndefined()
+  for (const key of [`row:${c.id}`, `row:${b.id}`, 'group-shells']) {
+    await ui.press({ key })
+    expect([key, state.selected, state.open, state.folded]).toEqual([
+      key,
+      undefined,
+      undefined,
+      undefined,
+    ])
+  }
+  await held?.advance(200)
+  await ui.redraw()
+  expect((await ui.find({ type: 'Button', key: 'stop' }))?.props).toMatchObject({
+    hotkey: 'x',
+    dimColor: true,
+  })
+  await arm($, `row:${b.id}`)
+  await ui.press({ key: `row:${b.id}` })
+  expect(state.open).toBe(b.id)
+  await ui.unmount()
+})
+
+test('a focused row that leaves holds Enter back without a regain until the person moves', async ($, on) => {
+  const [a, b, c] = [shellNamed('a'), shellNamed('b'), shellNamed('c')]
+  const items = [explore, a, b, c]
+  const state = hold(on, items, { selected: b.id, order: orderOf(items) })
+  await arm($, `row:${b.id}`)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  items.splice(items.indexOf(b), 1)
+  await ui.redraw()
+  await held?.advance(200)
+  await ui.redraw()
+  for (const key of [`row:${c.id}`, `row:${a.id}`, 'group-shells']) {
+    await ui.press({ key })
+    expect([key, state.open, state.folded]).toEqual([key, undefined, undefined])
+  }
+  await arm($, `row:${c.id}`)
+  await ui.press({ key: `row:${c.id}` })
+  expect(state.open).toBe(c.id)
+  await ui.unmount()
+})
+
 // Issue #13: r removes the selected row once it ended, a every ended row; a
 // removed row leaves the list at once (#122), and stays hidden for the
 // session, also from the band, though its item is still in rabe.items.
@@ -1735,6 +1792,64 @@ test('r and a remove ended rows for the session; running rows stay', async ($, o
   expect(shown).toContain(dev.title)
   await again.unmount()
 })
+
+// Issue #122: the open item and the Cost and Timeline tabs keep a gone row's
+// slot while the pane is open. Closing the pane clears every hold; a close
+// the host cancels keeps it. The test's `$` has no `ui.close`, so a fixture
+// plugin calls it.
+const closer = {
+  name: 'closer',
+  tier: 'append',
+  register(on: On) {
+    on('command.run', { command: 'close-pane' }, async ($, e) => {
+      await $.ui.close({ id: e.args })
+      return { text: '' }
+    })
+  },
+} as const
+
+for (const surface of SURFACES) {
+  test(
+    `closing clears the gone slots on ${surface}, but a canceled close keeps them`,
+    { plugins: [closer] },
+    async ($, on) => {
+      const other = { ...dev, id: 'shell:other', title: 'other' }
+      const items = [dev, other]
+      hold(on, items, { tab: 'timeline', order: orderOf(items) })
+      let isOpen = true
+      let isCanceled = true
+      on('ui.close', async () => {
+        if (!isCanceled) isOpen = false
+        return { value: undefined }
+      })
+      on('ui.panes', async () => ({
+        value: isOpen
+          ? [{ id: 'rabe', title: 'Rabe', isShown: true, isFocused: true, isPlaced: true }]
+          : [],
+      }))
+      const ui = await $.ui.mount({ surface, ...PANE } as never)
+      items.pop()
+      await ui.redraw()
+      const keys = (await ui.findAll({ type: 'Button' })).map(one => one.key)
+      expect((await screen(ui)).join('\n')).toContain(' gone ')
+
+      await $.command.run({ command: 'close-pane', args: 'other' } as never)
+      await $.command.run({ command: 'close-pane', args: 'rabe' } as never)
+      await ui.redraw()
+      expect((await ui.findAll({ type: 'Button' })).map(one => one.key)).toEqual(keys)
+      expect((await screen(ui)).join('\n')).toContain(' gone ')
+      isCanceled = false
+      await $.command.run({ command: 'close-pane', args: 'rabe' } as never)
+      await ui.unmount()
+      isOpen = true
+      const again = await $.ui.mount({ surface, ...PANE } as never)
+      expect(await again.find({ type: 'Button', key: `row:${other.id}` })).toBeUndefined()
+      expect((await screen(again)).join('\n')).not.toContain(' gone ')
+      expect(await again.find({ type: 'Button', key: `row:${dev.id}` })).toBeDefined()
+      await again.unmount()
+    },
+  )
+}
 
 // Two removes in flight read the same value: the second write must not drop
 // the id the first one added.
