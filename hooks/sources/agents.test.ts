@@ -465,7 +465,7 @@ test('host diffs record repeated script edits for the main session and agents wi
   await $.tool.call({ tool: 'Bash', command, agentId: 'a1' } as never)
   const edit = { path: '/wt/server.py', at: 5000, via: 'shell' }
   expect(held.edits).toEqual(Array.from({ length: 5 }, () => edit))
-  expect((held.items?.[0] as RabeItemOf<'agent'>).detail.edits).toEqual([edit])
+  expect(((held.items ?? [])[0] as RabeItemOf<'agent'>).detail.edits).toEqual([edit])
   expect(stats).toEqual([])
 })
 
