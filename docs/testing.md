@@ -2,7 +2,7 @@
 title: How to test Rabe
 description: How to test the Rabe mod - unit tests of pure functions, hook and UI tests with claude-code/testing, a failing test first for each bug, live checks in a real Claude Code session through tmux with scripts/live-check.sh, and what CI runs.
 tags: [testing, tdd, ci, live-check, tmux]
-keywords: [claude plugin test, claude-code/testing, mock.clock, advance, memoryState, files, core, state.set, tool.call, ui.mount, terminal, desktop, find, findAll, press, ui.focus, origin person, arm, arming, disarmed, focus order, append-only, stepRow, fixtures, live-check.sh, live-check.test.sh, test:scripts, tmux socket, send-keys, capture-pane, background shells, key handling, #37, bun run check, CI]
+keywords: [claude plugin test, claude-code/testing, mock.clock, advance, memoryState, files, core, state.set, tool.call, ui.mount, terminal, desktop, find, findAll, press, ui.focus, origin person, arm, arming, disarmed, focus order, append-only, stepRow, fixtures, live-check.sh, live-check.test.sh, test:scripts, tmux socket, send-keys, capture-pane, fake tmux, pane_pid, timeout, background shells, key handling, #37, bun run check, CI]
 ---
 
 # How to test Rabe
@@ -19,7 +19,7 @@ The first two run in CI on every pull request. A live check runs by hand before 
 
 ```sh
 bun run test          # every *.test.ts and *.test.tsx under hooks/ (about 40 seconds)
-bun run test:scripts  # the argument tests of scripts/live-check.sh (under a second)
+bun run test:scripts  # the tests of scripts/live-check.sh, against a fake tmux (about 10 seconds)
 bun run check         # lint, typecheck, strict validate, both of the above
 ```
 
@@ -111,9 +111,9 @@ The test kit does not show everything. Real key timing, the terminal's own key h
 
 1. It makes a fresh temporary folder and starts Claude Code there with `--plugin-dir` set to this checkout, on its **own tmux socket**, so your other tmux sessions are not touched.
 2. It accepts the folder trust question.
-3. It **seeds background work**: it asks Claude to start N background `sleep` shells with unique durations, and waits until the last one shows.
-4. For each round it opens `/rabe`, sends the keys with a fixed gap, saves the screen to `captures/round-N.txt`, checks it against `--expect`, and closes the pane with Esc.
-5. On exit it kills the tmux server of its socket, stops the `sleep` shells it started, and removes the folder.
+3. It **seeds background work**: it asks Claude to start N background `sleep` shells with unique durations, and waits until each one runs as a process under this session's Claude Code. The prompt shows the same command text, so the screen cannot tell. If the shells do not start within `--timeout`, the run stops as a setup error.
+4. For each round it opens `/rabe` and **starts from the list**: `/rabe` keeps the open detail, the tab and the selection of the last round, so the script presses `b` when a detail shows, `1` for the Items tab and Up until the first row. Then it sends the keys with a fixed gap, saves the screen to `captures/round-N.txt`, checks it against `--expect`, and closes the pane with Esc.
+5. On exit it kills the tmux server of its socket, stops the processes that this session's Claude Code started (the `sleep` shells among them), and removes the folder. It never stops a process by name, so two runs on different sockets do not stop each other's shells.
 
 ```sh
 scripts/live-check.sh --help
@@ -126,6 +126,7 @@ scripts/live-check.sh --shells 3 --keys 'Down Down Enter' --expect 'b: back'
 | `--name NAME` | `rabe-live` | tmux socket and session name. Use another name to run two checks at once. |
 | `--plugin-dir DIR` | this checkout | The Rabe folder to load, for example a worktree. |
 | `--shells N` | `3` | Background shells to seed. `0` seeds nothing and asks Claude nothing. |
+| `--timeout SECONDS` | `90` | How long to wait for the seeded shells to start. |
 | `--keys "K ..."` | none | tmux key names, such as `Down`, `Up`, `Enter`, `Tab`, `Escape`, `b`, `2`. |
 | `--gap SECONDS` | `0.3` | Pause between two keys. Short gaps (0.02 to 0.05) find races in key handling. |
 | `--repeat N` | `1` | Rounds. A race shows only in some rounds; use 10 or more. |
@@ -134,7 +135,7 @@ scripts/live-check.sh --shells 3 --keys 'Down Down Enter' --expect 'b: back'
 | `--keep` | off | Keep the folder, the captures and the session. Attach with `tmux -L NAME attach -t NAME`. |
 | `--dry-run` | off | Print the plan and stop. |
 
-The binary is `claude` on `PATH`, or the one named in the environment variable `CLAUDE`. The exit code is 0 when every round passed, 1 when a round failed and 2 for a usage or setup error.
+The binary is `claude` on `PATH`, or the one named in the environment variable `CLAUDE`. The exit code is 0 when every round passed, 1 when a round failed and 2 for a usage or setup error: tmux could not start the session, the seeded shells did not start, or a capture failed.
 
 ### Measure key handling
 
@@ -153,7 +154,7 @@ The selected row starts with `▌`. Make `--expect` as exact as the case needs, 
 
 - The seed prompt costs one short model turn per run. `--shells 0` skips it when the check does not need background work.
 - Claude Code keeps the trust answer for the temporary folder in its own config, as for any folder you trust.
-- The script only checks its own arguments in CI (`scripts/live-check.test.sh`). The live run needs tmux, a signed-in Claude Code and a person to read the result.
+- CI runs `scripts/live-check.test.sh`. It checks the arguments, and runs the script against a fake `tmux` whose pane starts the seeded shells: setup errors, the seed wait, the cleanup and the reset of each round. The live run needs tmux, a signed-in Claude Code and a person to read the result.
 - For a release, also do the manual live check in [RELEASING.md](../RELEASING.md): band, `/rabe`, arrow keys, Enter, a mouse click on a row, every tab, a detail of each kind, `x` on a shell and Esc.
 
 ## What CI runs
@@ -165,7 +166,7 @@ The selected row starts with `▌`. Make `--expect` as exact as the case needs, 
 3. `bun run typecheck` (`tsc`)
 4. `bun run validate` (`claude plugin validate --strict .`)
 5. `bun run test` (the hook, UI and unit tests, about 40 seconds)
-6. `bun run test:scripts` (the argument tests of the live-check script)
+6. `bun run test:scripts` (the tests of the live-check script, about 10 seconds)
 7. On a pull request: the docs check. A change under `hooks/`, `commands/`, `types/index.d.ts`, `data/` or `.claude-plugin/` must also change a doc, unless the pull request has the `no-docs` label.
 
 `bun run check` runs steps 2 to 6 on your machine.

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Checks the argument handling of live-check.sh. It never starts tmux or Claude Code.
+# Checks live-check.sh: its arguments, and its run against a fake tmux.
+# It never starts the real tmux or Claude Code.
 set -u
 script="$(dirname "$0")/live-check.sh"
 failed=0
@@ -34,5 +35,108 @@ check 'gap must be a number' 2 '--gap' --gap soon
 check 'size must be COLSxROWS' 2 '--size' --size big
 check 'name must be a plain word' 2 '--name' --name 'a b'
 check 'plugin dir must exist' 2 '--plugin-dir' --plugin-dir /nonexistent/rabe
+check 'timeout reaches the plan' 0 'timeout: 30$' --dry-run --timeout 30
+check 'timeout must be a number' 2 '--timeout' --timeout soon
+
+# A fake tmux: its pane is a loop that starts the shells the seed prompt names,
+# as Claude Code would. Each seed also starts a shell with the same duration
+# outside the pane, as a second run would; cleanup must leave that one alone.
+real_sleep=$(command -v sleep)
+fake=$(mktemp -d)
+trap 'rm -rf "$fake"' EXIT
+mkdir "$fake/bin"
+cat >"$fake/bin/tmux" <<'EOF'
+#!/usr/bin/env bash
+shift 2
+cmd=$1
+shift
+case $cmd in
+  has-session) exit 1 ;;
+  new-session)
+    [ "${FAKE_NEW:-}" = fail ] && exit 1
+    nohup bash -c 'while :; do
+      if [ -f "$0/spawn" ]; then
+        for d in $(cat "$0/spawn"); do
+          (exec -a sleep "$1" "$d") &
+          echo $! >>"$0/seeded"
+        done
+        rm "$0/spawn"
+      fi
+      "$1" 0.1
+    done' "$FAKE" "$REAL_SLEEP" >/dev/null 2>&1 &
+    echo $! >"$FAKE/pane" ;;
+  display-message) cat "$FAKE/pane" ;;
+  send-keys)
+    shift 2
+    if [ "$1" = -l ]; then
+      printf '%s\n' "$2" >>"$FAKE/screen"
+      ds=$(grep -o 'sleep [0-9]*' <<<"$2" | cut -d' ' -f2 | tr '\n' ' ')
+      if [ -n "$ds" ]; then
+        set -- $ds
+        (exec -a sleep "$REAL_SLEEP" "$1") >/dev/null 2>&1 &
+        echo $! >"$FAKE/foreign"
+        [ "${FAKE_SHELLS:-}" = none ] || echo "$ds" >"$FAKE/spawn"
+      fi
+    else
+      printf '%s\n' "$1" >>"$FAKE/keys"
+    fi ;;
+  capture-pane)
+    [ "${FAKE_CAP:-}" = fail ] && exit 1
+    cat "$FAKE/screen" 2>/dev/null
+    printf '%s\n' "${FAKE_SCREEN:-}" ;;
+  kill-server) kill "$(cat "$FAKE/pane")" 2>/dev/null ;;
+esac
+exit 0
+EOF
+printf '#!/bin/sh\nexec "$REAL_SLEEP" 0.02\n' >"$fake/bin/sleep"
+chmod +x "$fake/bin/tmux" "$fake/bin/sleep"
+
+alive() { local s; s=$(ps -o stat= -p "$1" 2>/dev/null) && [[ $s != Z* ]]; }
+dead() { local i; for i in 1 2 3 4 5 6 7 8 9 10; do alive "$1" || return 0; "$real_sleep" 0.1; done; return 1; }
+
+# Runs `check` against the fake tmux. Leading NAME=VALUE words set the fake's
+# environment; FAKE names its folder, which then holds pane, foreign and keys.
+faked() {
+  local vars=()
+  while [[ $1 == *=* ]]; do vars+=("$1"); shift; done
+  export FAKE=$fake/run
+  rm -rf "$FAKE" "$fake/tmp"
+  mkdir -p "$FAKE" "$fake/tmp"
+  (
+    export PATH="$fake/bin:$PATH" REAL_SLEEP=$real_sleep TMPDIR=$fake/tmp CLAUDE=true
+    for v in "${vars[@]}"; do export "${v?}"; done
+    check "$@"
+    exit $failed
+  ) || failed=1
+}
+stop() { local f; for f in pane foreign seeded; do [ -f "$FAKE/$f" ] && kill $(cat "$FAKE/$f") 2>/dev/null; done; }
+expect() { # name, condition...
+  local name=$1
+  shift
+  if "$@"; then echo "ok   $name"; else echo "FAIL $name"; failed=1; fi
+}
+
+faked FAKE_NEW=fail 'a failed session start is a setup error' 2 'could not start' --shells 0
+stop
+faked FAKE_CAP=fail 'a failed capture is a setup error' 2 'could not capture' --shells 0
+stop
+faked FAKE_SHELLS=none 'the seed waits for the shells, not the prompt text' 2 'did not start' \
+  --shells 2 --timeout 20
+stop
+faked 'the seed passes once the shells run' 0 'round 1: captured' --shells 2 --timeout 50
+all_dead() {
+  local p
+  [ -s "$FAKE/seeded" ] || return 1
+  for p in $(cat "$FAKE/seeded"); do dead "$p" || return 1; done
+}
+expect 'cleanup stops the seeded shells' all_dead
+expect 'cleanup leaves a shell of another run alone' alive "$(cat "$FAKE/foreign")"
+stop
+faked FAKE_SCREEN='b: back' 'rounds run with a detail open' 0 'round 2: captured' --shells 0 --repeat 2
+expect 'each round leaves the detail and goes to the first tab' \
+  test "$(grep -c '^b$' "$FAKE/keys"):$(grep -c '^1$' "$FAKE/keys")" = 2:2
+expect 'each round moves the focus up to the first row' \
+  test "$(grep -c '^Up$' "$FAKE/keys")" -ge 2
+stop
 
 exit $failed
