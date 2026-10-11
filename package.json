@@ -13,7 +13,7 @@
   "devDependencies": {
     "@anthropic-ai/claude-code": "2.1.296",
     "@biomejs/biome": "2.2.4",
-    "typescript": "5.9.3"
+    "typescript": "7.0.2"
   },
   "license": "MIT"
 }
