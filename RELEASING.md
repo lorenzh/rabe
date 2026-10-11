@@ -30,7 +30,7 @@ All of these must be true. Tick them in the release pull request.
 - [ ] Every change for the release is merged into `main` through a pull request.
 - [ ] CI passes on `main` (lint, typecheck, strict validate, tests).
 - [ ] The release's changes were reviewed by GPT-6.1 Sol at high effort until it approved.
-- [ ] A live check in a real Claude Code session passed: band, `/rabe`, arrow keys, Enter, a mouse click on a row, every tab, a detail of each kind, `x` on a shell, Esc. Note the Claude Code version it ran on.
+- [ ] A live check in a real Claude Code session passed: band, `/rabe`, arrow keys, Enter, a mouse click on a row, every tab, a detail of each kind, `x` on a shell, Esc. Note the Claude Code version it ran on. `scripts/live-check.sh` sets up the session (see [docs/testing.md](docs/testing.md)).
 
 **Docs**
 - [ ] `README.md` matches what Rabe does: keys, mouse, commands, options, requirements, what it cannot see.

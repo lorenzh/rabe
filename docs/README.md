@@ -16,6 +16,7 @@ Use this index to find the guide that matches your question.
 - [Release steps](../RELEASING.md): checks and compatibility review before a release.
 - [Changelog](../CHANGELOG.md): changes by version.
 - [Security guidelines](security.md): threat model and security rules for changes and review.
+- [Testing](testing.md): unit, hook and UI tests, live checks with `scripts/live-check.sh`, and CI.
 
 ## Architecture
 

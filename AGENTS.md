@@ -10,13 +10,15 @@
 |------|---------|
 | All checks (CI runs these) | `bun run check` |
 | Tests | `bun run test` |
+| Live-check script tests | `bun run test:scripts` |
+| Live check in tmux | `scripts/live-check.sh --help` |
 | Typecheck | `bun run typecheck` |
 | Lint / fix | `bun run lint` / `bunx biome check --write .` |
 | Validate manifest and module | `bun run validate` |
 | Run the mod in a session | `claude --plugin-dir .` |
 
 ## TDD
-- Write the failing test first, then the code.
+- Write the failing test first, then the code. `docs/testing.md` has the kit, examples and the live check.
 - Tests live next to the module as `*.test.ts` or `*.test.tsx` and import from `claude-code/testing`.
 - `bun run test` runs every test; there is no single-file filter, and the suite takes about 40 seconds.
 - UI tests mount on `terminal` and `desktop` and find elements by type and text; `Text` keeps no `key`.
@@ -77,6 +79,7 @@
 | Architecture and module behavior | [`docs/architecture.md`](docs/architecture.md) |
 | Data sources and limits | [`docs/feasibility.md`](docs/feasibility.md) |
 | Security rules for changes and review | [`docs/security.md`](docs/security.md) |
+| How to test: unit, UI, live checks, CI | [`docs/testing.md`](docs/testing.md) |
 | Release steps, versions, migration checks | `RELEASING.md` |
 | What changed per version | `CHANGELOG.md` |
 | Mod API (grep a name, read its doc comment) | `types/claude-code.d.ts` |

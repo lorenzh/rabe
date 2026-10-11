@@ -4,10 +4,11 @@
   "type": "module",
   "scripts": {
     "test": "claude plugin test .",
+    "test:scripts": "bash scripts/live-check.test.sh",
     "validate": "claude plugin validate --strict .",
     "typecheck": "tsc -p .",
     "lint": "biome check .",
-    "check": "bun run lint && bun run typecheck && bun run validate && bun run test"
+    "check": "bun run lint && bun run typecheck && bun run validate && bun run test && bun run test:scripts"
   },
   "devDependencies": {
     "@anthropic-ai/claude-code": "2.1.296",
