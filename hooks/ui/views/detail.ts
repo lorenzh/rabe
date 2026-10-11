@@ -80,7 +80,7 @@ function costBox(model: Model, own: RabeItem): Line[] {
   const of: Span[] = [[share(model.items, item)], [' of session', dim]]
   const second: Span[] =
     item.kind === 'workflow'
-      ? [[String(list.length)], [' agents', dim]]
+      ? [[String(list.length)], [list.length === 1 ? ' agent' : ' agents', dim]]
       : item.kind === 'codex'
         ? [
             ...((item.detail.commandCount === undefined

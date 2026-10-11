@@ -1228,6 +1228,35 @@ function stops(on: On): unknown[] {
   return stopped
 }
 
+for (const item of [dev, review, flow]) {
+  test(`a done ${item.kind} detail keeps its stop dim and inert on every surface`, async ($, on) => {
+    const done = { ...item, status: 'done', endedAt: NOW } as RabeItem
+    const state = hold(on, [done], { open: done.id, selected: done.id })
+    const stopped = stops(on)
+    const commands: string[] = []
+    on('command.run', { command: 'rabe-stop' }, async (_$, e) => {
+      commands.push(e.args)
+      return { text: 'stopped' }
+    })
+    await arm($)
+    const key = `${done.kind === 'workflow' ? 'stop-run' : 'stop'}:${done.id}`
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ surface, ...PANE } as never)
+      expect((await ui.find({ type: 'Button', key }))?.props).toMatchObject({
+        label: done.kind === 'workflow' ? 'g: stop run' : 'x: stop',
+        hotkey: done.kind === 'workflow' ? 'g' : 'x',
+        dimColor: true,
+      })
+      await ui.press({ key })
+      expect(stopped).toEqual([])
+      expect(commands).toEqual([])
+      expect(state.actions).toBeUndefined()
+      expect(state.toasts).toBeUndefined()
+      await ui.unmount()
+    }
+  })
+}
+
 // The ring keeps an index the pane cannot see, so a stop acts only once the
 // ring is known to sit on a safe element (see arming in docs/architecture/focus-order.md).
 test('the pane opens disarmed: a stop does nothing until the person moves the ring', async ($, on) => {

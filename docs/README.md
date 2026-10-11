@@ -27,7 +27,7 @@ Use this index to find the guide that matches your question.
 - [UI rendering](architecture/ui.md): view contract, renderer, palette, cells, sizing, and band.
 - [Focus and keys](architecture/focus-and-keys.md): pane behavior, key controls, and focus moves.
 - [Focus order and arming](architecture/focus-order.md): held order, append-only slots, target-bound keys, and arming.
-- [View behavior](architecture/views.md): tabs, details, removed items, and session summaries.
+- [View behavior](architecture/views.md): tabs, cron schedules, workflow agent counts, inert stop controls, removed items, and session summaries.
 
 ## Feasibility
 
