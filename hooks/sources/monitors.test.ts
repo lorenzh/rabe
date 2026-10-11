@@ -162,9 +162,9 @@ test('a subagent monitor ends from the exit line of its output file; the main St
   } as never)
   await $.classic.Stop({ stop_hook_active: false, background_tasks: [] })
   const monitor = () =>
-    (state['rabe.items']?.value as { id: string; status: string; parentId?: string }[]).find(
-      one => one.id === 'monitor:m1',
-    )
+    (
+      (state['rabe.items']?.value ?? []) as { id: string; status: string; parentId?: string }[]
+    ).find(one => one.id === 'monitor:m1')
   expect(monitor()).toMatchObject({ status: 'running', parentId: 'agent:a1' })
   held[OUT] += '\n[exited with code 0]\n'
   await clock.advance(2000)

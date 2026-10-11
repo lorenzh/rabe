@@ -155,7 +155,7 @@ test('a shell write of a codex job counts when the file changed while the comman
   w.files.set('/work/old.md', { text: 'x', mtimeMs: 3000 })
   w.files.set('/work/late.md', { text: 'x', mtimeMs: 9000 })
   await startAndTick($, w)
-  expect((writes.at(-1)?.[0] as RabeItemOf<'codex'>).detail.edits).toEqual([
+  expect(((writes.at(-1) ?? [])[0] as RabeItemOf<'codex'>).detail.edits).toEqual([
     { path: '/work/new.cjs', at: 3000, via: 'codex', change: 'add' },
     { path: '/work/in.md', at: 4000, via: 'shell' },
   ])
@@ -177,7 +177,7 @@ test('a stalled stat ends the shell checks after a second and keeps the rest', a
   await startAndTick($, w)
   expect(writes).toHaveLength(0)
   await w.clock.advance(1000)
-  expect((writes.at(-1)?.[0] as RabeItemOf<'codex'>).detail.edits).toEqual([
+  expect(((writes.at(-1) ?? [])[0] as RabeItemOf<'codex'>).detail.edits).toEqual([
     { path: '/work/new.cjs', at: 3000, via: 'codex', change: 'add' },
     { path: '/work/in.md', at: 4000, via: 'shell' },
     { path: '/work/in.md', at: 4100, via: 'shell' },

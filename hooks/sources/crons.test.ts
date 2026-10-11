@@ -130,7 +130,7 @@ test('a fired prompt ends a due wakeup only when it is its prompt or names its s
   const fire = (text: string) =>
     $.prompt.submit({ text, origin: { kind: 'scheduled-trigger' }, wait: false })
   const status = () =>
-    (state['rabe.items']?.value as { id: string; status: string }[]).map(one => one.status)
+    ((state['rabe.items']?.value ?? []) as { id: string; status: string }[]).map(one => one.status)
 
   // Not due yet: even its own text ends nothing.
   await fire(DYNAMIC_TICK)
@@ -162,7 +162,7 @@ test('a /loop wakeup ends on its own prompt, not on an autonomous tick', async (
   const fire = (text: string) =>
     $.prompt.submit({ text, origin: { kind: 'scheduled-trigger' }, wait: false })
   const status = () =>
-    (state['rabe.items']?.value as { id: string; status: string }[]).map(one => one.status)
+    ((state['rabe.items']?.value ?? []) as { id: string; status: string }[]).map(one => one.status)
   await clock.set(61_000)
   await fire(DYNAMIC_TICK)
   await fire(RECURRING_TICK)

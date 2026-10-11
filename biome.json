@@ -12,5 +12,5 @@
       "arrowParentheses": "asNeeded"
     }
   },
-  "linter": { "rules": { "recommended": true } }
+  "linter": { "rules": { "preset": "recommended" } }
 }
