@@ -2,7 +2,7 @@
 
 ## Report a vulnerability
 
-Please report security vulnerabilities through [GitHub's private vulnerability reporting for Rabe](https://github.com/lorenzh/rabe/security/advisories/new). Do not report a vulnerability in a public issue. GitHub sends a private report to the maintainers, where you can discuss the issue and a fix before disclosure.
+Please report security vulnerabilities by email to [lorenz@losoft.dev](mailto:lorenz@losoft.dev). Do not report a vulnerability in a public issue. You get a reply there, and we can discuss the issue and a fix privately before disclosure.
 
 Include the affected Rabe version, the impact, and steps to reproduce. Remove secrets and personal data from examples. There is no fixed response-time commitment; the maintainers will review reports as they can.
 
