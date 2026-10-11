@@ -66,7 +66,7 @@ Rabe reads subagent metadata and workflow scripts for phase names. It reads shel
 
 ### Which platforms does Rabe support?
 
-Rabe is built and tested with Claude Code 2.1.296. Use the terminal UI in a terminal session. The maintainer checked the Claude desktop app on Windows with Rabe 0.1.0. In that check, the app drew a plain-text pane with buttons. Other platform combinations are not documented as tested.
+Rabe is built and tested with Claude Code 2.1.296. Use the terminal UI in a terminal session. The maintainer last checked the Claude desktop app on Windows with Rabe 0.1.0. In that check, the app drew a plain-text pane with buttons. Desktop support is unverified since that check. [#117](https://github.com/lorenzh/rabe/issues/117) investigates current desktop support. Other platform combinations are not documented as tested.
 
 ### How do I update Rabe?
 

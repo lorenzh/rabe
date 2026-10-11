@@ -60,7 +60,7 @@ Type this at a Claude Code prompt:
 /plugin install rabe --marketplace lorenzh/rabe
 ```
 
-Then run `/reload-plugins` or start a new session: a plugin you install does not load in the running session. The Claude desktop app needs this too.
+Then run `/reload-plugins` or start a new session: a plugin you install does not load in the running session.
 
 ## Usage
 
@@ -198,7 +198,7 @@ Rabe runs `tail` and `grep` to read files over 4 MiB. It runs `git worktree list
 ## Requirements
 
 - Claude Code 2.1.296. We build and test Rabe with this version. Other versions can show `n/a` where a file changed.
-- A terminal for the colored band and pane. The Claude desktop app draws the same pane with plain text and buttons (tested by the maintainer on Windows with Rabe 0.1.0).
+- A terminal for the colored band and pane. The maintainer last checked the Claude desktop app on Windows with Rabe 0.1.0. Desktop support is unverified since that check. [#117](https://github.com/lorenzh/rabe/issues/117) investigates current desktop support.
 - Optional: the Codex plugin (`codex@openai-codex`) for Codex jobs, and the `gh` CLI for the report commands.
 
 ## Development
