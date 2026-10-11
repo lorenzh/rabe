@@ -4,10 +4,11 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-11
+
 ### Fixed
 
 - Copy checks resume and agent ids, shows full commands and cron prompts with line-break markers, reports copy counts, and refuses CR/LF in single-line fields. ([#120](https://github.com/lorenzh/rabe/pull/120), fixes [#93](https://github.com/lorenzh/rabe/issues/93))
-- The docs mark desktop support as unverified since the Windows check with Rabe 0.1.0 (refs #117)
 - The docs mark desktop support as unverified since the Windows check with Rabe 0.1.0 ([#121](https://github.com/lorenzh/rabe/pull/121), refs [#117](https://github.com/lorenzh/rabe/issues/117))
 - Stop, remove and message toasts name items by kind and ID instead of titles from files. ([#113](https://github.com/lorenzh/rabe/pull/113), fixes [#92](https://github.com/lorenzh/rabe/issues/92))
 - Previous-session summaries keep failed item IDs and remove older stored titles. ([#113](https://github.com/lorenzh/rabe/pull/113), fixes [#94](https://github.com/lorenzh/rabe/issues/94))
@@ -169,7 +170,8 @@ The first public version.
 
 - Workflow agents no longer offer stop and message, which Claude Code does not support for a single workflow agent; their detail offers stopping the run. ([#8](https://github.com/lorenzh/rabe/pull/8))
 
-[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/lorenzh/rabe/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/lorenzh/rabe/compare/v0.4.4...v0.5.0
 [0.4.4]: https://github.com/lorenzh/rabe/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/lorenzh/rabe/compare/v0.4.2...v0.4.3

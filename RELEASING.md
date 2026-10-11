@@ -42,7 +42,7 @@ All of these must be true. Tick them in the release pull request.
 - [ ] A before/after video of the release is ready (see [Release video](#release-video)).
 
 **Compatibility.** A migration note is needed when one of these changes. If none does, say so in the release pull request.
-- [ ] Data Rabe keeps across sessions (`$.store` keys and their format). Today only `previous:<folder>`, the summary of the previous session. 0.4 adds an optional `sessionId` to it: an older summary has none and shows `n/a`, and 0.3 reads a new one and ignores the field. Additive, no migration.
+- [ ] Data Rabe keeps across sessions (`$.store` keys and their format). Today only `previous:<folder>`, the summary of the previous session. 0.4 adds an optional `sessionId` to it: an older summary has none and shows `n/a`, and 0.3 reads a new one and ignores the field. Additive, no migration. 0.6 replaces the failed titles (`failed`) with item ids (`failedIds`): it reads an older summary, drops its titles and stores it again. Rabe 0.5 and older show no summary that 0.6 wrote. No migration.
 - [ ] Options in `userConfig` (`plugin.json`): renamed, removed or a changed default.
 - [ ] Slash commands: renamed or removed (`/rabe`, `/rabe-stop`, `/rabe:report-bug`, `/rabe:feedback`).
 - [ ] Keys: a key that did something before does something else now.
