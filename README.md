@@ -143,10 +143,6 @@ Claude Code reports tokens per agent but no dollars, so Rabe estimates them: the
 
 The estimate shows `n/a` when Rabe cannot know it: a model that is not in the table, an agent that started before Rabe loaded, a Codex session file over 4 MiB (Rabe reads only its start and end) or one that is gone or cannot be read, a request over the long-context limit of a model that OpenAI bills per session (GPT-5.4, GPT-5.5), or a request without its counts. A Codex job that counts its forwarding agent is `n/a` when the job or the agent has no estimate, and so are its tokens when one of them has none. A total is `n/a` when one of its workers has no estimate, also a worker without token data (for example a finished Codex job whose session file is gone), since a smaller sum would read as the whole cost. Codex plan billing, Bedrock, Vertex, batch, fast or regional rates are not in the table.
 
-For custom prices and the CSV format, see the [user guide](docs/guide.md).
-
-Rabe hides Claude Code's own shell and monitor counts by default. You can change this in `/plugin`; see the [user guide](docs/guide.md) for all options.
-
 ## Where the data comes from
 
 Rabe gets most data from the mod API: hooks for tool calls, agent starts, agent steps and task notifications. The rest comes from files that Claude Code and Codex write while they work. These files have no documentation and can change in any release. A value that Rabe cannot read shows as `n/a`.

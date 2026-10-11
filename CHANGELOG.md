@@ -6,7 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Added
 
-- Add a user guide for options, troubleshooting and common questions (fixes [#78](https://github.com/lorenzh/rabe/issues/78))
+- The user guide covers options, troubleshooting and common questions ([#91](https://github.com/lorenzh/rabe/pull/91), fixes [#78](https://github.com/lorenzh/rabe/issues/78))
 
 ### Changed
 

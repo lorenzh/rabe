@@ -1,7 +1,7 @@
 ---
 title: Rabe user guide
 description: Options, price table format, troubleshooting, privacy and platform notes for Rabe users.
-tags: [claude-code, data-sources, feasibility]
+tags: [user-guide, options, troubleshooting]
 keywords: [user guide, options, configuration, troubleshooting, faq, privacy, platform, pricesfile, timelinehours, hidebuiltintasks]
 ---
 
@@ -15,7 +15,7 @@ Set these options in the `/plugin` menu. Rabe's plugin manifest defines their de
 
 | Option | Default | What it does | Example |
 |---|---:|---|---|
-| `hideBuiltinTasks` | `true` | Hides Claude Code's shell and monitor counts under the prompt and at the end of a turn. Rabe shows those counts in its band. It cannot hide the agent list under the prompt. | Set to `false` to keep Claude Code's counts. |
+| `hideBuiltinTasks` | `true` | Hides Claude Code's shell and monitor count and “↓ to manage” in the prompt hint, and “still running” at the end of a turn. Rabe's band shows the shell and monitor counts. It cannot hide the agent list under the prompt. | Set to `false` to keep Claude Code's counts. |
 | `pricesFile` | empty | Reads your CSV price table before Rabe's built-in table. An empty value uses only Rabe's table. | Set to `~/prices.csv` or an absolute path such as `/home/me/prices.csv`. |
 | `timelineHours` | `4` | When `/rabe` opens, this sets the Timeline window. Older finished items fold into one line. Set to `0` to show the whole session. | Set to `12` to open on the last 12 hours. |
 
@@ -36,11 +36,11 @@ Rabe searches your rows first. A row that matches a built-in model by ID or alia
 
 ### Rabe does not show
 
-Install Rabe if it is missing. After you install or update it, run `/reload-plugins` or start a new Claude Code session. Claude Code does not load plugin changes into the current session before then.
+The band appears only while background work runs. Type `/rabe` to open the pane at any time. If neither appears, check that Rabe is installed, that Claude Code is version 2.1.296, and that you reloaded the plugin after installing or updating it. Run `/reload-plugins` or start a new session; Claude Code does not load plugin changes into the current session before then.
 
-### The pane looks narrow or lacks the detail panel
+### The pane changes layout at narrow terminal widths
 
-Claude Code controls the pane height. If the pane has at least 90 columns, Rabe shows the detail beside the list. At smaller widths, select a row and press Enter to open its detail. In a terminal, drag the pane's left edge to make it wider.
+Claude Code docks the pane beside the transcript or places it inline, depending on terminal width. Around 110 terminal columns, resizing can move it between those layouts. The detail appears beside the list when the pane has at least 90 body columns. At smaller widths, select a row and press Enter to open its detail. In a docked terminal pane, drag its left edge to make it wider.
 
 ### Values show `n/a`
 
@@ -66,7 +66,7 @@ Rabe reads subagent metadata and workflow scripts for phase names. It reads shel
 
 ### Which platforms does Rabe support?
 
-Rabe runs as a Claude Code mod and requires Claude Code 2.1.296. Use the terminal UI in a terminal session. The maintainer checked the Claude desktop app on Windows with Rabe 0.1.0. In that check, the app drew a plain-text pane with buttons. Other platform combinations are not documented as tested.
+Rabe is built and tested with Claude Code 2.1.296. Use the terminal UI in a terminal session. The maintainer checked the Claude desktop app on Windows with Rabe 0.1.0. In that check, the app drew a plain-text pane with buttons. Other platform combinations are not documented as tested.
 
 ### How do I update Rabe?
 
