@@ -37,6 +37,8 @@ If a carried arrow lands as asked on a live row, it arms list controls. Plugin l
 
 An arrow burst uses each previous queued target as its origin. It does not compare every arrow with the last completed landing. When the engine repeats a target before landing, each event keeps the previous move. Adjacent moves across the first and last focus keys keep their wrap direction. A reset or a plugin focus request clears the queued origin. A completed landing clears it too. Nonadjacent targets keep their explicit keys.
 
+A nested press keeps the safe-tab origin for arrows received after the first reset. Without a pending press or a remembered landing origin, the engine handles the next arrow. This also applies to a queued target left by a refused move. When the requested target is already focused, the current ring takes precedence over the remembered origin.
+
 ## Safety rules
 
 The renderer keeps its append-only focus rule and inert gone slots until the view changes or the pane closes. The Items and Effects lists can insert rows into their groups and drop gone rows. While a regain is pending or the ring's row was dropped, the pane holds back row and group presses.

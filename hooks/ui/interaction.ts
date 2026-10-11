@@ -137,7 +137,14 @@ export function interact(
         effects,
       }
     case 'press-start':
-      return { state: { ...state, pressing: state.pressing + 1, landingFrom: undefined }, effects }
+      return {
+        state: {
+          ...state,
+          pressing: state.pressing + 1,
+          landingFrom: state.pressing ? state.landingFrom : undefined,
+        },
+        effects,
+      }
     case 'press-end':
       return { state: { ...state, pressing: state.pressing - 1 }, effects }
     case 'focus-start':
@@ -251,7 +258,7 @@ export function deferredFocus(
   keys: readonly string[],
   key: string | undefined,
 ): DeferredFocus | undefined {
-  if (!state.pressing && !state.queued && !keys.includes(state.landingFrom ?? '')) return undefined
+  if (!state.pressing && !keys.includes(state.landingFrom ?? '')) return undefined
   if (state.queued && state.queued.key === key) return state.queued.move
   const from = keys.indexOf(state.ringOn ?? '')
   const aim = keys.indexOf(state.aimOn ?? '')
@@ -261,10 +268,10 @@ export function deferredFocus(
   for (const origin of origins) {
     if (origin < 0 || to < 0) continue
     const by = to - origin
+    if (!state.queued && origin === from && by === 0) return { by: 0 }
     if (Math.abs(by) === 1) return { by }
     if (keys.length > 2 && Math.abs(by) === keys.length - 1) return { by: by > 0 ? -1 : 1 }
   }
-  if (!state.queued && from >= 0 && to === from) return { by: 0 }
   return state.pressing ? { key } : undefined
 }
 

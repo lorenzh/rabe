@@ -28,6 +28,7 @@ Use this index to find the guide that matches your question.
 - [UI rendering](architecture/ui.md): view contract, renderer, palette, cells, sizing, and band.
 - [Pane interaction state](architecture/interaction.md): pure transitions for focus, held order, regain, opening, closing and arming.
 - [Pane interaction state](architecture/interaction.md): pure transitions for focus, queued arrow bursts and wraparound, held order, regain, opening and arming.
+- [Pane interaction state](architecture/interaction.md): pure transitions for focus, nested presses, queued arrow bursts and wraparound, refused moves, held order, regain, opening and arming.
 - [Focus and keys](architecture/focus-and-keys.md): pane behavior, key controls, and focus moves.
 - [Focus order and arming](architecture/focus-order.md): held order, append-only slots, gone rows that leave the lists, target-bound keys, and arming.
 - [View behavior](architecture/views.md): tabs, cron schedules, workflow agent counts, inert stop controls, removed items, session summaries, full command and prompt details, and copy controls.

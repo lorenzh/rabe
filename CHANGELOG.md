@@ -11,6 +11,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 - Refresh background work together without overlapping polls, and reduce polling while idle. ([#127](https://github.com/lorenzh/rabe/pull/127), fixes [#72](https://github.com/lorenzh/rabe/issues/72))
 - Keep fast all-fit arrow bursts in order after queued tab changes, including wraparound (fixes #123)
+- Keep fast arrow bursts in order after tab changes, including arrows received during a second press ([fixes #123](https://github.com/lorenzh/rabe/issues/123))
 
 ## [0.6.0] - 2026-10-11
 

@@ -18,6 +18,73 @@ const draw = (isFocused = true, placement = 'dock', isShifted = false) =>
     })) as Piece[],
   }) as const
 
+test('a second press during the safe-tab detour keeps the origin of a fast arrow (2 1 Down)', () => {
+  let state = interact(IDLE, focus('row:a')).state
+  state = interact(state, { type: 'press-start' }).state
+  state = interact(state, { type: 'reset' }).state
+  state = interact(state, focus('tab-items', false, false)).state
+  state = interact(state, { type: 'press-start' }).state
+  const keys = ['tab-items', 'tab-cost', 'tab-effects', 'tab-timeline', 'row:a', 'row:b', 'row:c']
+  expect(deferredFocus(state, keys, 'row:b')).toEqual({
+    by: 1,
+  })
+})
+
+test('2 1 Down x4 keeps arrows received after the first reset in order', async () => {
+  const keys = ['tab-items', 'tab-cost', 'tab-effects', 'tab-timeline', 'row:a', 'row:b', 'row:c']
+  const newKeys = [...keys.slice(0, 4), 'find', ...keys.slice(4), 'stop']
+  let state = interact(IDLE, focus('row:a')).state
+  const cost = reserve()
+  state = interact(state, { type: 'press-start' }).state
+  state = interact(state, { type: 'reset' }).state
+  state = interact(state, focus('tab-items', false, false)).state
+  const items = reserve()
+  state = interact(state, { type: 'press-start' }).state
+  const arrows = ['row:b', 'row:c', 'tab-items', 'tab-cost'].map(key => {
+    const move = deferredFocus(state, keys, key)
+    if (move) state = interact(state, { type: 'focus-queued', key, move }).state
+    return sequence(async () => {
+      expect(move).toEqual({ by: 1 })
+      const target = movedFocus(state, newKeys, move ?? { by: 0 })
+      expect(target).toBeDefined()
+      state = interact(state, { type: 'step', key: target ?? '' }).state
+      state = interact(state, focus(target ?? '', false)).state
+    })
+  })
+  await cost(async () => {
+    state = interact(state, focus('tab-cost', false, false)).state
+    state = interact(state, { type: 'press-end' }).state
+  })
+  await items(async () => {
+    state = interact(state, { type: 'reset' }).state
+    state = interact(state, focus('tab-items', false, false)).state
+    state = interact(state, focus('row:a', false)).state
+    state = interact(state, { type: 'press-end' }).state
+  })
+  await Promise.all(arrows)
+  expect(state.ringOn).toBe('tab-items')
+  expect(state.pressing).toBe(0)
+})
+
+test('a stale queued target after a refused move does not defer an independent arrow', () => {
+  const keys = ['tab-items', 'row:a', 'row:b']
+  let state = interact(IDLE, focus('row:a')).state
+  state = interact(state, { type: 'press-start' }).state
+  state = interact(state, { type: 'step', key: 'row:b' }).state
+  state = interact(state, { type: 'focus-start', key: 'row:b' }).state
+  state = interact(state, { type: 'focus-queued', key: 'row:b', move: { by: 1 } }).state
+  state = interact(state, { type: 'press-end' }).state
+  state = interact(state, { type: 'landed', isMoved: false }).state
+  expect(state.arming.step).toBeUndefined()
+  expect(deferredFocus(state, keys, 'row:b')).toBeUndefined()
+})
+
+test('the current ring takes precedence over an adjacent safe-tab origin', () => {
+  let state = interact(IDLE, focus('tab-items', false, false)).state
+  state = interact(state, focus('tab-cost', false, false)).state
+  expect(deferredFocus(state, ['tab-items', 'tab-cost', 'row:a'], 'tab-cost')).toEqual({ by: 0 })
+})
+
 test('2 1 and four all-fit arrows retain their order while tab landings wait', async () => {
   const keys = ['tab-items', 'tab-cost', 'tab-effects', 'tab-timeline', 'row:a', 'row:b', 'row:c']
   const newKeys = [...keys.slice(0, 4), 'find', ...keys.slice(4), 'stop']
