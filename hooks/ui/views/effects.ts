@@ -75,7 +75,7 @@ function fileRow(file: Touched, w: Widths, selected: string): Line {
         label: name,
         action: file.last.item
           ? { type: 'open', id: file.last.item.id }
-          : { type: 'copy', text: file.path },
+          : { type: 'copy', text: file.path, what: 'path' },
         ...(!isSelected && { dim: true }),
       },
       [' '.repeat(w.file - [...name].length)],
@@ -181,7 +181,7 @@ function portRows({ item, port }: Port, hasHotkey: boolean, selected: string): L
         {
           key: `row:ssh:${port}`,
           label: sshLine(port),
-          action: { type: 'copy', text: sshLine(port) },
+          action: { type: 'copy', text: sshLine(port), what: 'ssh line' },
           ...(hasHotkey && { hotkey: 'c' }),
           ...(!isSelected && { dim: true }),
         },

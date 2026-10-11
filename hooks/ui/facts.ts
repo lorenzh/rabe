@@ -1,8 +1,8 @@
 import type { RabeItem } from '../model'
-import { clockTime, duration } from './format'
+import { clockTime, duration, validId } from './format'
 import { children, forwarderOf, glyph, KIND_LABEL, nextAt, statusLabel } from './lists'
 
-// `long` is the last fact, drawn in full across lines: a path that a cut would lose.
+// `long` is the last fact, drawn in full across lines.
 export type Facts = { title: string; status: string; lines: string[]; long?: string }
 
 const na = (value: unknown) => (value === undefined || value === '' ? 'n/a' : String(value))
@@ -46,7 +46,7 @@ export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: stri
       lines.push(`${na(d.type)} · ${na(d.model)} · ${tree}`)
       if (d.worktreeBranch) lines.push(`branch ${d.worktreeBranch}`)
       if (d.workflowPhase) lines.push(`phase ${d.workflowPhase}`)
-      lines.push(`agent ${d.agentId}`, by, ran(item, now))
+      lines.push(`agent ${validId(d.agentId) ? d.agentId : 'n/a'}`, by, ran(item, now))
       long = `transcript ${na(d.transcriptPath)}`
       break
     }
@@ -62,7 +62,7 @@ export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: stri
       lines.push(`model ${na(d.model)} · effort ${na(d.effort)} · sandbox ${na(d.sandbox)}`)
       const forwarder = forwarderOf(item, items)
       lines.push(
-        `job ${d.jobId} · thread ${na(d.threadId)} · session file ${file}`,
+        `job ${d.jobId} · thread ${validId(d.threadId) ? d.threadId : 'n/a'} · session file ${file}`,
         forwarder ? `forwarded by claude ${forwarder.title} · its tokens count here` : by,
         ran(item, now),
       )
@@ -78,7 +78,8 @@ export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: stri
     }
     case 'shell': {
       const d = item.detail
-      lines.push(`command ${d.command}`, `task ${na(d.taskId)}`, by, ran(item, now))
+      lines.push(`task ${na(d.taskId)}`, by, ran(item, now))
+      long = `command ${d.command}`
       if (d.exitCode !== undefined) lines.push(`exit code ${d.exitCode}`)
       if (d.port !== undefined) lines.push(`port :${d.port}`)
       break
@@ -86,7 +87,8 @@ export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: stri
     case 'monitor': {
       const d = item.detail
       if (d.description) lines.push(`description ${d.description}`)
-      lines.push(`command ${d.command}`, by, ran(item, now))
+      lines.push(by, ran(item, now))
+      long = `command ${d.command}`
       if (d.timeoutMs !== undefined) {
         const left =
           item.startedAt === undefined
@@ -107,11 +109,8 @@ export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: stri
           d.humanSchedule && d.humanSchedule !== d.schedule ? ` · ${d.humanSchedule}` : ''
         lines.push(`schedule ${na(d.schedule)}${human}`)
       }
-      lines.push(
-        `prompt ${d.prompt}`,
-        `job ${d.jobId}`,
-        `created ${clockTime(item.seenAt)} · ${by}`,
-      )
+      lines.push(`job ${d.jobId}`, `created ${clockTime(item.seenAt)} · ${by}`)
+      long = `prompt ${d.prompt}`
       break
     }
   }

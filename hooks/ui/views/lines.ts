@@ -112,11 +112,16 @@ export function itemLine(item: RabeItem, now: number, isSelected = false): Line 
 // fact is cut into lines of `columns` cells, so none of it is lost.
 export function headLines(model: Model, item: RabeItem, columns: number): Line[] {
   const f = facts(item, model.now, model.items, model.cwd)
-  const chars = [...safe(f.long ?? '')]
   const n = Math.max(1, columns)
-  const long = Array.from({ length: Math.ceil(chars.length / n) }, (_, i) =>
-    chars.slice(i * n, (i + 1) * n).join(''),
-  )
+  const long = (f.long ?? '')
+    .replace(/\r\n|\r|\n/g, '↵\n')
+    .split('\n')
+    .flatMap(line => {
+      const chars = [...safe(line)]
+      return Array.from({ length: Math.ceil(chars.length / n) }, (_, i) =>
+        chars.slice(i * n, (i + 1) * n).join(''),
+      )
+    })
 
   return [
     {

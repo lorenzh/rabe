@@ -15,7 +15,7 @@ Use this index to find the guide that matches your question.
 - [Agent instructions](../AGENTS.md): rules for coding agents and project changes.
 - [Release steps](../RELEASING.md): checks and compatibility review before a release.
 - [Changelog](../CHANGELOG.md): changes by version.
-- [Security guidelines](security.md): threat model, path checks, title privacy, stored summaries and stop refusals.
+- [Security guidelines](security.md): threat model, path checks, title privacy, stored summaries, clipboard limits and stop refusals.
 - [Testing](testing.md): unit, hook and UI tests, live checks with `scripts/live-check.sh`, and CI.
 
 ## Architecture
@@ -28,7 +28,7 @@ Use this index to find the guide that matches your question.
 - [Pane interaction state](architecture/interaction.md): pure transitions for focus, held order, regain, opening and arming.
 - [Focus and keys](architecture/focus-and-keys.md): pane behavior, key controls, and focus moves.
 - [Focus order and arming](architecture/focus-order.md): held order, append-only slots, target-bound keys, and arming.
-- [View behavior](architecture/views.md): tabs, cron schedules, workflow agent counts, inert stop controls, removed items, and session summaries.
+- [View behavior](architecture/views.md): tabs, cron schedules, workflow agent counts, inert stop controls, removed items, session summaries, full command and prompt details, and copy controls.
 
 ## Feasibility
 

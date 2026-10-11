@@ -635,7 +635,7 @@ test('an effects file row opens its editor and the ssh line copies, on every sur
   }
   const ssh = 'ssh -L 5173:localhost:5173 <your-host>'
   expect(copies).toEqual([ssh, ssh])
-  expect(state.toasts).toContain(`Copied: ${ssh}`)
+  expect(state.toasts).toContain(`Copied ssh line · 1 line · ${ssh.length} chars`)
 })
 
 test('moving the focus onto a cost or effects row selects it on every surface', async ($, on) => {
@@ -692,7 +692,7 @@ test('the cost tab names this session and copies its resume command, or shows it
   await ui.unmount()
 })
 
-test('a multiline copy keeps the clipboard text and shows spaces in the success toast', async ($, on) => {
+test('a multiline copy keeps the clipboard text and reports its line and character counts', async ($, on) => {
   const command = 'while true; do\n  echo ready\r\n  sleep 1\tdone'
   const shell = { ...dev, detail: { ...dev.detail, command } } as RabeItemOf<'shell'>
   const state = hold(on, [shell], { open: shell.id })
@@ -708,8 +708,8 @@ test('a multiline copy keeps the clipboard text and shows spaces in the success 
   }
   expect(copies).toEqual([command, command])
   expect(state.toasts).toEqual([
-    'Copied: while true; do echo ready sleep 1 done',
-    'Copied: while true; do echo ready sleep 1 done',
+    `Copied command · 3 lines · ${command.length} chars`,
+    `Copied command · 3 lines · ${command.length} chars`,
   ])
 })
 
@@ -732,13 +732,13 @@ test('copies and their toasts replace control and format characters and keep oth
   const clip = 'echo?[31m????????\n  日本/x 🚀 e\u0301'
   expect(copies).toEqual([clip, clip])
   expect(state.toasts).toEqual([
-    'Copied: echo?[31m???????? 日本/x 🚀 e\u0301',
-    'Copied: echo?[31m???????? 日本/x 🚀 e\u0301',
+    `Copied command · 2 lines · ${[...clip].length} chars`,
+    `Copied command · 2 lines · ${[...clip].length} chars`,
   ])
 })
 
 for (const isCopied of [true, false] as const) {
-  test(`Unicode paths stay in ${isCopied ? 'success' : 'failure'} copy toasts on every surface`, async ($, on) => {
+  test(`Unicode commands report counts on success and exact text on failure on every surface (${isCopied})`, async ($, on) => {
     const command = '日本/x 🚀 e\u0301'
     const shell = { ...dev, detail: { ...dev.detail, command } } as RabeItemOf<'shell'>
     const state = hold(on, [shell], { open: shell.id })
@@ -753,7 +753,7 @@ for (const isCopied of [true, false] as const) {
       await ui.unmount()
     }
     const toast = isCopied
-      ? `Copied: ${command}`
+      ? `Copied command · 1 line · ${[...command].length} chars`
       : `Copy failed: no-clipboard. Select it: ${command}`
     expect(copies).toEqual([command, command])
     expect(state.toasts).toEqual([toast, toast])
@@ -886,7 +886,9 @@ for (const isCopied of [true, false] as const) {
     await ui.press({ key: `copy:${babysit.id}` })
     await ui.unmount()
     expect(copies).toEqual(['/babysit-prs'])
-    expect(state.toasts).toEqual([isCopied ? 'Copied prompt' : 'Copy failed: no-clipboard.'])
+    expect(state.toasts).toEqual([
+      isCopied ? 'Copied prompt · 1 line · 12 chars' : 'Copy failed: no-clipboard.',
+    ])
   })
 }
 
@@ -1986,3 +1988,25 @@ test(
     }
   },
 )
+
+for (const newline of ['\r', '\n', '\r\n']) {
+  test(`a path containing ${JSON.stringify(newline)} refuses copy on every surface`, async ($, on) => {
+    const path = `/repo/first${newline}second.ts`
+    const state = hold(on, [], { tab: 'effects', edits: [{ path, at: NOW }] })
+    const copies: string[] = []
+    on('ui.copy', async (_$, e) => {
+      copies.push(e.text)
+      return { value: { isCopied: true as const } }
+    })
+    for (const surface of SURFACES) {
+      const ui = await $.ui.mount({ surface, ...PANE } as never)
+      await ui.press({ key: `row:file:${path}` })
+      await ui.unmount()
+    }
+    expect(copies).toEqual([])
+    expect(state.toasts).toEqual([
+      'Copy refused: path contains a line break.',
+      'Copy refused: path contains a line break.',
+    ])
+  })
+}

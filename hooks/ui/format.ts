@@ -1,5 +1,9 @@
 const pad = (n: number) => String(n).padStart(2, '0')
 
+export function validId(id: string | undefined): id is string {
+  return id !== undefined && /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/.test(id)
+}
+
 export function duration(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000))
   if (s < 60) return `${s}s`

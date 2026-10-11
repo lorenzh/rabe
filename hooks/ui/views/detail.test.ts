@@ -19,9 +19,11 @@ import {
   verify,
 } from '../fixtures'
 import { isPress, type Model, NO_SELECTION, rowKeys, type Size } from '../view'
+import { costView } from './cost'
 import { detailLines, detailView } from './detail'
 import { itemsView } from './items'
 import { paneView } from './pane'
+import { timelineView } from './timeline'
 
 const TERMINAL: Size = { columns: 60, rows: 30, surface: 'terminal', hasInput: false }
 
@@ -604,7 +606,7 @@ test('an agent shows its id and transcript, and c copies the id', () => {
   expect(buttons.find(b => b.key === `copy:${explore.id}`)).toMatchObject({
     label: 'c: copy id',
     hotkey: 'c',
-    action: { type: 'copy', text: 'a1' },
+    action: { type: 'copy', text: 'a1', what: 'id' },
   })
   const bare = { ...plan, detail: { agentId: 'a2' } } as RabeItem
   const bareLines = lines(open(model([bare]), bare.id).grid)
@@ -651,7 +653,7 @@ test('a codex job shows its thread, and c copies the command that resumes it', (
     key: 'resume:th-1',
     label: 'c: copy resume',
     hotkey: 'c',
-    action: { type: 'copy', text: 'codex resume th-1' },
+    action: { type: 'copy', text: 'codex resume th-1', what: 'resume command' },
   })
   const { grid: none, buttons: without } = open(model([review]), review.id)
   expect(lines(none)).toContain('job task-1 · thread n/a · session file read')
@@ -714,4 +716,81 @@ test('a workflow counts a removed agent in its phases and tokens but draws no ro
   expect(shown.some(line => line.startsWith(' cost n/a   in 49k'))).toBe(true)
   expect(rowKeys(drawn)).not.toContain(`row:${done.id}`)
   expect(rowKeys(drawn)).toContain(`row:${verify.id}`)
+})
+
+test('unsafe command ids show n/a and have no copy control', () => {
+  const invalid = [
+    '',
+    '-flag',
+    'two words',
+    'x;y',
+    'x|y',
+    'x&y',
+    '$(id)',
+    '`id`',
+    'x/y',
+    'x\\y',
+    'x"y',
+    "x'y",
+    'x\ny',
+    'x\ry',
+    'x\ty',
+    'café',
+    'x\u202ey',
+    'x\ny\n',
+    'x\n',
+    'x\r',
+    'x\u0000',
+    'x>y',
+    'x#y',
+  ]
+  for (const id of invalid) {
+    const agent = { ...explore, detail: { ...explore.detail, agentId: id } } as RabeItem
+    const job = { ...review, detail: { ...review.detail, threadId: id } } as RabeItem
+    const previous = { endedAt: NOW, counts: {}, tokens: 0, failedIds: [], sessionId: id }
+    for (const surface of ['terminal', 'desktop'] as const) {
+      const size = { ...TERMINAL, surface }
+      for (const item of [agent, job]) {
+        const drawn = detailView(model([item]), size, { ...NO_SELECTION, open: item.id })
+        expect(drawn.buttons.some(button => button.hotkey === 'c')).toBe(false)
+        expect(lines(gridOf(drawn).grid).join('\n')).toContain(
+          item.kind === 'agent' ? 'agent n/a' : 'thread n/a',
+        )
+      }
+      for (const drawn of [
+        costView(model([], { sessionId: id }), size, NO_SELECTION),
+        timelineView(model([], { previous }), size, NO_SELECTION),
+      ]) {
+        expect(drawn.buttons.some(button => button.hotkey === 'c')).toBe(false)
+        expect(lines(gridOf(drawn).grid).some(line => /^ (session|id) n\/a$/.test(line))).toBe(true)
+      }
+    }
+  }
+})
+
+test('commands and cron prompts keep their full text and marked line breaks in every detail', () => {
+  const value = `echo ${'a'.repeat(110)}; tail\r\n  second\rthird\n\nlast`
+  const items = [
+    { ...dev, detail: { ...dev.detail, command: value } },
+    { ...ci, detail: { ...ci.detail, command: value } },
+    { ...babysit, detail: { ...babysit.detail, prompt: value } },
+  ] as RabeItem[]
+  for (const item of items) {
+    const name = item.kind === 'cron' ? 'prompt' : 'command'
+    const expected = `${name} ${value}`.replace(/\r\n|\r|\n/g, '↵')
+    for (const columns of [20, 60]) {
+      for (const surface of ['terminal', 'desktop'] as const) {
+        const size = { ...TERMINAL, rows: 6, columns, surface }
+        const full = lines(open(model([item]), item.id, size).grid)
+        const preview = detailLines(model([item]), item, 6, columns).map(line =>
+          line.spans.map(part => (isPress(part) ? part.label : part[0])).join(''),
+        )
+        for (const shown of [full, preview]) {
+          const start = shown.findIndex(line => line.startsWith(`${name} `))
+          const end = shown.findIndex((line, i) => i > start && line.trim() === '')
+          expect(shown.slice(start, end).join('')).toBe(expected)
+        }
+      }
+    }
+  }
 })

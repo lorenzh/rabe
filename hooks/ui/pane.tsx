@@ -380,6 +380,10 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       return
     }
     case 'copy': {
+      if (action.what !== 'command' && action.what !== 'prompt' && /[\r\n]/.test(action.text)) {
+        toast($, `Copy refused: ${action.what} contains a line break.`)
+        return
+      }
       // Over SSH the clipboard needs the terminal's OSC 52.
       const text = clipText(action.text)
       const result = await $.ui
@@ -387,8 +391,10 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
         .catch((error: unknown) => ({ isCopied: false as const, reason: String(error) }))
       const preview = toastText(text)
       // only text the filters left alone is offered for selection
-      const selectable = !action.what && preview === action.text
-      const copied = action.what ? `Copied ${action.what}` : `Copied: ${preview}`
+      const selectable = action.what !== 'prompt' && preview === action.text
+      const lines = text.split(/\r\n|\r|\n/).length
+      const chars = [...text].length
+      const copied = `Copied ${action.what} · ${lines} ${lines === 1 ? 'line' : 'lines'} · ${chars} ${chars === 1 ? 'char' : 'chars'}`
       toast(
         $,
         result.isCopied

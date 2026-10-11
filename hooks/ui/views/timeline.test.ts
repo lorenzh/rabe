@@ -177,7 +177,7 @@ test('the previous session names its id, and c copies the command that resumes i
       key: `resume:${sessionId}`,
       label: 'c: copy resume',
       hotkey: 'c',
-      action: { type: 'copy', text: `claude --resume ${sessionId}` },
+      action: { type: 'copy', text: `claude --resume ${sessionId}`, what: 'resume command' },
     },
   ])
   const old = timelineView({ ...MODEL, previous: PREVIOUS }, SIZE, NO_SELECTION)

@@ -166,7 +166,7 @@ test('ports show the command and the ssh line, a Button that copies; c presses t
     label: 'ssh -L 5173:localhost:5173 <your-host>',
     hotkey: 'c',
     dim: true,
-    action: { type: 'copy', text: 'ssh -L 5173:localhost:5173 <your-host>' },
+    action: { type: 'copy', text: 'ssh -L 5173:localhost:5173 <your-host>', what: 'ssh line' },
   })
   expect(drawn.buttons).toEqual([])
 })
@@ -362,6 +362,7 @@ test('a main session row copies the path; a Codex row opens the job', () => {
   expect(presses(drawn).find(one => one.key === 'row:file:/repo/plan.md')?.action).toEqual({
     type: 'copy',
     text: '/repo/plan.md',
+    what: 'path',
   })
   expect(presses(drawn).find(one => one.key === 'row:file:/repo/src/old.ts')?.action).toEqual({
     type: 'open',

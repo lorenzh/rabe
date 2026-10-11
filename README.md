@@ -115,7 +115,13 @@ An opened item keeps its recorded turns, steps or output lines in its detail. Us
 
 Agent answers keep up to 16,000 characters each. Longer answers end with `…`. The transcript keeps the original answer. Markdown stays plain text. Wrapped bullet and numbered lists keep their markers beside the start of a long path. Long tool summaries end with `…`. Answers already shortened by an older version stay shortened.
 
-Toasts flatten whitespace to one space and replace only Unicode control (`Cc`) and format (`Cf`) characters with `?`, also in item titles and refusal reasons. Wide characters, emoji and combining marks stay. The clipboard gets the same text with tabs and line breaks kept and other control and format characters replaced with `?`. Copying a cron prompt shows `Copied prompt` without the prompt, and a deleted cron job is named by its id. Failure toasts show the reason through the same filter. Reasons include `no-clipboard` and `refused`. If the filter leaves the copied text unchanged, the failure toast offers the exact text, except for a cron prompt.
+Shell and monitor commands and cron prompts appear in full in the detail. Text wraps at the detail width. Each CR, LF or CRLF line break shows `↵`. Read the full text before pasting it into a shell. Copy does not check commands or prompts. Pasted commands run with your shell's permissions.
+
+Copy replaces terminal control and format characters with `?`. Commands and prompts keep tabs and line breaks. Single-line fields refuse CR or LF: ids, paths, `ssh -L` lines and resume commands. Resume ids and agent ids must match `[A-Za-z0-9_][A-Za-z0-9_.-]*`. Invalid ids show `n/a` with no copy button.
+
+A success toast names the copied field and counts its text: `Copied command · 3 lines · 412 chars`. CRLF counts as one line break. Characters are Unicode code points after the control and format filter. Success toasts contain no copied text.
+
+Other toasts flatten whitespace and replace Unicode control (`Cc`) and format (`Cf`) characters with `?`. Wide characters, emoji and combining marks stay. Toasts name deleted cron jobs by id. Copy failures show the reason through the same filter. Reasons include `no-clipboard` and `refused`. If the filter leaves the copied text unchanged, the failure toast offers the exact text. Cron prompts never appear in toasts.
 
 The search button shows the active query, cut with `…` when long. The search field keeps the full query at every width. The filter stays visible after Enter and after reopening the pane. To clear it, submit an empty search. Stop group and remove ended act only on the filtered rows.
 

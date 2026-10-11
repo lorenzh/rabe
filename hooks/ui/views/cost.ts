@@ -1,7 +1,7 @@
 import type { RabeItem } from '../../model'
 import { bar, fit } from '../cells/grid'
 import { C, CHIP, type Style, tone } from '../cells/palette'
-import { duration, short, tokens, usd } from '../format'
+import { duration, short, tokens, usd, validId } from '../format'
 import {
   byTokens,
   cost,
@@ -126,7 +126,7 @@ export const costView: View = (model, size, sel): Drawn => {
         [sum.unknown ? `  ${sum.unknown} n/a` : '', dim],
       ],
     },
-    { spans: [[` session ${model.sessionId ?? 'n/a'}`, dim]] },
+    { spans: [[` session ${validId(model.sessionId) ? model.sessionId : 'n/a'}`, dim]] },
     { spans: [[`by worker · sorted by ${sortLabel}`, dim]] },
     {
       spans: [
@@ -160,7 +160,7 @@ export const costView: View = (model, size, sel): Drawn => {
   ]
 
   const id = model.sessionId
-  const buttons = id ? [resumeButton(`claude --resume ${id}`, id)] : []
+  const buttons = validId(id) ? [resumeButton(`claude --resume ${id}`, id)] : []
 
   return { nodes: lines.map(line => fitLine(line, size.columns)), buttons }
 }
