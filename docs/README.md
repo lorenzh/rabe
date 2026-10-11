@@ -36,4 +36,4 @@ Use this index to find the guide that matches your question.
 - [Codex and background work](feasibility/background-work.md): Codex jobs, shells, monitors, and cron jobs.
 - [User interface limits](feasibility/ui.md): API limits for rendering and input.
 - [Price data](feasibility/prices.md): price inputs and view data.
-- [Files and runtime limits](feasibility/files.md): observed file writes and open runtime questions.
+- [Files and runtime limits](feasibility/files.md): script edits from Bash diffs, confirmed shell writes, coverage settings, and open runtime questions.

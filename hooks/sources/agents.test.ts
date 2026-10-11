@@ -382,7 +382,11 @@ const hidden = (stat: FsStat | undefined) => stat === LOCKED || stat === SPOOFED
 
 // A fake shell on a fake disk: each command changes the disk as `effects` says.
 // A Bash call the engine ran has a result, no error and is not in the background.
-function shell(on: On, effects: Record<string, Effect> = {}): { disk: Disk; stats: string[] } {
+function shell(
+  on: On,
+  effects: Record<string, Effect> = {},
+  results: Record<string, Record<string, unknown>> = {},
+): { disk: Disk; stats: string[] } {
   mock.env(on, { HOME: '/home/u' })
   const disk: Disk = new Map([
     ['/tmp', dir],
@@ -425,19 +429,155 @@ function shell(on: On, effects: Record<string, Effect> = {}): { disk: Disk; stat
     const command = e.tool === 'Bash' ? e.command : ''
     effects[command]?.(disk)
     if (command.includes('fail'))
-      return { result: { stdout: '', stderr: 'x' } as never, isError: true }
+      return { result: { stdout: '', stderr: 'x', ...results[command] } as never, isError: true }
     if (command.includes('deny')) return { deny: 'no' }
-    if (command.includes('serve')) {
+    if (/(?:^|;\s*)serve$/.test(command)) {
       return { result: { stdout: '', stderr: '', backgroundTaskId: 'b1' } as never }
     }
 
-    return { result: { stdout: '', stderr: '', interrupted: false } as never }
+    return {
+      result: { stdout: '', stderr: '', interrupted: false, ...results[command] } as never,
+    }
   })
 
   return { disk, stats }
 }
 
 const HEREDOC = "cat > ~/.agents/skills/demo/SKILL.md <<'EOF'\n# demo > x\nEOF\nrm /tmp/old.md"
+
+test('host diffs record repeated script edits for the main session and agents without stats', async ($, on) => {
+  const held = engine(on, 'a1')
+  const command =
+    "python3 - <<'EOF'\nfrom pathlib import Path\nPath('server.py').write_text('x')\nEOF"
+  const { stats } = shell(
+    on,
+    {},
+    {
+      [command]: {
+        bashEditDiff: { changedFiles: ['/wt/server.py'], files: [], moreFiles: 0 },
+      },
+    },
+  )
+  await $.agent.spawn({ ...SPAWN, workflow: undefined })
+  for (let n = 0; n < 5; n++) {
+    await $.tool.call({ tool: 'Bash', command } as never)
+  }
+  await $.tool.call({ tool: 'Bash', command, agentId: 'a1' } as never)
+  const edit = { path: '/wt/server.py', at: 5000, via: 'shell' }
+  expect(held.edits).toEqual(Array.from({ length: 5 }, () => edit))
+  expect(((held.items ?? [])[0] as RabeItemOf<'agent'>).detail.edits).toEqual([edit])
+  expect(stats).toEqual([])
+})
+
+test('host diff paths merge once with disk candidates and keep known deletions without hunks', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const held = watch(on)
+  shell(
+    on,
+    {
+      'touch /tmp/f.txt': disk => disk.set('/tmp/f.txt', file(2)),
+    },
+    {
+      'touch /tmp/f.txt': {
+        bashEditDiff: {
+          changedFiles: [
+            '/tmp/f.txt',
+            '/tmp/f.txt',
+            '/wt/old.py',
+            '/wt/new.py',
+            'relative.py',
+            null,
+            1,
+          ],
+          files: [
+            { filePath: '/wt/old.py', deleted: true, hunks: [{ lines: ['private content'] }] },
+            { filePath: '/wt/new.py', created: true, hunks: [] },
+          ],
+          moreFiles: 0,
+        },
+      },
+    },
+  )
+  await $.tool.call({ tool: 'Bash', command: 'touch /tmp/f.txt' } as never)
+  expect(held.edits).toEqual([
+    { path: '/tmp/f.txt', at: 5000, via: 'shell' },
+    { path: '/wt/old.py', at: 5000, via: 'shell', change: 'delete' },
+    { path: '/wt/new.py', at: 5000, via: 'shell' },
+  ])
+})
+
+test('unusable host diffs keep the disk fallback and unknown edits cause no state writes', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const held = watch(on)
+  let writes = 0
+  on('state.set', { plugin: 'rabe', key: 'edits' }, async (_$, e, next) => {
+    writes++
+    return next(e)
+  })
+  const diffs = [
+    undefined,
+    null,
+    'bad',
+    {},
+    { changedFiles: 'bad' },
+    ...['shared', 'skipped', 'unavailable'].map(flag => ({
+      changedFiles: ['/wt/unknown.py'],
+      files: [],
+      moreFiles: 0,
+      [flag]: true,
+    })),
+  ]
+  const effects: Record<string, Effect> = {}
+  const results: Record<string, Record<string, unknown>> = {}
+  for (const [n, diff] of diffs.entries()) {
+    results[`script-${n}`] = { bashEditDiff: diff }
+    results[`touch /tmp/f${n}`] = { bashEditDiff: diff }
+    effects[`touch /tmp/f${n}`] = disk => disk.set(`/tmp/f${n}`, file(2))
+  }
+  shell(on, effects, results)
+  for (const n of diffs.keys()) await $.tool.call({ tool: 'Bash', command: `script-${n}` } as never)
+  expect(writes).toBe(0)
+  for (const n of diffs.keys())
+    await $.tool.call({ tool: 'Bash', command: `touch /tmp/f${n}` } as never)
+  expect(held.edits).toEqual(diffs.map((_, n) => ({ path: `/tmp/f${n}`, at: 5000, via: 'shell' })))
+  expect(writes).toBe(diffs.length)
+})
+
+test('host diffs from interrupted, background, refused and failed calls are ignored', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const held = watch(on)
+  const bashEditDiff = { changedFiles: ['/wt/server.py'], files: [], moreFiles: 0 }
+  shell(
+    on,
+    {},
+    {
+      interrupted: { bashEditDiff, interrupted: true },
+      background: { bashEditDiff, backgroundTaskId: 'b1' },
+      fail: { bashEditDiff },
+    },
+  )
+  for (const command of ['interrupted', 'background', 'deny', 'fail']) {
+    await $.tool.call({ tool: 'Bash', command } as never)
+  }
+  expect(held.edits).toBeUndefined()
+})
+
+test('host paths survive a timed-out disk check and accept absolute Windows paths', async ($, on) => {
+  const clock = mock.clock(on, { now: 5000 })
+  const held = watch(on)
+  const changedFiles = ['/wt/server.py', 'C:\\wt\\server.py', '\\\\host\\share\\server.py']
+  shell(
+    on,
+    {},
+    {
+      'touch /tmp/hang': { bashEditDiff: { changedFiles, files: [null], moreFiles: 0 } },
+    },
+  )
+  const run = $.tool.call({ tool: 'Bash', command: 'touch /tmp/hang' } as never)
+  await clock.advance(1000)
+  await run
+  expect(held.edits?.map(one => one.path)).toEqual(changedFiles)
+})
 
 test('OR writes count only when the candidate changed on disk', async ($, on) => {
   mock.clock(on, { now: 5000 })

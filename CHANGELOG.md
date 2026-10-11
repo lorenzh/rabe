@@ -18,6 +18,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
+- The Effects tab shows script edits from Claude Code Bash diffs when enabled, with known deletions and no duplicate paths per call. Unusable diffs keep the disk fallback. ([#105](https://github.com/lorenzh/rabe/pull/105), fixes [#40](https://github.com/lorenzh/rabe/issues/40))
+
 - The next prompt tells Claude which items Rabe successfully stopped or deleted, and when Rabe sent an agent a message. Notes contain only item kinds and ids. ([#85](https://github.com/lorenzh/rabe/pull/85), fixes [#38](https://github.com/lorenzh/rabe/issues/38))
 - The Cost tab gives worker names more room and hides totals for sources that are absent; the band shortens chip labels only when needed to keep the cost visible. ([#86](https://github.com/lorenzh/rabe/pull/86), part of #42)
 - The group-stop button shows its target count, agent turns with only tools show only their tool lines, and cron detail uses the pane's duration format. ([#87](https://github.com/lorenzh/rabe/pull/87), part of #43)
