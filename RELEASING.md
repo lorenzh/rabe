@@ -54,7 +54,7 @@ All of these must be true. Tick them in the release pull request.
 
 A pull request that raises the pinned `@anthropic-ai/claude-code` in `package.json`, Dependabot's included, needs more than green CI before it is merged. CI runs the tests against the new version, but not a real session.
 
-- [ ] Run the live check with the new version: `scripts/live-check.sh` (see [docs/testing.md](docs/testing.md)).
+- [ ] After `bun install`, run the live check with the pinned binary, not the one on `PATH`: `CLAUDE="$PWD/node_modules/.bin/claude" scripts/live-check.sh` (see [docs/testing.md](docs/testing.md)). Note its `--version` in the pull request.
 - [ ] Replace `types/claude-code.d.ts` with the file the new version writes. Its first line must name the new version. Fix what `bun run typecheck` then finds.
 
 ## Release video
