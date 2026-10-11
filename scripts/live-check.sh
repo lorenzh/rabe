@@ -151,6 +151,9 @@ seeded() {
   ps -o args= -p "$pids" | grep -Ecx "(.*/)?sleep ($durations)"
 }
 
+# The East Asian Width W code points from U+2300 to U+2BFF: emoji such as ✅
+# and ⏰ that a terminal draws two cells wide.
+wide="8986 8987 9001 9002 9193 9194 9195 9196 9200 9203 9725 9726 9748 9749 9800 9801 9802 9803 9804 9805 9806 9807 9808 9809 9810 9811 9855 9875 9889 9898 9899 9917 9918 9924 9925 9934 9940 9962 9970 9971 9973 9978 9981 9989 9994 9995 10024 10060 10062 10067 10068 10069 10071 10133 10134 10135 10160 10175 11035 11036 11088 11093"
 # Reads the Rabe pane's own lines into `view`, from the screen given or a new
 # capture. The pane is the text right of the longest vertical run of │ at one
 # terminal cell column, inside its frame: docked, the run ends on the rule of
@@ -173,11 +176,14 @@ look() {
         │) bar[$i,$cell]=$j ;;
         ╭ | ╰) corner[$i,$cell]=$c ;;
       esac
-      # ponytail: a short wcwidth table (combining 0, CJK and emoji 2); a
-      # rarer wide or zero-width character beside the pane can still shift it.
+      # ponytail: a short wcwidth table (combining 0; CJK, emoji and the
+      # East Asian Width W symbols below U+2E80 2); a rarer zero-width or wide
+      # character beside the pane can still shift it.
       printf -v cp %d "'$c"
       if ((cp < 0x300)); then
         cell=$((cell + 1))
+      elif ((cp >= 0x2300 && cp <= 0x2bff)) && [[ " $wide " == *" $cp "* ]]; then
+        cell=$((cell + 2))
       elif ((cp <= 0x36f || (cp >= 0x1ab0 && cp <= 0x1aff) || (cp >= 0x1dc0 && cp <= 0x1dff) ||
         (cp >= 0x200b && cp <= 0x200f) || (cp >= 0x20d0 && cp <= 0x20ff) ||
         (cp >= 0xfe00 && cp <= 0xfe0f) || (cp >= 0xfe20 && cp <= 0xfe2f))); then
@@ -186,6 +192,8 @@ look() {
         (cp >= 0xac00 && cp <= 0xd7a3) || (cp >= 0xf900 && cp <= 0xfaff) ||
         (cp >= 0xfe30 && cp <= 0xfe4f) || (cp >= 0xff00 && cp <= 0xff60) ||
         (cp >= 0xffe0 && cp <= 0xffe6) || (cp >= 0x1f300 && cp <= 0x1faff) ||
+        cp == 0x1f004 || cp == 0x1f0cf || cp == 0x1f18e || (cp >= 0x1f191 && cp <= 0x1f19a) ||
+        (cp >= 0x1f200 && cp <= 0x1f2ff) ||
         (cp >= 0x20000 && cp <= 0x3fffd))); then
         cell=$((cell + 2))
       else

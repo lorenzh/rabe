@@ -212,6 +212,9 @@ stop
 faked FAKE_LIST='H:SHELLS r r' FAKE_STOPS=3 FAKE_RING=1 FAKE_SCREEN=$'中文 😀 wide' \
   'wide characters beside the docked pane' 0 'round 1: pass' --shells 0 --expect '^▌▶ row 0$'
 stop
+faked FAKE_LIST='H:SHELLS r r' FAKE_STOPS=3 FAKE_RING=1 FAKE_SCREEN=$'one\ntwo\n✅ completed ⏰ soon' \
+  'wide emoji beside the group header' 0 'round 1: pass' --shells 0 --expect '^▌▶ row 0$'
+stop
 faked FAKE_LIST='H:SHELLS r r' FAKE_STOPS=3 FAKE_RING=1 FAKE_SCREEN=$'Cafe\u0301 combined' \
   'combining characters beside the docked pane' 0 'round 1: pass' --shells 0 --expect '^▌▶ row 0$'
 stop
