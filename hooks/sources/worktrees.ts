@@ -1,7 +1,8 @@
 import type { EngineInterface, On } from 'claude-code'
+
 import type { RabeWorktree } from '../../types'
+import type { Pollers } from '../loop'
 import { isAbsolute } from '../model'
-import type { Pollers } from '../registry'
 
 const TIMEOUT_MS = 5000
 const MAX = 100
@@ -43,10 +44,16 @@ async function pollWorktrees($: EngineInterface): Promise<void> {
   await $.state.set({ plugin: 'rabe', key: 'worktrees' }, list, { ifVersion: version })
 }
 
+// The repository's worktrees, so the Effects tab can place each changed file
+// in the worktree that holds it. Without git nothing is written.
 export function worktrees(on: On, pollers: Pollers): void {
   on('session.start', { isInteractive: true }, async ($, e, next) => {
-    pollers.push(async (_poll, trees) => {
-      if (trees) await pollWorktrees($)
+    pollers.push({
+      run: async () => {
+        await pollWorktrees($)
+        return undefined
+      },
+      every: 10000,
     })
     return next(e)
   })

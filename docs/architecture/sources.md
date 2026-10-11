@@ -2,18 +2,14 @@
 title: Sources
 description: The source contract and how each source turns events and files into items.
 tags: [architecture, sources]
-keywords: [source contract, agents, workflows, Codex, shells, monitors, crons, worktrees, Source, sources, register.tsx, agent.spawn, turn.step, turn.complete, SubagentStart, meta.json, task-notification, matcher, rabe-stop, parseRollout, codexItem, RabeCodexStep, RabeWorktree, shellWrites, changed, beforeBash, afterBash, CronList, CronDelete, isDeleted, ScheduleWakeup, worktrees.ts, parseWorktrees, FileChange, staged, bashEditDiff, changedFiles, bashEditDiffEnabled]
+keywords: [source contract, agents, workflows, Codex, shells, monitors, crons, worktrees, Pollers, sources, register.tsx, agent.spawn, turn.step, turn.complete, SubagentStart, meta.json, task-notification, matcher, rabe-stop, parseRollout, codexItem, RabeCodexStep, RabeWorktree, shellWrites, changed, beforeBash, afterBash, CronList, CronDelete, isDeleted, ScheduleWakeup, worktrees.ts, parseWorktrees, FileChange, staged, bashEditDiff, changedFiles, bashEditDiffEnabled]
 ---
 
 # Sources
 
 ## The source contract
 
-```ts
-type Source = (on: On) => void
-```
-
-Event-only sources use this type. Polled sources also take a `Pollers` list.
+Polled sources take a `Pollers` list from `hooks/loop.ts`. Event-only sources take `on` and register their hooks directly.
 
 A source is a function in `hooks/sources/<kind>.ts` that registers its own hooks with `on`. Its hooks call `next(e)` unless they answer on purpose, and they never throw. To add a source, import it in `hooks/sources/index.ts` and call it in `sources(on, file, pollers)`:
 
@@ -24,7 +20,7 @@ export function sources(on: On, file: string, pollers: Pollers): void {
 }
 ```
 
-The polled sources add bound callbacks to `pollers` from their matched start hooks. They stage item changes in `Poll` instead of writing them during a pass. The [shared loop](../architecture.md#shared-poll-loop) publishes them together. Event hooks still write immediately.
+The polled sources add bound callbacks to `pollers` from their matched start hooks. Each callback receives the current staged items and returns `Change | undefined`. Multi-change polls use a local `Poll` and return `changeOf(poll)`. Event writers take no poll argument. The [shared loop](../architecture.md#shared-poll-loop) publishes them together. Event hooks still write immediately.
 
 A source owns the items of its kind. It uses `itemId(kind, nativeId)` for ids, so another source can set `parentId` without asking it. Test a source through the engine: raise its events in a test, and watch `rabe.items` with a test hook on `state.set`.
 

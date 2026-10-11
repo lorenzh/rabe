@@ -9,7 +9,9 @@ keywords: [View, renderer, palette, cell engine, band, AbovePrompt, Drawn, ViewB
 
 ## The views
 
-The band and the pane read the sources' session values and draw. Neither writes items, and no view reads a file. The Items list and the band's chips leave out the ended items the person removed (`kept(items, removed)` in `lists.ts`, from `rabe.removed` as `Model.removed`; see [Removing ended items](views.md#removing-ended-items)); everything else counts them. The agent turns come from `rabe.turns`, Codex steps from the item's `detail.steps`, and shell and monitor output from `rabe.lines`. Views are pure functions. Only `band.tsx`, `pane.tsx` and `builtin.tsx` touch `$`; `pane.tsx` turns an action into `$` calls in its top-level `act($, action, surface)`.
+The band and the pane read the sources' session values and draw. Neither writes items, and no view reads a file. The Items list and the band's chips leave out the ended items the person removed (`kept(items, removed)` in `lists.ts`, from `rabe.removed` as `Model.removed`; see [Removing ended items](views.md#removing-ended-items)); everything else counts them. The agent turns come from `rabe.turns`, Codex steps from the item's `detail.steps`, and shell and monitor output from `rabe.lines`. Views are pure functions. Among UI modules, only `band.tsx`, `pane.tsx` and `builtin.tsx` touch `$`; `pane.tsx` turns an action into `$` calls in its top-level `act($, action, surface)`.
+
+The shared timer in `register.tsx` also calls `$.ui.invalidate('ui.render')`. It requests one redraw after the whole item pass commits. Between passes it redraws once per second while items run, so durations stay current. Keeping this request beside the scheduler avoids a second timer or a state write just for redraws. The band and pane still own rendering and read only published state.
 
 | File | What it holds |
 |---|---|

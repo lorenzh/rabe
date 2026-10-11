@@ -191,7 +191,7 @@ Stop, remove and message toasts name items by kind and ID. They omit titles and 
 
 Rabe keeps its items in Claude Code session state. That includes agent reply text (up to 16,000 characters per turn), prompts, commands, IDs and paths. When a session ends, Rabe keeps a short summary for the next session in the same project. The summary holds the session id, counts per kind, tokens, cost and the kind and ID of each failed item. When Rabe reads an older summary, it removes stored failed titles. An empty session also removes these titles.
 
-Rabe polls its sources in one loop. A slow poll makes the loop skip ticks. Item counts change together after the loop finishes. Sources poll every two seconds while work runs and every ten seconds after five unchanged idle polls.
+Rabe polls its sources in one loop. A slow poll makes the loop skip ticks. Starting the session again replaces its timer and polls. A failed poll leaves the other sources running. Item counts change together after the loop finishes. Sources poll every two seconds while work runs and every ten seconds after five unchanged idle polls.
 
 Rabe runs `tail` and `grep` to read files over 4 MiB. It runs `git worktree list` every 10 seconds in the session's folder to know the worktrees. When you stop a Codex job, it runs the Codex plugin's own cancel script. A refusal sends fixed text to Claude. The pane toast can show the first error line.
 

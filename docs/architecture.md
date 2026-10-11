@@ -7,11 +7,12 @@ keywords: [architecture, module map, overview, CronDelete, isDeleted, shellWrite
 
 # How Rabe is built
 
-Rabe has four parts. Sources watch hooks and files and turn them into items. The registry holds the items in `$.state`. The band and the pane draw the items. `hooks/register.tsx` connects the sources and the views. It owns the shared poll loop. It hands the option `pricesFile` to `sources(on, file, pollers)`. The agents and Codex sources use that file.
+Rabe has four parts. Sources watch hooks and files and turn them into items. The registry holds the items in `$.state`. The band and the pane draw the items. `hooks/register.tsx` connects the sources and the views. It owns the shared poll timer. `hooks/loop.ts` holds the pure scheduling rules and collects poll changes. It hands the option `pricesFile` to `sources(on, file, pollers)`. The agents and Codex sources use that file.
 
 ```
 hooks/
-  register.tsx        connects sources and views; owns the shared poll loop
+  register.tsx        connects sources and views; owns the shared poll timer
+  loop.ts             scheduling rules and ordered poll changes
   model.ts            item types (re-exported from the contract), itemId, mergeItem
   registry.ts         pure list changes: addItem, updateItem, endItem, capEnded, commit, pastEnd, prune
   sources/index.ts    sources(on, file, pollers), which calls each source
@@ -52,8 +53,10 @@ The details are split by area: [state and items](architecture/state.md), [source
 
 The timer wakes every second. It skips a tick while the previous pass runs. Agents and worktrees refresh once at session start. The other sources first poll after two seconds. Codex and worktrees poll only in interactive sessions.
 
-Each item poll stages pure changes in a `Poll`. Later sources see the staged items with the ended-item cap applied. The loop writes the staged list once with a version check. If an event hook changed the version during the poll, the loop applies its changes to that latest list. This preserves event-hook writes that arrived during a poll. An unchanged item list causes no write. The cap and removal of dropped items' lines and turns still apply.
+Each item poll returns a pure `Change`. A source can stage several changes locally before returning their composition. Later sources see the changed items with the ended-item cap applied. The loop composes returned changes in order. Its `write` and `forget` helpers use the same `commit` and `prune` rules as event writes. The write commits the collected list if its version still matches. Otherwise it replays changes against the latest list with a version check. This keeps event writes that arrive during a poll. An unchanged list causes no write. Dropped items lose their lines and turns.
 
 The band and pane read the same published item list. They cannot see a partial item poll. Output history and the worktree list keep their separate state keys. Their readers still skip writes when those values did not change.
 
 While items run, sources poll every two seconds. The same timer redraws the views each second. After five unchanged passes with no running items, the loop polls every ten seconds. A new running item wakes polling on the next tick. Worktrees refresh at most once every ten seconds. A failed source does not stop the remaining sources.
+
+See [shared poll loop](architecture/loop.md) for scheduling rules, repeated starts and the write path.

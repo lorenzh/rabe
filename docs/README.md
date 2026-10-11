@@ -20,9 +20,10 @@ Use this index to find the guide that matches your question.
 
 ## Architecture
 
-- [Architecture overview](architecture.md): module map, the shared poll loop, idle backoff, and links to detailed behavior.
+- [Architecture overview](architecture.md): module map, the shared poll loop, pure scheduling rules, repeated starts, idle backoff, and links to detailed behavior.
+- [Shared poll loop](architecture/loop.md): scheduling rules, source changes, repeated starts, and one completed write.
 - [State and items](architecture/state.md): item model, registry, state writes, and turns.
-- [Sources](architecture/sources.md): source contract, source modules, and source tests.
+- [Sources](architecture/sources.md): poll callbacks that return changes, source modules, and source tests.
 - [Price estimate](architecture/prices.md): price lookup and cost estimates.
 - [UI rendering](architecture/ui.md): view contract, renderer, palette, cells, sizing, and band.
 - [Pane interaction state](architecture/interaction.md): pure transitions for focus, held order, regain, opening, closing and arming.

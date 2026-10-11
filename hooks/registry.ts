@@ -99,4 +99,6 @@ export function stage(poll: Poll, change: Change): void {
   poll.items = capEnded(change(poll.items))
 }
 
-export type Pollers = ((poll: Poll, trees: boolean, initial: boolean) => Promise<void>)[]
+export function changeOf(poll: Poll): Change {
+  return items => poll.changes.reduce((list, change) => capEnded(change(list)), items)
+}

@@ -275,3 +275,43 @@ test('an event write during a poll is kept when the staged changes commit', asyn
     cwd: '/repo',
   })
 })
+
+test('a repeated session start keeps one agent poll per tick', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  memoryState(on)
+  core(on)
+  let calls = 0
+  on('agent.list', async () => {
+    calls++
+    return { value: [] }
+  })
+  await $.session.start(START)
+  await $.session.start(START)
+  calls = 0
+  await clock.advance(2000)
+  expect(calls).toBe(1)
+})
+
+test('a thrown Codex poll still commits the agent poll in the same tick', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  core(on)
+  let discovered = false
+  on(
+    'agent.list',
+    async () =>
+      ({ value: discovered ? [{ id: 'a1', status: 'running', name: 'First' }] : [] }) as never,
+  )
+  let failures = 0
+  on('env.get', { name: 'HOME' }, async () => {
+    failures++
+    throw new Error('Codex home unavailable')
+  })
+  await $.session.start(START)
+  discovered = true
+  await clock.advance(2000)
+  expect(failures).toBe(1)
+  expect(((state['rabe.items']?.value ?? []) as RabeItem[]).map(item => item.id)).toEqual([
+    'agent:a1',
+  ])
+})

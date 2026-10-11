@@ -1,13 +1,14 @@
 import type { EngineInterface, On } from 'claude-code'
 
+import type { Pollers } from '../loop'
 import { itemId, type RabeItem } from '../model'
 import {
   addItem,
   type Change,
+  changeOf,
   commit,
   endItem,
   type Poll,
-  type Pollers,
   prune,
   stage,
   updateItem,
@@ -35,12 +36,7 @@ type BackgroundTask = { id: string; type: string; description?: string; command?
 const shellTitle = (description: string | undefined, command: string, id: string) =>
   `${(description || command).replace(/\s+/g, ' ').trim()} · ${id}`
 
-async function write(
-  $: Pick<EngineInterface, 'state'>,
-  change: Change,
-  poll?: Poll,
-): Promise<void> {
-  if (poll) return stage(poll, change)
+async function write($: Pick<EngineInterface, 'state'>, change: Change): Promise<void> {
   for (;;) {
     const { value, version } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const next = commit(value, change)
@@ -127,9 +123,9 @@ function runningShells(items: RabeItem[]) {
   return items.flatMap(item => (item.kind === 'shell' && item.status === 'running' ? [item] : []))
 }
 
-async function pollShells($: EngineInterface, poll: Poll): Promise<void> {
+async function pollShells($: EngineInterface, items: RabeItem[]): Promise<Change> {
+  const poll: Poll = { items, changes: [] }
   try {
-    const items = poll.items
     for (const item of runningShells(items)) {
       const { text, isWhole } = item.detail.outputPath
         ? await readWhole($, item.detail.outputPath)
@@ -140,22 +136,19 @@ async function pollShells($: EngineInterface, poll: Poll): Promise<void> {
       const port = item.detail.port ?? guessPort(text)
       const now = await $.clock.now()
       const portAt = item.detail.portAt ?? (port ? now : undefined)
-      await write(
-        $,
-        held => {
-          const next = updateItem(held, item.id, {
-            detail: {
-              ...(port && { port, portAt }),
-              ...(exitCode !== undefined && { exitCode }),
-            },
-          })
+      stage(poll, held => {
+        const next = updateItem(held, item.id, {
+          detail: {
+            ...(port && { port, portAt }),
+            ...(exitCode !== undefined && { exitCode }),
+          },
+        })
 
-          return ended ? endItem(next, item.id, ended, now) : next
-        },
-        poll,
-      )
+        return ended ? endItem(next, item.id, ended, now) : next
+      })
     }
   } catch {}
+  return changeOf(poll)
 }
 
 async function onNotifications($: EngineInterface, text: string): Promise<void> {
@@ -231,9 +224,7 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
 
 export function shells(on: On, pollers: Pollers): void {
   on('session.start', { isInteractive: [true, false] }, async ($, e, next) => {
-    pollers.push(async (poll, _trees, initial) => {
-      if (!initial) await pollShells($, poll)
-    })
+    pollers.push({ run: items => pollShells($, items), initial: false })
     return next(e)
   })
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {

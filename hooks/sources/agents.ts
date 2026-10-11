@@ -8,8 +8,10 @@ import type {
   TurnStepResult,
   TurnUsage,
 } from 'claude-code'
+
 import type { RabeCodexCall, RabeEdit, RabeToolUse, RabeTurn } from '../../types'
 import { companionCall, companionOutput } from '../forwarders'
+import type { Pollers } from '../loop'
 import {
   clip,
   type EndStatus,
@@ -24,10 +26,10 @@ import { claudeUsd, type Prices, parsePrices, withOverride } from '../prices'
 import {
   addItem,
   type Change,
+  changeOf,
   commit,
   endItem,
   type Poll,
-  type Pollers,
   pastEnd,
   prune,
   stage,
@@ -284,12 +286,7 @@ function stepped(
   })
 }
 
-async function write(
-  $: Pick<EngineInterface, 'state'>,
-  change: Change,
-  poll?: Poll,
-): Promise<void> {
-  if (poll) return stage(poll, change)
+async function write($: Pick<EngineInterface, 'state'>, change: Change): Promise<void> {
   for (;;) {
     const { value, version } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const next = commit(value, change)
@@ -474,40 +471,44 @@ async function afterBash(
   await record($, agentId, changes)
 }
 
-async function readMeta($: EngineInterface, id: string, poll?: Poll): Promise<void> {
-  const items = poll?.items ?? (await $.state.get({ plugin: 'rabe', key: 'items' })).value ?? []
+async function readMeta(
+  $: EngineInterface,
+  id: string,
+  items: RabeItem[],
+): Promise<Change | undefined> {
   const item = asAgent(items, id)
   const path = item && metaPath(item, items)
   if (!path) return
   const text = await $.fs.read(path).catch(() => undefined)
   const patch = typeof text === 'string' ? metaPatch(text) : undefined
-  if (patch) await write($, list => updateItem(list, id, { detail: patch }), poll)
+  return patch ? list => updateItem(list, id, { detail: patch }) : undefined
 }
 
-async function pollAgents($: EngineInterface, poll: Poll): Promise<void> {
+async function pollAgents($: EngineInterface, items: RabeItem[]): Promise<Change> {
+  const poll: Poll = { items, changes: [] }
   const agents = await $.agent.list().catch(() => [])
   const now = await $.clock.now()
-  await write(
-    $,
-    items => {
-      const end = pastEnd(items, now)
+  stage(poll, items => {
+    const end = pastEnd(items, now)
 
-      return agents.reduce((list, info) => listed(list, info, now, end), items)
-    },
-    poll,
-  )
-  const items = poll.items
-  for (const item of items) {
+    return agents.reduce((list, info) => listed(list, info, now, end), items)
+  })
+  for (const item of poll.items) {
     if (item.kind !== 'agent') continue
-    const workflow = items.find(parent => parent.id === item.parentId && parent.kind === 'workflow')
+    const workflow = poll.items.find(
+      parent => parent.id === item.parentId && parent.kind === 'workflow',
+    )
     if (
       item.status === 'running' ||
       (workflow?.kind === 'workflow' &&
         workflow.detail.phases?.length &&
         item.detail.workflowPhase === undefined)
-    )
-      await readMeta($, item.id, poll)
+    ) {
+      const change = await readMeta($, item.id, poll.items)
+      if (change) stage(poll, change)
+    }
   }
+  return changeOf(poll)
 }
 
 // The built-in table, or with the user's file (`pricesFile`) its rows first. A
@@ -547,9 +548,10 @@ async function recordStep(
 
 export function agents(on: On, file: string, pollers: Pollers): void {
   on('session.start', { cwd: /^/ }, async ($, e, next) => {
-    pollers.push(poll => pollAgents($, poll))
+    pollers.push({ run: items => pollAgents($, items) })
     return next(e)
   })
+
   on('agent.spawn', { subagentType: /^/ }, async ($, e, next) => {
     const result = await next(e)
     const agentId = result.agentId
@@ -665,7 +667,9 @@ export function agents(on: On, file: string, pollers: Pollers): void {
     if (!agentId) return result
     const now = await $.clock.now()
     await write($, items => endItem(items, itemId('agent', agentId), ENDED[e.reason], now))
-    await readMeta($, itemId('agent', agentId))
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const change = await readMeta($, itemId('agent', agentId), items)
+    if (change) await write($, change)
 
     return result
   })

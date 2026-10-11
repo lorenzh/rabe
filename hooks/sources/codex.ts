@@ -2,6 +2,7 @@ import type { EngineInterface, FsStat, On } from 'claude-code'
 
 import type { RabeCodexStep, RabeEdit, RabeTokens } from '../../types'
 import { linkForwarders } from '../forwarders'
+import type { Pollers } from '../loop'
 import {
   clip,
   type EndStatus,
@@ -14,10 +15,10 @@ import { type CodexRequest, codexUsd, type Prices, parsePrices, withOverride } f
 import {
   addItem,
   type Change,
+  changeOf,
   commit,
   endItem,
   type Poll,
-  type Pollers,
   prune,
   stage,
   updateItem,
@@ -335,12 +336,7 @@ export function codexItem(job: CodexJob, session: CodexSession | undefined): New
   return session && !isUnchanged ? { ...item, costUsd: session.usd } : item
 }
 
-async function write(
-  $: Pick<EngineInterface, 'state'>,
-  change: Change,
-  poll?: Poll,
-): Promise<void> {
-  if (poll) return stage(poll, change)
+async function write($: Pick<EngineInterface, 'state'>, change: Change): Promise<void> {
   for (;;) {
     const { value, version } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const next = commit(value, change)
@@ -537,15 +533,15 @@ async function refresh(
   // a finished job the cap would drop again: its session file is not read
   if (!held && commit(items, change(codexItem(job, undefined))) === undefined) return
   const session = await readSession($, codexHome, job, held, looks, file)
-  await write($, change(codexItem(job, session)), poll)
+  stage(poll, change(codexItem(job, session)))
 }
 
-async function pollCodex($: EngineInterface, file: string, poll: Poll): Promise<void> {
+async function pollCodex($: EngineInterface, file: string, items: RabeItem[]): Promise<Change> {
+  const poll: Poll = { items, changes: [] }
   const { claude, codex } = await homes($)
   const stateRoot = `${claude}/${CODEX_DATA}/state`
   const sessionId = await $.session.id()
   const { startedAt: since } = await $.session.usage()
-  const items = poll.items
   const looks: Looks = { asked: new Map(), known: new Map(), stop: new AbortController() }
   // ponytail: one stat per workspace folder per poll; keep a folder list in $.state if there are hundreds
   for (const dir of await $.fs.list(stateRoot).catch(() => [])) {
@@ -576,7 +572,8 @@ async function pollCodex($: EngineInterface, file: string, poll: Poll): Promise<
     }
   }
   looks.stop.abort()
-  await write($, linkForwarders, poll)
+  stage(poll, linkForwarders)
+  return changeOf(poll)
 }
 
 function firstLine(text: string): string {
@@ -632,9 +629,7 @@ async function cancel($: EngineInterface, id: string): Promise<{ text: string }>
 
 export function codex(on: On, file: string, pollers: Pollers): void {
   on('session.start', { isInteractive: true }, async ($, e, next) => {
-    pollers.push(async (poll, _trees, initial) => {
-      if (!initial) await pollCodex($, file, poll)
-    })
+    pollers.push({ run: items => pollCodex($, file, items), initial: false })
     const started = await next(e)
     await $.command.register({
       name: 'rabe-stop',

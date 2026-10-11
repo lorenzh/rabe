@@ -1,6 +1,7 @@
 import type { EngineInterface, Register } from 'claude-code'
-
-import { commit, type Poll, type Pollers, prune } from './registry'
+import { collect, delayOf, nextStep, type Pollers } from './loop'
+import type { RabeItem } from './model'
+import { type Change, commit, prune } from './registry'
 import { sources } from './sources'
 import { band } from './ui/band'
 import { builtin } from './ui/builtin'
@@ -10,32 +11,45 @@ import { hoursOf } from './ui/views/timeline'
 export const register: Register = (on, options) => {
   const file = String(options.pricesFile ?? '')
   const pollers: Pollers = []
-  sources(on, file, pollers)
+  let cancel = () => {}
+  let generation = 0
   on('session.start', { cwd: /^/ }, async ($, e, next) => {
+    cancel()
+    const session = ++generation
+    pollers.length = 0
     const started = await next(e)
-    let running = false
+    let running = true
     let due = 0
     let idle = 0
-    let trees = 0
-    $.clock.every(1000, () => {
-      if (running) return
+    const timer = $.clock.every(1000, () => {
+      if (running || session !== generation) return
       running = true
       void (async () => {
         try {
           const now = await $.clock.now()
-          if (now < due && now < trees) {
-            const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
-            if (items.some(item => item.status === 'running')) {
-              $.ui.invalidate('ui.render')
-              if (due - now <= 2000) return
-            } else return
+          const { value: items = [], version } = await $.state.get({ plugin: 'rabe', key: 'items' })
+          const step = nextStep(
+            now,
+            due,
+            items.some(item => item.status === 'running'),
+          )
+          if (step === 'skip') return
+          if (step === 'redraw') {
+            $.ui.invalidate('ui.render')
+            return
           }
-          const changed = await tick($, pollers, now >= trees)
-          if (now >= trees) trees = now + 10_000
-          const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
-          const active = items.some(item => item.status === 'running')
-          idle = changed || active ? 0 : idle + 1
-          due = now + (idle < 5 ? 2000 : 10_000)
+          const collected = await collect([...pollers], items, now)
+          if (session !== generation) return
+          const changed = await write($, collected.change, {
+            version,
+            before: items,
+            items: collected.items,
+          })
+          const { value: current = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+          const active = current.some(item => item.status === 'running')
+          const pace = delayOf(idle, active, changed)
+          idle = pace.idle
+          due = now + pace.delay
           if (active || changed) $.ui.invalidate('ui.render')
         } catch {
           due = (await $.clock.now()) + 2000
@@ -44,61 +58,65 @@ export const register: Register = (on, options) => {
         }
       })()
     })
-    running = true
+    cancel = () => timer.cancel()
     try {
-      await tick($, pollers, true, true).catch(() => false)
+      const now = await $.clock.now()
+      const { value: items = [], version } = await $.state.get({ plugin: 'rabe', key: 'items' })
+      const collected = await collect([...pollers], items, now, true)
+      if (session === generation)
+        await write($, collected.change, { version, before: items, items: collected.items })
+    } catch {
     } finally {
       running = false
     }
     due = (await $.clock.now()) + 2000
-    trees = (await $.clock.now()) + 10_000
     return started
   })
+  sources(on, file, pollers)
   band(on)
   pane(on, hoursOf(options.timelineHours))
   if (options.hideBuiltinTasks !== false) builtin(on)
 }
 
-async function tick(
-  $: EngineInterface,
-  pollers: Pollers,
-  trees: boolean,
-  initial = false,
+async function write(
+  $: Pick<EngineInterface, 'state'>,
+  change: Change,
+  snapshot: { version: number; before: RabeItem[]; items: RabeItem[] },
 ): Promise<boolean> {
-  const { value: items = [], version: before } = await $.state.get({ plugin: 'rabe', key: 'items' })
-  const poll: Poll = { items, changes: [] }
-  for (const run of pollers) await run(poll, trees, initial).catch(() => undefined)
   for (;;) {
     const { value, version } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const next =
-      version === before
-        ? commit(items, () => poll.items)
-        : commit(value, held => poll.changes.reduce((list, change) => change(list), held))
-    if (!next) return false
-    const written = await $.state.set({ plugin: 'rabe', key: 'items' }, next.items, {
+      version === snapshot.version
+        ? commit(snapshot.before, () => snapshot.items)
+        : commit(value, change)
+    if (next === undefined) return false
+    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'items' }, next.items, {
       ifVersion: version,
     })
-    if (!written.isSet) continue
-    for (;;) {
-      const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
-      const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
-      const lines = prune(value, next.dropped, items)
-      if (lines === value) break
-      if (
-        (await $.state.set({ plugin: 'rabe', key: 'lines' }, lines, { ifVersion: version })).isSet
-      )
-        break
+    if (isSet) {
+      await forget($, next.dropped)
+      return true
     }
-    for (;;) {
-      const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'turns' })
-      const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
-      const turns = prune(value, next.dropped, items)
-      if (turns === value) break
-      if (
-        (await $.state.set({ plugin: 'rabe', key: 'turns' }, turns, { ifVersion: version })).isSet
-      )
-        break
-    }
-    return true
+  }
+}
+
+// Drops the lines and turns of the items a write dropped.
+async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Promise<void> {
+  if (dropped.length === 0) return
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, dropped, items)
+    if (next === value) break
+    const lines = await $.state.set({ plugin: 'rabe', key: 'lines' }, next, { ifVersion: version })
+    if (lines.isSet) break
+  }
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'turns' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, dropped, items)
+    if (next === value) return
+    const turns = await $.state.set({ plugin: 'rabe', key: 'turns' }, next, { ifVersion: version })
+    if (turns.isSet) return
   }
 }
