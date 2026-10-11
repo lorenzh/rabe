@@ -62,7 +62,7 @@ Then run `/reload-plugins` or start a new session: a plugin you install does not
 
 ## Usage
 
-The band shows by itself while background work runs. Type `/rabe` to open the pane. In the terminal the pane docks beside the transcript. Drag its left edge to make it wider.
+The band shows by itself while background work runs. Type `/rabe` to open the pane, including while Claude is working. In the terminal the pane docks beside the transcript. Drag its left edge to make it wider.
 
 | Key | What it does |
 |---|---|

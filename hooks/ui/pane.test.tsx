@@ -127,6 +127,18 @@ test('/rabe opens the pane so that Esc closes it', async ($, on) => {
   for (const one of opens) expect(one).toMatchObject({ id: 'rabe', closeOnEscape: true })
 })
 
+test('/rabe opens immediately during a turn', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  let command: unknown
+  on('session.start', async (_$, e) => ({ cwd: e.cwd }))
+  on('command.register', async (_$, e) => {
+    if (e.name === 'rabe') command = e
+    return { value: { command: e.name } }
+  })
+  await $.session.start({ cwd: '/tmp' } as never)
+  expect(command).toMatchObject({ name: 'rabe', immediate: true })
+})
+
 test('a pane closed before the focus call stays closed', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const opens = opening(on, false)
