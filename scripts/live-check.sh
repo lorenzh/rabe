@@ -97,7 +97,7 @@ command -v "$claude" >/dev/null || fail "$claude is not on PATH"
 # Any session on the socket belongs to someone else, and cleanup must not end it.
 tmux -L "$name" list-sessions >/dev/null 2>&1 && fail "tmux socket $name is in use; pick another --name"
 
-dir=$(mktemp -d "${TMPDIR:-/tmp}/rabe-live.XXXXXX")
+dir=$(mktemp -d "${TMPDIR:-/tmp}/rabe-live.XXXXXX") && [ -d "$dir" ] || fail "could not create a temp folder"
 out=$dir/captures
 mkdir -p "$out"
 base=$((3600 + RANDOM))

@@ -42,7 +42,7 @@ check 'timeout must be a number' 2 '--timeout' --timeout soon
 # as Claude Code would. Each seed also starts a shell with the same duration
 # outside the pane, as a second run would; cleanup must leave that one alone.
 real_sleep=$(command -v sleep)
-fake=$(mktemp -d)
+fake=$(mktemp -d) && [ -d "$fake" ] || { echo "could not create a temp folder" >&2; exit 2; }
 trap 'rm -rf "$fake"' EXIT
 mkdir "$fake/bin"
 cat >"$fake/bin/tmux" <<'EOF'
