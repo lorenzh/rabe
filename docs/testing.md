@@ -19,7 +19,7 @@ The first two run in CI on every pull request. A live check runs by hand before 
 
 ```sh
 bun run test          # every *.test.ts and *.test.tsx under hooks/ (about 40 seconds)
-bun run test:scripts  # the tests of scripts/live-check.sh, against a fake tmux (about 10 seconds)
+bun run test:scripts  # the tests of scripts/live-check.sh, against a fake tmux (about 35 seconds)
 bun run check         # lint, typecheck, strict validate, both of the above
 ```
 
@@ -112,7 +112,7 @@ The test kit does not show everything. Real key timing, the terminal's own key h
 1. It makes a fresh temporary folder and starts Claude Code there with `--plugin-dir` set to this checkout, on its **own tmux socket**, so your other tmux sessions are not touched. A socket that already has any session is refused as a setup error. The script passes the binary, the plugin folder and the other arguments to tmux one by one, so no shell reads them and a path with quotes or `$` works.
 2. It accepts the folder trust question.
 3. It **seeds background work**: it asks Claude to start N background `sleep` shells with unique durations, and waits until each one runs as a process under this session's Claude Code. The prompt shows the same command text, so the screen cannot tell. If the shells do not start within `--timeout`, the run stops as a setup error.
-4. Every check of the screen reads **only the Rabe pane**, so text in the transcript cannot pass for it. The pane is the text right of the longest vertical run of `│`: the border of the docked pane (at 120 columns), or the left edge of the inline box under `╭` (in a narrow terminal). The script finds it by character column, so it needs a UTF-8 locale and sets `C.UTF-8` when there is none.
+4. Every check of the screen reads **only the Rabe pane**, so text in the transcript cannot pass for it. The pane is the text right of the longest vertical run of `│` at one terminal cell column, inside its frame: the border of the docked pane (at 120 columns), which ends on the rule of the prompt box at column 0, or the left edge of the inline box (in a narrow terminal), with `╭` above it and `╰` below. Cell columns count wide characters (CJK, emoji) as two and combining marks as none, so such text in the transcript does not move the border. The script needs a UTF-8 locale for this and sets `C.UTF-8` when there is none. `--expect` reads the pane too; a failed round still prints the whole screen.
 5. For each round it opens `/rabe` and waits up to 15 seconds for the pane: its tab row (`1: Items`), its empty state or its list. If none shows, the run stops as a setup error. Then it **starts from the list**: `/rabe` keeps the open detail, the tab and the selection of the last round, so the script presses `b` when the pane shows `b back` and `1` for the Items tab. When the list shows a group header or the marker `▌` of a selected row, it presses Up one key at a time until the first row shows the marker: the row under the first group header, or in SHELLS and MONITORS the first row under an agent heading, whose rows are indented. Where all rows fit, the arrows wrap past the first row, so a fixed count of Up presses could end on any row. A list longer than the pane scrolls the whole pane: a later group's header can then be the first one on screen, so the tab row must also show above the header in the pane. Up on the first row scrolls the pane back up to it. If the first row does not show the marker after N + 100 presses, the run stops as a setup error. Then it sends the keys with a fixed gap, saves the screen to `captures/round-N.txt`, checks it against `--expect`, and closes the pane with Esc.
 6. On exit it kills its own tmux session, only when it started one, stops the processes that this session's Claude Code started (the `sleep` shells among them), and removes the folder. It never stops a process by name, so two runs on different sockets do not stop each other's shells.
 
@@ -131,7 +131,7 @@ scripts/live-check.sh --shells 3 --keys 'Down Down Enter' --expect 'b: back'
 | `--keys "K ..."` | none | tmux key names, such as `Down`, `Up`, `Enter`, `Tab`, `Escape`, `b`, `2`. |
 | `--gap SECONDS` | `0.3` | Pause between two keys. Short gaps (0.02 to 0.05) find races in key handling. |
 | `--repeat N` | `1` | Rounds. A race shows only in some rounds; use 10 or more. |
-| `--expect REGEX` | none | Extended regex each capture must match. A failed round prints its screen. |
+| `--expect REGEX` | none | Extended regex the pane of each capture must match, line by line, without the border. A failed round prints the whole screen. |
 | `--size COLSxROWS` | `120x40` | Terminal size. Use 140 columns or more for the pane with the detail beside the list. |
 | `--keep` | off | Keep the folder, the captures and the session. Attach with `tmux -L NAME attach -t NAME`. |
 | `--dry-run` | off | Print the plan and stop. |
@@ -153,9 +153,11 @@ The selected row starts with `▌`. Make `--expect` as exact as the case needs, 
 
 ### Notes
 
+- Known limit: text that draws its own box with the frame of the pane, a tab row and list lines can still pass for the pane. The script's own prompts never ask for that, so it takes model output that draws a fake pane. The width table is short, so a rarer wide or zero-width character beside the docked pane can still move the border; the run then stops as a setup error, not a pass.
+
 - The seed prompt costs one short model turn per run. `--shells 0` skips it when the check does not need background work.
 - Claude Code keeps the trust answer for the temporary folder in its own config, as for any folder you trust.
-- CI runs `scripts/live-check.test.sh`. It checks the arguments, and runs the script against a fake `tmux` whose pane starts the seeded shells: setup errors (a busy socket, a pane that never opens), text in the transcript that looks like the pane (tab row, empty state, list lines, `b: back`), the docked and the inline pane, the arguments tmux gets, the seed wait, the cleanup and the reset of each round. The fake's focus wraps like the engine's, so the test fails if the reset passes the first row. Other fake lists are longer than the pane and show only the lines from the selected row's header down, with and without later groups, and one starts with an agent heading. The live run needs tmux, a signed-in Claude Code and a person to read the result.
+- CI runs `scripts/live-check.test.sh`. It checks the arguments, and runs the script against a fake `tmux` whose pane starts the seeded shells: setup errors (a busy socket, a pane that never opens), text in the transcript that looks like the pane (tab row, empty state, list lines, `b: back`, a box without the pane's frame), wide and combining characters beside the docked pane, `--expect` on the pane only, the docked and the inline pane, the arguments tmux gets, the seed wait, the cleanup and the reset of each round. The fake's focus wraps like the engine's, so the test fails if the reset passes the first row. Other fake lists are longer than the pane and show only the lines from the selected row's header down, with and without later groups, and one starts with an agent heading. The live run needs tmux, a signed-in Claude Code and a person to read the result.
 - For a release, also do the manual live check in [RELEASING.md](../RELEASING.md): band, `/rabe`, arrow keys, Enter, a mouse click on a row, every tab, a detail of each kind, `x` on a shell and Esc.
 
 ## What CI runs
@@ -167,7 +169,7 @@ The selected row starts with `▌`. Make `--expect` as exact as the case needs, 
 3. `bun run typecheck` (`tsc`)
 4. `bun run validate` (`claude plugin validate --strict .`)
 5. `bun run test` (the hook, UI and unit tests, about 40 seconds)
-6. `bun run test:scripts` (the tests of the live-check script, about 10 seconds)
+6. `bun run test:scripts` (the tests of the live-check script, about 35 seconds)
 7. On a pull request: the docs check. A change under `hooks/`, `commands/`, `types/index.d.ts`, `data/` or `.claude-plugin/` must also change a doc, unless the pull request has the `no-docs` label.
 
 `bun run check` runs steps 2 to 6 on your machine.

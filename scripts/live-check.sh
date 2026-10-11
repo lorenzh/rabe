@@ -25,7 +25,7 @@ Options:
   --keys "K ..."     tmux key names to send after /rabe opens (default none)
   --gap SECONDS      pause between two keys (default 0.3)
   --repeat N         rounds of open, keys, capture, close (default 1)
-  --expect REGEX     each capture must match this extended regex
+  --expect REGEX     the Rabe pane in each capture must match this extended regex
   --size COLSxROWS   terminal size (default 120x40)
   --keep             keep the folder, the captures and the tmux session
   --dry-run          print the plan and stop
@@ -151,30 +151,69 @@ seeded() {
   ps -o args= -p "$pids" | grep -Ecx "(.*/)?sleep ($durations)"
 }
 
-# Reads the Rabe pane's own lines into `view`. The pane is the text right of
-# the longest vertical run of │: the border of the docked pane, or the left
-# edge of the inline box under ╭, which has one more column of padding.
-# Transcript text beside or above the pane never counts.
+# Reads the Rabe pane's own lines into `view`, from the screen given or a new
+# capture. The pane is the text right of the longest vertical run of │ at one
+# terminal cell column, inside its frame: docked, the run ends on the rule of
+# the prompt box at column 0; inline, ╭ is above it and ╰ below. The inline
+# box has one more column of padding. Transcript text never counts.
 look() {
-  local screen line c i run best=0 col=-1 at=0 pad=0
+  local screen line i j c cell cp end run best=0 col=-1 at=0 pad=0 inset=0
   local -a lines
-  screen=$(cap) || fail "could not capture the screen in round $r"
+  local -A bar=() corner=()
+  if [ $# -gt 0 ]; then screen=$1; else screen=$(cap) || fail "could not capture the screen in round $r"; fi
   mapfile -t lines <<<"$screen"
   view=()
   for i in "${!lines[@]}"; do
     line=${lines[i]}
-    for ((c = 0; c < ${#line}; c++)); do
-      [ "${line:c:1}" = │ ] || continue
-      [ "$i" -gt 0 ] && [ "${lines[i - 1]:c:1}" = │ ] && continue
-      for ((run = i + 1; run < ${#lines[@]}; run++)); do
-        [ "${lines[run]:c:1}" = │ ] || break
-      done
-      [ $((run - i)) -gt $best ] && best=$((run - i)) col=$c at=$i
+    [[ $line == *[│╭╰]* ]] || continue
+    cell=0
+    for ((j = 0; j < ${#line}; j++)); do
+      c=${line:j:1}
+      case $c in
+        │) bar[$i,$cell]=$j ;;
+        ╭ | ╰) corner[$i,$cell]=$c ;;
+      esac
+      # ponytail: a short wcwidth table (combining 0, CJK and emoji 2); a
+      # rarer wide or zero-width character beside the pane can still shift it.
+      printf -v cp %d "'$c"
+      if ((cp < 0x300)); then
+        cell=$((cell + 1))
+      elif ((cp <= 0x36f || (cp >= 0x1ab0 && cp <= 0x1aff) || (cp >= 0x1dc0 && cp <= 0x1dff) ||
+        (cp >= 0x200b && cp <= 0x200f) || (cp >= 0x20d0 && cp <= 0x20ff) ||
+        (cp >= 0xfe00 && cp <= 0xfe0f) || (cp >= 0xfe20 && cp <= 0xfe2f))); then
+        :
+      elif (((cp >= 0x1100 && cp <= 0x115f) || (cp >= 0x2e80 && cp <= 0xa4cf) ||
+        (cp >= 0xac00 && cp <= 0xd7a3) || (cp >= 0xf900 && cp <= 0xfaff) ||
+        (cp >= 0xfe30 && cp <= 0xfe4f) || (cp >= 0xff00 && cp <= 0xff60) ||
+        (cp >= 0xffe0 && cp <= 0xffe6) || (cp >= 0x1f300 && cp <= 0x1faff) ||
+        (cp >= 0x20000 && cp <= 0x3fffd))); then
+        cell=$((cell + 2))
+      else
+        cell=$((cell + 1))
+      fi
     done
   done
+  for c in "${!bar[@]}"; do
+    i=${c%,*} cell=${c#*,}
+    [ -n "${bar[$((i - 1)),$cell]:-}" ] && continue
+    for ((end = i + 1; end < ${#lines[@]}; end++)); do
+      [ -n "${bar[$end,$cell]:-}" ] || break
+    done
+    run=$((end - i))
+    if [ "${corner[$((i - 1)),$cell]:-}" = ╭ ] && [ "${corner[$end,$cell]:-}" = ╰ ]; then
+      pad=1
+    elif [[ ${lines[end]:-} == ─* ]]; then
+      pad=0
+    else
+      continue
+    fi
+    if [ $run -gt $best ] || { [ $run = $best ] && [ $((i * 1000 + cell)) -lt $((at * 1000 + col)) ]; }; then
+      best=$run col=$cell at=$i
+      inset=$pad
+    fi
+  done
   [ $col -ge 0 ] || return 0
-  [ "$at" -gt 0 ] && [ "${lines[at - 1]:col:1}" = ╭ ] && pad=1
-  for ((i = at; i < at + best; i++)); do view+=("${lines[i]:col+1+pad}"); done
+  for ((i = at; i < at + best; i++)); do view+=("${lines[i]:${bar[$i,$col]}+1+inset}"); done
 }
 # A line of the pane starts with this text.
 shows() {
@@ -265,9 +304,10 @@ for r in $(seq 1 "$repeat"); do
   for key in $keys; do k "$key"; sleep "$gap"; done
   sleep 1
   cap >"$out/round-$r.txt" || fail "could not capture the screen in round $r"
+  look "$(cat "$out/round-$r.txt")"
   if [ -z "$expect" ]; then
     echo "round $r: captured"
-  elif grep -Eq -- "$expect" "$out/round-$r.txt"; then
+  elif printf '%s\n' "${view[@]}" | grep -Eq -- "$expect"; then
     echo "round $r: pass"
   else
     echo "round $r: fail"

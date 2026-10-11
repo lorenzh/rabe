@@ -140,12 +140,15 @@ case $cmd in
       printf '│ %s\n' "${right[@]}"
       echo '╰──────────────────────'
     else
-      # Docked, as at 120 columns: right of a border down from the top line.
+      # Docked, as at 120 columns: right of a border at cell 24, down from the
+      # top line to the rule of the prompt box. The padding counts cells.
       right=('                     ✕' "${right[@]}")
       for ((i = 0; i < (${#left[@]} > ${#right[@]} ? ${#left[@]} : ${#right[@]}); i++)); do
         l=${left[i]:-}
-        printf '%-24s│%s\n' "${l:0:23}" "${right[i]:-}"
+        l=${l:0:23}
+        printf '%s%*s│%s\n' "$l" $((24 - $(printf '%s' "$l" | wc -L))) '' "${right[i]:-}"
       done
+      echo '────────────────────────────────────────'
     fi ;;
   kill-server | kill-session)
     echo "$cmd" >>"$FAKE/killed"
@@ -200,6 +203,18 @@ stop
 faked FAKE_PANE=none FAKE_SCREEN=$'▾ SHELLS 2\n▌▶ sleep 30' \
   'list lines in the transcript are no open pane' 2 'did not open' --shells 0
 stop
+faked FAKE_PANE=none FAKE_SCREEN=$'  │ 1: Items 4\n  │▾ SHELLS 2\n  │▌▶ sleep 30\n  │ esc close' \
+  'a box in the transcript without the pane frame is no open pane' 2 'did not open' --shells 0
+stop
+faked FAKE_SCREEN='Use b: back to leave' 'expect reads the pane, not the transcript' 1 'round 1: fail' \
+  --shells 0 --expect 'b: back'
+stop
+faked FAKE_LIST='H:SHELLS r r' FAKE_STOPS=3 FAKE_RING=1 FAKE_SCREEN=$'中文 😀 wide' \
+  'wide characters beside the docked pane' 0 'round 1: pass' --shells 0 --expect '^▌▶ row 0$'
+stop
+faked FAKE_LIST='H:SHELLS r r' FAKE_STOPS=3 FAKE_RING=1 FAKE_SCREEN=$'Cafe\u0301 combined' \
+  'combining characters beside the docked pane' 0 'round 1: pass' --shells 0 --expect '^▌▶ row 0$'
+stop
 faked FAKE_CAP=fail 'a failed capture is a setup error' 2 'could not capture' --shells 0
 stop
 faked FAKE_SHELLS=none 'the seed waits for the shells, not the prompt text' 2 'did not start' \
@@ -223,25 +238,25 @@ expect 'each round leaves the detail and goes to the first tab' \
 stop
 # 22 Up presses on 4 rows and 3 other stops would wrap onto row 1.
 faked FAKE_LIST='H:SHELLS r r r r' FAKE_STOPS=3 FAKE_RING=2 'each round stops on the first row' 0 'round 2: pass' \
-  --shells 2 --timeout 50 --repeat 2 --expect '│▌▶ row 0$'
+  --shells 2 --timeout 50 --repeat 2 --expect '^▌▶ row 0$'
 expect 'the reset stops pressing once the first row shows' \
   test "$(grep -c '^Up$' "$FAKE/keys")" = 2
 stop
 faked FAKE_LIST="H:SHELLS $(printf 'r %.0s' $(seq 30))" FAKE_STOPS=3 FAKE_RING=25 FAKE_SCROLL=1 \
-  'a long list resets with its header scrolled away' 0 'round 1: pass' --shells 0 --expect '│▌▶ row 0$'
+  'a long list resets with its header scrolled away' 0 'round 1: pass' --shells 0 --expect '^▌▶ row 0$'
 stop
 faked FAKE_LIST='H:AGENTS r r H:SHELLS r r H:MONITORS r r' FAKE_STOPS=3 FAKE_RING=4 FAKE_SCROLL=1 \
-  'a scrolled list does not take a later group for the top' 0 'round 1: pass' --shells 0 --expect '│▌▶ row 0$'
+  'a scrolled list does not take a later group for the top' 0 'round 1: pass' --shells 0 --expect '^▌▶ row 0$'
 stop
 faked FAKE_LIST='H:AGENTS r r H:SHELLS r r H:MONITORS r r' FAKE_STOPS=3 FAKE_RING=4 FAKE_SCROLL=1 \
   FAKE_SCREEN=' 1: Items' 'a tab row quoted in the transcript is no list top' 0 'round 1: pass' \
-  --shells 0 --expect '│▌▶ row 0$'
+  --shells 0 --expect '^▌▶ row 0$'
 stop
 faked FAKE_LIST='H:SHELLS r r r r' FAKE_STOPS=3 FAKE_RING=2 FAKE_INLINE=1 'an inline pane resets too' 0 \
-  'round 1: pass' --shells 0 --expect '^│ ▌▶ row 0$'
+  'round 1: pass' --shells 0 --expect '^▌▶ row 0$'
 stop
 faked FAKE_LIST='H:SHELLS F:reviewer i i H:MONITORS r' FAKE_STOPS=3 FAKE_RING=1 \
-  'an agent heading above the first row still resets' 0 'round 1: pass' --shells 0 --expect '│▌  ▶ row 0$'
+  'an agent heading above the first row still resets' 0 'round 1: pass' --shells 0 --expect '^▌  ▶ row 0$'
 stop
 faked FAKE_LIST='H:SHELLS r r r r' FAKE_STOPS=3 FAKE_RING=2 FAKE_UP=ignore 'a first row that never shows is a setup error' 2 \
   'could not select the first row' --shells 0
