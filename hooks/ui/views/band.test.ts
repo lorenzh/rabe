@@ -52,6 +52,14 @@ test('the band shows the session cost when Rabe knows it', () => {
   expect(shown[1]).toContain('session ≈ $0.41')
 })
 
+test('the band keeps session cost unknown instead of substituting worker estimates', () => {
+  const shown = lines(
+    gridOf(bandView({ ...model(), usd: undefined }, { ...SIZE, columns: 180 }, NO_SELECTION)).grid,
+  )
+  expect(shown[1]).toContain('session n/a · bg 91k tok')
+  expect(shown[1]).not.toContain('top:')
+})
+
 test('the band keeps the cached share after the two scope labels', () => {
   const item = { ...explore, tokens: { input: 457_000, output: 59_000, cached: 417_000 } }
   const shown = lines(gridOf(bandView(model([item]), { ...SIZE, columns: 120 }, NO_SELECTION)).grid)

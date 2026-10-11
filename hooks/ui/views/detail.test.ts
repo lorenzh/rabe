@@ -328,8 +328,21 @@ test('a shell that printed one line says 1 line', () => {
   expect(lines(open(m, lint.id).grid)).toContain('▸ output · newest last · 1 line')
 })
 
-test('a shell without lines says no output yet', () => {
+test('a running shell without lines says no output yet', () => {
   expect(lines(open(model(), dev.id).grid)).toContain('No output yet')
+})
+
+test('a shell that ended without lines says no output', () => {
+  for (const status of ['done', 'failed'] as const) {
+    const ended = { ...dev, status } as RabeItem
+    expect(lines(open(model([ended]), ended.id).grid)).not.toContain('No output yet')
+  }
+})
+
+test('a stopped shell without lines says no output', () => {
+  const stopped = { ...dev, status: 'stopped' } as RabeItem
+  expect(lines(open(model([stopped]), stopped.id).grid)).toContain('No output')
+  expect(lines(open(model([stopped]), stopped.id).grid)).not.toContain('No output yet')
 })
 
 test('agent turn summaries show project-relative paths', () => {

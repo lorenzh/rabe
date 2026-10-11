@@ -2,7 +2,7 @@ import { isInside, type RabeItem } from '../../model'
 import { nextRuns } from '../../schedule'
 import { type Span, wrap } from '../cells/grid'
 import { C, type Style } from '../cells/palette'
-import { ago, clockTime, duration, tokens, usd } from '../format'
+import { ago, clockTime, duration, middleEllipsis, tokens, usd } from '../format'
 import {
   byStart,
   children,
@@ -50,11 +50,7 @@ const raise = (lines: Line[]): Line[] => lines.map(line => ({ ...line, bg: C.rai
 function turnPath(summary: string, cwd: string | undefined, width: number): string {
   const base = cwd?.replace(/[\\/]+$/, '')
   const path = base && isInside(summary, base) ? summary.slice(base.length + 1) : summary
-  const chars = [...path]
-  if (chars.length <= width) return path
-  const left = Math.ceil((width - 1) / 2)
-  const right = Math.floor((width - 1) / 2)
-  return `${chars.slice(0, left).join('')}…${right ? chars.slice(-right).join('') : ''}`
+  return middleEllipsis(path, width)
 }
 
 // Spend and activity on a panel: agents and Codex jobs their own, a workflow its agents'.
@@ -275,9 +271,10 @@ function workflowLines(model: Model, item: RabeItem, columns: number, sel?: Sele
 
 function outputLines(model: Model, item: RabeItem): Line[] {
   const held = model.lines[item.id]?.lines ?? []
+  const empty = item.kind === 'shell' && item.status !== 'running' ? 'No output' : 'No output yet'
   const out: Line[] =
     held.length === 0
-      ? [{ spans: [['No output yet', dim]] }]
+      ? [{ spans: [[empty, dim]] }]
       : held.map(line => ({
           spans:
             item.kind === 'monitor'

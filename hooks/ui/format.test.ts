@@ -1,6 +1,12 @@
 import { expect, test } from 'claude-code/testing'
 
-import { ago, clockTime, day, duration, short, tokens, usd } from './format'
+import { ago, clockTime, day, duration, middleEllipsis, short, tokens, usd } from './format'
+
+test('middle ellipsis keeps both ends of a long string', () => {
+  expect(middleEllipsis('abcdefghij', 6)).toBe('abc…ij')
+  expect(middleEllipsis('abc', 6)).toBe('abc')
+  expect(middleEllipsis('abc', 1)).toBe('…')
+})
 
 test('duration reads seconds, minutes and hours', () => {
   expect(duration(52_000)).toBe('52s')
