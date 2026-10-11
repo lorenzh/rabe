@@ -89,7 +89,7 @@ The next three sources follow the work Claude Code runs as background tasks. Eac
 
 ### Shells: `hooks/sources/shells.ts`
 
-A shell title uses the normalized Bash description when present, else the normalized command, followed by the task id. The detail keeps the original command. An empty running shell says `No output yet`; a stopped shell says `No output`.
+A shell title uses the normalized Bash description when present, else the normalized command, followed by the task id. The detail keeps the original command. An empty running shell says `No output yet`; a shell that ended says `No output`.
 
 
 | Hook | What it does |

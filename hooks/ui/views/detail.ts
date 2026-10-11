@@ -271,7 +271,7 @@ function workflowLines(model: Model, item: RabeItem, columns: number, sel?: Sele
 
 function outputLines(model: Model, item: RabeItem): Line[] {
   const held = model.lines[item.id]?.lines ?? []
-  const empty = item.kind === 'shell' && item.status === 'stopped' ? 'No output' : 'No output yet'
+  const empty = item.kind === 'shell' && item.status !== 'running' ? 'No output' : 'No output yet'
   const out: Line[] =
     held.length === 0
       ? [{ spans: [[empty, dim]] }]

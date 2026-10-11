@@ -332,6 +332,13 @@ test('a running shell without lines says no output yet', () => {
   expect(lines(open(model(), dev.id).grid)).toContain('No output yet')
 })
 
+test('a shell that ended without lines says no output', () => {
+  for (const status of ['done', 'failed'] as const) {
+    const ended = { ...dev, status } as RabeItem
+    expect(lines(open(model([ended]), ended.id).grid)).not.toContain('No output yet')
+  }
+})
+
 test('a stopped shell without lines says no output', () => {
   const stopped = { ...dev, status: 'stopped' } as RabeItem
   expect(lines(open(model([stopped]), stopped.id).grid)).toContain('No output')
