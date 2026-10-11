@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Added
+
+- Add a user guide for options, troubleshooting and common questions (fixes [#78](https://github.com/lorenzh/rabe/issues/78))
+
 ### Changed
 
 - Split the architecture and feasibility references into smaller documents with a documentation index. ([#90](https://github.com/lorenzh/rabe/pull/90), fixes [#77](https://github.com/lorenzh/rabe/issues/77))
