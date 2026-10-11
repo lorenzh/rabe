@@ -2,7 +2,7 @@
 title: Security guidelines for developing Rabe
 description: The threat model of a mod that runs in every Claude Code session and the rules that contributors and coding agents follow when they change Rabe - file content as data, terminal output, commands, paths, process environments, network, secrets, destructive actions, supply chain and review.
 tags: [security, guidelines, review, contributing]
-keywords: [clipText, bracketed paste, dependabot.yml, threat model, prompt injection, untrusted text, safe, toastText, control characters, escape sequences, OSC 52, $.process.run, argv, "--", option injection, timeoutMs, paths, path traversal, /proc, environ, session token, $.env.get, no network, $.http.fetch, $.store, secrets, privacy, notes to Claude, rabe.actions, arming, destructive actions, TaskStop, CronDelete, rabe-stop, supply chain, lockfile, GitHub Actions, SHA pinning, Dependabot, pull request template, security review]
+keywords: [toasts, output, script, symlink, summary, stderr, clipText, bracketed paste, dependabot.yml, threat model, prompt injection, untrusted text, safe, toastText, control characters, escape sequences, OSC 52, $.process.run, argv, "--", option injection, timeoutMs, paths, path traversal, /proc, environ, session token, $.env.get, no network, $.http.fetch, $.store, secrets, privacy, notes to Claude, rabe.actions, arming, destructive actions, TaskStop, CronDelete, rabe-stop, supply chain, lockfile, GitHub Actions, SHA pinning, Dependabot, pull request template, security review]
 ---
 
 # Security guidelines for developing Rabe
@@ -29,6 +29,7 @@ Text from transcripts, meta files, output files, Codex files and workflow script
 ### Terminal output and the clipboard
 
 - Text from files reaches the screen only through `safe()` in `hooks/ui/cells/grid.ts`. `safe` uses an allow list, so escape and control characters become `?`. The views call it through `fitLine` and `cut` in `hooks/ui/views/lines.ts` and through `wrap` and `fit` in the cell engine. A new view that draws text from a file uses these helpers too.
+- Stop, remove and message toasts name items by kind and native id. Never use an item title or an agent name.
 - Every toast goes through `toast($, text)` in `hooks/ui/pane.tsx`, which applies `toastText`: whitespace becomes one space, and Unicode control (`Cc`) and format (`Cf`) characters become `?`. Do not call `$.ui.toast` directly.
 - Never pass raw ANSI from a file through to the terminal.
 - Copy puts text on the clipboard that the person may paste into a shell. Copy only an item's own command, prompt, path or id, or a fixed command around an id (`claude --resume <id>`).
@@ -46,6 +47,8 @@ Text from transcripts, meta files, output files, Codex files and workflow script
 
 - Take paths from tool results and hook events. Build a path only when no result has it (AGENTS.md).
 - A path built from a file's field (a job id, a thread id, a folder name) must stay in the folder it is built under. Prefer an allow-list such as the Codex job id rule `^\w[\w.-]*$`. Otherwise reject a field with `/` or `\`, `..` or a leading `-`, or check that the resolved path stays under the folder followed by a separator.
+- Shell and monitor output must be a plain `.output` file in `/tmp/claude-<uid>/<project>/<session>/tasks/`. The session id must match `$.session.id()`. The project folder must match `$.session.root()` with non-alphanumeric characters replaced by `-`. Workflow scripts must be in `<claude dir>/projects/<project>/<session>/workflows/scripts/` for this session. Use `CLAUDE_CONFIG_DIR` for the Claude folder. Without it, use `HOME` plus `/.claude`.
+- Before either read, stat the file and its expected folder with `{ resolve: true }`. The file’s `realPath` must equal the resolved folder plus the plain file name. Reject missing resolutions, traversal, sibling prefixes and symlinks that leave the folder. Read the checked resolved path. These checks do not prevent a concurrent filesystem change after the stat.
 - Read only the session, agent, task, Codex and project folders and the files the README lists under Privacy. A new place to read is a new data source: add it to `docs/feasibility.md` and to the README.
 - For a file that a shell command names, Rabe uses only `$.fs.stat` and `$.fs.list`. It never reads the content.
 
@@ -61,8 +64,9 @@ Rabe sends nothing anywhere. It does not call `$.http.fetch`, and it does not ru
 
 ### Secrets and privacy
 
-- Never put message text, prompts or tokens into `$.store`, toasts, bug reports or notes to Claude ([#38](https://github.com/lorenzh/rabe/issues/38)). Notes to Claude hold the kind and id of an item only: titles come from files (a Codex summary, a workflow script) or are prompts (a cron job's). The `/rabe-stop` answer is a transcript line Claude reads, so it names a Codex job by its id too.
+- Never put message text, prompts or tokens into `$.store`, toasts, bug reports or notes to Claude ([#38](https://github.com/lorenzh/rabe/issues/38)). Notes to Claude hold the kind and id of an item only: titles come from files (a Codex summary, a workflow script) or are prompts (a cron job's). The `/rabe-stop` answer is a transcript line Claude reads, so it names a Codex job by its id too. A companion refusal returns fixed text. The first stderr or thrown error line stays in the item’s session state as `stopError` for the pane toast. The detail never enters the transcript answer or `$.store`.
 - A toast names a cron job by its job id, since its title is its prompt, and a copied prompt shows `Copied prompt` without the text.
+- A previous-session summary stores failed item ids in `failedIds`, never titles. When reading an older summary, remove its `failed` field and save the cleaned record. Do this at an empty session’s end too.
 - `$.store` lasts across sessions. Keep in it only what the README lists under Privacy.
 - Bug reports and feedback replace home paths, user and project names, ids and tokens with placeholders before the person sees the draft.
 - Test fixtures and docs use invented paths, ids and names.

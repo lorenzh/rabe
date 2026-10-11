@@ -7,6 +7,8 @@ const DIR = '/tmp/claude-1000/-home-me-app/5f1c/tasks'
 const OUT = `${DIR}/m1.output`
 
 function tools(on: On) {
+  on('session.id', async () => ({ value: '5f1c' }))
+  on('session.root', async () => ({ value: '/home/me/app' }))
   on('tool.call', { tool: ['Monitor', 'Bash'] }, async (_$, e) =>
     e.tool === 'Monitor'
       ? { result: { taskId: 'm1', timeoutMs: 1_800_000 }, text: 'Monitor started (task m1)' }
@@ -194,3 +196,47 @@ test('at Stop a monitor no longer in flight ends; one Rabe never saw is added', 
     },
   ])
 })
+
+for (const path of [
+  '/etc/secrets',
+  `${DIR}-other/m1.output`,
+  `${DIR}/../../secret.output`,
+  `${DIR}/m1.output/../secret.output`,
+  `${DIR.replace('5f1c', 'other-session')}/m1.output`,
+  `${DIR}/linked.output`,
+  `${DIR.replace('-home-me-app', '-other-project')}/m1.output`,
+]) {
+  test(`monitor output outside the task folder is never read: ${path}`, async ($, on) => {
+    const clock = mock.clock(on, { now: 1000 })
+    const state = memoryState(on)
+    const reads: string[] = []
+    on('fs.stat', async (_$, e) => ({
+      value: {
+        kind: 'file' as const,
+        size: 5,
+        mtimeMs: 0,
+        isLink: path.endsWith('linked.output'),
+        realPath: e.path === path && path.endsWith('linked.output') ? '/etc/secrets' : e.path,
+      },
+    }))
+    on('fs.read', async (_$, e) => {
+      reads.push(e.path)
+      return { value: 'secret\n' }
+    })
+    tools(on)
+    core(on)
+    state['rabe.items'] = {
+      value: [{ ...watching, detail: { ...watching.detail, outputPath: path } }],
+      version: 1,
+    }
+    await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+    await clock.advance(2000)
+    await $.prompt.submit({
+      text: `<task-notification><task-id>m1</task-id><output-file>${path}</output-file><status>completed</status></task-notification>`,
+      origin: { kind: 'task-notification' },
+      wait: false,
+    })
+    expect(reads).not.toContain(path)
+    expect(state['rabe.lines']?.value).toBeUndefined()
+  })
+}

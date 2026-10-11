@@ -18,7 +18,7 @@ const PREVIOUS: RabePrevious = {
   counts: { agent: 6, codex: 2, shell: 4, cron: 1 },
   tokens: 800_000,
   usd: 0.32,
-  failed: ['migrate.ts agent'],
+  failedIds: ['agent:a3'],
 }
 
 const find = (shown: string[], text: string) => shown.findIndex(line => line.includes(text))
@@ -130,7 +130,7 @@ test('who started what sits beside the previous session on a wide pane', () => {
   expect(shown[head + 2]).toMatch(/├─ ◐ Explore verifyToken +✓ 6 agents · 2 codex · 4 shells$/)
   expect(shown[head + 3]).toMatch(/├─ ✓ Plan auth split +session ≈ \$0\.32 · 1h12m$/)
   expect(shown[head + 4]).toMatch(/├─ ◐ review auth\.ts \(codex\) +background 800k tok$/)
-  expect(shown[head + 5]).toMatch(/├─ ▶ bun run dev \(shell\) +✗ failed migrate\.ts agent$/)
+  expect(shown[head + 5]).toMatch(/├─ ▶ bun run dev \(shell\) +✗ failed agent:a3$/)
   expect(shown.some(line => / {2}⟳ 1 cron job ended with the session$/.test(line))).toBe(true)
   expect(shown.some(line => /^└─ ⧉ review-changes \(workflow\)$/.test(line))).toBe(true)
   expect(shown.some(line => /^ {3}└─ ✓ review:bugs$/.test(line))).toBe(true)

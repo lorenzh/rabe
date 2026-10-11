@@ -346,7 +346,7 @@ test('an agent in a subfolder is placed in the worktree that holds it, never its
   expect(worktreeRows([api], [], undefined, '/repo')).toEqual({ rows: [], unknown: 1 })
 })
 
-test('previousOf sums a session up: counts per kind, tokens, cost, failed titles', () => {
+test('previousOf sums a session up: counts per kind, tokens, cost, failed ids', () => {
   const summary = previousOf(ALL, NOW, { startedAt: NOW - 3_600_000, usd: 0.32 })
   expect(summary).toEqual({
     endedAt: NOW,
@@ -354,7 +354,7 @@ test('previousOf sums a session up: counts per kind, tokens, cost, failed titles
     counts: { agent: 4, codex: 1, shell: 2, monitor: 1, cron: 1, workflow: 1 },
     tokens: 91_000,
     usd: 0.32,
-    failed: ['bun run lint'],
+    failedIds: ['shell:bg_3'],
   })
   expect(previousOf([], NOW, {}, 'sess-1').sessionId).toBe('sess-1')
 })

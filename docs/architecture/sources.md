@@ -30,7 +30,7 @@ A source owns the items of its kind. It uses `itemId(kind, nativeId)` for ids, s
 
 ### Stopping an item
 
-The pane stops agents, shells, monitors and workflows itself: it calls `TaskStop` through `$.tool.call` (see [Actions under The pane](focus-and-keys.md#the-pane)). A Codex job has no task id, so it stops through a command instead. `/rabe-stop <item id>` is registered by the Codex source (with `immediate: true`, so it also runs during a turn). It answers with a matcher on the id prefix, `{ command: 'rabe-stop', args: /^\s*codex:/ }`, and returns `{ text }` that says what happened. The answer is a transcript line that Claude reads, so it names the job by its job id (`Stopped codex task-1`), never by its title. The person can type `/rabe-stop codex:<job id>`. The pane's `x: stop` on a Codex job runs the same command with `$.command.run({ command: 'rabe-stop', args: <item id> })` and shows its answer as a toast, so the cancel stays in the Codex source.
+The pane stops agents, shells, monitors and workflows itself: it calls `TaskStop` through `$.tool.call` (see [Actions under The pane](focus-and-keys.md#the-pane)). A Codex job has no task id, so it stops through a command instead. `/rabe-stop <item id>` is registered by the Codex source (with `immediate: true`, so it also runs during a turn). It answers with a matcher on the id prefix, `{ command: 'rabe-stop', args: /^\s*codex:/ }`, and returns `{ text }` that says what happened. The answer is a transcript line that Claude reads, so it names the job by its job id (`Stopped codex task-1`), never by its title. The person can type `/rabe-stop codex:<job id>`. The pane's `x: stop` on a Codex job runs the same command with `$.command.run({ command: 'rabe-stop', args: <item id> })` and shows its answer as a toast, so the cancel stays in the Codex source. A companion refusal returns fixed text to keep stderr out of Claude’s transcript. The source keeps the first error line in the item’s session-only `detail.stopError`. The pane reads that field for its refusal toast. A successful cancel clears it.
 
 
 ## The sources
@@ -39,7 +39,7 @@ The pane stops agents, shells, monitors and workflows itself: it calls `TaskStop
 
 One `agent` item per subagent, id `agent:<agentId>`. It covers agents the model starts, agents of workflows and teammates.
 
-The agent-list poll stores an API-provided `name` and uses it for the title and message toast. Without a name, the title uses the task description or agent type. Turn tool paths stay whole in `rabe.turns`; the detail shows project-relative paths when it can, with a middle ellipsis for long paths.
+The agent-list poll stores an API-provided `name` and uses it for the title. Message toasts use the agent id. Without a name, the title uses the task description or agent type. Turn tool paths stay whole in `rabe.turns`; the detail shows project-relative paths when it can, with a middle ellipsis for long paths.
 
 | Hook | What it does |
 |---|---|
@@ -66,7 +66,7 @@ One `workflow` item per run, id `workflow:<runId>`.
 
 | Hook | What it does |
 |---|---|
-| `tool.call` for `Workflow` | After the call, takes `runId`, `taskId`, `workflowName`, `scriptPath` and `transcriptDir` from the result and adds a running item. A resumed run keeps its `runId` and runs again under the same item. Then it reads the script and stores the phase names of its `meta.phases` block in `phases`, in order, from strings and from the `title` of objects alike. A bracket inside a phase string (`'Review [fast]'`) does not end the list. A remote run has no `runId` and gets no item. |
+| `tool.call` for `Workflow` | After the call, takes `runId`, `taskId`, `workflowName`, `scriptPath` and `transcriptDir` from the result and adds a running item. A resumed run keeps its `runId` and runs again under the same item. Then it checks the script path against this session’s `workflows/scripts/` folder under the Claude projects folder. It checks the resolved file against the resolved folder before reading. A rejected path leaves phases unknown. It reads an accepted script for the phase names in its `meta.phases` block. It stores these in `phases` in order. Names come from strings or an object’s `title`. A bracket inside a phase string (`'Review [fast]'`) does not end the list. A remote run has no `runId` and gets no item. |
 | `prompt.submit` with origin `task-notification` | Reads `<task-id>` and `<status>` of each `<task-notification>` in the text (with `parseNotifications`; one prompt can carry several). When a task id is a run's `taskId`, it ends the run: `completed` is done, `failed` is failed, `killed` is stopped. |
 
 The run's agents come from `agents.ts`; they point to the run with `parentId` and carry their phase in `workflowPhase`. A view gets a run's tokens by adding up its agents.
@@ -132,6 +132,10 @@ Writes no items: it keeps the repository's worktrees in the `$.state` key `rabe.
 |---|---|
 | `session.start` `{ isInteractive: true }` | Runs `git worktree list --porcelain` through `$.process.run` (in the session's folder, 5 s timeout) at once and then every 10 s; a tick while the last run still goes is skipped. `parseWorktrees` reads the blocks: the first is the main worktree (`isMain`), `branch refs/heads/x` gives `x`, `detached` sets `isDetached`; a bare entry, a path git had to quote and a relative path are left out, and at most 100 are kept. The list is written only when it changed. A run that fails, cannot start (no git, the desktop), exits with another code than 0 (not a repository), is cut at 4 MiB or lists nothing writes nothing, so the last known list stays, and without one the views keep their behaviour from agent metadata. |
 
+
+## Output path checks
+
+`taskFolder(path, sessionId, projectRoot)` in `hooks/tasks.ts` accepts plain output file names for this session and project. It checks the temporary task layout. The project folder encodes `$.session.root()` with non-alphanumeric characters replaced by `-`. Shells and monitors call it before every output read, including polls, notifications and Stop correction. They stat the file and folder with `{ resolve: true }`. The file must resolve to that folder plus its file name. They read the resolved path after this check. Missing resolutions or unexpected paths give no output. Large shell output follows the same check before `tail`.
 
 ## Testing sources
 

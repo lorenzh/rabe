@@ -4,6 +4,13 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Fixed
+
+- Stop, remove and message toasts name items by kind and ID instead of titles from files. (fixes #92)
+- Previous-session summaries keep failed item IDs and remove older stored titles. (fixes #94)
+- Shells, monitors and workflows check output and script folders before reading, including resolved symlink targets. (fixes #95)
+- `/rabe-stop` returns fixed refusal text to Claude and keeps companion errors in session state for the pane toast. (fixes #96)
+
 ## [0.5.0] - 2026-10-11
 
 ### Added

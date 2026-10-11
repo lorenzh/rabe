@@ -54,6 +54,24 @@ export function outputPathOf(text: string | undefined): string | undefined {
   return text?.match(/Output is being written to: (\S+?\.output)\b/)?.[1]
 }
 
+export function taskFolder(
+  path: string,
+  sessionId: string,
+  projectRoot: string,
+): string | undefined {
+  const match = /^\/tmp\/claude-\d+\/([^/]+)\/([^/]+)\/tasks\/\w[\w.-]*\.output$/.exec(path)
+  if (
+    !match ||
+    match[1] !== projectRoot.replace(/[^a-zA-Z0-9]/g, '-') ||
+    match[2] !== sessionId ||
+    /[\\\p{Cc}\p{Cf}]/u.test(path)
+  )
+    return undefined
+  if (path.split('/').some(part => part === '.' || part === '..')) return undefined
+
+  return path.slice(0, path.lastIndexOf('/'))
+}
+
 export function siblingOutput(path: string, taskId: string): string | undefined {
   return /\/tasks\/[^/]+\.output$/.test(path)
     ? path.replace(/[^/]+\.output$/, `${taskId}.output`)

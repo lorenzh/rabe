@@ -72,6 +72,7 @@ export type RabeCodexDetail = {
   sandbox?: string
   prompt?: string
   workspaceRoot?: string
+  stopError?: string
   logPath?: string
   sessionPath?: string
   sessionUpdatedAt?: number
@@ -157,7 +158,7 @@ export type RabePrevious = {
   counts: Partial<Record<RabeItemKind, number>>
   tokens: number
   usd?: number
-  failed: string[]
+  failedIds: string[]
 }
 
 // A git worktree from `git worktree list --porcelain`: the first one listed

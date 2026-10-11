@@ -113,10 +113,10 @@ function previousLines(model: Model, width: number): Line[] {
   })
   const crons = prev.counts.cron ?? 0
   const took = prev.startedAt === undefined ? '' : ` · ${duration(prev.endedAt - prev.startedAt)}`
-  const failed = prev.failed
+  const failed = prev.failedIds
     .slice(0, 2)
-    .map((title): Line => ({ spans: [[' ✗ failed', { fg: C.red }], [` ${title}`]] }))
-  const more = prev.failed.length - failed.length
+    .map((id): Line => ({ spans: [[' ✗ failed', { fg: C.red }], [` ${id}`]] }))
+  const more = prev.failedIds.length - failed.length
 
   const out: Line[] = [
     head,
