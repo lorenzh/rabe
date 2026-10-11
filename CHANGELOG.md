@@ -15,6 +15,9 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - The pane uses one pure interaction model for focus, held order, regain and arming (fixes #74)
 - All-fit arrows follow queued view changes and their focus landings (fixes #37)
 - `/rabe` requests the keys after the prompt clears; tab keys work across redraws (fixes #110)
+- The pane uses one pure interaction model for focus, held order, regain and arming ([#116](https://github.com/lorenzh/rabe/pull/116), fixes [#74](https://github.com/lorenzh/rabe/issues/74))
+- All-fit arrows follow queued view changes and their focus landings ([#116](https://github.com/lorenzh/rabe/pull/116), fixes [#37](https://github.com/lorenzh/rabe/issues/37))
+- `/rabe` requests the keys after the prompt clears; tab keys work across redraws ([#116](https://github.com/lorenzh/rabe/pull/116), fixes [#110](https://github.com/lorenzh/rabe/issues/110))
 
 ## [0.5.0] - 2026-10-11
 
