@@ -112,7 +112,7 @@ The test kit does not show everything. Real key timing, the terminal's own key h
 1. It makes a fresh temporary folder and starts Claude Code there with `--plugin-dir` set to this checkout, on its **own tmux socket**, so your other tmux sessions are not touched.
 2. It accepts the folder trust question.
 3. It **seeds background work**: it asks Claude to start N background `sleep` shells with unique durations, and waits until each one runs as a process under this session's Claude Code. The prompt shows the same command text, so the screen cannot tell. If the shells do not start within `--timeout`, the run stops as a setup error.
-4. For each round it opens `/rabe` and **starts from the list**: `/rabe` keeps the open detail, the tab and the selection of the last round, so the script presses `b` when a detail shows, `1` for the Items tab and Up until the first row. Then it sends the keys with a fixed gap, saves the screen to `captures/round-N.txt`, checks it against `--expect`, and closes the pane with Esc.
+4. For each round it opens `/rabe` and **starts from the list**: `/rabe` keeps the open detail, the tab and the selection of the last round, so the script presses `b` when a detail shows and `1` for the Items tab. When the list shows a group header, it presses Up one key at a time until the row under the first header shows the marker `▌`. Where all rows fit, the arrows wrap past the first row, so a fixed count of Up presses could end on any row. If the first row does not show the marker after N + 20 presses, the run stops as a setup error. Then it sends the keys with a fixed gap, saves the screen to `captures/round-N.txt`, checks it against `--expect`, and closes the pane with Esc.
 5. On exit it kills the tmux server of its socket, stops the processes that this session's Claude Code started (the `sleep` shells among them), and removes the folder. It never stops a process by name, so two runs on different sockets do not stop each other's shells.
 
 ```sh
@@ -135,7 +135,7 @@ scripts/live-check.sh --shells 3 --keys 'Down Down Enter' --expect 'b: back'
 | `--keep` | off | Keep the folder, the captures and the session. Attach with `tmux -L NAME attach -t NAME`. |
 | `--dry-run` | off | Print the plan and stop. |
 
-The binary is `claude` on `PATH`, or the one named in the environment variable `CLAUDE`. The exit code is 0 when every round passed, 1 when a round failed and 2 for a usage or setup error: tmux could not start the session, the seeded shells did not start, or a capture failed.
+The binary is `claude` on `PATH`, or the one named in the environment variable `CLAUDE`. The exit code is 0 when every round passed, 1 when a round failed and 2 for a usage or setup error: tmux could not start the session, the seeded shells did not start, a round could not select the first row, or a capture failed.
 
 ### Measure key handling
 
@@ -154,7 +154,7 @@ The selected row starts with `▌`. Make `--expect` as exact as the case needs, 
 
 - The seed prompt costs one short model turn per run. `--shells 0` skips it when the check does not need background work.
 - Claude Code keeps the trust answer for the temporary folder in its own config, as for any folder you trust.
-- CI runs `scripts/live-check.test.sh`. It checks the arguments, and runs the script against a fake `tmux` whose pane starts the seeded shells: setup errors, the seed wait, the cleanup and the reset of each round. The live run needs tmux, a signed-in Claude Code and a person to read the result.
+- CI runs `scripts/live-check.test.sh`. It checks the arguments, and runs the script against a fake `tmux` whose pane starts the seeded shells: setup errors, the seed wait, the cleanup and the reset of each round. The fake's focus wraps like the engine's, so the test fails if the reset passes the first row. The live run needs tmux, a signed-in Claude Code and a person to read the result.
 - For a release, also do the manual live check in [RELEASING.md](../RELEASING.md): band, `/rabe`, arrow keys, Enter, a mouse click on a row, every tab, a detail of each kind, `x` on a shell and Esc.
 
 ## What CI runs

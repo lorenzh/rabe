@@ -142,6 +142,30 @@ seeded() {
   ps -o args= -p "$pids" | grep -Ecx "(.*/)?sleep ($durations)"
 }
 
+# The pane starts the line, or follows the transcript's border.
+starts() { [[ $1 == "$2"* || ${1#*│} == "$2"* ]]; }
+# The list shows a group header, so it has rows.
+has_list() {
+  local line
+  while IFS= read -r line; do
+    starts "$line" ▾ && return 0
+  done < <(cap)
+  return 1
+}
+# The first row is the line under the first group header; the selected row
+# starts with the marker ▌.
+first_selected() {
+  local line seen=0
+  while IFS= read -r line; do
+    if [ $seen = 1 ]; then
+      starts "$line" ▌
+      return
+    fi
+    starts "$line" ▾ && seen=1
+  done < <(cap)
+  return 1
+}
+
 # A fresh folder asks for trust first; the prompt box follows.
 if wait_for 'trust' 15; then k Enter; fi
 sleep 5
@@ -178,11 +202,16 @@ for r in $(seq 1 "$repeat"); do
   fi
   k 1
   sleep 0.5
-  # ponytail: a fixed count of Up presses; raise it if a list ever has more rows.
-  for i in $(seq 1 $((shells + 20))); do
-    k Up
-    sleep 0.05
-  done
+  # The arrows wrap where the list fits, so a fixed count of Up presses can end
+  # on any row: press Up until the first row shows the marker.
+  if has_list; then
+    for i in $(seq 1 $((shells + 20))); do
+      first_selected && break
+      k Up
+      sleep 0.3
+    done
+    first_selected || fail "could not select the first row in round $r"
+  fi
   sleep 1
   for key in $keys; do k "$key"; sleep "$gap"; done
   sleep 1

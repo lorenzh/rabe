@@ -79,11 +79,28 @@ case $cmd in
       fi
     else
       printf '%s\n' "$1" >>"$FAKE/keys"
+      # The focus ring walks FAKE_ROWS rows and FAKE_STOPS other stops (tabs,
+      # controls) and wraps, as the engine does when the list fits. The marker
+      # moves only when the ring lands on a row.
+      if [ "$1" = Up ] && [ -n "${FAKE_ROWS:-}" ] && [ "${FAKE_UP:-}" != ignore ]; then
+        read -r ring sel 2>/dev/null <"$FAKE/ring" || { ring=$FAKE_RING; sel=$FAKE_RING; }
+        ring=$(((ring - 1 + FAKE_ROWS + FAKE_STOPS) % (FAKE_ROWS + FAKE_STOPS)))
+        [ "$ring" -lt "$FAKE_ROWS" ] && sel=$ring
+        echo "$ring $sel" >"$FAKE/ring"
+      fi
     fi ;;
   capture-pane)
     [ "${FAKE_CAP:-}" = fail ] && exit 1
     cat "$FAKE/screen" 2>/dev/null
-    printf '%s\n' "${FAKE_SCREEN:-}" ;;
+    printf '%s\n' "${FAKE_SCREEN:-}"
+    if [ -n "${FAKE_ROWS:-}" ]; then
+      read -r ring sel 2>/dev/null <"$FAKE/ring" || sel=$FAKE_RING
+      echo "transcript │▾ SHELLS $FAKE_ROWS running"
+      for i in $(seq 0 $((FAKE_ROWS - 1))); do
+        [ "$i" = "$sel" ] && m=▌ || m=' '
+        echo "           │$m▶ row $i"
+      done
+    fi ;;
   kill-server) kill "$(cat "$FAKE/pane")" 2>/dev/null ;;
 esac
 exit 0
@@ -135,8 +152,15 @@ stop
 faked FAKE_SCREEN='b: back' 'rounds run with a detail open' 0 'round 2: captured' --shells 0 --repeat 2
 expect 'each round leaves the detail and goes to the first tab' \
   test "$(grep -c '^b$' "$FAKE/keys"):$(grep -c '^1$' "$FAKE/keys")" = 2:2
-expect 'each round moves the focus up to the first row' \
-  test "$(grep -c '^Up$' "$FAKE/keys")" -ge 2
+stop
+# 22 Up presses on 4 rows and 3 other stops would wrap onto row 1.
+faked FAKE_ROWS=4 FAKE_STOPS=3 FAKE_RING=2 'each round stops on the first row' 0 'round 2: pass' \
+  --shells 2 --timeout 50 --repeat 2 --expect '│▌▶ row 0$'
+expect 'the reset stops pressing once the first row shows' \
+  test "$(grep -c '^Up$' "$FAKE/keys")" = 2
+stop
+faked FAKE_ROWS=4 FAKE_STOPS=3 FAKE_RING=2 FAKE_UP=ignore 'a first row that never shows is a setup error' 2 \
+  'could not select the first row' --shells 0
 stop
 
 exit $failed
