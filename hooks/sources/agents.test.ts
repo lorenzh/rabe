@@ -972,6 +972,7 @@ test('an agent the cap dropped comes back when the list shows it running', async
     completed(5000)
   on('agent.list', async () => ({ value: listed }))
   await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  expect(state['rabe.items']?.value).toHaveLength(MAX_ENDED)
   expect(
     ((state['rabe.items']?.value ?? []) as RabeItem[]).some(item => item.id === 'agent:a4000'),
   ).toBe(false)
