@@ -313,3 +313,31 @@ test('a task notification keeps the last lines of a shell the poll did not read'
     'shell:b1': { seen: 1, lines: [{ at: 1000, text: 'done fast' }] },
   })
 })
+
+test('an output file over 4 MiB is read with tail, its path after --', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const path = `${DIR}/b1.output`
+  on('fs.stat', async (_$, e, next) =>
+    e.path === path
+      ? { value: { kind: 'file' as const, size: 5 * 1024 * 1024, mtimeMs: 0, isLink: false } }
+      : next(e),
+  )
+  const runs: string[][] = []
+  const timeouts: (number | undefined)[] = []
+  on('process.run', async (_$, e) => {
+    runs.push([...e.argv])
+    timeouts.push(e.init?.timeoutMs)
+    return { value: { exitCode: 0, stdout: 'port 4000\n', stderr: '' } } as never
+  })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'bun run dev', run_in_background: true })
+  await clock.advance(2000)
+  expect(runs).toContainEqual(['tail', '-c', '1048576', '--', path])
+  expect(timeouts.every(ms => ms !== undefined && ms <= 5000)).toBe(true)
+  expect((state['rabe.items']?.value as RabeItem[] | undefined)?.[0]).toMatchObject({
+    detail: { port: 4000 },
+  })
+})

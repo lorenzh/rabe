@@ -87,7 +87,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 
 A deleted cron job shows no next runs, and its delete button stays dim. The previous-session summary counts only cron jobs still running when the session ends. Delete failures show plain text.
 
-After Rabe successfully stops work, stops a group, deletes a cron job or sends a message to an agent, it adds a short note with the item id and title to the next prompt's private context. Message text is never included. Notes are capped at 20 and clear after that prompt enters.
+After Rabe successfully stops work, stops a group, deletes a cron job or sends a message to an agent, it adds a short note with the item kind and id to the next prompt's private context. Titles, prompts and message text are never included. Notes are capped at 20 and clear after that prompt enters.
 
 The buttons under the tabs show the actions of the current view. Unavailable controls keep their visible labels and stay dim. Their hotkeys do nothing and stay caught while the pane holds the keys outside input fields. Rabe adds no blank buttons for letters a view does not own.
 
@@ -113,7 +113,7 @@ An opened item keeps its recorded turns, steps or output lines in its detail. Us
 
 Agent answers keep up to 16,000 characters each. Longer answers end with `…`. The transcript keeps the original answer. Markdown stays plain text. Wrapped bullet and numbered lists keep their markers beside the start of a long path. Long tool summaries end with `…`. Answers already shortened by an older version stay shortened.
 
-Copy toasts flatten whitespace to one space and replace only Unicode control (`Cc`) and format (`Cf`) characters with `?`. Wide characters, emoji and combining marks stay. The clipboard keeps the original text. Failure toasts show the reason through the same filter. Reasons include `no-clipboard` and `refused`. If the filter leaves the copied text unchanged, the failure toast offers the exact text.
+Toasts flatten whitespace to one space and replace only Unicode control (`Cc`) and format (`Cf`) characters with `?`, also in item titles and refusal reasons. Wide characters, emoji and combining marks stay. The clipboard gets the same text with tabs and line breaks kept and other control and format characters replaced with `?`. Copying a cron prompt shows `Copied prompt` without the prompt, and a deleted cron job is named by its id. Failure toasts show the reason through the same filter. Reasons include `no-clipboard` and `refused`. If the filter leaves the copied text unchanged, the failure toast offers the exact text, except for a cron prompt.
 
 The search button shows the active query, cut with `…` when long. The search field keeps the full query at every width. The filter stays visible after Enter and after reopening the pane. To clear it, submit an empty search. Stop group and remove ended act only on the filtered rows.
 
@@ -194,7 +194,7 @@ Run all checks (lint, type check, manifest check and tests), as CI does:
 bun run check
 ```
 
-[AGENTS.md](AGENTS.md) has the rules for contributors and coding agents. [The documentation index](docs/README.md) links to the architecture and feasibility guides. See the [user guide](docs/guide.md) for options and common problems.
+[AGENTS.md](AGENTS.md) has the rules for contributors and coding agents, and [Security guidelines](docs/security.md) the security rules for changes and review. [The documentation index](docs/README.md) links to the architecture and feasibility guides. See the [user guide](docs/guide.md) for options and common problems.
 
 ## Feedback and bugs
 

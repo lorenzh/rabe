@@ -7,6 +7,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 ### Added
 
 - The user guide covers options, troubleshooting and common questions ([#91](https://github.com/lorenzh/rabe/pull/91), fixes [#78](https://github.com/lorenzh/rabe/issues/78))
+- Security guidelines for developing Rabe in `docs/security.md`, with a security item in the pull request template. Toasts now filter control characters in item titles and refusal reasons, and `tail` and `grep` take file paths after `--`. Copies replace control and format characters other than tabs and line breaks with `?`, notes to Claude and the `/rabe-stop` answer carry only item kinds and ids, cron prompts stay out of toasts, Codex job ids that would leave the jobs folder are skipped, and poll commands stop after 5 seconds. Dependabot keeps dev dependencies and actions up to date. ([#97](https://github.com/lorenzh/rabe/pull/97), fixes [#81](https://github.com/lorenzh/rabe/issues/81))
 
 ### Changed
 
@@ -14,7 +15,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
-- The next prompt tells Claude which items Rabe successfully stopped or deleted, and when Rabe sent an agent a message. Notes contain only item ids and titles. ([#85](https://github.com/lorenzh/rabe/pull/85), fixes [#38](https://github.com/lorenzh/rabe/issues/38))
+- The next prompt tells Claude which items Rabe successfully stopped or deleted, and when Rabe sent an agent a message. Notes contain only item kinds and ids. ([#85](https://github.com/lorenzh/rabe/pull/85), fixes [#38](https://github.com/lorenzh/rabe/issues/38))
 - The Cost tab gives worker names more room and hides totals for sources that are absent; at 60 columns, the band shortens chip labels to keep the cost visible. ([#86](https://github.com/lorenzh/rabe/pull/86), part of #42)
 - The Cost tab gives worker names more room and hides totals for sources that are absent; the band shortens chip labels only when needed to keep the cost visible. ([#86](https://github.com/lorenzh/rabe/pull/86), part of #42)
 - The group-stop button shows its target count, agent turns with only tools show only their tool lines, and cron detail uses the pane's duration format. ([#87](https://github.com/lorenzh/rabe/pull/87), part of #43)

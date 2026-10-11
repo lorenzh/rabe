@@ -93,7 +93,8 @@ export type Action =
   | { type: 'remove'; ids: string[] }
   // Hide every ended item the search shows, as the list holds them when pressed.
   | { type: 'clear' }
-  | { type: 'copy'; text: string }
+  // `what` names the copy in its toast instead of the text (a prompt).
+  | { type: 'copy'; text: string; what?: string }
   | { type: 'message'; id: string; text: string }
   | { type: 'none' }
 

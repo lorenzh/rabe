@@ -15,6 +15,7 @@ Use this index to find the guide that matches your question.
 - [Agent instructions](../AGENTS.md): rules for coding agents and project changes.
 - [Release steps](../RELEASING.md): checks and compatibility review before a release.
 - [Changelog](../CHANGELOG.md): changes by version.
+- [Security guidelines](security.md): threat model and security rules for changes and review.
 
 ## Architecture
 

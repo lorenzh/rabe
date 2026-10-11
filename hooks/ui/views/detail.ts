@@ -389,7 +389,7 @@ function detailButtons(
       key: `copy:${item.id}`,
       label,
       hotkey: 'c',
-      action: { type: 'copy', text: copy },
+      action: { type: 'copy', text: copy, ...(item.kind === 'cron' && { what: 'prompt' }) },
     })
   }
   if (item.kind === 'agent') {

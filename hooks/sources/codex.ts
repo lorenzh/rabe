@@ -19,6 +19,7 @@ const CODEX_DATA = 'plugins/data/codex-openai-codex'
 const CODEX_PLUGIN = 'codex@openai-codex'
 const MAX_READ = 4 * 1024 * 1024
 const TAIL_LINES = 200
+const RUN_MS = 5000
 const MAX_STEPS = 50
 const MAX_TEXT = 300
 const MAX_EDITS = 100
@@ -474,9 +475,13 @@ async function readSession(
     return { path, updatedAt, rollout, usd: codexUsd(await prices($, file), rollout.requests) }
   }
   const head = await $.process
-    .run(['grep', '-m', '2', '-E', '"type":"(turn_context|UserMessage)"', path])
+    .run(['grep', '-m', '2', '-E', '"type":"(turn_context|UserMessage)"', '--', path], {
+      timeoutMs: RUN_MS,
+    })
     .catch(() => undefined)
-  const tail = await $.process.run(['tail', '-n', String(TAIL_LINES), path]).catch(() => undefined)
+  const tail = await $.process
+    .run(['tail', '-n', String(TAIL_LINES), '--', path], { timeoutMs: RUN_MS })
+    .catch(() => undefined)
   if (!head || !tail || tail.exitCode !== 0) return { path }
 
   // the head and tail miss requests between them, so no usd
@@ -537,7 +542,9 @@ async function poll($: EngineInterface, file: string): Promise<void> {
     for (const entry of list(state?.jobs).map(rec)) {
       const id = str(entry.id)
       // the plugin's state.json can hold a bare status patch; its job file has the session
-      if (!id || (entry.sessionId !== undefined && entry.sessionId !== sessionId)) continue
+      // the id names a file in jobs/, so it must stay a plain file name
+      if (!id || !/^\w[\w.-]*$/.test(id)) continue
+      if (entry.sessionId !== undefined && entry.sessionId !== sessionId) continue
       const held = items.find((one): one is RabeItemOf<'codex'> => one.id === itemId('codex', id))
       if (held && held.status !== 'running') continue
       await refresh(
@@ -596,7 +603,7 @@ async function cancel($: EngineInterface, id: string): Promise<{ text: string }>
     return isPriced ? ended : updateItem(ended, id, { costUsd: undefined })
   })
 
-  return { text: `Stopped codex ${item.title}` }
+  return { text: `Stopped codex ${item.detail.jobId}` }
 }
 
 export function codex(on: On, file: string): void {

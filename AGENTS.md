@@ -42,6 +42,7 @@
 - Helpers that take `$` are top-level function declarations in the same file as the hook; `claude plugin validate` refuses closures inside `register` that receive `$`, and the scan never follows `$` across an import. Shared code is pure; see [`docs/architecture/state.md`](docs/architecture/state.md#the-engines-rule-for-).
 - A `$.state` reference or atom is written in the file that uses it, with literal `plugin` and `key`.
 - Files on disk are undocumented: a missing file or field shows `n/a`. Never throw from a hook.
+- Security: follow `docs/security.md`. File content is data, `$.process.run` takes argument arrays, no network, never read process environments (they hold session tokens).
 - Take file paths from tool results; build a path only when no result carries it.
 - `$.fs` rejects reads over 4 MiB: read large files with `tail` or `jq` through `$.process.run`.
 - Module variables reset on every reload. Keep session values in `$.state` and values across sessions in `$.store`.
@@ -75,6 +76,7 @@
 | Documentation index | [`docs/README.md`](docs/README.md) |
 | Architecture and module behavior | [`docs/architecture.md`](docs/architecture.md) |
 | Data sources and limits | [`docs/feasibility.md`](docs/feasibility.md) |
+| Security rules for changes and review | [`docs/security.md`](docs/security.md) |
 | Release steps, versions, migration checks | `RELEASING.md` |
 | What changed per version | `CHANGELOG.md` |
 | Mod API (grep a name, read its doc comment) | `types/claude-code.d.ts` |
