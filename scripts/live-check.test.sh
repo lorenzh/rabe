@@ -82,9 +82,15 @@ case $cmd in
       # The focus ring walks FAKE_ROWS rows and FAKE_STOPS other stops (tabs,
       # controls) and wraps, as the engine does when the list fits. The marker
       # moves only when the ring lands on a row.
+      # With FAKE_SCROLL the list is longer than the pane: Up stops on the first
+      # row, as the engine scrolls instead of wrapping.
       if [ "$1" = Up ] && [ -n "${FAKE_ROWS:-}" ] && [ "${FAKE_UP:-}" != ignore ]; then
         read -r ring sel 2>/dev/null <"$FAKE/ring" || { ring=$FAKE_RING; sel=$FAKE_RING; }
-        ring=$(((ring - 1 + FAKE_ROWS + FAKE_STOPS) % (FAKE_ROWS + FAKE_STOPS)))
+        if [ -n "${FAKE_SCROLL:-}" ]; then
+          [ "$ring" -gt 0 ] && ring=$((ring - 1))
+        else
+          ring=$(((ring - 1 + FAKE_ROWS + FAKE_STOPS) % (FAKE_ROWS + FAKE_STOPS)))
+        fi
         [ "$ring" -lt "$FAKE_ROWS" ] && sel=$ring
         echo "$ring $sel" >"$FAKE/ring"
       fi
@@ -95,8 +101,12 @@ case $cmd in
     printf '%s\n' "${FAKE_SCREEN:-}"
     if [ -n "${FAKE_ROWS:-}" ]; then
       read -r ring sel 2>/dev/null <"$FAKE/ring" || sel=$FAKE_RING
-      echo "transcript │▾ SHELLS $FAKE_ROWS running"
-      for i in $(seq 0 $((FAKE_ROWS - 1))); do
+      # A scrolled list shows the header and the rows above the selection
+      # only once the selection reaches the first row.
+      top=0
+      [ -n "${FAKE_SCROLL:-}" ] && top=$sel
+      [ "$top" = 0 ] && echo "transcript │▾ SHELLS $FAKE_ROWS running"
+      for i in $(seq "$top" $((FAKE_ROWS - 1))); do
         [ "$i" = "$sel" ] && m=▌ || m=' '
         echo "           │$m▶ row $i"
       done
@@ -158,6 +168,9 @@ faked FAKE_ROWS=4 FAKE_STOPS=3 FAKE_RING=2 'each round stops on the first row' 0
   --shells 2 --timeout 50 --repeat 2 --expect '│▌▶ row 0$'
 expect 'the reset stops pressing once the first row shows' \
   test "$(grep -c '^Up$' "$FAKE/keys")" = 2
+stop
+faked FAKE_ROWS=30 FAKE_STOPS=3 FAKE_RING=25 FAKE_SCROLL=1 'a long list resets with its header scrolled away' 0 \
+  'round 1: pass' --shells 0 --expect '│▌▶ row 0$'
 stop
 faked FAKE_ROWS=4 FAKE_STOPS=3 FAKE_RING=2 FAKE_UP=ignore 'a first row that never shows is a setup error' 2 \
   'could not select the first row' --shells 0

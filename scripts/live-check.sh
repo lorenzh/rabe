@@ -144,11 +144,13 @@ seeded() {
 
 # The pane starts the line, or follows the transcript's border.
 starts() { [[ $1 == "$2"* || ${1#*│} == "$2"* ]]; }
-# The list shows a group header, so it has rows.
+# The list has rows: a group header or the selected row's marker ▌ shows. A
+# long list can scroll its header away.
 has_list() {
   local line
   while IFS= read -r line; do
     starts "$line" ▾ && return 0
+    starts "$line" ▌ && return 0
   done < <(cap)
   return 1
 }
@@ -203,9 +205,10 @@ for r in $(seq 1 "$repeat"); do
   k 1
   sleep 0.5
   # The arrows wrap where the list fits, so a fixed count of Up presses can end
-  # on any row: press Up until the first row shows the marker.
+  # on any row: press Up until the first row shows the marker. A long list
+  # scrolls instead, so allow more presses than the seeded rows.
   if has_list; then
-    for i in $(seq 1 $((shells + 20))); do
+    for i in $(seq 1 $((shells + 100))); do
       first_selected && break
       k Up
       sleep 0.3
