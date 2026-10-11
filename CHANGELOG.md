@@ -7,6 +7,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 ### Fixed
 
 - Copy checks resume and agent ids, shows full commands and cron prompts with line-break markers, reports copy counts, and refuses CR/LF in single-line fields. ([#120](https://github.com/lorenzh/rabe/pull/120), fixes [#93](https://github.com/lorenzh/rabe/issues/93))
+- The docs mark desktop support as unverified since the Windows check with Rabe 0.1.0 (refs #117)
 - Stop, remove and message toasts name items by kind and ID instead of titles from files. ([#113](https://github.com/lorenzh/rabe/pull/113), fixes [#92](https://github.com/lorenzh/rabe/issues/92))
 - Previous-session summaries keep failed item IDs and remove older stored titles. ([#113](https://github.com/lorenzh/rabe/pull/113), fixes [#94](https://github.com/lorenzh/rabe/issues/94))
 - Shells, monitors and workflows check output and script folders before reading, including resolved symlink targets. ([#113](https://github.com/lorenzh/rabe/pull/113), fixes [#95](https://github.com/lorenzh/rabe/issues/95))

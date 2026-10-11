@@ -69,7 +69,7 @@ The final offline live check used `scripts/live-check.sh` with three ended shell
 
 ### The Claude desktop app
 
-Checked by the maintainer in the Claude desktop app on Windows with Rabe 0.1.0. The pane draws its text fallback, plain text and buttons, and it reads close to the terminal's pane. A plugin installed while the app runs does not load until `/reload-plugins` or a new session, as in the terminal.
+The maintainer last checked the Claude desktop app on Windows with Rabe 0.1.0. In that check, the pane drew plain text and buttons. A plugin installed while the app ran needed `/reload-plugins` or a new session to load. Desktop support is unverified since that check. [#117](https://github.com/lorenzh/rabe/issues/117) investigates current desktop support.
 
 ### Claude Code's own count of background work
 
