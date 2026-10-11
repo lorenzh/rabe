@@ -45,7 +45,7 @@ Text from transcripts, meta files, output files, Codex files and workflow script
 ### Paths
 
 - Take paths from tool results and hook events. Build a path only when no result has it (AGENTS.md).
-- A path built from a file's field (a job id, a thread id, a folder name) must stay in the folder it is built under. Check that the field has no `/`, is not `..` and does not start with `-` (a Codex job id must match `^\w[\w.-]*$`), or check that the resolved path starts with the folder.
+- A path built from a file's field (a job id, a thread id, a folder name) must stay in the folder it is built under. Prefer an allow-list such as the Codex job id rule `^\w[\w.-]*$`. Otherwise reject a field with `/` or `\`, `..` or a leading `-`, or check that the resolved path stays under the folder followed by a separator.
 - Read only the session, agent, task, Codex and project folders and the files the README lists under Privacy. A new place to read is a new data source: add it to `docs/feasibility.md` and to the README.
 - For a file that a shell command names, Rabe uses only `$.fs.stat` and `$.fs.list`. It never reads the content.
 
