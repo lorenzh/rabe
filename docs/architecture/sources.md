@@ -1,0 +1,134 @@
+---
+title: Sources
+description: The source contract and how each source turns events and files into items.
+tags: [architecture, sources]
+keywords: [source contract, agents, workflows, Codex, shells, monitors, crons, worktrees, Source, sources, register.tsx, agent.spawn, turn.step, turn.complete, SubagentStart, meta.json, task-notification, matcher, rabe-stop, parseRollout, codexItem, RabeCodexStep, RabeWorktree, shellWrites, changed, beforeBash, afterBash, CronList, CronDelete, isDeleted, ScheduleWakeup, worktrees.ts, parseWorktrees, FileChange, staged]
+---
+
+# Sources
+
+## The source contract
+
+```ts
+type Source = (on: On) => void
+```
+
+A source is a function in `hooks/sources/<kind>.ts` that registers its own hooks with `on`. Its hooks call `next(e)` unless they answer on purpose, and they never throw. To add a source, import it in `hooks/sources/index.ts` and call it in `sources(on, file)`:
+
+```ts
+export function sources(on: On, file: string): void {
+  agents(on, file)
+  shells(on)
+}
+```
+
+A source owns the items of its kind. It uses `itemId(kind, nativeId)` for ids, so another source can set `parentId` without asking it. Test a source through the engine: raise its events in a test, and watch `rabe.items` with a test hook on `state.set`.
+
+### Starting work: `session.start` with a matcher
+
+`pane.tsx` owns the plain `session.start` hook. Each source gives its own start hook a matcher (see [the engine's rule for `$`](state.md#the-engines-rule-for-)): the agents source uses `{ cwd: /^/ }`, and the Codex and worktrees sources use `{ isInteractive: true }`, since only a person at the prompt sees the band and the pane.
+
+### Stopping an item
+
+The pane stops agents, shells, monitors and workflows itself: it calls `TaskStop` through `$.tool.call` (see [Actions under The pane](focus-and-keys.md#the-pane)). A Codex job has no task id, so it stops through a command instead. `/rabe-stop <item id>` is registered by the Codex source (with `immediate: true`, so it also runs during a turn). It answers with a matcher on the id prefix, `{ command: 'rabe-stop', args: /^\s*codex:/ }`, and returns `{ text }` that says what happened. The person can type `/rabe-stop codex:<job id>`. The pane's `x: stop` on a Codex job runs the same command with `$.command.run({ command: 'rabe-stop', args: <item id> })` and shows its answer as a toast, so the cancel stays in the Codex source.
+
+
+## The sources
+
+### Claude subagents: `hooks/sources/agents.ts`
+
+One `agent` item per subagent, id `agent:<agentId>`. It covers agents the model starts, agents of workflows and teammates.
+
+The agent-list poll stores an API-provided `name` and uses it for the title and message toast. Without a name, the title uses the task description or agent type. Turn tool paths stay whole in `rabe.turns`; the detail shows project-relative paths when it can, with a middle ellipsis for long paths.
+
+| Hook | What it does |
+|---|---|
+| `agent.spawn` | After `next(e)` gives the `agentId`, adds a running item: title from the description (else the type), type, model, the prompt (`detail.prompt`, cut to 600 characters), `startedAt`. A workflow agent gets `parentId` `workflow:<runId>` and `workflowIndex`; an agent started by another agent gets `agent:<parentAgentId>`. A refused spawn adds nothing. |
+| `classic.SubagentStart` | Fires inside the spawn, before `agent.spawn` adds the item, so it adds a running item (title the agent type) when none exists; the spawn then merges its fields in. Sets `transcriptPath` (`<session>/subagents/agent-<id>.jsonl`, built from the hook's `transcript_path`); `agent.spawn` moves a workflow agent's path into `<session>/subagents/workflows/<run-id>/`. It also sets `cwd`. It never sets `worktreePath`: a `cwd` that is not the session's may be the agent's worktree or a plain subfolder, and only the meta file or git tells them apart. |
+| `turn.step` with `agentId` | After the response, adds its tokens (`input` is uncached input plus cache writes plus cache reads, `cached` is the cache reads inside `input`, the same as Codex counts them) and its price (`claudeUsd` of the usage's model, see [the cost estimate](prices.md#the-cost-estimate)) to `costUsd`, sets `model`, `toolCount`, `lastTool` and `lastToolAt`, puts the item back to running, and adds a turn to `rabe.turns`. Steps of loops Rabe has no item for (forks for compaction or memory) are ignored. |
+| `tool.call` for `Edit` and `Write` | After the call, when it changed the file (`changedFile`: a result, no error, and not `staged` for review), adds `{ path, at, via }` to the agent's `detail.edits`, or without `agentId` to the main session's `rabe.edits`; the path from the result's `filePath`. A refused, failed or staged edit adds nothing. The Effects tab reads these, not the turns: a turn lists the calls the model asks for, which may be refused. |
+| `tool.call` for `Bash` in a subagent, a Codex companion call | `companionCall(command)` (in `forwarders.ts`) finds a command line that runs the Codex plugin's `codex-companion.mjs` with `task`, `review` or `adversarial-review`. Before `next(e)` the agent's `detail.codexCalls` gains `{ at, command, text }` (the line cut to 600 characters, the newest 10 calls kept). After the call: a call moved to the background (`backgroundTaskId`, also a timeout) still runs and gets nothing; a refused one gets `endedAt`; one that ran, also with an error, gets `endedAt` and what `companionOutput` reads in its stdout and stderr: `jobId` from `started in the background as <id>.`, `threadId` from the progress line `[codex] Thread ready (<id>).`. The main session's calls are not kept (see Forwarders). |
+| `tool.call` for `Bash` | Before `next(e)`, `beforeBash` stats the absolute candidates of `shellWrites(command, cwd, HOME)` (at most 20; `look` gives up after 1 s). After a call that ran to its end (`ranBash`: a result, no error, not interrupted, not in the background), `afterBash` stats them again and adds each path `changed(before, after)` names (after a failed stat, `isMissing` lists the parent folder: a listing without the name, or a parent that is missing by the same rule, makes the path missing; a listing that fails or still has the name, in any letter case or Unicode form (NFC), leaves it unknown; one listing per folder per look, inside the 1 s limit; error text is never read), `via: 'shell'`, to the agent or the main session as above. When parsing without `cwd` leaves a relative candidate, the hook reads the folder. For the main session, `cwd` comes from `$.session.cwd()` at that call. For an agent, it comes from the item’s `detail.cwd`. An unknown folder leaves relative paths out (see [feasibility](../feasibility.md)). |
+| `turn.complete` with `agentId` | Ends the item: `answer` is done, `aborted` is stopped, `refusal` and `error` are failed. Reads the meta file once more from the workflow directory for a workflow agent, else next to its transcript. |
+| `session.start` | Runs the poll once, then every 3 seconds with `$.clock.every`. |
+
+The poll reads `$.agent.list()`. It adds agents Rabe has no item for (started before Rabe loaded, or dropped by the cap). An ended one never gets a new recency: it takes `pastEnd`, the oldest end held, and is not added at all once 200 ended items are held, since the cap would drop it. So an unchanged list causes no write, however many ended agents it holds, and agents Rabe did not watch never push out the ones it did. The poll also ends items the list reports as `completed`, `failed` or `killed`. An agent can resume under the same id: when the list shows an ended item's agent as `pending`, `running` or `waiting`, the poll sets it running again and clears `endedAt`, and one the cap dropped is added back as running. `idle` does not count: a teammate is idle after each turn, which already ended its item. Then it reads the meta file of each running agent and copies `cwd`, `worktreePath`, `worktreeBranch` and `workflowPhase`. A workflow agent whose phase is not known is also checked while its run declares phases, including after it ends, so a short agent appears under its declared phase when that metadata arrives later. A workflow with no declared phases is not polled for metadata after its agents end. An agent with neither `cwd` nor `worktreePath`, or with only a `cwd` that is not the session's, shows its tree as `n/a`, not as the main tree. The meta file sits next to an ordinary agent's transcript (`agent-<id>.meta.json`); for every workflow agent it is in the run's `transcriptDir`, or in the folder derived from the script path. The file appears about 1.5 seconds after the start and changes later, so the poll reads it each time it is needed.
+
+Workflow agents are not in `$.agent.list()`: only `turn.complete` ends them.
+
+### Workflows: `hooks/sources/workflows.ts`
+
+One `workflow` item per run, id `workflow:<runId>`.
+
+| Hook | What it does |
+|---|---|
+| `tool.call` for `Workflow` | After the call, takes `runId`, `taskId`, `workflowName`, `scriptPath` and `transcriptDir` from the result and adds a running item. A resumed run keeps its `runId` and runs again under the same item. Then it reads the script and stores the phase names of its `meta.phases` block in `phases`, in order, from strings and from the `title` of objects alike. A bracket inside a phase string (`'Review [fast]'`) does not end the list. A remote run has no `runId` and gets no item. |
+| `prompt.submit` with origin `task-notification` | Reads `<task-id>` and `<status>` of each `<task-notification>` in the text (with `parseNotifications`; one prompt can carry several). When a task id is a run's `taskId`, it ends the run: `completed` is done, `failed` is failed, `killed` is stopped. |
+
+The run's agents come from `agents.ts`; they point to the run with `parentId` and carry their phase in `workflowPhase`. A view gets a run's tokens by adding up its agents.
+
+### Codex jobs: `hooks/sources/codex.ts`
+
+Tracks the jobs that the Codex plugin (`codex@openai-codex`) starts for this session. Data sources and their limits are in [Codex job feasibility](../feasibility/background-work.md#codex-jobs).
+
+- **Poll.** `session.start` (interactive only) starts `$.clock.every(2000)`. A tick while the last poll still runs is skipped, so a slow file system cannot pile up polls. Each poll lists the plugin's state folders, skips each whose `state.json` was not changed since the session started (`$.session.usage().startedAt`), and reads the rest. It keeps the jobs whose `sessionId` is this session's (`$.session.id()`), and checks that again in the job file, because `state.json` can hold a bare status patch without it. A job whose item already ended is not read again. For a finished job Rabe holds no item for, the poll first asks `commit` whether the item would change the list; when the cap would drop it again (it ended before every ended item held, so the cap dropped it before), its session file is not read and nothing is written. The other polls add only work in flight (`background_tasks`, `session_crons`), which the cap never drops.
+- **Item.** `codexItem(job, session)` builds the item. Title: the first line of the job's `summary` (the prompt's start). Status: `queued` and `running` are running; `completed`, `failed` and `cancelled` end the item as `done`, `failed` and `stopped`, with `endedAt` from `completedAt`. Undefined fields are left out, so a merge never erases a known value.
+- **Session file.** The rollout file is found once by `threadId` in `sessions/YYYY/MM/DD` of the start day and the day before and after (the folder date is local time), then kept in `detail.sessionPath`. It is parsed again only when its `mtimeMs` differs from `detail.sessionUpdatedAt`, so an idle job causes no write. Files up to 4 MiB are read with `$.fs.read`; larger ones with `grep -m 2` (turn context and prompt) and `tail -n 200` through `$.process.run`, and the item gets `isSessionPartial`. A finished job without a session file gets `isSessionMissing`; its model and effort then come from the job's `request`, when the job was a background job. An unchanged file gives no new fields, so the item keeps the model and effort the file gave. A file that cannot be read gives no `sessionUpdatedAt`, so the next poll tries again; the job still ends. `codexItem` sets `costUsd` from every session result except an unchanged file: a parse sets the new estimate, and a file that is gone (`isSessionMissing` at the end, or a known `sessionPath` that no longer stats while the job runs) or cannot be read sets it to unknown, so the last estimate never stays on a job that may have spent more. A failure in one job never stops the poll for the others.
+- **`parseRollout(text, home, since, until)`.** Pure. `since` is the job's start (`startedAt`, else `createdAt`): a job that resumed a thread (`task --resume-last`) shares the session file with the jobs before it, so a record whose `timestamp` is before `since` gives nothing but the model, effort and sandbox of its `turn_context` and, for a `token_count`, the thread's total at the job's start. `until` is a finished job's `completedAt` (none while it runs or without the field): a record after it belongs to a later job on the thread and gives nothing, not even its `turn_context`. A record without a time counts as the job's. Reads model, effort and sandbox (`turn_context`), the prompt (first `UserMessage`), tokens (last `token_count` total, less the thread's total at the job's start; after earlier records with no total among them, unknown), `requests` (each `token_count` whose total changed gives its `last_token_usage` with the model of the last `turn_context` before it; a count missing leaves the request without a model, so without a price; a record without counts, `info: null` for rate limits only, adds none and leaves the last total in place), and the steps: assistant messages, reasoning summaries when present, finished commands (`CommandExecution`, with exit code and output line count), and a running command (a `custom_tool_call` that has no output yet). Steps keep the last 50, each text cut at 300 characters. `edits` (the newest 100, left out when none) are the paths of each completed `FileChange` (`via: 'codex'` with its `add`, `update` or `delete`) `checks` (the newest 100) are the absolute write candidates `shellWrites` finds in each `CommandExecution` with exit code 0 and a `started_at_ms`, against its `cwd`, with the command's run as `from` and `to`; a command with over 20 is skipped. `confirmed` stats each check when the session is read and adds a file whose mtime lies in the run (plus 2 s) to `edits`, `via: 'shell'`, sorted by time. A poll stats each path once for all its jobs (`Looks`), and all its checks share one 1 s deadline from the first check: a path whose stat has not come back by then (a stalled network mount) is left out, and the `FileChange` edits are still written. The `cwd` URL is decoded per path segment, so `%23` and `%3F` become `#` and `?`. Lines that do not parse (a line still being written) are skipped.
+- **Cost.** After a full read of the session file `readSession` prices its `requests` (`codexUsd`) and `codexItem` sets `costUsd` to the result, also to `undefined`, so a sum from an older read never stays. A file read as head and tail misses requests between them and gives no price. An unchanged file is not read, so the item keeps its cost.
+- **Forwarders.** After the jobs, each poll links jobs to the agents that started them (`linkForwarders` in `forwarders.ts`, one write only when a link changes). A job gets `parentId` `agent:<id>` only on proof: the agent's call named the job (`jobId`); or the job started (`startedAt`) at or after the call and, when the call returned, before its end, is of the call's kind (`task` is `rescue`, `review`, `adversarial-review`), and has the call's `threadId`, or, while the call names none, its title (the companion's summary of the prompt, without the `...` of a cut) is in the call's command line, compared without quotes, backslashes and extra spaces. Exactly one call may fit the job, and that call may fit no other job; else the job has no parent. Each poll decides every link again from the calls and jobs it holds, so a link the prompt made moves when the call returns a job id or thread of another job (the main session started a job with the same prompt, and it showed first), and goes while a second job fits. A forwarder that loses its job gets its row back. The views fold a pure forwarder into its job (see the Items tab).
+- **Stop.** `/rabe-stop codex:<job id>` runs `node <plugin root>/scripts/codex-companion.mjs cancel <job id> --json --cwd <workspaceRoot>` with `CLAUDE_PLUGIN_DATA` set to the plugin's data folder. The plugin root is the `installPath` in `plugins/installed_plugins.json`. On success the item ends as `stopped`. Later polls skip it, so it keeps its cost only while its session file still has the `mtimeMs` the cost was read from (`sessionUpdatedAt`); a file that changed or is gone makes the cost unknown.
+
+The codex detail fields are listed in the table above. `steps` holds `RabeCodexStep` values: `{ kind: 'message' | 'reasoning' | 'command', text, exitCode?, lines?, isRunning? }`.
+
+The next three sources follow the work Claude Code runs as background tasks. Each writes items of its own kind only. The pure parsing lives in `hooks/tasks.ts` and `hooks/schedule.ts`, so views can use it too.
+
+### Shells: `hooks/sources/shells.ts`
+
+A shell title uses the normalized Bash description when present, else the normalized command, followed by the task id. The detail keeps the original command. An empty output view says `No output yet`.
+
+
+| Hook | What it does |
+|---|---|
+| `tool.call` `{ tool: 'Bash' }` | After `next(e)`: a result with `backgroundTaskId` adds `shell:<taskId>`, titled with the normalized description or command and task id. `outputPath` comes from the result text (`Output is being written to: …`). This covers `run_in_background`, Ctrl+B and a timed-out command. In a subagent, `parentId` is `agent:<agentId>`. |
+| `prompt.submit` `{ origin: { kind: 'task-notification' } }` | Each `<task-notification>` with a `<status>` ends its shell: `completed` is done, `failed` failed, `killed` stopped. The exit code comes from the summary (`failed with exit code 3`). It reads the output file once more first, so a shell that ended between two polls keeps its last lines. |
+| `session.start` | Starts a poll every 2 s. It reads the output file of each running shell, keeps its lines in `rabe.lines` (as the monitors source does), guesses a port (`localhost:5173`, `port 4000`) and keeps the time it found it as `portAt`, and ends the shell at the last line `[exited with code N]` or `[killed]`. A file over 4 MiB is read with `tail -c` for the port and the exit line only, so its lines stop at what the poll read before. |
+| `classic.Stop` | A running shell missing from `background_tasks` ends by its exit line, else as stopped. A shell a subagent started (`parentId` `agent:…`) is skipped: it may be missing from the main session's list while it runs, and the poll ends it from its file. A shell in `background_tasks` that Rabe never saw is added, without `startedAt`. Claude Code lists a Monitor tool task with type `shell` too, so a task id Rabe already has as `monitor:<id>` is skipped; a monitor started before Rabe loaded still shows as a shell. |
+
+A subagent's shells and monitors get no end notification in the main session: it goes only to the subagent (see [feasibility](../feasibility.md)). Their output files are in the main session's `tasks` folder, so the poll ends them from the file's last line, `[exited with code N]` or `[killed]`, as it does every shell.
+
+### Monitors: `hooks/sources/monitors.ts`
+
+The same four hooks for the Monitor tool, with the same `classic.Stop` rule for a subagent's monitor. The Monitor result has no file path, so `outputPath` is the sibling of a task output file Rabe already knows (`taskOutput`, tried again on each poll), or the `<output-file>` of the end notification. A subagent's monitor has no end notification in the main session, so it ends from its file once Rabe knows any task output path.
+
+The end notification is handled only for task ids Rabe has as `monitor:<id>`: a shell's notification also carries an `<output-file>`, and reading it would file shell lines under a monitor id.
+
+Monitor lines are kept apart from the item, in the `$.state` key `rabe.lines`: `Record<itemId, { seen, lines: { at, text }[] }>`. `seen` counts the lines read from the file; `lines` holds the newest 200, each with the time the poll first read it ("received"). A last line read while it was still being written (`hel`, then `hello`) is updated in place and keeps its time. The poll and the end notification both read the file, so the last lines are kept even when the notification comes first. Notification `<event>` lines are not used: they come late and in batches. The lines of an item dropped from `rabe.items` go with it, in the write that drops it (see [the write loop](state.md#the-write-loop)), as its turns do.
+
+### Cron jobs and loops: `hooks/sources/crons.ts`
+
+| Hook | What it does |
+|---|---|
+| `tool.call` `{ tool: 'CronCreate' }` | Adds `cron:<id>` with `schedule`, `humanSchedule` and `prompt`. |
+| `tool.call` `{ tool: 'CronDelete' }` | Ends the job as stopped and sets `detail.isDeleted` on a successful deletion. The list and detail label it deleted. |
+| `tool.call` `{ tool: 'ScheduleWakeup' }` | Ends the running wakeup as done and adds `cron:wakeup-<scheduledFor>` with `scheduledFor` and no schedule. `stop: true` ends running wakeups as stopped. The `<<autonomous-loop-dynamic>>` prompt shows as "autonomous loop". |
+| `prompt.submit` `{ origin: { kind: 'scheduled-trigger' } }` | Ends a wakeup due by now (plus 90 s, since a wakeup can fire early) as done only on evidence that it fired: the fired text is its prompt (a `/loop` wakeup fires its input verbatim), or its prompt is a sentinel such as `<<autonomous-loop-dynamic>>` and the text names it (the expanded dynamic tick tells the model to re-arm with that sentinel). Any other text ends nothing, also the expanded tick of a recurring `<<autonomous-loop>>` cron job, which names no sentinel. A wakeup whose tick Rabe does not recognise stays running until the next `ScheduleWakeup` ends it as done, or `stop: true` as stopped; it ends late, never early. |
+| `session.start` | Calls `CronList` and adds the jobs made before Rabe loaded. |
+| `classic.Stop` | Syncs with `session_crons`: a job gone from the list ends as done (a one-time job fired, a job expired); a new one is added. Wakeups are not ended here, and a listed job whose prompt matches a running wakeup is not added twice. |
+
+`schedule.ts` has `nextRun(expr, from)` and `nextRuns(expr, from, count)`: the next times a 5-field cron expression matches in local time, after `from`. It reads `*`, numbers, ranges, lists and steps; day of month and day of week match either one when both are set, as in cron. Minutes advance in real time, so a next run is never earlier than `from`, also in the hour that repeats when summer time ends (a job in that hour can show twice). A broken or impossible expression gives `undefined` (an empty list). Claude Code adds up to 10 % jitter to recurring jobs, which this does not show. The band's next run (`nextAt` in `lists.ts`) and the cron detail use `nextRuns` too.
+
+`writes.ts` has `shellWrites(command, cwd, home)`: the files a shell command line may write or delete, each `{ path, isDeleted? }`, the last change to a path winning. They are candidates: the callers check them on disk, and `changed(before, after)` says from two looks whether a path was written, deleted or left alone. It never throws and runs in linear time. `lex` reads the words with bash quoting and drops comments and here-doc bodies; a word keeps whether it has an expansion, whether it can become more or fewer words, and whether its first character is literal, which decides if it can turn into an option. Command substitutions are skipped as a whole with their own quotes and nesting (64 levels at most), so nothing in them counts. `simple` takes the redirections out of a command and unwraps the known prefixes; a keyword, `[`, `test`, `exit` or a group ends the walk. `targets` reads the operands of the table commands (`SPECS`: each command's short and long options); an option the table lacks, or a word that could expand into one, gives none. `shellWrites` walks the list: `&&` keeps going, `;` and a newline also commit, `||` also proposes its right side for the disk check, and a list sent to the background with `&` is dropped. Directory changes on either side of `||` leave later relative paths unknown. A later absolute `cd` followed by `&&` can establish the directory again. A newline directly after `||`, `&&` or a pipe continues that command. The rules and what is skipped are in [Files and runtime limits](../feasibility/files.md).
+
+### Git worktrees: `hooks/sources/worktrees.ts`
+
+Writes no items: it keeps the repository's worktrees in the `$.state` key `rabe.worktrees` (`RabeWorktree[]`: `path`, `branch?`, `isDetached?`, `isMain?`), so the Effects tab can place each changed file in the worktree that holds it.
+
+| Hook | What it does |
+|---|---|
+| `session.start` `{ isInteractive: true }` | Runs `git worktree list --porcelain` through `$.process.run` (in the session's folder, 5 s timeout) at once and then every 10 s; a tick while the last run still goes is skipped. `parseWorktrees` reads the blocks: the first is the main worktree (`isMain`), `branch refs/heads/x` gives `x`, `detached` sets `isDetached`; a bare entry, a path git had to quote and a relative path are left out, and at most 100 are kept. The list is written only when it changed. A run that fails, cannot start (no git, the desktop), exits with another code than 0 (not a repository), is cut at 4 MiB or lists nothing writes nothing, so the last known list stays, and without one the views keep their behaviour from agent metadata. |
+
+
+## Testing sources
+
+The test's `$` has no `state` noun. `memoryState(on)` from `hooks/testing.ts` answers `state.get` and `state.set` from memory, with versions, and returns the record to read (`state['rabe.items'].value`). `files(on, held)` answers `fs.stat` and `fs.read` from a record. `core(on)` answers the events the tests raise that nothing beneath the plugins answers: `prompt.submit`, `session.start`, `command.register` and `classic.Stop`. Tool results come from a test hook on `tool.call`, and `mock.clock` drives the poll.

@@ -11,7 +11,7 @@ Rabe (German for raven) is a Claude Code mod. It shows your subagents, Codex job
 
 ![Rabe in a Claude Code session: the band above the prompt is one line of counts, two claude, three shells, one monitor and one cron, with the cost; /rabe opens the pane with the items grouped by kind, the arrow keys move through the list and the detail beside it follows with the agent's id and estimated cost, a click selects the shell an agent started, indented under that agent, and a second click opens it, b goes back, the Effects tab shows a file an agent wrote through the shell (via shell), one the main session wrote, the worktree and a port, the Cost tab shows the estimate in dollars per agent and the session id, the Timeline tab shows the bars, who started what and the previous session with its cost and background tokens on separate labelled lines, and Esc closes the pane](docs/assets/demo.gif)
 
-Status: early development. See [releases](https://github.com/lorenzh/rabe/releases) and the [changelog](CHANGELOG.md) for the current version.
+Status: early development. See [releases](https://github.com/lorenzh/rabe/releases), the [changelog](CHANGELOG.md), and the [documentation index](docs/README.md).
 
 ## What Rabe shows
 
@@ -160,13 +160,13 @@ Rabe gets most data from the mod API: hooks for tool calls, agent starts, agent 
 
 Rabe cannot see some things:
 
-- Dollars per agent or per Codex job. No source gives them; Rabe estimates them from its price table (see The cost estimate).
+- Dollars per agent or per Codex job. No source gives them; Rabe estimates them from its price table (see [the cost estimate](docs/architecture/prices.md)).
 - Work that started before Rabe loaded shows only what the agent list, `CronList` and the files tell.
 - The port of a shell is a guess from its output.
 - Codex jobs started outside the Codex plugin, and Codex sessions that Codex already deleted.
 - Retries inside a workflow. Rabe can stop a whole workflow run, but not one agent of it.
 
-[What Rabe can see](docs/feasibility.md) lists each source and each limit.
+[What Rabe can see](docs/feasibility.md) links to each source and its limits.
 
 ## Privacy
 
@@ -205,7 +205,7 @@ Run all checks (lint, type check, manifest check and tests), as CI does:
 bun run check
 ```
 
-[AGENTS.md](AGENTS.md) has the rules for contributors and coding agents. [How Rabe is built](docs/architecture.md) describes the code.
+[AGENTS.md](AGENTS.md) has the rules for contributors and coding agents. [The documentation index](docs/README.md) links to the architecture and feasibility guides.
 
 ## Feedback and bugs
 

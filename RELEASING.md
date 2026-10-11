@@ -34,8 +34,8 @@ All of these must be true. Tick them in the release pull request.
 
 **Docs**
 - [ ] `README.md` matches what Rabe does: keys, mouse, commands, options, requirements, what it cannot see.
-- [ ] `docs/architecture.md` matches the code (modules, data flow, focus rules).
-- [ ] `docs/feasibility.md` lists every data source Rabe reads and every limit found since the last release.
+- [ ] The [architecture docs](docs/README.md#architecture) match the code (modules, data flow, focus rules).
+- [ ] The [feasibility docs](docs/README.md#feasibility) list every data source Rabe reads and every limit found since the last release.
 - [ ] `AGENTS.md` commands and rules still work.
 - [ ] `docs/assets/demo.gif` shows the current pane, recorded without private data.
 - [ ] `CHANGELOG.md` has an entry for the release (see below).

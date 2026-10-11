@@ -47,7 +47,7 @@ test('from no row, down goes to the first and up scrolls on', () => {
   expect(stepRow([], '', 1)).toBeUndefined()
 })
 
-// The test kit cannot answer a plugin's $.ui.focus (see feasibility), so the
+// The test kit cannot answer a plugin's $.ui.focus (see docs/feasibility/ui.md), so the
 // keys `act` focuses after each change of the view are checked here.
 test('a change of the view lands the focus ring on the active tab, then where it leads', () => {
   expect(landing({ type: 'tab', tab: 'cost' }, '')).toEqual(['tab-cost'])
@@ -83,7 +83,7 @@ test('switching tabs lands on the marked row after the safe tab detour', () => {
 })
 
 // Destructive controls act only while the ring is known to sit on a safe
-// element (see arming in docs/architecture.md).
+// element (see arming in docs/architecture/focus-order.md).
 // `requested`: the element the move asked for; `key`: where the ring landed.
 const focus = (
   key: string,

@@ -263,7 +263,7 @@ export function messageLanding(
 // Whether the focus ring is known to sit on a safe element, so that stop and
 // delete may act. The engine keeps the ring on an index the pane cannot read;
 // `shown` is what the last drawing showed (`undefined`: take the next one as
-// it is). See arming in docs/architecture.md.
+// it is). See arming in docs/architecture/focus-order.md.
 export type Shown = {
   // The open item or selected row the drawing could not show, or ''.
   fallback: string

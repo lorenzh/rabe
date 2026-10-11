@@ -29,17 +29,17 @@
 - `hooks/sources/<kind>.ts`: one module per source (agents, codex, shells, monitors, crons, workflows) that turns events and files into items, and `worktrees.ts`, which keeps the git worktrees in `rabe.worktrees`; `hooks/sources/index.ts` calls each one. Each file's `write($, change)` caps the list and drops the per-item state of the items it removed; a timer's write skips the plugin's own `state.set` hooks.
 - `hooks/tasks.ts`, `hooks/schedule.ts`: pure parsers for task notifications, task output files and cron schedules. `hooks/writes.ts`: pure, the files a shell command line may write (candidates the sources check on disk). `hooks/forwarders.ts`: pure, the Codex companion calls of agents and the jobs they started. Views read session state only, never files.
 - `hooks/testing.ts`: test helpers (`memoryState`, `files`, `core`); the test's `$` has no `state` noun.
-- `hooks/ui/`: band and pane drawing. Only `band.tsx`, `pane.tsx` and `builtin.tsx` touch `$`. Views are pure `View` functions in `hooks/ui/views/` that return lines (Text parts and one plain Button per selectable row) and their controls; `render.tsx` draws them; the cell engine in `hooks/ui/cells/` draws charts only (see `docs/architecture.md`).
+- `hooks/ui/`: band and pane drawing. Only `band.tsx`, `pane.tsx` and `builtin.tsx` touch `$`. Views are pure `View` functions in `hooks/ui/views/` that return lines (Text parts and one plain Button per selectable row) and their controls; `render.tsx` draws them; the cell engine in `hooks/ui/cells/` draws charts only (see [`docs/architecture/ui.md`](docs/architecture/ui.md)).
 - Colors: only xterm-256 entries from `hooks/ui/cells/palette.ts`; a list never reorders while the pane is open (`stable` in `hooks/ui/lists.ts`).
 - `$.state` keys: declare each in `types/index.d.ts` and name that file as `"types"` in `.claude-plugin/plugin.json`.
-- `data/prices.csv`: list prices per model. The agents and Codex sources read it at run time under `$.plugin.root`, with the user's file (option `pricesFile`) first; `hooks/prices.ts` parses and applies it (see `docs/feasibility.md` and `docs/architecture.md`).
+- `data/prices.csv`: list prices per model. The agents and Codex sources read it at run time under `$.plugin.root`, with the user's file (option `pricesFile`) first; `hooks/prices.ts` parses and applies it (see `docs/feasibility/prices.md` and `docs/architecture/prices.md`).
 - `types/claude-code.d.ts`: API types written by Claude Code. Do not edit; replace it when the pinned Claude Code version changes.
 
 ## Key Conventions
-- Get data from the mod API first, then from files on disk, then from the Claude Code or Codex source. Record each new source in `docs/feasibility.md`.
+- Get data from the mod API first, then from files on disk, then from the Claude Code or Codex source. Record each new source in the relevant document under `docs/feasibility/` and add it to [`docs/README.md`](docs/README.md).
 - Hooks pass on with `next(e)` unless they answer on purpose.
-- Give each hook in a source a matcher: an event may have only one hook without a matcher in the whole module, or the module does not load. `pane.tsx` owns the plain `session.start` (see `docs/architecture.md`).
-- Helpers that take `$` are top-level function declarations in the same file as the hook; `claude plugin validate` refuses closures inside `register` that receive `$`, and the scan never follows `$` across an import. Shared code is pure; see `docs/architecture.md`.
+- Give each hook in a source a matcher: an event may have only one hook without a matcher in the whole module, or the module does not load. `pane.tsx` owns the plain `session.start` (see [`docs/architecture/sources.md`](docs/architecture/sources.md#starting-work-sessionstart-with-a-matcher)).
+- Helpers that take `$` are top-level function declarations in the same file as the hook; `claude plugin validate` refuses closures inside `register` that receive `$`, and the scan never follows `$` across an import. Shared code is pure; see [`docs/architecture/state.md`](docs/architecture/state.md#the-engines-rule-for-).
 - A `$.state` reference or atom is written in the file that uses it, with literal `plugin` and `key`.
 - Files on disk are undocumented: a missing file or field shows `n/a`. Never throw from a hook.
 - Take file paths from tool results; build a path only when no result carries it.
@@ -54,8 +54,8 @@
 - Every pull request creates or updates documentation in `docs/`, `README.md`, `CHANGELOG.md`, `RELEASING.md`, `AGENTS.md`, or a new doc. The only exception is a PR labelled `no-docs`, with the reason in the PR body.
 - Read the docs before the code: start with the table under External References.
 - Every change updates the docs in the same pull request: behaviour, data sources, hooks, modules, commands and settings.
-- The first code that adds a module also creates `docs/architecture.md`; each later module adds its section there.
-- A new or changed data source updates `docs/feasibility.md`.
+- The first code that adds a module also creates an architecture document; each later module updates the relevant document under `docs/architecture/` and [`docs/README.md`](docs/README.md).
+- A new or changed data source updates the relevant document under `docs/feasibility/` and [`docs/README.md`](docs/README.md).
 - User-visible changes also update `README.md`.
 - User-visible changes add a line under `## [Unreleased]` in `CHANGELOG.md`, with the pull request link.
 - Each file in `docs/` starts with frontmatter: `title`, `description`, `tags`, `keywords`.
@@ -72,8 +72,9 @@
 ## External References
 | Need | File |
 |------|------|
-| How Rabe is built (once code exists) | `docs/architecture.md` |
-| What data exists and where it comes from | `docs/feasibility.md` |
+| Documentation index | [`docs/README.md`](docs/README.md) |
+| Architecture and module behavior | [`docs/architecture.md`](docs/architecture.md) |
+| Data sources and limits | [`docs/feasibility.md`](docs/feasibility.md) |
 | Release steps, versions, migration checks | `RELEASING.md` |
 | What changed per version | `CHANGELOG.md` |
 | Mod API (grep a name, read its doc comment) | `types/claude-code.d.ts` |
