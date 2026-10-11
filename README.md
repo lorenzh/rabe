@@ -48,7 +48,7 @@ The pane has four tabs:
 
   ![The Timeline tab: a bar per shell, monitor, agent, cron job and workflow over the last minutes, who started what, and the previous session with its cost; w widens the window](docs/assets/tab-timeline.gif)
 
-  A bar per item over the last 4 hours, who started what, and a summary of the previous session in this project with its id (`c` copies `claude --resume <id>`; a summary saved by Rabe 0.3 or older shows `n/a`). A short Timeline window shows its start time when no round clock label fits. Cron ticks show scheduled runs, without delays while the session is busy or jitter. Its cost and duration are the whole session's, its tokens only the background items'; each line says which. Items that ended before the window fold into one line (`+37 older items, ended before 10:20`); a bar that started earlier is cut at the left edge with `◂`. `w` widens the window for the open pane, from 4 hours to 12 hours to the whole session. The option `timelineHours` in `/plugin` sets the hours; `0` shows the whole session.
+  A bar per item over the last 4 hours, who started what, and a summary of the previous session in this project with its id (`c` copies `claude --resume <id>`; a summary saved by Rabe 0.3 or older shows `n/a`). A short Timeline window shows its start time when no round clock label fits. Cron ticks show scheduled runs, without delays while the session is busy or jitter. Its cost and duration are the whole session's, its tokens only the background items'; each line says which. Items that ended before the window fold into one line (`+37 older items, ended before 10:20`); a bar that started earlier is cut at the left edge with `◂`. `w` widens the window for the open pane, from 4 hours to 12 hours to the whole session.
 
 ## Install
 
@@ -143,17 +143,6 @@ Claude Code reports tokens per agent but no dollars, so Rabe estimates them: the
 
 The estimate shows `n/a` when Rabe cannot know it: a model that is not in the table, an agent that started before Rabe loaded, a Codex session file over 4 MiB (Rabe reads only its start and end) or one that is gone or cannot be read, a request over the long-context limit of a model that OpenAI bills per session (GPT-5.4, GPT-5.5), or a request without its counts. A Codex job that counts its forwarding agent is `n/a` when the job or the agent has no estimate, and so are its tokens when one of them has none. A total is `n/a` when one of its workers has no estimate, also a worker without token data (for example a finished Codex job whose session file is gone), since a smaller sum would read as the whole cost. Codex plan billing, Bedrock, Vertex, batch, fast or regional rates are not in the table.
 
-Your own prices: set the option `pricesFile` in `/plugin` to a CSV file in the format of `data/prices.csv` (an absolute path, or one that starts with `~/`). Its rows come first, by model ID or alias, so they change a price Rabe knows and add models it does not. A row for a model replaces Rabe's row of that model with all its names: a row for `claude-opus-4-5-20251101` also prices `claude-opus-4-5`, and the other way round. A file that is set but cannot be read makes every estimate `n/a`. The header names the columns, so a file can hold only the ones it needs; a row needs `provider` (`claude` or `openai`), `model`, `input` and `output`. For example, your own rate for one model:
-
-```csv
-provider,model,aliases,input,output,cache_read,cache_write_5m
-claude,claude-opus-5-5,,3.2,16,0.16,4
-```
-
-Rabe hides Claude Code's own count of background work, because the band shows it. That is the `2 shells, 1 monitor · ↓ to manage` part under the prompt, and `still running` at the end of a turn. To keep them, turn off the option `hideBuiltinTasks` in `/plugin`. Rabe cannot hide the agent list under the prompt.
-
-The option `timelineHours` (default 4) sets how many hours the Timeline tab shows when the pane opens; `0` shows the whole session.
-
 ## Where the data comes from
 
 Rabe gets most data from the mod API: hooks for tool calls, agent starts, agent steps and task notifications. The rest comes from files that Claude Code and Codex write while they work. These files have no documentation and can change in any release. A value that Rabe cannot read shows as `n/a`.
@@ -205,7 +194,7 @@ Run all checks (lint, type check, manifest check and tests), as CI does:
 bun run check
 ```
 
-[AGENTS.md](AGENTS.md) has the rules for contributors and coding agents. [The documentation index](docs/README.md) links to the architecture and feasibility guides.
+[AGENTS.md](AGENTS.md) has the rules for contributors and coding agents. [The documentation index](docs/README.md) links to the architecture and feasibility guides. See the [user guide](docs/guide.md) for options and common problems.
 
 ## Feedback and bugs
 
