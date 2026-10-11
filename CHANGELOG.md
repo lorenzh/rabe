@@ -6,7 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Changed
 
-- Split the architecture and feasibility references into smaller documents with a documentation index. (fixes [#77](https://github.com/lorenzh/rabe/issues/77))
+- Split the architecture and feasibility references into smaller documents with a documentation index. ([#90](https://github.com/lorenzh/rabe/pull/90), fixes [#77](https://github.com/lorenzh/rabe/issues/77))
 
 ### Fixed
 
