@@ -490,6 +490,17 @@ test('a running job of this session becomes a live codex item', async ($, on) =>
   })
 })
 
+test('a job id that leaves the jobs folder is skipped', async ($, on) => {
+  const writes = watchItems(on)
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [{ id: '../../x', status: 'running' }] },
+    [`${WS}/jobs/../../x.json`]: job({ id: '../../x' }),
+    [`${STATE}/x.json`]: job({ id: '../../x' }),
+  })
+  await startAndTick($, w)
+  expect(writes.flat().filter(item => item.kind === 'codex')).toEqual([])
+})
+
 test('a job costs its requests at the price of their model', async ($, on) => {
   const writes = watchItems(on)
   prices(on)
@@ -626,9 +637,11 @@ test('a session file over 4 MiB is read with grep and tail', async ($, on) => {
   })
   w.files.set(ROLLOUT_PATH, { text: '', mtimeMs: 5000, size: 5 * 1024 * 1024 })
   const runs: string[][] = []
+  const timeouts: (number | undefined)[] = []
   on('process.run', async (_$, e, next) => {
     if (e.argv[0] === 'git') return next(e)
     runs.push([...e.argv])
+    timeouts.push(e.init?.timeoutMs)
     const [head, tail] = ROLLOUT.split('\n').reduce<[string[], string[]]>(
       ([h, t], one, n) => (n < 3 ? [[...h, one], t] : [h, [...t, one]]),
       [[], []],
@@ -643,6 +656,8 @@ test('a session file over 4 MiB is read with grep and tail', async ($, on) => {
   })
   await startAndTick($, w)
   expect(runs.map(argv => argv[0])).toEqual(['grep', 'tail'])
+  // a poll's command stops long before the default 30 seconds
+  expect(timeouts.every(ms => ms !== undefined && ms <= 5000)).toBe(true)
   expect(runs.map(argv => argv.slice(-2))).toEqual([
     ['--', ROLLOUT_PATH],
     ['--', ROLLOUT_PATH],

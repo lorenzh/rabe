@@ -15,6 +15,7 @@ import {
 const POLL_MS = 2000
 const MAX_READ = 4 * 1024 * 1024
 const TAIL_BYTES = '1048576'
+const RUN_MS = 5000
 
 // Each event takes one hook without a matcher per plugin; these match every event.
 const ANY_START = { isInteractive: [true, false] }
@@ -70,7 +71,9 @@ async function readWhole(
   try {
     const { size } = await $.fs.stat(path)
     if (size <= MAX_READ) return { text: String(await $.fs.read(path)), isWhole: true }
-    const { stdout } = await $.process.run(['tail', '-c', TAIL_BYTES, '--', path])
+    const { stdout } = await $.process.run(['tail', '-c', TAIL_BYTES, '--', path], {
+      timeoutMs: RUN_MS,
+    })
 
     return { text: stdout, isWhole: false }
   } catch {

@@ -41,6 +41,16 @@ function toast($: EngineInterface, text: string): void {
   $.ui.toast(toastText(text))
 }
 
+// Tabs and line breaks stay; an escape could end a bracketed paste.
+function clipText(text: string): string {
+  return text.replace(/(?![\t\n\r])[\p{Cc}\p{Cf}]/gu, '?')
+}
+
+// A cron job's title is its prompt.
+function nameOf(item: RabeItem): string {
+  return item.kind === 'cron' ? item.detail.jobId : item.title
+}
+
 // Esc may have closed the pane before the delayed focus call.
 async function refocus($: EngineInterface): Promise<void> {
   const pane = (await $.ui.panes()).find(one => one.id === PANE)
@@ -88,7 +98,7 @@ async function stop($: EngineInterface, ids: string[]): Promise<void> {
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   const targets = items.filter(item => ids.includes(item.id))
   const one = targets.length === 1 ? targets[0] : undefined
-  if (one) toast($, `Stopping ${KIND_LABEL[one.kind]} ${one.title}…`)
+  if (one) toast($, `Stopping ${KIND_LABEL[one.kind]} ${nameOf(one)}…`)
   let stopped = 0
   const stoppedItems: RabeItem[] = []
   let ended = 0
@@ -122,10 +132,10 @@ async function stop($: EngineInterface, ids: string[]): Promise<void> {
     }
   }
   for (const item of stoppedItems) {
-    await queueAction($, `Rabe: user stopped ${item.kind} ${item.id} (${item.title})`)
+    await queueAction($, `Rabe: user stopped ${item.kind} ${item.id}`)
   }
   if (one && refused) toast($, `Stop refused: ${refused}`)
-  else if (one) toast($, ended ? `${one.title} had already finished` : `Stopped ${one.title}`)
+  else if (one) toast($, ended ? `${nameOf(one)} had already finished` : `Stopped ${nameOf(one)}`)
   else {
     const done = ended ? `; ${ended} had already finished` : ''
     const no = refused ? `; refused: ${refused}` : ''
@@ -277,7 +287,7 @@ async function remove($: EngineInterface, action: Action & { type: 'remove' | 'c
   toast(
     $,
     gone.length === 1 && one
-      ? `Removed ${KIND_LABEL[one.kind]} ${one.title}`
+      ? `Removed ${KIND_LABEL[one.kind]} ${nameOf(one)}`
       : `Removed ${gone.length} ended items`,
   )
 }
@@ -349,23 +359,26 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
         $,
         reason
           ? `Delete refused: ${reason.replace(/<\/?tool_use_error>/g, '').trim()}`
-          : `Deleted cron ${item.title}`,
+          : `Deleted cron ${nameOf(item)}`,
       )
-      if (!reason) await queueAction($, `Rabe: user deleted cron ${item.id} (${item.title})`)
+      if (!reason) await queueAction($, `Rabe: user deleted cron ${item.id}`)
       return
     }
     case 'copy': {
       // Over SSH the clipboard needs the terminal's OSC 52.
+      const text = clipText(action.text)
       const result = await $.ui
-        .copy({ text: action.text, surface })
+        .copy({ text, surface })
         .catch((error: unknown) => ({ isCopied: false as const, reason: String(error) }))
-      const preview = toastText(action.text)
-      const selectable = preview === action.text
+      const preview = toastText(text)
+      // only text the filters left alone is offered for selection
+      const selectable = !action.what && preview === action.text
+      const copied = action.what ? `Copied ${action.what}` : `Copied: ${preview}`
       toast(
         $,
         result.isCopied
-          ? `Copied: ${preview}`
-          : `Copy failed: ${result.reason}.${selectable ? ` Select it: ${action.text}` : ''}`,
+          ? copied
+          : `Copy failed: ${result.reason}.${selectable ? ` Select it: ${text}` : ''}`,
       )
       return
     }
@@ -382,8 +395,7 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
           ? `Message sent to claude ${item.detail.name || item.title}`
           : `Message not sent: ${sent.reason}`,
       )
-      if (sent.isDelivered)
-        await queueAction($, `Rabe: user sent a message to agent ${item.id} (${item.title})`)
+      if (sent.isDelivered) await queueAction($, `Rabe: user sent a message to agent ${item.id}`)
       return sequence(async () => {
         const { selection } = await look($, true)
         const target = messageLanding(action, selection, ringOn)
