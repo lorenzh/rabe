@@ -159,7 +159,7 @@ Rabe cannot see some things:
 
 ## Privacy
 
-Rabe runs on your computer only. It makes no network requests and sends nothing. The two report commands create an issue only after you approve the draft.
+Rabe runs on your computer and makes no runtime network requests. Successful stop, delete, and message actions add notes that name each item by kind and ID to the next prompt sent to Claude. The two report commands create a public issue only after you approve the draft.
 
 Rabe reads these files:
 
@@ -171,7 +171,9 @@ Rabe reads these files:
 - Its own price table `data/prices.csv`, and the file the option `pricesFile` names.
 - The size and modification time of the files a shell command names, before and after the command, to see which ones it wrote. Rabe does not read their content.
 
-Rabe keeps its items in the session state of Claude Code. When a session ends, Rabe keeps a short summary for the next session in the same project. The summary holds the session id, counts per kind, tokens, cost and the names of failed items. It runs `tail` and `grep` to read files over 4 MiB, and `git worktree list` every 10 seconds in the session's folder to know the worktrees. When you stop a Codex job, it runs the Codex plugin's own cancel script.
+Rabe keeps its items in Claude Code session state. That includes agent reply text (up to 16,000 characters per turn), prompts, commands, IDs and paths. When a session ends, Rabe keeps a short summary for the next session in the same project. The summary holds the session id, counts per kind, tokens, cost and the names of failed items. It runs `tail` and `grep` to read files over 4 MiB, and `git worktree list` every 10 seconds in the session's folder to know the worktrees. When you stop a Codex job, it runs the Codex plugin's own cancel script.
+
+`/rabe:report-bug` includes the details you provide, reproduction steps, Rabe and Claude Code versions, your operating system and any error lines you give it. Both report commands ask Claude Code to leave out home paths, user or project names, prompts, tokens and email addresses; `/rabe:report-bug` also asks it to leave out transcript text. These are instructions, not automatic redaction filters. Review the full draft before approving it. See [SECURITY.md](SECURITY.md) to report a vulnerability privately.
 
 ## Requirements
 
