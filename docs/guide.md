@@ -62,7 +62,7 @@ Rabe cannot get every value from Claude Code or Codex. It estimates worker costs
 
 ### What does Rabe read, and does it send data anywhere?
 
-Rabe reads subagent metadata and workflow scripts for phase names. It reads shell and monitor output files. It also reads Codex job and session files and the installed-plugin list. Rabe reads its built-in price table and your optional table. It checks the size and modification time of possible shell write targets. It does not read their contents. Rabe makes no network requests and sends nothing. The `/rabe:report-bug` and `/rabe:feedback` commands can create a public GitHub issue only after you approve the draft.
+Rabe reads subagent metadata and workflow scripts for phase names. It reads shell and monitor output files. It also reads Codex job and session files and the installed-plugin list. Rabe reads its built-in price table and your optional table. It checks the size and modification time of possible shell write targets. It does not read their contents. Rabe makes no network requests. After you stop, delete or message an item, the next prompt to Claude carries a short note naming it by kind and id. The `/rabe:report-bug` and `/rabe:feedback` commands can create a public GitHub issue only after you approve the draft.
 
 ### Which platforms does Rabe support?
 

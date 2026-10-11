@@ -57,7 +57,7 @@ type RabeItem = { [K in RabeItemKind]: RabeItemOf<K> }[RabeItemKind]
 | `monitor` | `command`, `description?`, `taskId?`, `outputPath?`, `timeoutMs?`, `isPersistent?` |
 | `cron` | `jobId`, `prompt`, `schedule?`, `humanSchedule?`, `scheduledFor?`, `isDeleted?` |
 
-A file change is `RabeEdit`: `{ path, at, via?, change? }`. `via` says how: `edit` or `write` (the tool), `shell` (a command line's candidate, checked on disk) or `codex` (a Codex file change, with `change` `add`, `update` or `delete`); a shell `mv` source or `rm` has `change: 'delete'`. An edit without `via` is an `Edit` or `Write` from before this field. The main session's changes have no item: they are the `$.state` key `rabe.edits`, the newest 100, written by the agents source.
+A file change is `RabeEdit`: `{ path, at, via?, change? }`. `via` says how: `edit` or `write` (the tool), `shell` (a path from the host's Bash diff, or a command line's candidate checked on disk) or `codex` (a Codex file change, with `change` `add`, `update` or `delete`); a shell `mv` source or `rm` has `change: 'delete'`. An edit without `via` is an `Edit` or `Write` from before this field. The main session's changes have no item: they are the `$.state` key `rabe.edits`, the newest 100, written by the agents source.
 
 An optional field that is absent means the data is not known. Views show it as `n/a`. A source that needs a new field adds it as optional to the contract, here, and in this table.
 
