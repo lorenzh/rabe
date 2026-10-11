@@ -76,4 +76,4 @@ For AI-assisted changes, Codex implements the change. A reviewer from the other 
 
 Treat contributors with respect and follow the [GitHub Community Guidelines](https://docs.github.com/en/site-policy/github-terms/github-community-guidelines). If you see conduct that does not meet them, contact the maintainers.
 
-Report security issues privately through [GitHub Security Advisories](https://github.com/lorenzh/rabe/security/advisories/new). Do not open a public issue for a suspected vulnerability. See [security guidelines](docs/security.md) for Rabe's privacy and security rules.
+Report security issues privately by email to [lorenz@losoft.dev](mailto:lorenz@losoft.dev). Do not open a public issue for a suspected vulnerability. See [security guidelines](docs/security.md) for Rabe's privacy and security rules.
