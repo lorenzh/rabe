@@ -4,8 +4,12 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-11
+
 ### Added
 
+- The Effects tab shows script edits from Claude Code Bash diffs when enabled, with known deletions and no duplicate paths per call. Unusable diffs keep the disk fallback. ([#105](https://github.com/lorenzh/rabe/pull/105), fixes [#40](https://github.com/lorenzh/rabe/issues/40))
+- `/rabe` opens while Claude is working. ([#107](https://github.com/lorenzh/rabe/pull/107), fixes [#43](https://github.com/lorenzh/rabe/issues/43))
 - The user guide covers options, troubleshooting and common questions ([#91](https://github.com/lorenzh/rabe/pull/91), fixes [#78](https://github.com/lorenzh/rabe/issues/78))
 - Security guidelines for developing Rabe in `docs/security.md`, with a security item in the pull request template. Toasts now filter control characters in item titles and refusal reasons, and `tail` and `grep` take file paths after `--`. Copies replace control and format characters other than tabs and line breaks with `?`, notes to Claude and the `/rabe-stop` answer carry only item kinds and ids, cron prompts stay out of toasts, Codex job ids that would leave the jobs folder are skipped, and poll commands stop after 5 seconds. Dependabot keeps dev dependencies and actions up to date. ([#97](https://github.com/lorenzh/rabe/pull/97), fixes [#81](https://github.com/lorenzh/rabe/issues/81))
 - Add `SECURITY.md` with private vulnerability reporting instructions and document what Rabe reads, stores, and includes in bug reports. ([#101](https://github.com/lorenzh/rabe/pull/101), fixes [#80](https://github.com/lorenzh/rabe/issues/80))
@@ -18,13 +22,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
-- The Effects tab shows script edits from Claude Code Bash diffs when enabled, with known deletions and no duplicate paths per call. Unusable diffs keep the disk fallback. ([#105](https://github.com/lorenzh/rabe/pull/105), fixes [#40](https://github.com/lorenzh/rabe/issues/40))
-
 - Long paths use one shared middle ellipsis helper, and shells that ended with no lines say `No output`. The band shows `session n/a` when Claude Code does not report its cost, without substituting worker estimates or adding a top-agent suffix. ([#106](https://github.com/lorenzh/rabe/pull/106), fixes [#89](https://github.com/lorenzh/rabe/issues/89))
 - The next prompt tells Claude which items Rabe successfully stopped or deleted, and when Rabe sent an agent a message. Notes contain only item kinds and ids. ([#85](https://github.com/lorenzh/rabe/pull/85), fixes [#38](https://github.com/lorenzh/rabe/issues/38))
-- The Cost tab gives worker names more room and hides totals for sources that are absent; the band shortens chip labels only when needed to keep the cost visible. ([#86](https://github.com/lorenzh/rabe/pull/86), part of #42)
+- The Cost tab gives worker names more room and hides totals for sources that are absent; the band shortens chip labels only when needed to keep the cost visible. ([#86](https://github.com/lorenzh/rabe/pull/86), fixes [#42](https://github.com/lorenzh/rabe/issues/42))
 - The group-stop button shows its target count, agent turns with only tools show only their tool lines, and cron detail uses the pane's duration format. ([#87](https://github.com/lorenzh/rabe/pull/87), part of #43)
-- `/rabe` opens while Claude is working. ([#107](https://github.com/lorenzh/rabe/pull/107), fixes [#43](https://github.com/lorenzh/rabe/issues/43))
 - Agent rows use Claude Code's name when available; shell labels show a description and task id. The band labels session cost, background tokens and failure kinds. Long paths keep both ends, and empty output says `No output yet`. ([#88](https://github.com/lorenzh/rabe/pull/88), fixes [#41](https://github.com/lorenzh/rabe/issues/41))
 
 ## [0.4.4] - 2026-10-10
@@ -154,7 +155,8 @@ The first public version.
 
 - Workflow agents no longer offer stop and message, which Claude Code does not support for a single workflow agent; their detail offers stopping the run. ([#8](https://github.com/lorenzh/rabe/pull/8))
 
-[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/lorenzh/rabe/compare/v0.4.4...v0.5.0
 [0.4.4]: https://github.com/lorenzh/rabe/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/lorenzh/rabe/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/lorenzh/rabe/compare/v0.4.1...v0.4.2
