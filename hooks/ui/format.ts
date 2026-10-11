@@ -41,6 +41,14 @@ export function usd(n: number): string {
   return `$${n.toFixed(2)}`
 }
 
+export function middleEllipsis(value: string, width: number): string {
+  const chars = [...value]
+  if (chars.length <= width) return value
+  const left = Math.ceil((width - 1) / 2)
+  const right = Math.floor((width - 1) / 2)
+  return `${chars.slice(0, left).join('')}…${right ? chars.slice(-right).join('') : ''}`
+}
+
 export function day(ms: number, now: number): string {
   const d = new Date(ms)
   const today = new Date(now)

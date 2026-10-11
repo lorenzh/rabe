@@ -2,6 +2,7 @@ import type { RabeOrder } from '../../../types'
 import { isInside, type RabeItemOf } from '../../model'
 import { fit, type Span } from '../cells/grid'
 import { C, CHIP } from '../cells/palette'
+import { middleEllipsis } from '../format'
 import { byConflict, stable, type Touched, touched, worktreeRows } from '../lists'
 import type { Drawn, Line, Model, View } from '../view'
 import { fitLine, focusOn } from './lines'
@@ -54,15 +55,6 @@ function widths(columns: number): Widths {
   return { file, by: inner - file }
 }
 
-// The start of a long path is cut, so the file name stays.
-function middle(path: string, width: number): string {
-  const chars = [...path]
-  if (chars.length <= width) return path
-  const left = Math.ceil((width - 1) / 2)
-  const right = Math.floor((width - 1) / 2)
-  return `${chars.slice(0, left).join('')}…${right ? chars.slice(-right).join('') : ''}`
-}
-
 // How the file changed; a shell write is a guess.
 function how(file: Touched): string {
   const count = file.edits > 1 ? `${file.edits} changes: ` : ''
@@ -72,7 +64,7 @@ function how(file: Touched): string {
 
 function fileRow(file: Touched, w: Widths, selected: string): Line {
   const isSelected = file.id === selected
-  const name = middle(file.rel, w.file)
+  const name = middleEllipsis(file.rel, w.file)
   const gone = 'deleted · '
   return {
     spans: [
