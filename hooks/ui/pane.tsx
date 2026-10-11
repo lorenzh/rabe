@@ -556,6 +556,7 @@ export function pane(on: On, hours = baseHours): void {
       name: 'rabe',
       description:
         'Show background work: agents, Codex jobs, shells, monitors, cron jobs and workflows',
+      immediate: true,
     })
     $.clock.every(1000, () => void tick($))
 

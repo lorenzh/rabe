@@ -25,6 +25,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - The next prompt tells Claude which items Rabe successfully stopped or deleted, and when Rabe sent an agent a message. Notes contain only item kinds and ids. ([#85](https://github.com/lorenzh/rabe/pull/85), fixes [#38](https://github.com/lorenzh/rabe/issues/38))
 - The Cost tab gives worker names more room and hides totals for sources that are absent; the band shortens chip labels only when needed to keep the cost visible. ([#86](https://github.com/lorenzh/rabe/pull/86), part of #42)
 - The group-stop button shows its target count, agent turns with only tools show only their tool lines, and cron detail uses the pane's duration format. ([#87](https://github.com/lorenzh/rabe/pull/87), part of #43)
+- `/rabe` opens while Claude is working. (part of #43)
 - Agent rows use Claude Code's name when available; shell labels show a description and task id. The band labels session cost, background tokens and failure kinds. Long paths keep both ends, and empty output says `No output yet`. ([#88](https://github.com/lorenzh/rabe/pull/88), fixes [#41](https://github.com/lorenzh/rabe/issues/41))
 
 ## [0.4.4] - 2026-10-10
