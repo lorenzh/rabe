@@ -45,7 +45,7 @@ for (const [key, byPerson, isLiveRow, armed, listArmed] of [
 test('regain is bounded, retries after refusal and becomes stale after a person moves', () => {
   let state = interact(interact(IDLE, focus('row:a')).state, draw()).state
   for (let i = 1; i <= 3; i++) {
-    const result = interact(state, draw(true, 'dock', i === 1))
+    const result = interact(state, draw(true, 'dock', true))
     state = result.state
     expect(result.effects).toEqual([{ type: 'regain', want: state.shift }])
     expect(state.shift?.tries).toBe(i)
@@ -57,11 +57,27 @@ test('regain is bounded, retries after refusal and becomes stale after a person 
       isMoved: false,
     }).state
   }
-  expect(interact(state, draw()).effects).toEqual([])
+  expect(interact(state, draw(true, 'dock', true)).effects).toEqual([])
   const want = state.shift ?? { key: 'missing', isAsked: false, tries: 0 }
   state = interact(state, focus('row:b')).state
   expect(interact(state, { type: 'regained', want, isMoved: false }).state).toEqual(state)
   expect(isHeldBack(state, { surface: 'terminal', element: 'row:b' })).toBe(false)
+})
+
+test('a row that leaves above the ring asks a regain; the ring row itself only holds presses back', () => {
+  let state = interact(interact(IDLE, focus('row:a')).state, draw(true, 'dock', true)).state
+  const above = interact(state, draw())
+  expect(above.state.shift?.key).toBe('row:a')
+  expect(above.effects).toEqual([{ type: 'regain', want: above.state.shift }])
+  state = interact(interact(IDLE, focus('row:x')).state, draw(true, 'dock', true)).state
+  const own = interact(state, draw())
+  expect(own.state.shift?.key).toBe('row:x')
+  expect(own.effects).toEqual([])
+  expect(isHeldBack(own.state, { surface: 'terminal', element: 'row:a' })).toBe(true)
+  state = interact(interact(own.state, draw(false)).state, draw()).state
+  expect(interact(own.state, draw(false)).effects).toEqual([])
+  expect(interact(interact(own.state, draw(false)).state, draw()).effects).toEqual([])
+  expect(interact(state, focus('row:a')).state.shift).toBeUndefined()
 })
 
 test('regain success leaves arming unchanged; a resize refocuses only a held pane', () => {

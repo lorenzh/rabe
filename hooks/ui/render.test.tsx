@@ -4,7 +4,7 @@ import type { RabeItem, RabeItemOf } from '../model'
 import { type Grid, grid, lines, safe, write } from './cells/grid'
 import { ALL, babysit, ci, dev, explore, flow, NOW, raster, review } from './fixtures'
 import { orderOf } from './lists'
-import { type Held, hold, render, shifts, type Ui } from './render'
+import { type Held, hold, isRowKey, render, shifts, type Ui } from './render'
 import {
   type Action,
   arm,
@@ -215,16 +215,21 @@ test('an item found after the open stands in its group on the list; tabs and con
   expect(shifts(first.held, later.held, `row:${b.id}`)).toBe(true)
   expect(shifts(first.held, later.held, `row:${explore.id}`)).toBe(false)
   expect(shifts(first.held, later.held, 'stop')).toBe(false)
-  // A gone row keeps its slot, and a row found later goes after it.
+  // A gone row leaves the list, and a row found later goes in its group;
+  // the rows below it move up, and the pane holds their presses back.
   const gone = draw(model([explore, b, late, shell('c')]), SIZE, sel, later.held)
   expect(gone.keys.filter(key => key.startsWith('row:'))).toEqual([
     `row:${explore.id}`,
     `row:${late.id}`,
-    `row:${a.id}`,
     `row:${b.id}`,
     'row:shell:c',
   ])
-  expect(gone.tree.find(one => one.props.key === `row:${a.id}`)?.props.dimColor).toBe(true)
+  expect(gone.held.map(one => one.key)).not.toContain(`row:${a.id}`)
+  for (const key of fixed)
+    expect([key, gone.keys.indexOf(key)]).toEqual([key, first.keys.indexOf(key)])
+  expect(shifts(later.held, gone.held, `row:${b.id}`)).toBe(true)
+  expect(shifts(later.held, gone.held, `row:${a.id}`)).toBe(true)
+  expect(shifts(later.held, gone.held, `row:${late.id}`)).toBe(false)
   // The detail keeps the append-only order.
   const open = { ...sel, open: explore.id }
   const detail = draw(model(items), SIZE, open)
@@ -251,7 +256,7 @@ test('a phase found late does not reorder the agent rows of a workflow', () => {
   expect(later.keys.indexOf(`row:${a.id}`)).toBeLessThan(later.keys.indexOf(`row:${b.id}`))
 })
 
-test('an edit pruned from the history leaves its held Effects row as an inert slot', () => {
+test('an edit pruned from the history takes its held Effects row off the tab', () => {
   const edits = (list: string[]) => list.map((path, i) => ({ path, at: NOW + i }))
   const b99 = Array.from({ length: 99 }, () => '/repo/b.ts')
   const editor = agentOf('ed', { edits: edits(['/repo/a.ts', ...b99]) })
@@ -260,20 +265,20 @@ test('an edit pruned from the history leaves its held Effects row as an inert sl
   const first = draw(model(items), SIZE, sel)
   const pruned = agentOf('ed', { edits: edits([...b99, '/repo/b.ts']) })
   const later = draw(model([pruned, ...items.slice(1)]), SIZE, sel, first.held)
-  expect(later.keys).toEqual(first.keys)
-  const slot = later.tree.find(one => one.props.key === 'row:file:/repo/a.ts')
-  expect(slot?.props).toMatchObject({ label: 'a.ts', dimColor: true })
-  const press = slot?.props.onPress as (e: unknown) => void
-  press({ surface: 'terminal' })
-  expect(later.acts).toEqual([])
+  expect(later.keys).toEqual(first.keys.filter(key => key !== 'row:file:/repo/a.ts'))
 })
 
 test('a gone slot follows the element before it and reads gone first, never under the next heading', () => {
+  // The Effects tab drops gone rows (see below); a view that holds every
+  // key in place, as a detail does, keeps the slot.
   const items = [shell('p1', 5173), shell('p2', 3000), shell('p3', 4000)]
   const sel = { ...OPEN, tab: 'effects' as const, selected: 'ssh:5173', order: orderOf(items) }
   const first = draw(model(items), SIZE, sel)
-  const later = draw(model([items[0], items[2]] as RabeItem[]), SIZE, sel, first.held)
-  expect(later.keys).toEqual(first.keys)
+  const pieces = layout(paneView(model([items[0], items[2]] as RabeItem[]), SIZE, sel))
+  const later = hold(pieces, first.held)
+  expect(later.held.map(one => one.key)).toEqual(first.held.map(one => one.key))
+  const dropped = draw(model([items[0], items[2]] as RabeItem[]), SIZE, sel, first.held)
+  expect(dropped.keys).toEqual(first.keys.filter(key => key !== 'row:ssh:3000'))
   const text = (piece: Piece | undefined) =>
     piece && 'spans' in piece
       ? piece.spans.map(one => (isPress(one) ? one.label : one[0])).join('')
@@ -595,12 +600,16 @@ test('whatever changes while the pane is open, the focusable keys only grow at t
         const next = draw(model(items), size, sel, last.held)
         const shown = `${surface} ${JSON.stringify(scope)} step ${n}`
         if (seatsRows(sel)) {
-          // The list seats rows found later in their group: the keys drawn
-          // before keep their order, and only rows and group headers come
-          // between them; tabs and controls keep their index.
+          // The list seats rows found later in their group and drops gone
+          // rows: the keys drawn before keep their order, only rows and group
+          // headers come between them or leave; tabs and controls keep their
+          // index.
           const kept = next.keys.filter(key => last.keys.includes(key))
-          expect([shown, kept]).toEqual([shown, last.keys])
-          const end = next.keys.indexOf(last.keys.at(-1) ?? '')
+          expect([shown, kept]).toEqual([shown, last.keys.filter(key => next.keys.includes(key))])
+          const left = last.keys.filter(key => !next.keys.includes(key))
+          const odder = left.filter(key => !key.startsWith('row:') && !key.startsWith('group-'))
+          expect([shown, odder]).toEqual([shown, []])
+          const end = next.keys.indexOf(kept.at(-1) ?? '')
           const between = next.keys.slice(0, end).filter(key => !last.keys.includes(key))
           const odd = between.filter(key => !key.startsWith('row:') && !key.startsWith('group-'))
           expect([shown, odd]).toEqual([shown, []])
@@ -659,7 +668,7 @@ test('focus on a gone slot or a group header never arms x on the row the list fe
   expect(xOf([a, b], sel, arming)?.action).toEqual({ type: 'stop', ids: [a.id] })
   const first = draw(model([a, b]), SIZE, sel)
   const later = draw(model([b]), SIZE, sel, first.held)
-  expect(later.keys).toContain(`row:${a.id}`)
+  expect(later.keys).not.toContain(`row:${a.id}`)
   arming = arm(arming, drawnEvent([b], sel))
   for (const key of ['group-shells', `row:${a.id}`]) {
     arming = arm(arm(arming, focus([b], key)), drawnEvent([b], sel))
@@ -740,10 +749,14 @@ test('no view has a focusable control without a visible label, including held sl
     ]) {
       const drawn = paneView(model(ALL), size, selection)
       const next = hold(layout(drawn), held, seatsRows(selection))
-      if (held)
-        expect(next.held.slice(0, held.length).map(one => one.key)).toEqual(
-          held.map(one => one.key),
-        )
+      if (held) {
+        // A view that seats rows drops the gone ones.
+        const keys = next.held.map(one => one.key)
+        const kept = held
+          .map(one => one.key)
+          .filter(key => keys.includes(key) || !seatsRows(selection) || !isRowKey(key))
+        expect(keys.slice(0, kept.length)).toEqual(kept)
+      }
       const presses = next.list.flatMap(piece =>
         'button' in piece ? [piece.button] : 'spans' in piece ? piece.spans.filter(isPress) : [],
       )

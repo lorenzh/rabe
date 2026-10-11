@@ -22,7 +22,7 @@ The state holds the ring key, the pending focus key and the last landing evidenc
 | `unfocused` | Clear ring evidence when focus reaches an engine stop. |
 | `step`, `landed`, `press`, `drawn` | Apply the existing arming transitions. |
 | `render` | Check fallback and control targets with the arming rules. Draw the view and feed `draw`. |
-| `draw` | Hold the focus order. Request regain after inserted rows, opening focus retries, or focus after a resize. |
+| `draw` | Hold the focus order. Request regain after inserted or dropped rows moved the ring's element, opening focus retries, or focus after a resize. When the ring's own row was dropped, hold row presses back without a regain. |
 | `regained` | Clear a successful regain. Disarm after refusal and allow at most three tries per keyboard grant. Ignore stale results. |
 
 ## View changes and arrows
@@ -35,7 +35,7 @@ If a carried arrow lands as asked on a live row, it arms list controls. Plugin l
 
 ## Safety rules
 
-The renderer keeps its append-only focus rule and inert gone slots. The Items and Effects lists can insert rows into their groups. While a regain is pending, the pane holds back row and group presses.
+The renderer keeps its append-only focus rule and inert gone slots. The Items and Effects lists can insert rows into their groups and drop gone rows. While a regain is pending or the ring's row was dropped, the pane holds back row and group presses.
 
 The press hook handles fixed tab actions directly. When a drawing releases a tab handler, its key still works. Item and Input handlers still expire with their drawings. The pane drops stale item and Input events.
 

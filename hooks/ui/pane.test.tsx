@@ -156,7 +156,7 @@ test('a pane closed before the focus call stays closed', async ($, on) => {
   expect(opens).toHaveLength(1)
 })
 
-test('a row gone while the pane is open keeps its slot until /rabe opens it anew', async ($, on) => {
+test('a row gone while the pane is open leaves the list at once', async ($, on) => {
   const other = { ...dev, id: 'shell:other', title: 'other' }
   const items = [dev, other]
   hold(on, items)
@@ -171,10 +171,8 @@ test('a row gone while the pane is open keeps its slot until /rabe opens it anew
   await draw()
   items.pop()
   const gone = await draw()
-  expect(gone.shown).toContain(' gone other')
-  expect(gone.slot?.props).toMatchObject({ label: 'other', dimColor: true })
-  await $.command.run({ command: 'rabe', args: '' } as never)
-  expect((await draw()).slot).toBeUndefined()
+  expect(gone.shown.join('\n')).not.toContain('other')
+  expect(gone.slot).toBeUndefined()
 })
 
 test('the pane shows the tabs and the empty state on every surface', async ($, on) => {
@@ -1690,8 +1688,8 @@ test('a click on a row still selects it while the pane does not hold the keys', 
 })
 
 // Issue #13: r removes the selected row once it ended, a every ended row; a
-// removed row leaves a gone slot while the pane is open, and stays hidden for
-// the session, also from the band, though its item is still in rabe.items.
+// removed row leaves the list at once (#122), and stays hidden for the
+// session, also from the band, though its item is still in rabe.items.
 const BAND = {
   surface: 'terminal',
   plugin: 'rabe',
@@ -1721,8 +1719,8 @@ test('r and a remove ended rows for the session; running rows stay', async ($, o
   expect(state.removed).toEqual([lint.id])
   expect(state.toasts).toEqual(['Removed shell bg_3'])
   await ui.redraw()
-  const slot = await ui.find({ type: 'Button', key: `row:${lint.id}` })
-  expect(slot?.props.dimColor).toBe(true)
+  expect(await ui.find({ type: 'Button', key: `row:${lint.id}` })).toBeUndefined()
+  expect((await screen(ui)).join('\n')).not.toContain(' gone ')
   await arm($, `row:${dev.id}`)
   await ui.redraw()
   await ui.press({ key: 'clear' })

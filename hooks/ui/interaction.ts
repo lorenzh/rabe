@@ -160,7 +160,9 @@ export function interact(
         shift = { key: state.ringOn, isAsked: false, tries: 0 }
       }
       if (shift && seat && !seat.isFocused && event.isFocused) shift = { ...shift, tries: 0 }
-      if (shift && !shift.isAsked && shift.tries < 3 && event.isFocused) {
+      // A ring row that left has no key to regain: its presses stay held back.
+      const isHeld = out.held.some(one => one.key === shift?.key)
+      if (shift && isHeld && !shift.isAsked && shift.tries < 3 && event.isFocused) {
         shift = { ...shift, isAsked: true, tries: shift.tries + 1 }
         effects.push({ type: 'regain', want: shift })
       }
