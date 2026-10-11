@@ -19,6 +19,7 @@ The state holds the ring key, the pending focus key and the last landing evidenc
 | `press-start`, `press-end` | Track presses whose focus work is pending. |
 | `reset` | Disarm and clear ring evidence and pending regain. Remember the prior key during a press. Keep held orders until the next view draws. |
 | `focus-start` | Clear the previous landing evidence and record the requested key before a plugin focus call. |
+| `focus-queued` | Remember the engine's previous queued target so the next arrow keeps its direction. |
 | `focus` | Record the engine's landing. Cancel regain and apply the arming rules. |
 | `unfocused` | Clear ring evidence when focus reaches an engine stop. |
 | `step`, `landed`, `press`, `drawn` | Apply the existing arming transitions. |
@@ -33,6 +34,8 @@ Before a view changes, the pane moves the ring onto a safe tab in the old tree. 
 In a scrolling pane, row arrows join the press sequence through `ui.scroll`. In an all-fit pane, the engine raises a person-originated `ui.focus`. If a press is pending, `deferredFocus` records that move against the old held order. The pending focus key covers arrows received before the safe-tab landing returns. It also keeps the safe-tab origin for an arrow delivered after the press ends. Repeated `autoFocus` landings keep that origin. The next person move consumes it. After the press lands, `movedFocus` applies it to the new held order. The pane requests fresh focus instead of sending the engine an old focus request. Separate person and plugin focus hooks let the fresh call reach Rabe. The plugin hook checks the engine trace before it records a landing.
 
 If a carried arrow lands as asked on a live row, it arms list controls. Plugin landings after view changes leave list controls disarmed. External stop, delete, copy and message calls release the focus sequence before waiting.
+
+An arrow burst uses each previous queued target as its origin. It does not compare every arrow with the last completed landing. When the engine repeats a target before landing, each event keeps the previous move. Adjacent moves across the first and last focus keys keep their wrap direction. A reset or a plugin focus request clears the queued origin. A completed landing clears it too. Nonadjacent targets keep their explicit keys.
 
 ## Safety rules
 

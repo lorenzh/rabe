@@ -95,6 +95,8 @@ The buttons under the tabs show the actions of the current view. Unavailable con
 
 If a list redraw removes a row or search handler during an event, Rabe drops that stale action and keeps the pane's keys.
 
+When all rows fit, fast arrow bursts after a tab switch keep their order and wrap direction.
+
 | View | Letters caught outside input fields |
 |------|-------------------------------------|
 | Items list | `x g r a`; `s` where search is available |
