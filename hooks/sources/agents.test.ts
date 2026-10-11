@@ -515,7 +515,7 @@ test('relative shell writes use the agent cwd and never the main folder as a fal
   disk.set('/wt/a1', dir)
   await $.agent.spawn(SPAWN)
   await $.tool.call({ tool: 'Bash', command: 'echo x > f.txt', agentId: 'a1' } as never)
-  expect((held.items?.[0] as RabeItemOf<'agent'>).detail.edits).toBeUndefined()
+  expect(((held.items ?? [])[0] as RabeItemOf<'agent'>).detail.edits).toBeUndefined()
   await $.classic.SubagentStart({
     agent_id: 'a1',
     agent_type: 'general-purpose',
@@ -524,7 +524,7 @@ test('relative shell writes use the agent cwd and never the main folder as a fal
   })
   await $.tool.call({ tool: 'Bash', command: 'echo x > plain.txt', agentId: 'a1' } as never)
   await $.tool.call({ tool: 'Bash', command: 'false || echo x > f.txt', agentId: 'a1' } as never)
-  expect((held.items?.[0] as RabeItemOf<'agent'>).detail.edits).toEqual([
+  expect(((held.items ?? [])[0] as RabeItemOf<'agent'>).detail.edits).toEqual([
     { path: '/wt/a1/plain.txt', at: 5000, via: 'shell' },
     { path: '/wt/a1/f.txt', at: 5000, via: 'shell' },
   ])
@@ -972,9 +972,10 @@ test('an agent the cap dropped comes back when the list shows it running', async
     completed(5000)
   on('agent.list', async () => ({ value: listed }))
   await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
-  expect((state['rabe.items']?.value as RabeItem[]).some(item => item.id === 'agent:a4000')).toBe(
-    false,
-  )
+  expect(state['rabe.items']?.value).toHaveLength(MAX_ENDED)
+  expect(
+    ((state['rabe.items']?.value ?? []) as RabeItem[]).some(item => item.id === 'agent:a4000'),
+  ).toBe(false)
 
   listed = listed.map(one => (one.id === 'a4000' ? { ...one, status: 'running' } : one))
   await clock.advance(3000)
@@ -1135,7 +1136,7 @@ test("an agent's companion calls keep their start, end and the job or thread the
   await run(`${COMPANION} "oops"`, 'f1')
   await run(`${COMPANION} "main"`)
   await run('git status', 'f1')
-  const [item] = state['rabe.items']?.value as RabeItemOf<'agent'>[]
+  const [item] = (state['rabe.items']?.value ?? []) as RabeItemOf<'agent'>[]
   expect(item?.detail.codexCalls).toEqual([
     { at: 5000, command: 'task', text: `${COMPANION} "fg"`, endedAt: 5700, threadId: 'th-9' },
     { at: 5700, command: 'task', text: `${COMPANION} "bg"`, endedAt: 6400, jobId: 'task-mg1-ab' },
