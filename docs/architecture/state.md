@@ -16,7 +16,7 @@ This sets the shape of Rabe:
 - Shared code is pure. `model.ts` and `registry.ts` never see `$`.
 - Each file that writes items has its own small write loop (below).
 - `sources(on)` calls each source by name. A loop over an array of sources is refused.
-- A source gets `on`; the agents and Codex sources also get the user's price file (`pricesFile`). It imports the pure registry functions it needs.
+- A source gets `on`. Polled sources also get the shared `pollers` list. The agents and Codex sources get the user's price file (`pricesFile`). It imports the pure registry functions it needs.
 - An event may have only one hook without a matcher in the whole module. A second one stops the module from loading. Sources therefore give each hook a matcher, also when it has to match every event (`{ cwd: /^/ }` or `{ isInteractive: [true, false] }` on `session.start`, `{ agentId: /^/ }` on `turn.step`, `{ stop_hook_active: [true, false] }` on `classic.Stop`). Hooks with matchers, also equal ones, may repeat. `prompt.submit` takes a real matcher, such as `{ origin: { kind: 'task-notification' } }`.
 
 
@@ -86,6 +86,8 @@ The items live in one session value, `$.state` key `rabe.items`, an array in the
 To list items, read the value: `const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })`. A read while drawing subscribes the drawing, so a write draws it again.
 
 ### The write loop
+
+The [shared poll loop](../architecture.md#shared-poll-loop) stages item changes from every polled source. It commits them together after the sources finish. Event hooks use the immediate write loop below.
 
 Every file that writes items declares `write` and `forget` at its top level (the scanner does not follow `$` across an import). `write` writes only when the list changed, and tries again when another hook wrote first. `commit` applies the cap, so any write can drop items; `forget` then drops the per-item state of exactly those items:
 

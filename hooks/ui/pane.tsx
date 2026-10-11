@@ -67,11 +67,6 @@ async function refocus($: EngineInterface): Promise<void> {
   feed($, { type: 'refocused', isOpen: !!shown, isFocused: !!shown?.isFocused })
 }
 
-async function tick($: EngineInterface): Promise<void> {
-  const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
-  if (items.some(item => item.status === 'running')) $.ui.invalidate('ui.render')
-}
-
 // The store is the plugin's own JSON; an older Rabe may have written another
 // shape, and a summary before 0.4 has no session id.
 function asPrevious(value: unknown): RabePrevious | undefined {
@@ -591,7 +586,6 @@ export function pane(on: On, hours = baseHours): void {
         'Show background work: agents, Codex jobs, shells, monitors, cron jobs and workflows',
       immediate: true,
     })
-    $.clock.every(1000, () => void tick($))
 
     return next(e)
   })

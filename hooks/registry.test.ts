@@ -7,8 +7,10 @@ import {
   commit,
   endItem,
   MAX_ENDED,
+  type Poll,
   pastEnd,
   prune,
+  stage,
   updateItem,
 } from './registry'
 
@@ -156,4 +158,20 @@ test('add keeps seenAt when a full item comes back', () => {
 test('update treats objects with the same values in another key order as no change', () => {
   const items = [{ ...shell, seenAt: 500, tokens: { input: 10, output: 20 } }]
   expect(updateItem(items, shell.id, { tokens: { output: 20, input: 10 } })).toBe(items)
+})
+
+test('staged items keep the ended cap for the sources that follow', () => {
+  const poll: Poll = { items: [], changes: [] }
+  stage(poll, items => [
+    ...items,
+    ...Array.from({ length: MAX_ENDED + 1 }, (_, i) => ({
+      ...shell,
+      id: `shell:${i}`,
+      status: 'done' as const,
+      seenAt: i,
+      endedAt: i,
+    })),
+  ])
+  expect(poll.items).toHaveLength(MAX_ENDED)
+  expect(poll.items[0]?.id).toBe('shell:1')
 })

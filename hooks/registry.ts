@@ -90,3 +90,13 @@ export function prune<T>(
 
   return Object.fromEntries(Object.entries(record).filter(([id]) => !gone.includes(id)))
 }
+
+// A poll stages changes; event hooks still write immediately.
+export type Poll = { items: RabeItem[]; changes: Change[] }
+
+export function stage(poll: Poll, change: Change): void {
+  poll.changes.push(change)
+  poll.items = capEnded(change(poll.items))
+}
+
+export type Pollers = ((poll: Poll, trees: boolean, initial: boolean) => Promise<void>)[]

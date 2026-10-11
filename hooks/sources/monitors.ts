@@ -1,7 +1,17 @@
 import type { EngineInterface, On } from 'claude-code'
 
 import { type EndStatus, itemId, type RabeItem } from '../model'
-import { addItem, type Change, commit, endItem, prune, updateItem } from '../registry'
+import {
+  addItem,
+  type Change,
+  commit,
+  endItem,
+  type Poll,
+  type Pollers,
+  prune,
+  stage,
+  updateItem,
+} from '../registry'
 import {
   appendLines,
   endStatus,
@@ -11,16 +21,19 @@ import {
   taskOutput,
 } from '../tasks'
 
-const POLL_MS = 2000
 const MAX_READ = 4 * 1024 * 1024
 
 // Each event takes one hook without a matcher per plugin; these match every event.
-const ANY_START = { isInteractive: [true, false] }
 const ANY_STOP = { stop_hook_active: [true, false] }
 
 type BackgroundTask = { id: string; type: string; description: string; command?: string }
 
-async function write($: Pick<EngineInterface, 'state'>, change: Change): Promise<void> {
+async function write(
+  $: Pick<EngineInterface, 'state'>,
+  change: Change,
+  poll?: Poll,
+): Promise<void> {
+  if (poll) return stage(poll, change)
   for (;;) {
     const { value, version } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const next = commit(value, change)
@@ -97,20 +110,24 @@ function runningMonitors(items: RabeItem[]) {
   return items.flatMap(item => (item.kind === 'monitor' && item.status === 'running' ? [item] : []))
 }
 
-async function poll($: EngineInterface): Promise<void> {
+async function pollMonitors($: EngineInterface, poll: Poll): Promise<void> {
   try {
-    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const items = poll.items
     for (const item of runningMonitors(items)) {
       const path =
         item.detail.outputPath ?? (item.detail.taskId && taskOutput(items, item.detail.taskId))
       if (!path) continue
       const ended = await follow($, item.id, path)
       const now = await $.clock.now()
-      await write($, held => {
-        const next = updateItem(held, item.id, { detail: { outputPath: path } })
+      await write(
+        $,
+        held => {
+          const next = updateItem(held, item.id, { detail: { outputPath: path } })
 
-        return ended ? endItem(next, item.id, ended, now) : next
-      })
+          return ended ? endItem(next, item.id, ended, now) : next
+        },
+        poll,
+      )
     }
   } catch {}
 }
@@ -171,7 +188,13 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
   )
 }
 
-export function monitors(on: On): void {
+export function monitors(on: On, pollers: Pollers): void {
+  on('session.start', { isInteractive: [true, false] }, async ($, e, next) => {
+    pollers.push(async (poll, _trees, initial) => {
+      if (!initial) await pollMonitors($, poll)
+    })
+    return next(e)
+  })
   on('tool.call', { tool: 'Monitor' }, async ($, e, next) => {
     const answer = await next(e)
     try {
@@ -223,12 +246,6 @@ export function monitors(on: On): void {
     try {
       if (e.background_tasks) await correct($, e.background_tasks)
     } catch {}
-
-    return next(e)
-  })
-
-  on('session.start', ANY_START, async ($, e, next) => {
-    $.clock.every(POLL_MS, () => void poll($))
 
     return next(e)
   })

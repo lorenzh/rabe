@@ -11,10 +11,19 @@ import {
   type RabeItemOf,
 } from '../model'
 import { type CodexRequest, codexUsd, type Prices, parsePrices, withOverride } from '../prices'
-import { addItem, type Change, commit, endItem, prune, updateItem } from '../registry'
+import {
+  addItem,
+  type Change,
+  commit,
+  endItem,
+  type Poll,
+  type Pollers,
+  prune,
+  stage,
+  updateItem,
+} from '../registry'
 import { shellWrites } from '../writes'
 
-const POLL_MS = 2000
 const CODEX_DATA = 'plugins/data/codex-openai-codex'
 const CODEX_PLUGIN = 'codex@openai-codex'
 const MAX_READ = 4 * 1024 * 1024
@@ -326,7 +335,12 @@ export function codexItem(job: CodexJob, session: CodexSession | undefined): New
   return session && !isUnchanged ? { ...item, costUsd: session.usd } : item
 }
 
-async function write($: Pick<EngineInterface, 'state'>, change: Change): Promise<void> {
+async function write(
+  $: Pick<EngineInterface, 'state'>,
+  change: Change,
+  poll?: Poll,
+): Promise<void> {
+  if (poll) return stage(poll, change)
   for (;;) {
     const { value, version } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const next = commit(value, change)
@@ -506,6 +520,7 @@ async function refresh(
   items: RabeItem[],
   looks: Looks,
   file: string,
+  poll: Poll,
 ): Promise<void> {
   const saved = parseJson(String(await $.fs.read(jobPath).catch(() => '')))
   const job: CodexJob = { ...entry, ...saved, id: entry.id }
@@ -522,15 +537,15 @@ async function refresh(
   // a finished job the cap would drop again: its session file is not read
   if (!held && commit(items, change(codexItem(job, undefined))) === undefined) return
   const session = await readSession($, codexHome, job, held, looks, file)
-  await write($, change(codexItem(job, session)))
+  await write($, change(codexItem(job, session)), poll)
 }
 
-async function poll($: EngineInterface, file: string): Promise<void> {
+async function pollCodex($: EngineInterface, file: string, poll: Poll): Promise<void> {
   const { claude, codex } = await homes($)
   const stateRoot = `${claude}/${CODEX_DATA}/state`
   const sessionId = await $.session.id()
   const { startedAt: since } = await $.session.usage()
-  const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+  const items = poll.items
   const looks: Looks = { asked: new Map(), known: new Map(), stop: new AbortController() }
   // ponytail: one stat per workspace folder per poll; keep a folder list in $.state if there are hundreds
   for (const dir of await $.fs.list(stateRoot).catch(() => [])) {
@@ -556,11 +571,12 @@ async function poll($: EngineInterface, file: string): Promise<void> {
         items,
         looks,
         file,
+        poll,
       ).catch(() => undefined)
     }
   }
   looks.stop.abort()
-  await write($, linkForwarders)
+  await write($, linkForwarders, poll)
 }
 
 function firstLine(text: string): string {
@@ -614,24 +630,17 @@ async function cancel($: EngineInterface, id: string): Promise<{ text: string }>
   return { text: `Stopped codex ${item.detail.jobId}` }
 }
 
-export function codex(on: On, file: string): void {
+export function codex(on: On, file: string, pollers: Pollers): void {
   on('session.start', { isInteractive: true }, async ($, e, next) => {
+    pollers.push(async (poll, _trees, initial) => {
+      if (!initial) await pollCodex($, file, poll)
+    })
     const started = await next(e)
     await $.command.register({
       name: 'rabe-stop',
       description: 'Stop a background item that Rabe shows, by its id',
       argumentHint: '<item id>',
       immediate: true,
-    })
-    let isPolling = false
-    $.clock.every(POLL_MS, () => {
-      if (isPolling) return
-      isPolling = true
-      poll($, file)
-        .catch(() => undefined)
-        .finally(() => {
-          isPolling = false
-        })
     })
 
     return started
