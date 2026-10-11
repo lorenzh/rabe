@@ -103,31 +103,48 @@ case $cmd in
     fi ;;
   capture-pane)
     [ "${FAKE_CAP:-}" = fail ] && exit 1
-    cat "$FAKE/screen" 2>/dev/null
-    printf '%s\n' "${FAKE_SCREEN:-}"
+    # The transcript: what the script typed, and FAKE_SCREEN.
+    mapfile -t left < <(cat "$FAKE/screen" 2>/dev/null; printf '%s\n' "${FAKE_SCREEN:-}")
     # The pane opens on /rabe; FAKE_PANE=none keeps it closed.
-    tabs=
-    grep -qx /rabe "$FAKE/screen" 2>/dev/null && [ "${FAKE_PANE:-}" != none ] &&
-      tabs='transcript │ 1: Items  2: Cost  3: Effects  4: Timeline'
-    if [ -z "${FAKE_LIST:-}" ]; then
-      [ -n "$tabs" ] && echo "$tabs"
+    right=()
+    if grep -qx /rabe "$FAKE/screen" 2>/dev/null && [ "${FAKE_PANE:-}" != none ]; then
+      tabs=(' 1: Items 4    2: Cost    3: Effects    4: Timeline' '─━━━━━━━━━━──────────')
+      [ -n "${FAKE_DETAIL:-}" ] && tabs+=(' b back · esc close')
+      if [ -z "${FAKE_LIST:-}" ]; then
+        right=("${tabs[@]}")
+      else
+        read -r ring sel 2>/dev/null <"$FAKE/ring" || { ring=$FAKE_RING; sel=$FAKE_RING; }
+        # A scrolled list starts at the lines just above the selected row: its
+        # group header and agent heading show, the tab row and the rows above
+        # do not.
+        from=0
+        if [ -n "${FAKE_SCROLL:-}" ] && [ "$ring" != -1 ]; then from=$sel; else right=("${tabs[@]}"); fi
+        n=0
+        for w in $FAKE_LIST; do
+          case $w in
+            H:*) line="▾ ${w#H:} 2" ;;
+            F:*) line=" ◐ ${w#F:}" ;;
+            *) [ "$n" = "$sel" ] && m=▌ || m=' '
+               [ "$w" = i ] && line="$m  ▶ row $n" || line="$m▶ row $n" ;;
+          esac
+          [ "$n" -ge "$from" ] && right+=("$line")
+          [[ $w == [ri] ]] && n=$((n + 1))
+        done
+      fi
+    fi
+    if [ ${#right[@]} = 0 ]; then
+      printf '%s\n' "${left[@]}"
+    elif [ -n "${FAKE_INLINE:-}" ]; then
+      # Inline, as in a narrow terminal: a box under the transcript.
+      printf '%s\n' "${left[@]}" '╭──────────────────────'
+      printf '│ %s\n' "${right[@]}"
+      echo '╰──────────────────────'
     else
-      read -r ring sel 2>/dev/null <"$FAKE/ring" || { ring=$FAKE_RING; sel=$FAKE_RING; }
-      # A scrolled list starts at the lines just above the selected row: its
-      # group header and agent heading show, the tab row and the rows above
-      # do not.
-      from=0
-      if [ -n "${FAKE_SCROLL:-}" ] && [ "$ring" != -1 ]; then from=$sel; else echo "$tabs"; fi
-      n=0
-      for w in $FAKE_LIST; do
-        case $w in
-          H:*) line="▾ ${w#H:} 2" ;;
-          F:*) line=" ◐ ${w#F:}" ;;
-          *) [ "$n" = "$sel" ] && m=▌ || m=' '
-             [ "$w" = i ] && line="$m  ▶ row $n" || line="$m▶ row $n" ;;
-        esac
-        [ "$n" -ge "$from" ] && echo "           │$line"
-        [[ $w == [ri] ]] && n=$((n + 1))
+      # Docked, as at 120 columns: right of a border down from the top line.
+      right=('                     ✕' "${right[@]}")
+      for ((i = 0; i < (${#left[@]} > ${#right[@]} ? ${#left[@]} : ${#right[@]}); i++)); do
+        l=${left[i]:-}
+        printf '%-24s│%s\n' "${l:0:23}" "${right[i]:-}"
       done
     fi ;;
   kill-server | kill-session)
@@ -177,6 +194,12 @@ expect 'the plugin path reaches Claude Code as one argument' grep -Fxq -- "$odd"
 stop
 faked FAKE_PANE=none 'a run where Rabe never opens is a setup error' 2 'did not open' --shells 0
 stop
+faked FAKE_PANE=none FAKE_SCREEN=$'Claude: Step 1: Install it\nNothing runs in the background.' \
+  'tab and empty-state text in the transcript is no open pane' 2 'did not open' --shells 0
+stop
+faked FAKE_PANE=none FAKE_SCREEN=$'▾ SHELLS 2\n▌▶ sleep 30' \
+  'list lines in the transcript are no open pane' 2 'did not open' --shells 0
+stop
 faked FAKE_CAP=fail 'a failed capture is a setup error' 2 'could not capture' --shells 0
 stop
 faked FAKE_SHELLS=none 'the seed waits for the shells, not the prompt text' 2 'did not start' \
@@ -191,7 +214,10 @@ all_dead() {
 expect 'cleanup stops the seeded shells' all_dead
 expect 'cleanup leaves a shell of another run alone' alive "$(cat "$FAKE/foreign")"
 stop
-faked FAKE_SCREEN='b: back' 'rounds run with a detail open' 0 'round 2: captured' --shells 0 --repeat 2
+faked FAKE_SCREEN='Use b: back to leave' 'b: back in the transcript is no open detail' 0 'round 1: captured' --shells 0
+expect 'the round does not press b for the transcript' test "$(grep -c '^b$' "$FAKE/keys")" = 0
+stop
+faked FAKE_DETAIL=1 'rounds run with a detail open' 0 'round 2: captured' --shells 0 --repeat 2
 expect 'each round leaves the detail and goes to the first tab' \
   test "$(grep -c '^b$' "$FAKE/keys"):$(grep -c '^1$' "$FAKE/keys")" = 2:2
 stop
@@ -206,6 +232,13 @@ faked FAKE_LIST="H:SHELLS $(printf 'r %.0s' $(seq 30))" FAKE_STOPS=3 FAKE_RING=2
 stop
 faked FAKE_LIST='H:AGENTS r r H:SHELLS r r H:MONITORS r r' FAKE_STOPS=3 FAKE_RING=4 FAKE_SCROLL=1 \
   'a scrolled list does not take a later group for the top' 0 'round 1: pass' --shells 0 --expect '│▌▶ row 0$'
+stop
+faked FAKE_LIST='H:AGENTS r r H:SHELLS r r H:MONITORS r r' FAKE_STOPS=3 FAKE_RING=4 FAKE_SCROLL=1 \
+  FAKE_SCREEN=' 1: Items' 'a tab row quoted in the transcript is no list top' 0 'round 1: pass' \
+  --shells 0 --expect '│▌▶ row 0$'
+stop
+faked FAKE_LIST='H:SHELLS r r r r' FAKE_STOPS=3 FAKE_RING=2 FAKE_INLINE=1 'an inline pane resets too' 0 \
+  'round 1: pass' --shells 0 --expect '^│ ▌▶ row 0$'
 stop
 faked FAKE_LIST='H:SHELLS F:reviewer i i H:MONITORS r' FAKE_STOPS=3 FAKE_RING=1 \
   'an agent heading above the first row still resets' 0 'round 1: pass' --shells 0 --expect '│▌  ▶ row 0$'

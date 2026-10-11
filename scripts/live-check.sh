@@ -2,6 +2,11 @@
 # Live check of Rabe in a real Claude Code session, driven through tmux.
 # See docs/testing.md.
 set -u
+# The pane is found by character column, which needs a UTF-8 locale.
+case ${LC_ALL:-${LC_CTYPE:-${LANG:-}}} in
+  *[Uu][Tt][Ff]*8*) ;;
+  *) export LC_ALL=C.UTF-8 ;;
+esac
 
 usage() {
   cat <<'EOF'
@@ -146,42 +151,58 @@ seeded() {
   ps -o args= -p "$pids" | grep -Ecx "(.*/)?sleep ($durations)"
 }
 
-# The pane starts the line, or follows the transcript's border.
-starts() { [[ $1 == "$2"* || ${1#*│} == "$2"* ]]; }
-# The list has rows: a group header or the selected row's marker ▌ shows. A
-# long list can scroll its header away.
-has_list() {
+# Reads the Rabe pane's own lines into `view`. The pane is the text right of
+# the longest vertical run of │: the border of the docked pane, or the left
+# edge of the inline box under ╭, which has one more column of padding.
+# Transcript text beside or above the pane never counts.
+look() {
+  local screen line c i run best=0 col=-1 at=0 pad=0
+  local -a lines
+  screen=$(cap) || fail "could not capture the screen in round $r"
+  mapfile -t lines <<<"$screen"
+  view=()
+  for i in "${!lines[@]}"; do
+    line=${lines[i]}
+    for ((c = 0; c < ${#line}; c++)); do
+      [ "${line:c:1}" = │ ] || continue
+      [ "$i" -gt 0 ] && [ "${lines[i - 1]:c:1}" = │ ] && continue
+      for ((run = i + 1; run < ${#lines[@]}; run++)); do
+        [ "${lines[run]:c:1}" = │ ] || break
+      done
+      [ $((run - i)) -gt $best ] && best=$((run - i)) col=$c at=$i
+    done
+  done
+  [ $col -ge 0 ] || return 0
+  [ "$at" -gt 0 ] && [ "${lines[at - 1]:col:1}" = ╭ ] && pad=1
+  for ((i = at; i < at + best; i++)); do view+=("${lines[i]:col+1+pad}"); done
+}
+# A line of the pane starts with this text.
+shows() {
   local line
-  while IFS= read -r line; do
-    starts "$line" ▾ && return 0
-    starts "$line" ▌ && return 0
-  done < <(cap)
+  for line in "${view[@]}"; do [[ $line == "$1"* ]] && return 0; done
   return 1
 }
+# The list has rows: a group header or the selected row's marker ▌ shows. A
+# long list can scroll its header away.
+has_list() { shows ▾ || shows ▌; }
 # The pane shows its tab row, its empty state or its list.
-opened() {
-  local screen
-  screen=$(cap) || fail "could not capture the screen in round $r"
-  grep -Eq '1: I|Nothing runs in the background' <<<"$screen" || has_list
-}
-# The first row of the list is selected: the marker ▌ is on the row under the
-# first open group header, or in SHELLS and MONITORS under the agent heading
-# that comes first (its rows are indented). A long list scrolls the pane, and
-# then a later group's header can be the first one on screen, so the tab row
-# must show above it.
+opened() { shows ' 1: I' || shows ' Nothing runs in the background' || has_list; }
+# The first row of the list is selected: below the tab row, the marker ▌ is on
+# the row under the first open group header, or in SHELLS and MONITORS under
+# the agent heading that comes first (its rows are indented). A long list
+# scrolls the pane, and then a later group's header can be the first one on
+# screen, so the tab row must show above it.
 first_selected() {
-  local -a lines
   local i row tabs=0
-  mapfile -t lines < <(cap)
-  for i in "${!lines[@]}"; do
-    [[ ${lines[i]} == *'1: Items'* ]] && tabs=1
-    starts "${lines[i]}" ▾ || continue
+  for i in "${!view[@]}"; do
+    [[ ${view[i]} == ' 1: I'* ]] && tabs=1
+    [[ ${view[i]} == ▾* ]] || continue
     [ $tabs = 1 ] || return 1
-    row=${lines[i + 1]:-}
-    if [[ ${lines[i]} =~ ▾\ (SHELLS|MONITORS) && ${lines[i + 2]:-} =~ (^|│)(▌|\ )\ \ [^\ ] ]]; then
-      row=${lines[i + 2]}
+    row=${view[i + 1]:-}
+    if [[ ${view[i]} =~ ^▾\ (SHELLS|MONITORS) && ${view[i + 2]:-} =~ ^(▌|\ )\ \ [^\ ] ]]; then
+      row=${view[i + 2]}
     fi
-    starts "$row" ▌
+    [[ $row == ▌* ]]
     return
   done
   return 1
@@ -216,10 +237,10 @@ for r in $(seq 1 "$repeat"); do
   k -l /rabe
   k Enter
   sleep 2
-  for i in $(seq 1 15); do opened && break; sleep 1; done
+  for i in $(seq 1 15); do look; opened && break; sleep 1; done
   opened || fail "Rabe did not open in round $r"
   # /rabe keeps the open detail, the tab and the selection of the last round.
-  if cap | grep -Eq 'b:? back'; then
+  if printf '%s\n' "${view[@]}" | grep -Eq 'b:? back'; then
     k b
     sleep 0.5
   fi
@@ -229,12 +250,15 @@ for r in $(seq 1 "$repeat"); do
   # on any row: press Up until the first row shows the marker. A long list
   # scrolls instead and needs Up until the tab row shows, so allow more
   # presses than the seeded rows.
+  look
   if has_list; then
     for i in $(seq 1 $((shells + 100))); do
+      look
       first_selected && break
       k Up
       sleep 0.3
     done
+    look
     first_selected || fail "could not select the first row in round $r"
   fi
   sleep 1
