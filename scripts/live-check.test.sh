@@ -52,7 +52,10 @@ cmd=$1
 shift
 case $cmd in
   has-session) exit 1 ;;
+  # FAKE_BUSY: the socket already serves a session of someone else.
+  list-sessions) [ "${FAKE_BUSY:-}" = 1 ] && { echo 'work: 1 windows'; exit 0; }; exit 1 ;;
   new-session)
+    printf '%s\n' "$@" >"$FAKE/argv"
     [ "${FAKE_NEW:-}" = fail ] && exit 1
     nohup bash -c 'while :; do
       if [ -f "$0/spawn" ]; then
@@ -79,19 +82,22 @@ case $cmd in
       fi
     else
       printf '%s\n' "$1" >>"$FAKE/keys"
-      # The focus ring walks FAKE_ROWS rows and FAKE_STOPS other stops (tabs,
+      # FAKE_LIST is the list, word by word: H:NAME a group header, F:TITLE an
+      # agent heading, r a row, i a row indented under the heading.
+      # The focus ring walks the rows and FAKE_STOPS other stops (tabs,
       # controls) and wraps, as the engine does when the list fits. The marker
       # moves only when the ring lands on a row.
       # With FAKE_SCROLL the list is longer than the pane: Up stops on the first
-      # row, as the engine scrolls instead of wrapping.
-      if [ "$1" = Up ] && [ -n "${FAKE_ROWS:-}" ] && [ "${FAKE_UP:-}" != ignore ]; then
+      # row, and one more Up scrolls the tab row into view (ring -1).
+      if [ "$1" = Up ] && [ -n "${FAKE_LIST:-}" ] && [ "${FAKE_UP:-}" != ignore ]; then
+        rows=$(tr ' ' '\n' <<<"$FAKE_LIST" | grep -Ec '^[ri]$')
         read -r ring sel 2>/dev/null <"$FAKE/ring" || { ring=$FAKE_RING; sel=$FAKE_RING; }
         if [ -n "${FAKE_SCROLL:-}" ]; then
-          [ "$ring" -gt 0 ] && ring=$((ring - 1))
+          ring=$((ring > 0 ? ring - 1 : -1))
         else
-          ring=$(((ring - 1 + FAKE_ROWS + FAKE_STOPS) % (FAKE_ROWS + FAKE_STOPS)))
+          ring=$(((ring - 1 + rows + FAKE_STOPS) % (rows + FAKE_STOPS)))
         fi
-        [ "$ring" -lt "$FAKE_ROWS" ] && sel=$ring
+        [ "$ring" -ge 0 ] && [ "$ring" -lt "$rows" ] && sel=$ring
         echo "$ring $sel" >"$FAKE/ring"
       fi
     fi ;;
@@ -99,19 +105,34 @@ case $cmd in
     [ "${FAKE_CAP:-}" = fail ] && exit 1
     cat "$FAKE/screen" 2>/dev/null
     printf '%s\n' "${FAKE_SCREEN:-}"
-    if [ -n "${FAKE_ROWS:-}" ]; then
-      read -r ring sel 2>/dev/null <"$FAKE/ring" || sel=$FAKE_RING
-      # A scrolled list shows the header and the rows above the selection
-      # only once the selection reaches the first row.
-      top=0
-      [ -n "${FAKE_SCROLL:-}" ] && top=$sel
-      [ "$top" = 0 ] && echo "transcript │▾ SHELLS $FAKE_ROWS running"
-      for i in $(seq "$top" $((FAKE_ROWS - 1))); do
-        [ "$i" = "$sel" ] && m=▌ || m=' '
-        echo "           │$m▶ row $i"
+    # The pane opens on /rabe; FAKE_PANE=none keeps it closed.
+    tabs=
+    grep -qx /rabe "$FAKE/screen" 2>/dev/null && [ "${FAKE_PANE:-}" != none ] &&
+      tabs='transcript │ 1: Items  2: Cost  3: Effects  4: Timeline'
+    if [ -z "${FAKE_LIST:-}" ]; then
+      [ -n "$tabs" ] && echo "$tabs"
+    else
+      read -r ring sel 2>/dev/null <"$FAKE/ring" || { ring=$FAKE_RING; sel=$FAKE_RING; }
+      # A scrolled list starts at the lines just above the selected row: its
+      # group header and agent heading show, the tab row and the rows above
+      # do not.
+      from=0
+      if [ -n "${FAKE_SCROLL:-}" ] && [ "$ring" != -1 ]; then from=$sel; else echo "$tabs"; fi
+      n=0
+      for w in $FAKE_LIST; do
+        case $w in
+          H:*) line="▾ ${w#H:} 2" ;;
+          F:*) line=" ◐ ${w#F:}" ;;
+          *) [ "$n" = "$sel" ] && m=▌ || m=' '
+             [ "$w" = i ] && line="$m  ▶ row $n" || line="$m▶ row $n" ;;
+        esac
+        [ "$n" -ge "$from" ] && echo "           │$line"
+        [[ $w == [ri] ]] && n=$((n + 1))
       done
     fi ;;
-  kill-server) kill "$(cat "$FAKE/pane")" 2>/dev/null ;;
+  kill-server | kill-session)
+    echo "$cmd" >>"$FAKE/killed"
+    kill "$(cat "$FAKE/pane")" 2>/dev/null ;;
 esac
 exit 0
 EOF
@@ -144,6 +165,17 @@ expect() { # name, condition...
 }
 
 faked FAKE_NEW=fail 'a failed session start is a setup error' 2 'could not start' --shells 0
+expect 'a failed session start kills no tmux server' test ! -e "$FAKE/killed"
+stop
+faked FAKE_BUSY=1 'a socket with any session is refused' 2 'in use' --shells 0
+expect 'a refused socket keeps its sessions' test ! -e "$FAKE/killed"
+stop
+odd="$fake/it's \$(touch $fake/ran)"
+mkdir -p "$odd"
+faked 'a plugin path with quotes starts as it is' 0 'round 1: captured' --shells 0 --plugin-dir "$odd"
+expect 'the plugin path reaches Claude Code as one argument' grep -Fxq -- "$odd" "$FAKE/argv"
+stop
+faked FAKE_PANE=none 'a run where Rabe never opens is a setup error' 2 'did not open' --shells 0
 stop
 faked FAKE_CAP=fail 'a failed capture is a setup error' 2 'could not capture' --shells 0
 stop
@@ -164,15 +196,21 @@ expect 'each round leaves the detail and goes to the first tab' \
   test "$(grep -c '^b$' "$FAKE/keys"):$(grep -c '^1$' "$FAKE/keys")" = 2:2
 stop
 # 22 Up presses on 4 rows and 3 other stops would wrap onto row 1.
-faked FAKE_ROWS=4 FAKE_STOPS=3 FAKE_RING=2 'each round stops on the first row' 0 'round 2: pass' \
+faked FAKE_LIST='H:SHELLS r r r r' FAKE_STOPS=3 FAKE_RING=2 'each round stops on the first row' 0 'round 2: pass' \
   --shells 2 --timeout 50 --repeat 2 --expect '│▌▶ row 0$'
 expect 'the reset stops pressing once the first row shows' \
   test "$(grep -c '^Up$' "$FAKE/keys")" = 2
 stop
-faked FAKE_ROWS=30 FAKE_STOPS=3 FAKE_RING=25 FAKE_SCROLL=1 'a long list resets with its header scrolled away' 0 \
-  'round 1: pass' --shells 0 --expect '│▌▶ row 0$'
+faked FAKE_LIST="H:SHELLS $(printf 'r %.0s' $(seq 30))" FAKE_STOPS=3 FAKE_RING=25 FAKE_SCROLL=1 \
+  'a long list resets with its header scrolled away' 0 'round 1: pass' --shells 0 --expect '│▌▶ row 0$'
 stop
-faked FAKE_ROWS=4 FAKE_STOPS=3 FAKE_RING=2 FAKE_UP=ignore 'a first row that never shows is a setup error' 2 \
+faked FAKE_LIST='H:AGENTS r r H:SHELLS r r H:MONITORS r r' FAKE_STOPS=3 FAKE_RING=4 FAKE_SCROLL=1 \
+  'a scrolled list does not take a later group for the top' 0 'round 1: pass' --shells 0 --expect '│▌▶ row 0$'
+stop
+faked FAKE_LIST='H:SHELLS F:reviewer i i H:MONITORS r' FAKE_STOPS=3 FAKE_RING=1 \
+  'an agent heading above the first row still resets' 0 'round 1: pass' --shells 0 --expect '│▌  ▶ row 0$'
+stop
+faked FAKE_LIST='H:SHELLS r r r r' FAKE_STOPS=3 FAKE_RING=2 FAKE_UP=ignore 'a first row that never shows is a setup error' 2 \
   'could not select the first row' --shells 0
 stop
 

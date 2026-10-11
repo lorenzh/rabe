@@ -89,13 +89,15 @@ fi
 claude=${CLAUDE:-claude}
 command -v tmux >/dev/null || fail "tmux is not installed"
 command -v "$claude" >/dev/null || fail "$claude is not on PATH"
-tmux -L "$name" has-session -t "$name" 2>/dev/null && fail "tmux socket $name is in use; pick another --name"
+# Any session on the socket belongs to someone else, and cleanup must not end it.
+tmux -L "$name" list-sessions >/dev/null 2>&1 && fail "tmux socket $name is in use; pick another --name"
 
 dir=$(mktemp -d "${TMPDIR:-/tmp}/rabe-live.XXXXXX")
 out=$dir/captures
 mkdir -p "$out"
 base=$((3600 + RANDOM))
 root=
+started=0
 
 descendants() {
   local c
@@ -113,7 +115,7 @@ cleanup() {
   fi
   local pids=
   [ -n "$root" ] && pids=$(descendants "$root")
-  tmux -L "$name" kill-server 2>/dev/null
+  [ $started = 1 ] && tmux -L "$name" kill-session -t "=$name" 2>/dev/null
   [ -n "$pids" ] && kill $pids 2>/dev/null
   rm -rf "$dir"
 }
@@ -127,9 +129,11 @@ wait_for() { # regex, seconds
   return 1
 }
 
+# Separate arguments run without a shell, so no path is parsed as shell code.
 tmux -L "$name" new-session -d -s "$name" -x "$cols" -y "$rows" -c "$dir" \
-  "$claude --plugin-dir '$plugin' --allowedTools 'Bash(sleep:*)'" ||
+  "$claude" --plugin-dir "$plugin" --allowedTools 'Bash(sleep:*)' ||
   fail "could not start the tmux session"
+started=1
 root=$(tmux -L "$name" display-message -p -t "$name" '#{pane_pid}')
 [[ $root =~ ^[0-9]+$ ]] && [ "$root" -gt 1 ] || { root= && fail "could not find the Claude Code process"; }
 
@@ -154,17 +158,32 @@ has_list() {
   done < <(cap)
   return 1
 }
-# The first row is the line under the first group header; the selected row
-# starts with the marker ▌.
+# The pane shows its tab row, its empty state or its list.
+opened() {
+  local screen
+  screen=$(cap) || fail "could not capture the screen in round $r"
+  grep -Eq '1: I|Nothing runs in the background' <<<"$screen" || has_list
+}
+# The first row of the list is selected: the marker ▌ is on the row under the
+# first open group header, or in SHELLS and MONITORS under the agent heading
+# that comes first (its rows are indented). A long list scrolls the pane, and
+# then a later group's header can be the first one on screen, so the tab row
+# must show above it.
 first_selected() {
-  local line seen=0
-  while IFS= read -r line; do
-    if [ $seen = 1 ]; then
-      starts "$line" ▌
-      return
+  local -a lines
+  local i row tabs=0
+  mapfile -t lines < <(cap)
+  for i in "${!lines[@]}"; do
+    [[ ${lines[i]} == *'1: Items'* ]] && tabs=1
+    starts "${lines[i]}" ▾ || continue
+    [ $tabs = 1 ] || return 1
+    row=${lines[i + 1]:-}
+    if [[ ${lines[i]} =~ ▾\ (SHELLS|MONITORS) && ${lines[i + 2]:-} =~ (^|│)(▌|\ )\ \ [^\ ] ]]; then
+      row=${lines[i + 2]}
     fi
-    starts "$line" ▾ && seen=1
-  done < <(cap)
+    starts "$row" ▌
+    return
+  done
   return 1
 }
 
@@ -197,6 +216,8 @@ for r in $(seq 1 "$repeat"); do
   k -l /rabe
   k Enter
   sleep 2
+  for i in $(seq 1 15); do opened && break; sleep 1; done
+  opened || fail "Rabe did not open in round $r"
   # /rabe keeps the open detail, the tab and the selection of the last round.
   if cap | grep -Eq 'b:? back'; then
     k b
@@ -206,7 +227,8 @@ for r in $(seq 1 "$repeat"); do
   sleep 0.5
   # The arrows wrap where the list fits, so a fixed count of Up presses can end
   # on any row: press Up until the first row shows the marker. A long list
-  # scrolls instead, so allow more presses than the seeded rows.
+  # scrolls instead and needs Up until the tab row shows, so allow more
+  # presses than the seeded rows.
   if has_list; then
     for i in $(seq 1 $((shells + 100))); do
       first_selected && break
