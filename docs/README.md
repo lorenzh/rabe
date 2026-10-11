@@ -25,9 +25,9 @@ Use this index to find the guide that matches your question.
 - [Sources](architecture/sources.md): source contract, source modules, and source tests.
 - [Price estimate](architecture/prices.md): price lookup and cost estimates.
 - [UI rendering](architecture/ui.md): view contract, renderer, palette, cells, sizing, and band.
-- [Pane interaction state](architecture/interaction.md): pure transitions for focus, held order, regain, opening and arming.
+- [Pane interaction state](architecture/interaction.md): pure transitions for focus, held order, regain, opening, closing and arming.
 - [Focus and keys](architecture/focus-and-keys.md): pane behavior, key controls, and focus moves.
-- [Focus order and arming](architecture/focus-order.md): held order, append-only slots, target-bound keys, and arming.
+- [Focus order and arming](architecture/focus-order.md): held order, append-only slots, gone rows that leave the lists, target-bound keys, and arming.
 - [View behavior](architecture/views.md): tabs, cron schedules, workflow agent counts, inert stop controls, removed items, session summaries, full command and prompt details, and copy controls.
 
 ## Feasibility

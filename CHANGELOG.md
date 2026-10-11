@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Fixed
+
+- A removed or gone row leaves the Items list and the Effects tab at once instead of staying as a dim `gone` slot; tabs and buttons keep their places, Enter on a row waits until the focus is back on the row you chose, and closing the pane clears the `gone` slots of an open item and the Cost and Timeline tabs ([#125](https://github.com/lorenzh/rabe/pull/125), fixes [#122](https://github.com/lorenzh/rabe/issues/122))
+
 ## [0.6.0] - 2026-10-11
 
 ### Fixed

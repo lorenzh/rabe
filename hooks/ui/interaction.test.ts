@@ -64,6 +64,22 @@ test('regain is bounded, retries after refusal and becomes stale after a person 
   expect(isHeldBack(state, { surface: 'terminal', element: 'row:b' })).toBe(false)
 })
 
+test('a row that leaves above the ring asks a regain; the ring row itself only holds presses back', () => {
+  let state = interact(interact(IDLE, focus('row:a')).state, draw(true, 'dock', true)).state
+  const above = interact(state, draw())
+  expect(above.state.shift?.key).toBe('row:a')
+  expect(above.effects).toEqual([{ type: 'regain', want: above.state.shift }])
+  state = interact(interact(IDLE, focus('row:x')).state, draw(true, 'dock', true)).state
+  const own = interact(state, draw())
+  expect(own.state.shift?.key).toBe('row:x')
+  expect(own.effects).toEqual([])
+  expect(isHeldBack(own.state, { surface: 'terminal', element: 'row:a' })).toBe(true)
+  state = interact(interact(own.state, draw(false)).state, draw()).state
+  expect(interact(own.state, draw(false)).effects).toEqual([])
+  expect(interact(interact(own.state, draw(false)).state, draw()).effects).toEqual([])
+  expect(interact(state, focus('row:a')).state.shift).toBeUndefined()
+})
+
 test('regain success leaves arming unchanged; a resize refocuses only a held pane', () => {
   let state = interact(interact(IDLE, focus('row:a')).state, draw()).state
   state = interact(state, draw(true, 'dock', true)).state
@@ -121,6 +137,18 @@ test('opening clears the hold and keeps asking for keys only until the pane rece
   expect(interact(state, draw(false)).effects).toEqual([{ type: 'refocus', after: 50 }])
   state = interact(state, draw()).state
   expect(interact(state, draw(false)).effects).toEqual([])
+})
+
+test('closing drops held slots and focus evidence without losing pending press counts', () => {
+  let state = interact(IDLE, { type: 'opened' }).state
+  state = interact(state, focus('row:a')).state
+  state = interact(state, draw()).state
+  state = interact(state, draw(true, 'dock', true)).state
+  state = interact(state, { type: 'press-start' }).state
+  const closed = interact(state, { type: 'closed' })
+  expect(closed.state).toEqual({ ...IDLE, pressing: 1 })
+  expect(closed.effects).toEqual([])
+  expect(interact(closed.state, { type: 'press-end' }).state.pressing).toBe(0)
 })
 
 test('an all-fit arrow computed at the safe tab survives delivery after the press ended', () => {

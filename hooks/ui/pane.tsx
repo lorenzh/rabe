@@ -608,6 +608,13 @@ export function pane(on: On, hours = baseHours): void {
     return { text: 'Rabe opened.' }
   })
 
+  // A close the host carries out clears every hold; a canceled one keeps it.
+  on('ui.close', { id: PANE }, async ($, e, next) => {
+    const result = await next(e)
+    if (!(await $.ui.panes()).some(one => one.id === PANE)) feed($, { type: 'closed' })
+    return result
+  }).catch((_$, e, next) => next(e))
+
   on('session.end', { reason: /^/ }, async ($, e, next) => {
     await remember($, e.resume?.id ?? e.sessionId)
 

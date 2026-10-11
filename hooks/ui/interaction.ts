@@ -42,7 +42,7 @@ export const heldOf = (state: Interaction, surface: string, sel: Selection): Hel
 
 export type InteractionEvent =
   | ArmEvent
-  | { type: 'opened' | 'press-start' | 'press-end' | 'unfocused' }
+  | { type: 'opened' | 'closed' | 'press-start' | 'press-end' | 'unfocused' }
   | { type: 'render'; model: Model; size: Size; selection: Selection; placement: string }
   | { type: 'focus-start'; key: string }
   | { type: 'refocused'; isOpen: boolean; isFocused: boolean }
@@ -109,6 +109,8 @@ export function interact(
         },
         effects: [{ type: 'refocus', after: 50 }],
       }
+    case 'closed':
+      return { state: { ...IDLE, pressing: state.pressing }, effects }
     case 'refocused': {
       if (!state.opening) return { state, effects }
       const opening =
@@ -157,10 +159,14 @@ export function interact(
       const out = hold(event.pieces, held, event.inPlace)
       let shift = state.shift
       if (held && shifts(held, out.held, state.ringOn) && state.ringOn) {
-        shift = { key: state.ringOn, isAsked: false, tries: 0 }
+        // Rows that come and go keep moving the ring: the tries stay bounded.
+        const tries = state.shift?.key === state.ringOn ? state.shift.tries : 0
+        shift = { key: state.ringOn, isAsked: false, tries }
       }
       if (shift && seat && !seat.isFocused && event.isFocused) shift = { ...shift, tries: 0 }
-      if (shift && !shift.isAsked && shift.tries < 3 && event.isFocused) {
+      // A ring row that left has no key to regain: its presses stay held back.
+      const isHeld = out.held.some(one => one.key === shift?.key)
+      if (shift && isHeld && !shift.isAsked && shift.tries < 3 && event.isFocused) {
         shift = { ...shift, isAsked: true, tries: shift.tries + 1 }
         effects.push({ type: 'regain', want: shift })
       }

@@ -63,7 +63,8 @@ function slot(one: Held): Piece {
 // their order, each in place or as a `slot` where it is gone, then the keys
 // that are new, in document order. A piece moves only when it must: a held
 // one comes forward to its turn, and a new one drawn above a held one goes
-// right after the last held one. A slot follows the element held before it,
+// right after the last held one. With `inPlace` new rows are seated and gone
+// rows leave instead (`seat`). A slot follows the element held before it,
 // so it never stands under the heading of the next. A line with several
 // Buttons (the tab row) moves as one. Returns the pieces to draw and the
 // keys to hold next.
@@ -126,13 +127,14 @@ export function hold(
 // drawing (see `shifts`). Tabs, controls and Inputs never move.
 export const isRowKey = (key: string): boolean => key.startsWith('row:') || key.startsWith('group-')
 
-// The held keys with each new row line seated where the view draws it: after
-// the held key before it in document order and the gone slots that follow
-// that key, never above a held tab, control or Input.
+// The held keys without the gone rows below the last held tab, control or
+// Input, and with each new row line seated where the view draws it: after the
+// held key before it in document order and the gone slots that follow that
+// key, never above a held tab, control or Input.
 function seat(list: Piece[], held: readonly Held[]): Held[] {
-  const out = [...held]
   const shown = new Set(list.flatMap(keysOf).map(one => one.key))
-  const fence = out.findLastIndex(one => !isRowKey(one.key))
+  const fence = held.findLastIndex(one => !isRowKey(one.key))
+  const out = held.filter((one, i) => i <= fence || shown.has(one.key))
   let prev = -1
   for (const piece of list) {
     const keys = keysOf(piece)
