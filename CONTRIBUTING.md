@@ -2,6 +2,8 @@
 
 Rabe is a Claude Code mod. This guide explains how to propose, change, test and review it. The same rules apply to people and AI agents.
 
+See [AGENTS.md](AGENTS.md) for the full coding conventions.
+
 ## Start with an issue
 
 Open or find an issue before you start a change. Agree on its scope before you write code. Keep a change focused on that scope.
@@ -18,7 +20,7 @@ Use a short branch name that includes the issue number. Keep all changes and com
 
 ## Set up Rabe
 
-Rabe uses Bun 1.4 for development tools. The dev dependency pins Claude Code to version `2.1.296`.
+Rabe uses Bun 1.4 for development tools. The pinned Claude Code dev dependency is listed in [`package.json`](package.json).
 
 ```sh
 bun install
@@ -31,13 +33,13 @@ The second command starts Claude Code with the local mod. Saving a file reloads 
 
 Write a failing test before you change code. Tests live beside their modules as `*.test.ts` or `*.test.tsx`. They import helpers from `claude-code/testing`.
 
-Run tests under one area with `claude plugin test <directory>`, for example:
+Run the full test suite with:
 
 ```sh
-claude plugin test hooks/ui
+bun run test
 ```
 
-This runs every test under that directory. Run all checks before you open a pull request:
+There is no per-directory test filter. The full suite takes about 40 seconds. Run all checks before you open a pull request:
 
 ```sh
 bun run check
@@ -51,8 +53,8 @@ For a live check, use tmux with its own socket and a fresh folder as the Claude 
 - Keep destructive actions armed by the person's own focus or press. Data alone must never arm or trigger an action.
 - When a poll finds no changes, do not write state.
 - Hooks must not throw. Unless a hook answers on purpose, pass events on with `next(e)`.
-- When data is missing or unknown, show `n/a` or nothing. Never guess from undocumented files.
-- Treat file content as untrusted data. Do not put prompts, message text, tokens or private paths into persistent state, toasts or reports.
+- When data is missing or unknown, show `n/a` or nothing. Never guess a value that a file or field does not give.
+- Treat file content as untrusted data. Do not put prompts, message text or tokens into persistent state; redact paths and ids in reports.
 
 Read [security guidelines](docs/security.md) before changing file reads, paths, commands or copied text. The guide explains the threat model and the required checks.
 
