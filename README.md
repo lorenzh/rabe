@@ -200,6 +200,10 @@ bun run check
 
 In Claude Code, `/rabe:report-bug` and `/rabe:feedback` draft an issue for this repo. You check the draft before anything is sent. They use the `gh` CLI when you are logged in, and otherwise give you a link to a prefilled issue. You can also [open an issue](https://github.com/lorenzh/rabe/issues/new/choose) directly.
 
+## Privacy
+
+Rabe reads local Claude Code, Codex, agent, workflow, and background-task data to show activity in the session. It keeps that data in Claude Code session state and stores only a summary of the previous session per project in `$.store`. Rabe sends no runtime data anywhere. The report commands can create a public issue only after you approve the draft; `/rabe:report-bug` includes the details you provide, Rabe and Claude Code versions, your operating system, and any error lines you give it. Its instructions ask Claude Code to omit home paths, names, prompts, transcript text, tokens, and email addresses. This is an instruction, not an automatic redaction filter. Check the complete draft before approving it. See [SECURITY.md](SECURITY.md) to report a vulnerability privately.
+
 ## License
 
 [MIT](LICENSE)
