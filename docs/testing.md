@@ -151,6 +151,24 @@ done
 
 The selected row starts with `▌`. Make `--expect` as exact as the case needs, for example the title of the row the focus must reach. Each failed round prints the screen, so you can see where the focus went.
 
+### Check keys without a model turn
+
+Use a temporary copy of the plugin for offline checks. Add three ended shell fixtures through a matched `session.start` hook. Seed `rabe.items` after `next(e)` returns. Give them distinct titles such as `fixture 0`, `fixture 1` and `fixture 2`.
+
+Block prompt submission in that copy:
+
+```ts
+on('prompt.submit', { origin: { kind: /^/ } }, async () => ({
+  drop: 'Offline key fixture: prompt submission blocked',
+}))
+```
+
+Run `scripts/live-check.sh` with `--plugin-dir` pointing to the copy and `--shells 0`. Use `--size 200x50` so all three rows fit. For a tab race, use `--keys '2 1 Down' --gap 0.05 --repeat 10`. Match `▌.*fixture 1` with `--expect`.
+
+For the back-arrow case, keep the script's session with `--keep`. Open the first fixture's detail and wait for `b: back`. Send `b` and then Down 20 ms later. The marker must move to `fixture 1`. Enter must open that fixture's detail.
+
+For opening keys, close the pane and run `/rabe` again. Send `3` after a 250 ms pause from Enter. The pane must show the Effects tab's empty state. Check the transcript for handler errors. Stop the isolated tmux server after the checks.
+
 ### Notes
 
 - Known limit: text that draws its own box with the frame of the pane, a tab row and list lines can still pass for the pane. The script's own prompts never ask for that, so it takes model output that draws a fake pane. The width table is short, so a rarer wide or zero-width character beside the docked pane can still move the border; the run then stops as a setup error, not a pass.
