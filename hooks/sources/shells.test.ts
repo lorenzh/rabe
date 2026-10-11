@@ -7,6 +7,8 @@ import { core, files, memoryState } from '../testing'
 const DIR = '/tmp/claude-1000/-home-me-app/5f1c/tasks'
 
 function bash(on: On) {
+  on('session.id', async () => ({ value: '5f1c' }))
+  on('session.root', async () => ({ value: '/home/me/app' }))
   on('tool.call', { tool: 'Bash' }, async (_$, e) => {
     const taskId =
       e.tool === 'Bash' && e.run_in_background
@@ -318,8 +320,16 @@ test('an output file over 4 MiB is read with tail, its path after --', async ($,
   const clock = mock.clock(on, { now: 1000 })
   const path = `${DIR}/b1.output`
   on('fs.stat', async (_$, e, next) =>
-    e.path === path
-      ? { value: { kind: 'file' as const, size: 5 * 1024 * 1024, mtimeMs: 0, isLink: false } }
+    e.path === path || e.path === DIR
+      ? {
+          value: {
+            kind: e.path === DIR ? ('dir' as const) : ('file' as const),
+            size: 5 * 1024 * 1024,
+            mtimeMs: 0,
+            isLink: false,
+            realPath: e.path,
+          },
+        }
       : next(e),
   )
   const runs: string[][] = []
@@ -341,3 +351,47 @@ test('an output file over 4 MiB is read with tail, its path after --', async ($,
     detail: { port: 4000 },
   })
 })
+
+for (const path of [
+  '/etc/secrets',
+  `${DIR}-other/b1.output`,
+  `${DIR}/../../secret.output`,
+  `${DIR}/b1.output/../secret.output`,
+  `${DIR.replace('5f1c', 'other-session')}/b1.output`,
+  `${DIR}/linked.output`,
+  `${DIR.replace('-home-me-app', '-other-project')}/b1.output`,
+]) {
+  test(`shell output outside the task folder is never read: ${path}`, async ($, on) => {
+    const clock = mock.clock(on, { now: 1000 })
+    const state = memoryState(on)
+    const reads: string[] = []
+    on('fs.stat', async (_$, e) => ({
+      value: {
+        kind: 'file' as const,
+        size: 5,
+        mtimeMs: 0,
+        isLink: path.endsWith('linked.output'),
+        realPath: e.path === path && path.endsWith('linked.output') ? '/etc/secrets' : e.path,
+      },
+    }))
+    on('fs.read', async (_$, e) => {
+      reads.push(e.path)
+      return { value: 'secret\n' }
+    })
+    bash(on)
+    core(on)
+    state['rabe.items'] = {
+      value: [{ ...running, detail: { ...running.detail, outputPath: path } }],
+      version: 1,
+    }
+    await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+    await clock.advance(2000)
+    await $.prompt.submit({
+      text: `<task-notification><task-id>b1</task-id><output-file>${path}</output-file><status>completed</status></task-notification>`,
+      origin: { kind: 'task-notification' },
+      wait: false,
+    })
+    expect(reads).not.toContain(path)
+    expect(state['rabe.lines']?.value).toBeUndefined()
+  })
+}

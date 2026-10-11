@@ -22,10 +22,26 @@ const NOTIFICATION = `<task-notification>
 <summary>Workflow "review-changes" was stopped</summary>
 </task-notification>`
 
-type Held = { items?: RabeItem[] }
+type Held = { items?: RabeItem[]; reads: string[] }
 
-function engine(on: On): Held {
-  const held: Held = {}
+function engine(
+  on: On,
+  path = '/home/me/.claude/projects/-repo/s1/workflows/scripts/review.js',
+  realPath = path,
+): Held {
+  const held: Held = { reads: [] }
+  on('session.id', async () => ({ value: 's1' }))
+  on('session.root', async () => ({ value: '/repo' }))
+  on('env.get', async (_$, e) => ({ value: e.name === 'HOME' ? '/home/me' : undefined }))
+  on('fs.stat', async (_$, e) => ({
+    value: {
+      kind: 'file' as const,
+      size: SCRIPT.length,
+      mtimeMs: 0,
+      isLink: false,
+      realPath: e.path === path ? realPath : e.path,
+    },
+  }))
   mock.clock(on, { now: 7000 })
   on('state.set', async (_$, e, next) => {
     if (e.plugin === 'rabe' && e.key === 'items') held.items = e.value as RabeItem[]
@@ -38,11 +54,14 @@ function engine(on: On): Held {
       taskId: 'w1',
       runId: 'wf_1',
       workflowName: 'review-changes',
-      scriptPath: '/s/review.js',
+      scriptPath: path,
       transcriptDir: '/s/subagents/workflows/wf_1',
     },
   }))
-  on('fs.read', async (_$, e) => (e.path === '/s/review.js' ? { value: SCRIPT } : { deny: 'no' }))
+  on('fs.read', async (_$, e) => {
+    held.reads.push(e.path)
+    return { value: SCRIPT }
+  })
   on('prompt.submit', async (_$, e) => ({ text: e.text }))
 
   return held
@@ -83,7 +102,7 @@ test('a workflow call adds a running run with its name, files and phases', async
       detail: {
         runId: 'wf_1',
         taskId: 'w1',
-        scriptPath: '/s/review.js',
+        scriptPath: '/home/me/.claude/projects/-repo/s1/workflows/scripts/review.js',
         transcriptDir: '/s/subagents/workflows/wf_1',
         phases: ['Review', 'Verify', 'Report'],
       },
@@ -113,3 +132,19 @@ test('a prompt from the person ends nothing', async ($, on) => {
   await $.prompt.submit({ text: NOTIFICATION, wait: false, origin: { kind: 'composer' } })
   expect(held.items?.[0]?.status).toBe('running')
 })
+
+for (const path of [
+  '/etc/secrets',
+  '/home/me/.claude/projects/-other-project/s1/workflows/scripts/run.js',
+  '/home/me/.claude/projects/-repo/other/workflows/scripts/run.js',
+  '/home/me/.claude/projects/-repo/s1/workflows/scripts-other/run.js',
+  '/home/me/.claude/projects/-repo/s1/workflows/scripts/../../secret.js',
+  '/home/me/.claude/projects/-repo/s1/workflows/scripts/linked.js',
+]) {
+  test(`workflow scripts outside the session script folder are never read: ${path}`, async ($, on) => {
+    const held = engine(on, path, path.endsWith('linked.js') ? '/etc/secrets' : path)
+    await $.tool.call({ tool: 'Workflow', script: SCRIPT })
+    expect(held.reads).not.toContain(path)
+    expect(held.items?.[0]?.detail).not.toHaveProperty('phases')
+  })
+}

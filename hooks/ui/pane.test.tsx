@@ -344,7 +344,7 @@ test('a completed message returns focus to its message control without navigatio
   await ui.input({ key: `message:${explore.id}`, text: 'hello', kind: 'submit' })
   await ui.redraw()
   expect(await ui.find({ type: 'Input', key: `message:${explore.id}` })).toBeDefined()
-  expect(state.toasts).toContain('Message sent to claude impl-auth')
+  expect(state.toasts).toContain('Message sent to claude a1')
   await ui.unmount()
 })
 
@@ -511,7 +511,7 @@ const PREVIOUS: RabePrevious = {
   endedAt: yesterday,
   counts: { agent: 6 },
   tokens: 800_000,
-  failed: [],
+  failedIds: [],
 }
 
 const USAGE = { startedAt: NOW - 3_600_000, context: {}, rateLimits: [], cost: { usd: 0.41 } }
@@ -1030,7 +1030,7 @@ test('x stops a codex job through /rabe-stop on every surface', async ($, on) =>
   const runs: string[] = []
   on('command.run', { command: 'rabe-stop' }, async (_$, e) => {
     runs.push(e.args)
-    return { text: `Stopped codex ${review.title}` }
+    return { text: 'Stopped codex task-1' }
   })
   await arm($)
   for (const surface of SURFACES) {
@@ -1041,7 +1041,7 @@ test('x stops a codex job through /rabe-stop on every surface', async ($, on) =>
     await ui.unmount()
   }
   expect(runs).toEqual([review.id, review.id])
-  expect(sets.toasts).toContain(`Stopped ${review.title}`)
+  expect(sets.toasts).toContain('Stopped codex task-1')
 })
 
 test('/rabe sorts the lists once; until the next open they hold that order', async ($, on) => {
@@ -1679,7 +1679,7 @@ test('r and a remove ended rows for the session; running rows stay', async ($, o
   expect((await ui.find({ type: 'Button', key: 'remove' }))?.props.hotkey).toBe('r')
   await ui.press({ key: 'remove' })
   expect(state.removed).toEqual([lint.id])
-  expect(state.toasts).toEqual([`Removed shell ${lint.title}`])
+  expect(state.toasts).toEqual(['Removed shell bg_3'])
   await ui.redraw()
   const slot = await ui.find({ type: 'Button', key: `row:${lint.id}` })
   expect(slot?.props.dimColor).toBe(true)
@@ -1847,7 +1847,7 @@ test('dim owned pane keys stay bound and inert without binding absent controls o
   expect(calls).toEqual([])
 })
 
-test('toasts replace control and format characters in item titles', async ($, on) => {
+test('remove toasts omit untrusted item titles', async ($, on) => {
   const odd = { ...lint, title: 'lint\u001b[2J\u0007‮ done' } as RabeItem
   const items = ALL.map(item => (item.id === lint.id ? odd : item))
   const state = hold(on, items, { selected: lint.id, order: orderOf(items) })
@@ -1856,5 +1856,66 @@ test('toasts replace control and format characters in item titles', async ($, on
   await arm($, `row:${lint.id}`)
   await ui.redraw()
   await ui.press({ key: 'remove' })
-  expect(state.toasts).toEqual(['Removed shell lint?[2J?? done'])
+  expect(state.toasts).toEqual(['Removed shell bg_3'])
+})
+
+test('stop toasts omit untrusted item titles on every surface', async ($, on) => {
+  const state = hold(on, [{ ...dev, title: 'secret prompt from a file' }], { open: dev.id })
+  stops(on)
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    await arm($)
+    await ui.redraw()
+    await ui.press({ key: `stop:${dev.id}` })
+    await ui.unmount()
+  }
+  expect(state.toasts).toEqual([
+    'Stopping shell bg_2…',
+    'Stopped shell bg_2',
+    'Stopping shell bg_2…',
+    'Stopped shell bg_2',
+  ])
+})
+
+test('reading an old summary removes stored failed titles', async ($, on) => {
+  hold(on, [], { tab: 'timeline' })
+  const store = session(on)
+  store['previous:/p'] = {
+    ...PREVIOUS,
+    failed: ['secret prompt from a file'],
+    failedIds: undefined,
+  }
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  expect(JSON.stringify(store['previous:/p'])).not.toContain('secret prompt')
+  expect((await screen(ui)).join('\n')).not.toContain('secret prompt')
+  await ui.unmount()
+})
+
+test('an empty session removes failed titles from an old stored summary', async ($, on) => {
+  hold(on, [])
+  const store = session(on)
+  store['previous:/p'] = {
+    ...PREVIOUS,
+    failed: ['secret prompt from a file'],
+    failedIds: undefined,
+  }
+  await $.session.end({ reason: 'clear', sessionId: 's1' } as never)
+  expect(JSON.stringify(store['previous:/p'])).not.toContain('secret prompt')
+})
+
+test('the pane shows a Codex stop error from session state only', async ($, on) => {
+  const item = {
+    ...review,
+    detail: { ...review.detail, stopError: 'companion detail' },
+  } as RabeItemOf<'codex'>
+  const state = hold(on, [item], { open: review.id })
+  on('command.run', { command: 'rabe-stop' }, async () => ({
+    text: 'Stop refused: the Codex companion could not stop the job.',
+  }))
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await arm($)
+  await ui.redraw()
+  await ui.press({ key: `stop:${review.id}` })
+  expect(state.toasts).toContain('Stop refused: companion detail')
+  await ui.unmount()
 })

@@ -2,7 +2,14 @@ import type { EngineInterface, On } from 'claude-code'
 
 import { type EndStatus, itemId, type RabeItem } from '../model'
 import { addItem, type Change, commit, endItem, prune, updateItem } from '../registry'
-import { appendLines, endStatus, parseNotifications, parseOutput, taskOutput } from '../tasks'
+import {
+  appendLines,
+  endStatus,
+  parseNotifications,
+  parseOutput,
+  taskFolder,
+  taskOutput,
+} from '../tasks'
 
 const POLL_MS = 2000
 const MAX_READ = 4 * 1024 * 1024
@@ -53,7 +60,18 @@ async function follow(
   path: string,
 ): Promise<EndStatus | undefined> {
   try {
-    const { size } = await $.fs.stat(path)
+    const folder = taskFolder(path, await $.session.id(), await $.session.root())
+    if (!folder) return undefined
+    const root = await $.fs.stat(folder, { resolve: true })
+    const stat = await $.fs.stat(path, { resolve: true })
+    if (
+      !root.realPath ||
+      stat.realPath !== `${root.realPath}/${path.slice(path.lastIndexOf('/') + 1)}` ||
+      stat.kind !== 'file'
+    )
+      return undefined
+    path = stat.realPath
+    const { size } = stat
     if (size > MAX_READ) return undefined
     const { lines, ended } = parseOutput(String(await $.fs.read(path)))
     const now = await $.clock.now()

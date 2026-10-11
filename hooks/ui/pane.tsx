@@ -36,7 +36,7 @@ function toastText(text: string): string {
   return text.replace(/\s+/g, ' ').replace(/[\p{Cc}\p{Cf}]/gu, '?')
 }
 
-// Titles and reasons come from files and tools.
+// Reasons come from files and tools.
 function toast($: EngineInterface, text: string): void {
   $.ui.toast(toastText(text))
 }
@@ -46,9 +46,9 @@ function clipText(text: string): string {
   return text.replace(/(?![\t\n\r])[\p{Cc}\p{Cf}]/gu, '?')
 }
 
-// A cron job's title is its prompt.
+// Titles and agent names can contain prompts or file text.
 function nameOf(item: RabeItem): string {
-  return item.kind === 'cron' ? item.detail.jobId : item.title
+  return item.id.slice(item.kind.length + 1)
 }
 
 // Esc may have closed the pane before the delayed focus call.
@@ -66,24 +66,45 @@ async function tick($: EngineInterface): Promise<void> {
 // The store is the plugin's own JSON; an older Rabe may have written another
 // shape, and a summary before 0.4 has no session id.
 function asPrevious(value: unknown): RabePrevious | undefined {
-  const prev = value as RabePrevious | undefined
-  if (typeof prev?.endedAt !== 'number' || !Array.isArray(prev.failed) || !prev.counts) {
+  const prev = value as (RabePrevious & { failed?: unknown }) | undefined
+  if (
+    typeof prev?.endedAt !== 'number' ||
+    (!Array.isArray(prev.failedIds) && !Array.isArray(prev.failed)) ||
+    !prev.counts
+  ) {
     return undefined
   }
-  const { sessionId, ...rest } = prev
 
-  return typeof sessionId === 'string' && sessionId ? { ...rest, sessionId } : rest
+  return {
+    ...(typeof prev.sessionId === 'string' && prev.sessionId && { sessionId: prev.sessionId }),
+    endedAt: prev.endedAt,
+    startedAt: prev.startedAt,
+    counts: prev.counts,
+    tokens: prev.tokens,
+    usd: prev.usd,
+    failedIds: Array.isArray(prev.failedIds) ? prev.failedIds : [],
+  }
 }
 
 async function previous($: EngineInterface): Promise<RabePrevious | undefined> {
-  return asPrevious(await $.store.get(`previous:${await $.session.cwd()}`))
+  const key = `previous:${await $.session.cwd()}`
+  const stored = await $.store.get(key)
+  const summary = asPrevious(stored)
+  if (summary && stored && typeof stored === 'object' && 'failed' in stored) {
+    await $.store.set(key, summary)
+  }
+
+  return summary
 }
 
 // Keeps this session's summary for the next one in this project; a session
 // with no background work leaves the last summary in place.
 async function remember($: EngineInterface, sessionId?: string): Promise<void> {
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
-  if (items.length === 0) return
+  if (items.length === 0) {
+    await previous($)
+    return
+  }
   const usage = await $.session.usage()
   const summary = previousOf(
     items,
@@ -111,7 +132,12 @@ async function stop($: EngineInterface, ids: string[]): Promise<void> {
       if (text.startsWith('Stopped')) {
         stopped += 1
         stoppedItems.push(item)
-      } else refused = text.replace(/^Stop refused: /, '')
+      } else {
+        const { value: current = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+        const job = current.find(one => one.id === item.id)
+        refused =
+          (job?.kind === 'codex' && job.detail.stopError) || text.replace(/^Stop refused: /, '')
+      }
       continue
     }
     const task = taskIdOf(item)
@@ -135,7 +161,13 @@ async function stop($: EngineInterface, ids: string[]): Promise<void> {
     await queueAction($, `Rabe: user stopped ${item.kind} ${item.id}`)
   }
   if (one && refused) toast($, `Stop refused: ${refused}`)
-  else if (one) toast($, ended ? `${nameOf(one)} had already finished` : `Stopped ${nameOf(one)}`)
+  else if (one)
+    toast(
+      $,
+      ended
+        ? `${KIND_LABEL[one.kind]} ${nameOf(one)} had already finished`
+        : `Stopped ${KIND_LABEL[one.kind]} ${nameOf(one)}`,
+    )
   else {
     const done = ended ? `; ${ended} had already finished` : ''
     const no = refused ? `; refused: ${refused}` : ''
@@ -392,7 +424,7 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       toast(
         $,
         sent.isDelivered
-          ? `Message sent to claude ${item.detail.name || item.title}`
+          ? `Message sent to claude ${nameOf(item)}`
           : `Message not sent: ${sent.reason}`,
       )
       if (sent.isDelivered) await queueAction($, `Rabe: user sent a message to agent ${item.id}`)

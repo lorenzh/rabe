@@ -9,6 +9,7 @@ import {
   outputPathOf,
   parseNotifications,
   parseOutput,
+  taskFolder,
   taskOutput,
 } from '../tasks'
 
@@ -69,7 +70,18 @@ async function readWhole(
   path: string,
 ): Promise<{ text?: string; isWhole: boolean }> {
   try {
-    const { size } = await $.fs.stat(path)
+    const folder = taskFolder(path, await $.session.id(), await $.session.root())
+    if (!folder) return { isWhole: false }
+    const root = await $.fs.stat(folder, { resolve: true })
+    const stat = await $.fs.stat(path, { resolve: true })
+    if (
+      !root.realPath ||
+      stat.realPath !== `${root.realPath}/${path.slice(path.lastIndexOf('/') + 1)}` ||
+      stat.kind !== 'file'
+    )
+      return { isWhole: false }
+    path = stat.realPath
+    const { size } = stat
     if (size <= MAX_READ) return { text: String(await $.fs.read(path)), isWhole: true }
     const { stdout } = await $.process.run(['tail', '-c', TAIL_BYTES, '--', path], {
       timeoutMs: RUN_MS,

@@ -42,6 +42,8 @@ Limits: Codex deletes old session files, and their file changes with them; so ol
 | Port | Not reported. Guessed from the output (`localhost:5173`, `127.0.0.1:8080`, `port 4000`). `ss -ltnp` is not used. |
 | Stop | `TaskStop`. |
 
+Rabe accepts only this temporary task layout with the current `$.session.id()` and the project folder encoded from `$.session.root()`. It checks the resolved file against the resolved task folder before reading. An unexpected path or a symlink outside that folder gives no output. Polls, notifications and Stop correction use this check.
+
 ### A subagent's background tasks
 
 Tested in the same spike: a subagent's background `Bash` and `Monitor` calls reach the mod's `tool.call` hook with the subagent's `agentId` (the Bash result has `backgroundTaskId`, the Monitor result `taskId`). Their `tasks/<id>.output` files are in the main session's `tasks` folder. Their end notifications go only to the subagent: the main session gets only the agent's own task notifications. So Rabe ends a subagent's shells and monitors from the last line of the output file (`[exited with code N]`, `[killed]`), and does not end them at the main session's `Stop` when `background_tasks` leaves them out.

@@ -24,18 +24,21 @@ export function memoryState(on: On): Held {
 }
 
 export function files(on: On, held: Record<string, string>): void {
-  on('fs.stat', async (_$, e, next) =>
-    e.path in held
+  on('fs.stat', async (_$, e, next) => {
+    const isFile = e.path in held
+    const isDir = Object.keys(held).some(path => path.startsWith(`${e.path}/`))
+    return isFile || isDir
       ? {
           value: {
-            kind: 'file' as const,
+            kind: isFile ? ('file' as const) : ('dir' as const),
             size: held[e.path]?.length ?? 0,
             mtimeMs: 0,
             isLink: false,
+            ...(e.resolve && { realPath: e.path }),
           },
         }
-      : next(e),
-  )
+      : next(e)
+  })
   on('fs.read', async (_$, e, next) => (e.path in held ? { value: held[e.path] ?? '' } : next(e)))
 }
 

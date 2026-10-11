@@ -46,7 +46,7 @@ Limits: `$.process` is CLI only, so the desktop app shows worktrees from agent m
 | Run id, name, script path, transcript folder | Workflow tool result (d.ts:21251). |
 | Agents of a run | `agent.spawn` with `workflow: { runId, agentIndex }` (d.ts:357). |
 | Phase of each agent | `workflowPhase` in the agent's meta file. |
-| Phase names | The `meta.phases` block of the script at `scriptPath`. Each phase is a string or `{ title, detail }`. |
+| Phase names | The `meta.phases` block of the script at `scriptPath`. Rabe accepts only this session’s `<claude dir>/projects/<project>/<session>/workflows/scripts/` folder with the project folder encoded from `$.session.root()`. It checks the resolved file against the resolved script folder before reading. An unexpected or unresolved path leaves phases unknown. Each phase is a string or `{ title, detail }`. |
 | Agent files | Workflow agents write their transcript and meta file to `transcriptDir`, which is `<session>/subagents/workflows/<runId>/`. The same folder has `journal.jsonl` (one record per agent start and result, with phase). `<session>/workflows/<runId>.json` has the run's status, phases and totals, but is written only when the run ends. |
 | End | The task notification: a `prompt.submit` with origin `task-notification` whose text holds `<task-id>` (the run's `taskId`) and `<status>` (`completed`, `failed`, `killed`). The text format is not documented. |
 | Retries | Not reported: a retried agent does not raise `agent.spawn` again (d.ts:345). |

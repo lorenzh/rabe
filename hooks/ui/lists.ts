@@ -692,6 +692,6 @@ export function previousOf(
     counts,
     tokens: totals(items).tokens,
     usd: usage.usd,
-    failed: items.filter(item => item.status === 'failed').map(item => item.title),
+    failedIds: items.filter(item => item.status === 'failed').map(item => item.id),
   }
 }

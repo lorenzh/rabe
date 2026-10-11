@@ -590,7 +590,12 @@ async function cancel($: EngineInterface, id: string): Promise<{ text: string }>
     .run(argv, { env: { CLAUDE_PLUGIN_DATA: `${claude}/${CODEX_DATA}` } })
     .catch((error: unknown) => ({ exitCode: 1, stdout: '', stderr: String(error) }))
   if (result.exitCode !== 0) {
-    return { text: `Stop refused: ${firstLine(result.stderr) || `exit ${result.exitCode}`}` }
+    await write($, held =>
+      updateItem(held, id, {
+        detail: { stopError: firstLine(result.stderr) || `exit ${result.exitCode}` },
+      }),
+    )
+    return { text: 'Stop refused: the Codex companion could not stop the job.' }
   }
   const now = await $.clock.now()
   // later polls skip the stopped job: its cost stays only while the session
@@ -600,7 +605,10 @@ async function cancel($: EngineInterface, id: string): Promise<{ text: string }>
   const isPriced = stat !== undefined && stat.mtimeMs === sessionUpdatedAt
   await write($, held => {
     const ended = endItem(held, id, 'stopped', now)
-    return isPriced ? ended : updateItem(ended, id, { costUsd: undefined })
+    return updateItem(ended, id, {
+      detail: { stopError: undefined },
+      ...(!isPriced && { costUsd: undefined }),
+    })
   })
 
   return { text: `Stopped codex ${item.detail.jobId}` }

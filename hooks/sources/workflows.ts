@@ -54,6 +54,32 @@ async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Pro
   }
 }
 
+async function readScript($: EngineInterface, path: string): Promise<string | undefined> {
+  const config = await $.env.get('CLAUDE_CONFIG_DIR')
+  const home = config ? undefined : await $.env.get('HOME')
+  const claude = config || (home && `${home}/.claude`)
+  if (!claude) return undefined
+  const prefix = `${claude.replace(/\/+$/, '')}/projects/`
+  if (!path.startsWith(prefix) || /[\\\p{Cc}\p{Cf}]/u.test(path)) return undefined
+  const parts = path.slice(prefix.length).split('/')
+  if (
+    parts.length !== 5 ||
+    parts[0] !== (await $.session.root()).replace(/[^a-zA-Z0-9]/g, '-') ||
+    parts.some(part => !part || part === '.' || part === '..') ||
+    parts[1] !== (await $.session.id()) ||
+    parts[2] !== 'workflows' ||
+    parts[3] !== 'scripts'
+  )
+    return undefined
+  const folder = path.slice(0, path.lastIndexOf('/'))
+  const root = await $.fs.stat(folder, { resolve: true })
+  const stat = await $.fs.stat(path, { resolve: true })
+  if (!root.realPath || stat.realPath !== `${root.realPath}/${parts[4]}` || stat.kind !== 'file')
+    return undefined
+
+  return String(await $.fs.read(stat.realPath))
+}
+
 async function launched($: EngineInterface, result: Launched, name?: string): Promise<void> {
   const runId = result.runId
   if (!runId) return
@@ -80,7 +106,7 @@ async function launched($: EngineInterface, result: Launched, name?: string): Pr
     ),
   )
   if (!result.scriptPath) return
-  const script = await $.fs.read(result.scriptPath).catch(() => undefined)
+  const script = await readScript($, result.scriptPath).catch(() => undefined)
   const phases = typeof script === 'string' ? phaseNames(script) : undefined
   if (phases) await write($, items => updateItem(items, id, { detail: { phases } }))
 }

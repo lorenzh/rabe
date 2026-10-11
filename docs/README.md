@@ -15,7 +15,7 @@ Use this index to find the guide that matches your question.
 - [Agent instructions](../AGENTS.md): rules for coding agents and project changes.
 - [Release steps](../RELEASING.md): checks and compatibility review before a release.
 - [Changelog](../CHANGELOG.md): changes by version.
-- [Security guidelines](security.md): threat model and security rules for changes and review.
+- [Security guidelines](security.md): threat model, path checks, title privacy, stored summaries and stop refusals.
 - [Testing](testing.md): unit, hook and UI tests, live checks with `scripts/live-check.sh`, and CI.
 
 ## Architecture
@@ -32,8 +32,8 @@ Use this index to find the guide that matches your question.
 ## Feasibility
 
 - [Feasibility overview](feasibility.md): overview and links to the source limits.
-- [Claude agents and workflows](feasibility/agents.md): agent, worktree, and workflow data.
-- [Codex and background work](feasibility/background-work.md): Codex jobs, shells, monitors, and cron jobs.
+- [Claude agents and workflows](feasibility/agents.md): agent, worktree, and workflow data with script path limits.
+- [Codex and background work](feasibility/background-work.md): Codex jobs, shells, monitors, cron jobs and task output path limits.
 - [User interface limits](feasibility/ui.md): API limits for rendering and input.
 - [Price data](feasibility/prices.md): price inputs and view data.
 - [Files and runtime limits](feasibility/files.md): script edits from Bash diffs, confirmed shell writes, coverage settings, and open runtime questions.
