@@ -173,7 +173,7 @@ Rabe reads these files:
 
 Rabe keeps its items in Claude Code session state. That includes agent reply text (up to 16,000 characters per turn), prompts, commands, IDs and paths. When a session ends, Rabe keeps a short summary for the next session in the same project. The summary holds the session id, counts per kind, tokens, cost and the names of failed items. It runs `tail` and `grep` to read files over 4 MiB, and `git worktree list` every 10 seconds in the session's folder to know the worktrees. When you stop a Codex job, it runs the Codex plugin's own cancel script.
 
-`/rabe:report-bug` includes the details you provide, reproduction steps, Rabe and Claude Code versions, your operating system and any error lines you give it. The report commands ask Claude Code to leave out home paths, user or project names, prompts, transcript text, tokens and email addresses. This is an instruction, not an automatic redaction filter. Review the full draft before approving it. See [SECURITY.md](SECURITY.md) to report a vulnerability privately.
+`/rabe:report-bug` includes the details you provide, reproduction steps, Rabe and Claude Code versions, your operating system and any error lines you give it. Both report commands ask Claude Code to leave out home paths, user or project names, prompts, tokens and email addresses; `/rabe:report-bug` also asks it to leave out transcript text. These are instructions, not automatic redaction filters. Review the full draft before approving it. See [SECURITY.md](SECURITY.md) to report a vulnerability privately.
 
 ## Requirements
 
