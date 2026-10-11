@@ -39,6 +39,7 @@ All of these must be true. Tick them in the release pull request.
 - [ ] `AGENTS.md` commands and rules still work.
 - [ ] `docs/assets/demo.gif` shows the current pane, recorded without private data.
 - [ ] `CHANGELOG.md` has an entry for the release (see below).
+- [ ] A before/after video of the release is ready (see [Release video](#release-video)).
 
 **Compatibility.** A migration note is needed when one of these changes. If none does, say so in the release pull request.
 - [ ] Data Rabe keeps across sessions (`$.store` keys and their format). Today only `previous:<folder>`, the summary of the previous session. 0.4 adds an optional `sessionId` to it: an older summary has none and shows `n/a`, and 0.3 reads a new one and ignores the field. Additive, no migration.
@@ -48,6 +49,21 @@ All of these must be true. Tick them in the release pull request.
 - [ ] The lowest Claude Code version Rabe needs: the version the live check ran on, the pinned `@anthropic-ai/claude-code` in `package.json`, and `README.md` requirements must agree. (The first line of `types/claude-code.d.ts` names the version that wrote the types, not a minimum.)
 
 - [ ] Session state (`$.state` keys and item formats in `types/index.d.ts`). It starts empty in a new session, but it **survives a plugin reload**, and an update is applied with `/reload-plugins`. So the new code must read the old format, convert it, or ignore it safely; otherwise the release notes tell people to start a new session after the update.
+
+## Claude Code updates
+
+A pull request that raises the pinned `@anthropic-ai/claude-code` in `package.json`, Dependabot's included, needs more than green CI before it is merged. CI runs the tests against the new version, but not a real session.
+
+- [ ] After `bun install`, run the live check with the pinned binary, not the one on `PATH`: `CLAUDE="$PWD/node_modules/.bin/claude" scripts/live-check.sh` (see [docs/testing.md](docs/testing.md)). Note its `--version` in the pull request.
+- [ ] Replace `types/claude-code.d.ts` with the file the new version writes. Its first line must name the new version. Fix what `bun run typecheck` then finds.
+
+## Release video
+
+Each release shows what changed, the previous tag next to the release.
+
+- Record the same steps on the previous tag and on the release, without private data (see `scripts/live-check.sh` and `docs/assets/demo.gif`).
+- Put both side by side in one video. Attach it as an MP4 to the GitHub release.
+- Make a GIF of it, attach it too and show it at the top of the release notes (step 8).
 
 ## Changelog
 
@@ -70,9 +86,9 @@ All of these must be true. Tick them in the release pull request.
    git tag -a vX.Y.Z -m "Rabe vX.Y.Z" <merge commit>
    git push origin vX.Y.Z
    ```
-8. Create the GitHub release from the changelog section:
+8. Create the GitHub release from the changelog section, with the release video and its GIF attached. The first line of `<notes.md>` shows the GIF: `![Rabe vX.Y.Z](https://github.com/lorenzh/rabe/releases/download/vX.Y.Z/rabe-vX.Y.Z.gif)`.
    ```sh
-   gh release create vX.Y.Z --title "Rabe vX.Y.Z" --notes-file <notes.md>
+   gh release create vX.Y.Z --title "Rabe vX.Y.Z" --notes-file <notes.md> rabe-vX.Y.Z.mp4 rabe-vX.Y.Z.gif
    ```
 9. In a shell with the same `CLAUDE_CONFIG_DIR` as step 0, run `claude plugin update rabe` and `/reload-plugins`. Check that `claude plugin list` shows `X.Y.Z`, `/rabe` works, the options kept their values and the previous-session summary still shows. Then start a fresh session and check `/rabe` again.
 10. Remove the release worktree.
