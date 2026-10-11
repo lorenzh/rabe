@@ -8,7 +8,7 @@ Include the affected Rabe version, the impact, and steps to reproduce. Remove se
 
 ## Privacy
 
-Rabe runs inside Claude Code. Its runtime hooks make no network requests. Successful stop, delete, and message actions add notes with item IDs and titles to the next prompt sent to Claude. Other session data is not sent by Rabe. The hooks read:
+Rabe runs inside Claude Code. Its runtime hooks make no network requests. Successful stop, delete, and message actions add notes that name each item by kind and ID to the next prompt sent to Claude. Other session data is not sent by Rabe. The hooks read:
 
 - Claude Code events for agents, workflows, turns, tool summaries, background tasks, cron jobs, session usage, and file changes.
 - Agent metadata files and background shell and monitor output files, plus workflow scripts. Agent turns arrive through Claude Code events; Rabe records transcript paths but does not read the transcript files.
@@ -30,7 +30,7 @@ Rabe uses the Claude Code plugin state keys declared in `types/index.d.ts`:
 | `lines` | Background shell and monitor output lines. |
 | `edits` | File paths and timestamps for changes by the main session. |
 | `worktrees` | Git worktree paths and branches. |
-| `actions` | IDs and titles of work Rabe successfully stopped, deleted, or messaged, for the next prompt's private context; message text is not kept here. |
+| `actions` | Kinds and IDs of work Rabe successfully stopped, deleted, or messaged, for the next prompt's private context; message text is not kept here. |
 | `tab`, `query`, `folded`, `selected`, `open`, `order`, `removed`, `window` | Pane selection, search, ordering, and display state. |
 
 These values are in Claude Code's session state. Rabe also uses `$.store` under `previous:<project folder>` for a summary of the previous session: its session ID, start and end times, counts by work type, background tokens, session cost, and failed item titles. This summary lets the Timeline tab show the previous session. Rabe does not store full transcripts in `$.store`.

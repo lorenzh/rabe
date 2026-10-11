@@ -159,7 +159,7 @@ Rabe cannot see some things:
 
 ## Privacy
 
-Rabe runs on your computer and makes no runtime network requests. Successful stop, delete, and message actions add notes with item IDs and titles to the next prompt sent to Claude. The two report commands create a public issue only after you approve the draft.
+Rabe runs on your computer and makes no runtime network requests. Successful stop, delete, and message actions add notes that name each item by kind and ID to the next prompt sent to Claude. The two report commands create a public issue only after you approve the draft.
 
 Rabe reads these files:
 
