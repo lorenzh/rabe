@@ -35,7 +35,7 @@
 - Colors: only xterm-256 entries from `hooks/ui/cells/palette.ts`; a list never reorders while the pane is open (`stable` in `hooks/ui/lists.ts`).
 - `$.state` keys: declare each in `types/index.d.ts` and name that file as `"types"` in `.claude-plugin/plugin.json`.
 - `data/prices.csv`: list prices per model. The agents and Codex sources read it at run time under `$.plugin.root`, with the user's file (option `pricesFile`) first; `hooks/prices.ts` parses and applies it (see `docs/feasibility/prices.md` and `docs/architecture/prices.md`).
-- `types/claude-code.d.ts`: API types written by Claude Code. Do not edit; replace it when the pinned Claude Code version changes.
+- `types/claude-code.d.ts`, `types/claude-code-tools.d.ts`: API types and built-in tool types written by Claude Code (`.claude-plugin/types/claude-code/` and `claude-code-tools/`). Do not edit; replace both when the pinned Claude Code version changes.
 
 ## Key Conventions
 - Get data from the mod API first, then from files on disk, then from the Claude Code or Codex source. Record each new source in the relevant document under `docs/feasibility/` and add it to [`docs/README.md`](docs/README.md).
@@ -83,5 +83,5 @@
 | How to test: unit, UI, live checks, CI | [`docs/testing.md`](docs/testing.md) |
 | Release steps, versions, migration checks | `RELEASING.md` |
 | What changed per version | `CHANGELOG.md` |
-| Mod API (grep a name, read its doc comment) | `types/claude-code.d.ts` |
+| Mod API (grep a name, read its doc comment) | `types/claude-code.d.ts`; tool inputs and results in `types/claude-code-tools.d.ts` |
 | UI mockups (private) | https://claude.ai/artifact/1Fb364t1W9Fa1Gbi2KXvMq |
