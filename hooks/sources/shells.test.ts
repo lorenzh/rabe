@@ -844,3 +844,93 @@ test('the task list replays a cached shell exit after a discarded item write', a
   } as never)
   expect((state['rabe.items']?.value as RabeItem[])?.[0]?.status).toBe('done')
 })
+
+for (const mode of [
+  'silent',
+  'redirected',
+  'shared socket',
+  'stderr',
+  'missing tool',
+  'truncated',
+  'failed command',
+  'output port',
+  'non-linux',
+  'ended',
+  'unsafe path',
+]) {
+  test(`listening ports of a shell: ${mode}`, async ($, on) => {
+    const clock = mock.clock(on, { now: 1000 })
+    const state = memoryState(on)
+    const path = `${DIR}/b1.output`
+    files(on, {
+      [path]:
+        mode === 'redirected'
+          ? 'output goes elsewhere\n'
+          : mode === 'output port'
+            ? 'port 5173\n'
+            : '',
+    })
+    const calls: string[][] = []
+    on('process.run', { argv: ['uname', 'fuser', 'ps', 'ss'] }, async (_$, e) => {
+      calls.push([...e.argv])
+      expect(e.init?.timeoutMs).toBe(5000)
+      if (mode === 'missing tool') return { deny: 'not found' }
+      const stdout =
+        e.argv[0] === 'uname'
+          ? mode === 'non-linux'
+            ? 'Darwin'
+            : 'Linux'
+          : e.argv[0] === 'fuser'
+            ? '100'
+            : e.argv[0] === 'ps'
+              ? '102 101\n101 100\n100 1\n999 1\n'
+              : `LISTEN 0 128 [::]:8090 [::]:* users:(("python3",pid=102,fd=3)${mode === 'shared socket' ? ',("claude",pid=999,fd=4)' : ''})\n`
+      return {
+        value: {
+          exitCode: mode === 'failed command' && e.argv[0] === 'ss' ? 1 : 0,
+          stdout,
+          stderr:
+            mode === 'stderr' && e.argv[0] === 'ss'
+              ? 'Cannot open netlink socket'
+              : e.argv[0] === 'fuser'
+                ? `${path}:`
+                : '',
+          isStdoutTruncated: mode === 'truncated' && e.argv[0] === 'ss',
+        },
+      } as never
+    })
+    bash(on)
+    core(on)
+    state['rabe.items'] = {
+      value: [
+        {
+          ...running,
+          status: mode === 'ended' ? 'done' : 'running',
+          detail: {
+            ...running.detail,
+            outputPath: mode === 'unsafe path' ? '/etc/private.output' : path,
+          },
+        },
+      ],
+      version: 1,
+    }
+    await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+    await clock.advance(2000)
+    const found = mode === 'silent' || mode === 'redirected'
+    const item = ((state['rabe.items']?.value ?? []) as RabeItem[])[0]
+    expect(item?.kind === 'shell' ? item.detail.port : undefined).toBe(
+      found ? 8090 : mode === 'output port' ? 5173 : undefined,
+    )
+    if (found) {
+      expect(calls).toContainEqual(['fuser', path])
+      expect(calls).toContainEqual(['ps', '-A', '-o', 'pid=,ppid='])
+      expect(calls).toContainEqual(['ss', '-ltnpH'])
+      calls.length = 0
+      await clock.advance(6000)
+      expect(calls).toEqual([])
+    }
+    if (mode === 'non-linux') expect(calls).toEqual([['uname', '-s']])
+    if (mode === 'ended' || mode === 'unsafe path' || mode === 'output port')
+      expect(calls).toEqual([])
+  })
+}

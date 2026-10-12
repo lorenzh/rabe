@@ -25,7 +25,7 @@ Use this index to find the guide that matches your question.
 - [Shared poll loop](architecture/loop.md): scheduling rules, source changes, repeated starts, and one completed write.
 - [State and items](architecture/state.md): item model, idle teammates, registry, state writes, and turns.
 - [Diagnostics](architecture/diagnostics.md): per-source poll records in `rabe.diag`, incremental bytes and unchanged-file skips, `/rabe-diag`, fixed error categories and report failures.
-- [Sources](architecture/sources.md): poll callbacks that return changes, source modules, and source tests.
+- [Sources](architecture/sources.md): poll callbacks that return changes, source modules, Linux listener parsing in `hooks/ports.ts`, and source tests.
 - [Codex data](architecture/codex-data.md): Codex job parsing and incremental rollout parsing with restored step checks.
 - [Agent items](architecture/agent-items.md): metadata cache recovery that preserves newer event fields, transcripts and turns.
 - [Price estimate](architecture/prices.md): price lookup and cost estimates.
@@ -42,7 +42,7 @@ Use this index to find the guide that matches your question.
 
 - [Feasibility overview](feasibility.md): overview, stat-only idle reader benchmark, and links to the source limits.
 - [Claude agents and workflows](feasibility/agents.md): agent and teammate identity, worktree, and workflow data with script path limits.
-- [Codex and background work](feasibility/background-work.md): Codex jobs, foreground Bash calls, direct codex exec runs, shells, monitors, cron jobs, polling intervals, and task output path limits.
+- [Codex and background work](feasibility/background-work.md): Codex jobs, foreground Bash calls, direct codex exec runs, shells, monitors, cron jobs, polling intervals, silent-server ports on Linux, and task output path limits.
 - [User interface limits](feasibility/ui.md): API limits for rendering and input.
 - [Price data](feasibility/prices.md): price inputs and view data.
 - [Files and runtime limits](feasibility/files.md): script edits from Bash diffs, confirmed shell writes, coverage settings, and open runtime questions.

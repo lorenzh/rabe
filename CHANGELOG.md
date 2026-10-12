@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Added
+
+- On Linux, background shells can show their listening port even with empty or redirected output ([#39](https://github.com/lorenzh/rabe/issues/39)).
+
 ### Fixed
 
 - Without an inode command, shells and monitors skip unchanged output and no longer count that as an error; a failed `tail` no longer counts as a content read ([#146](https://github.com/lorenzh/rabe/pull/146), fixes [#133](https://github.com/lorenzh/rabe/issues/133)).
