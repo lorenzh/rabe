@@ -632,7 +632,8 @@ export function pane(on: On, hours = baseHours): void {
     const keys =
       interaction.holds[interaction.surface ?? 'terminal']?.keys.map(one => one.key) ?? []
     const move = deferredFocus(interaction, keys, e.element)
-    if (move)
+    if (move) {
+      feed($, { type: 'focus-queued', key: e.element, move })
       return sequence(async () => {
         const current =
           interaction.holds[interaction.surface ?? 'terminal']?.keys.map(one => one.key) ?? []
@@ -641,6 +642,7 @@ export function pane(on: On, hours = baseHours): void {
         feed($, { type: 'step', key })
         return (await focusOn($, key)) ? {} : { deny: 'Rabe focus move refused' }
       })
+    }
     return interaction.ringOn && e.element !== interaction.ringOn
       ? sequence(() => focused($, e, next))
       : focused($, e, next)

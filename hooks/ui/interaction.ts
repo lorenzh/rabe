@@ -21,6 +21,7 @@ export type Interaction = {
   landedOn?: string
   aimOn?: string
   landingFrom?: string
+  queued?: { key: string | undefined; move: DeferredFocus }
   shift?: Shift
   seats: Record<string, Seat>
   holds: Record<string, { scope: string; keys: Held[] }>
@@ -45,6 +46,7 @@ export type InteractionEvent =
   | { type: 'opened' | 'closed' | 'press-start' | 'press-end' | 'unfocused' }
   | { type: 'render'; model: Model; size: Size; selection: Selection; placement: string }
   | { type: 'focus-start'; key: string }
+  | { type: 'focus-queued'; key: string | undefined; move: DeferredFocus }
   | { type: 'refocused'; isOpen: boolean; isFocused: boolean }
   | { type: 'regained'; want: Shift; isMoved: boolean }
   | {
@@ -103,6 +105,7 @@ export function interact(
           landedOn: undefined,
           aimOn: undefined,
           landingFrom: undefined,
+          queued: undefined,
           shift: undefined,
           holds: {},
           opening: { isAsked: true, tries: 1 },
@@ -128,16 +131,29 @@ export function interact(
           landedOn: undefined,
           aimOn: undefined,
           landingFrom: undefined,
+          queued: undefined,
           shift: undefined,
         },
         effects,
       }
     case 'press-start':
-      return { state: { ...state, pressing: state.pressing + 1, landingFrom: undefined }, effects }
+      return {
+        state: {
+          ...state,
+          pressing: state.pressing + 1,
+          landingFrom: state.pressing ? state.landingFrom : undefined,
+        },
+        effects,
+      }
     case 'press-end':
       return { state: { ...state, pressing: state.pressing - 1 }, effects }
     case 'focus-start':
-      return { state: { ...state, landedOn: undefined, aimOn: event.key }, effects }
+      return {
+        state: { ...state, landedOn: undefined, aimOn: event.key, queued: undefined },
+        effects,
+      }
+    case 'focus-queued':
+      return { state: { ...state, queued: { key: event.key, move: event.move } }, effects }
     case 'landed':
       return { state: { ...state, aimOn: undefined, arming: arm(state.arming, event) }, effects }
     case 'regained':
@@ -201,6 +217,7 @@ export function interact(
           ringOn: undefined,
           landedOn: undefined,
           aimOn: undefined,
+          queued: undefined,
           landingFrom: state.pressing ? (state.ringOn ?? state.landingFrom) : undefined,
           shift: undefined,
         },
@@ -212,6 +229,7 @@ export function interact(
           ...state,
           arming: arm(state.arming, event),
           ringOn: event.key,
+          queued: undefined,
           landingFrom:
             event.byPerson || event.key === state.arming.step
               ? undefined
@@ -241,14 +259,19 @@ export function deferredFocus(
   key: string | undefined,
 ): DeferredFocus | undefined {
   if (!state.pressing && !keys.includes(state.landingFrom ?? '')) return undefined
+  if (state.queued && state.queued.key === key) return state.queued.move
   const from = keys.indexOf(state.ringOn ?? '')
   const aim = keys.indexOf(state.aimOn ?? '')
   const to = keys.indexOf(key ?? '')
   const before = keys.indexOf(state.landingFrom ?? '')
-  const by = to - from
-  if (aim >= 0 && to >= 0 && Math.abs(to - aim) === 1) return { by: to - aim }
-  if (from >= 0 && to >= 0 && Math.abs(by) <= 1) return { by }
-  if (before >= 0 && to >= 0 && Math.abs(to - before) === 1) return { by: to - before }
+  const origins = state.queued ? [keys.indexOf(state.queued.key ?? '')] : [aim, from, before]
+  for (const origin of origins) {
+    if (origin < 0 || to < 0) continue
+    const by = to - origin
+    if (!state.queued && origin === from && by === 0) return { by: 0 }
+    if (Math.abs(by) === 1) return { by }
+    if (keys.length > 2 && Math.abs(by) === keys.length - 1) return { by: by > 0 ? -1 : 1 }
+  }
   return state.pressing ? { key } : undefined
 }
 
