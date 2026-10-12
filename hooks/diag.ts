@@ -30,7 +30,7 @@ export function diagText(facts: DiagFacts): string {
     if (!d) return `- ${name}: no poll recorded (not due, inactive session, or hook unavailable)`
 
     return (
-      `- ${name}: ${d.ms} ms, ${d.files} files, ${d.chars} chars, ${d.errors} errors` +
+      `- ${name}: ${d.ms} ms, ${d.files} files, ${d.chars} chars, ${d.bytes ?? 0} bytes, ${d.skipped ?? 0} skipped, ${d.errors} errors` +
       (d.lastError ? `, last error: ${shorten(d.lastError)}` : '')
     )
   })

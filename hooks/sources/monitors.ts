@@ -1,7 +1,8 @@
 import type { EngineInterface, On } from 'claude-code'
-
-import { fault, type Pollers, tally } from '../loop'
-import { type EndStatus, itemId, type RabeItem } from '../model'
+import type { RabeFileCursor } from '../../types'
+import { fault, type Pollers, skipped, tally } from '../loop'
+import { itemId, type RabeItem } from '../model'
+import { inodeOf, outputUpdate, readChunk, readPlan, unchanged } from '../reading'
 import {
   addItem,
   type Change,
@@ -13,14 +14,7 @@ import {
   stage,
   updateItem,
 } from '../registry'
-import {
-  appendLines,
-  endStatus,
-  parseNotifications,
-  parseOutput,
-  taskFolder,
-  taskOutput,
-} from '../tasks'
+import { endStatus, parseNotifications, parseOutput, taskFolder, taskOutput } from '../tasks'
 
 const MAX_READ = 4 * 1024 * 1024
 
@@ -62,15 +56,21 @@ async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Pro
   }
 }
 
-// ponytail: reads files up to 4 MiB whole; a larger monitor output is not followed
-async function follow(
-  $: EngineInterface,
-  id: string,
-  path: string,
-): Promise<EndStatus | undefined> {
+let reading = Promise.resolve()
+
+function readOutput($: EngineInterface, path: string, id: string): Promise<{ text?: string }> {
+  const result = reading.then(() => readFile($, path, id))
+  reading = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  return result
+}
+
+async function readFile($: EngineInterface, path: string, id: string): Promise<{ text?: string }> {
   try {
     const folder = taskFolder(path, await $.session.id(), await $.session.root())
-    if (!folder) return undefined
+    if (!folder) return {}
     const root = await $.fs.stat(folder, { resolve: true })
     const stat = await $.fs.stat(path, { resolve: true })
     if (
@@ -78,29 +78,97 @@ async function follow(
       stat.realPath !== `${root.realPath}/${path.slice(path.lastIndexOf('/') + 1)}` ||
       stat.kind !== 'file'
     )
-      return undefined
+      return {}
     path = stat.realPath
-    const { size } = stat
-    if (size > MAX_READ) return undefined
-    const { lines, ended } = parseOutput(String(tally(await $.fs.read(path))))
-    const now = await $.clock.now()
-    for (;;) {
-      const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
-      const next = appendLines(value[id], lines, now)
-      if (!next) break
-      const { isSet } = await $.state.set(
-        { plugin: 'rabe', key: 'lines' },
-        { ...value, [id]: next },
-        { ifVersion: version },
-      )
-      if (isSet) break
+    const { value = {} } = await $.state.get({ plugin: 'rabe', key: 'lines' })
+    const held = value[id]?.cursor
+    const same = held?.identity?.startsWith(`${path}:`) && unchanged(stat, held)
+    if (same && held && (held.offset >= held.size || held.partial)) {
+      skipped()
+      return {}
     }
-
-    return ended
+    const identity = same
+      ? held?.identity?.slice(path.length + 1)
+      : await $.process
+          .run(['ls', '-diL', '--', path], { timeoutMs: 5000 })
+          .then(result =>
+            result.exitCode === 0
+              ? inodeOf(result.stdout)
+              : fault(`inode lookup exited with code ${result.exitCode}`),
+          )
+          .catch(fault)
+    if (!identity) {
+      if (stat.size > MAX_READ) return {}
+      const text = String(tally(await $.fs.read(path)))
+      const parsed = parseOutput(text)
+      await keepLines($, id, parsed.lines, false, false, parsed.ended !== undefined)
+      return { text }
+    }
+    const stamp = { size: stat.size, mtimeMs: stat.mtimeMs, identity: `${path}:${identity}` }
+    const plan = readPlan(stamp, held, MAX_READ)
+    if (!plan) {
+      skipped()
+      return {}
+    }
+    const { offset, reset, whole } = plan
+    let text: string
+    let truncated = false
+    if (whole) text = String(tally(await $.fs.read(path)))
+    else {
+      const result = await $.process.run(['tail', '-c', `+${offset + 1}`, '--', path], {
+        timeoutMs: 5000,
+      })
+      text = tally(result.stdout)
+      if (result.exitCode !== 0) {
+        fault(`tail exited with code ${result.exitCode}`)
+        return {}
+      }
+      truncated = result.isStdoutTruncated
+    }
+    const chunk = readChunk(text, truncated, false, held?.isDiscarding)
+    if (truncated && chunk.bytes === 0) return {}
+    const parsed = parseOutput(chunk.text)
+    await keepLines(
+      $,
+      id,
+      parsed.lines,
+      reset,
+      !reset && held?.partial === true,
+      parsed.ended !== undefined,
+      {
+        ...stamp,
+        offset: offset + chunk.bytes,
+        partial: chunk.partial,
+        isDiscarding: chunk.isDiscarding,
+      },
+    )
+    return { text: chunk.text }
   } catch (error) {
     fault(error)
+    return {}
+  }
+}
 
-    return undefined
+async function keepLines(
+  $: EngineInterface,
+  id: string,
+  lines: string[],
+  reset: boolean,
+  partial: boolean,
+  ended: boolean,
+  cursor?: RabeFileCursor,
+): Promise<void> {
+  const now = await $.clock.now()
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
+    const next = outputUpdate(value[id], lines, now, reset, partial, ended, cursor)
+    if (!next) return
+    const { isSet } = await $.state.set(
+      { plugin: 'rabe', key: 'lines' },
+      { ...value, [id]: next },
+      { ifVersion: version },
+    )
+    if (isSet) return
   }
 }
 
@@ -110,17 +178,25 @@ function runningMonitors(items: RabeItem[]) {
 
 async function pollMonitors($: EngineInterface, items: RabeItem[]): Promise<Change> {
   const poll: Poll = { items, changes: [] }
+  const { value: cursors = {} } = await $.state.get({ plugin: 'rabe', key: 'lines' })
   try {
-    for (const item of runningMonitors(items)) {
+    for (const item of items.filter((item): item is RabeItem & { kind: 'monitor' } => {
+      const cursor = cursors[item.id]?.cursor
+      return (
+        item.kind === 'monitor' &&
+        (item.status === 'running' ||
+          (cursor !== undefined && cursor.offset < cursor.size && !cursor.partial))
+      )
+    })) {
       const path =
         item.detail.outputPath ?? (item.detail.taskId && taskOutput(items, item.detail.taskId))
       if (!path) continue
-      const ended = await follow($, item.id, path)
+      const ended = parseOutput((await readOutput($, path, item.id)).text ?? '').ended
       const now = await $.clock.now()
       stage(poll, held => {
         const next = updateItem(held, item.id, { detail: { outputPath: path } })
 
-        return ended ? endItem(next, item.id, ended, now) : next
+        return ended && item.status === 'running' ? endItem(next, item.id, ended, now) : next
       })
     }
   } catch {}
@@ -132,7 +208,7 @@ async function onNotifications($: EngineInterface, text: string): Promise<void> 
   for (const one of parseNotifications(text)) {
     const id = itemId('monitor', one.taskId)
     if (!one.status || !items.some(item => item.id === id)) continue
-    if (one.outputFile) await follow($, id, one.outputFile)
+    if (one.outputFile) await readOutput($, one.outputFile, id)
     const now = await $.clock.now()
     await write($, held =>
       endItem(
@@ -154,7 +230,9 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
     // A subagent's task may be missing from the main session's list; the poll
     // ends it from the exit line of its output file.
     if (item.parentId?.startsWith('agent:')) continue
-    const ended = item.detail.outputPath && (await follow($, item.id, item.detail.outputPath))
+    const ended =
+      item.detail.outputPath &&
+      parseOutput((await readOutput($, item.detail.outputPath, item.id)).text ?? '').ended
     await write($, held => endItem(held, item.id, ended || 'stopped', now))
   }
   await write($, held =>

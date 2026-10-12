@@ -1,10 +1,17 @@
 import type { RabeDiag } from '../types'
 import type { RabeItem } from './model'
+import { byteLength } from './reading'
 import { type Change, capEnded } from './registry'
 
-// What one poll read: files and chars (UTF-16 units, not bytes) read, and failures (`lastError` is cut
-// and has its paths shortened).
-export type Probe = { files: number; chars: number; errors: number; lastError?: string }
+// Read results and unchanged files in one poll; lastError has its paths shortened.
+export type Probe = {
+  files: number
+  chars: number
+  bytes: number
+  skipped: number
+  errors: number
+  lastError?: string
+}
 
 export type Poller = {
   // `name` keys the poll's record in `rabe.diag`; a poll without one keeps none.
@@ -64,9 +71,15 @@ export function tally<T>(text: T): T {
   if (current) {
     current.files++
     current.chars += typeof text === 'string' ? text.length : 0
+    current.bytes += typeof text === 'string' ? byteLength(text) : 0
   }
 
   return text
+}
+
+// Counts a file whose content read was skipped because it is unchanged.
+export function skipped(): void {
+  if (current) current.skipped++
 }
 
 // Counts a failure; returns `fallback`, so `.catch(fault)` and `.catch(e => fault(e, ''))` stand
@@ -94,6 +107,8 @@ export function mergeDiag(
       old.ms === ms &&
       old.files === stat.files &&
       old.chars === stat.chars &&
+      old.bytes === stat.bytes &&
+      old.skipped === stat.skipped &&
       old.errors === stat.errors &&
       old.lastError === stat.lastError
     if (!same) next = { ...next, [name]: { ...stat, ms } }
@@ -113,7 +128,7 @@ export async function collect(
   const stats: Record<string, RabeDiag> = {}
   for (const poll of pollers) {
     if (!pollDue(poll, now, initial)) continue
-    const probe: Probe = { files: 0, chars: 0, errors: 0 }
+    const probe: Probe = { files: 0, chars: 0, bytes: 0, skipped: 0, errors: 0 }
     const started = await tick().catch(() => now)
     current = probe
     try {
@@ -133,6 +148,8 @@ export async function collect(
         ms: Math.max(0, ended - started),
         files: probe.files,
         chars: probe.chars,
+        bytes: probe.bytes,
+        skipped: probe.skipped,
         errors: probe.errors,
         ...(probe.lastError && { lastError: probe.lastError }),
       }

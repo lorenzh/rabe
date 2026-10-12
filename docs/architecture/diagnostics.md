@@ -2,7 +2,7 @@
 title: Diagnostics
 description: How Rabe records the last poll of each source and prints it with /rabe-diag, without private data.
 tags: [architecture, diagnostics, privacy]
-keywords: [rabe-diag, diag, tally, fault, Probe, mergeDiag, shorten, RabeDiag, n/a, poll record, redaction, report-bug]
+keywords: [rabe-diag, diag, tally, fault, bytes, skipped, incremental, Probe, mergeDiag, shorten, RabeDiag, n/a, poll record, redaction, report-bug]
 ---
 
 # Diagnostics
@@ -15,12 +15,17 @@ The shared poll loop (see [Shared poll loop](loop.md)) gives each named poll a r
 
 - `at`: when the poll ran.
 - `ms`: how long it took, rounded to 100 ms.
-- `files` and `chars`: files and text read, from `tally` calls at the read sites. `chars` counts UTF-16 units of the returned text, not bytes. The worktrees poll also counts the output of a failed `git`, so a count describes returned data, not a successful read.
-- `errors` and `lastError`: failures of the last poll. A source reports a read it swallows with `fault`; a thrown poll counts in `collect`. A poll that did not run in a pass keeps its older record.
+- `files`: content reads from `tally` calls at the read sites. An appended chunk counts as one read.
+- `chars`: UTF-16 units in the returned text.
+- `bytes`: UTF-8 bytes in the returned text. Incremental reads count only the returned chunk. They include unfinished lines and discarded oversized records.
+- `skipped`: content reads skipped because the file is unchanged. Metadata caches and completed cursors increase this count. Stat and inode checks do not count as content reads.
+- `errors` and `lastError`: failures of the last poll. A source reports a swallowed read failure with `fault`. A thrown poll counts in `collect`. Polls that did not run keep their older records.
+
+The worktrees poll also counts output from a failed `git` command. Counts describe returned data rather than successful parsing. Byte counts use decoded text and can differ from raw bytes for invalid UTF-8.
 
 Polls run one after another, so `tally` and `fault` in `hooks/loop.ts` count into the poll in flight. They need no `$` and no probe argument, which keeps `$` in the source file. An event hook that reads while a poll runs counts into that poll.
 
-The loop writes a record only when `files`, `chars`, `errors`, `lastError` or the rounded `ms` changed (`mergeDiag`). A steady source causes no state write. A version conflict retries up to three times; a refused or failed write leaves the records as they are and never blocks the item write.
+The loop writes a record only when `files`, `chars`, `bytes`, `skipped`, `errors`, `lastError` or the rounded `ms` changed (`mergeDiag`). A steady source causes no state write. A version conflict retries up to three times; a refused or failed write leaves the records as they are and never blocks the item write.
 
 Limits: an event hook that reads during a poll counts into that poll, so event IO can overlap a poll; and a clean poll (no errors) does not prove that discovery found everything.
 
@@ -36,4 +41,4 @@ The text has no item titles, prompts, messages or commands. `lastError` goes thr
 
 ## Tests
 
-`hooks/diag.test.ts` covers the recorded fields, the unchanged-record rule, the redaction, the command, the report-bug context and, in `hooks/register.test.ts`, the tally and fault wiring and a refused diag write.
+`hooks/diag.test.ts` covers recorded fields and unchanged records. It also checks redaction and both commands. `hooks/register.test.ts` checks read counts and swallowed failures. It also checks that a refused diagnostics write does not block item updates. Source tests check unchanged-file skips and the bytes returned by appended chunks.

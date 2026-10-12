@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { diag, diagText } from './diag'
-import { collect, fault, mergeDiag, shorten, tally } from './loop'
+import { collect, fault, mergeDiag, shorten, skipped, tally } from './loop'
 import { core, files, memoryState } from './testing'
 
 test('shorten keeps the last name of a path and cuts long text', () => {
@@ -22,14 +22,15 @@ test('shorten rewrites every absolute path, short ones too', () => {
   expect(reason).toBe('Denied by policy: keep out of … now, see …')
 })
 
-test('collect records duration, reads, chars and errors per named poll', async () => {
+test('collect records duration, reads, UTF-8 bytes, skips and errors per named poll', async () => {
   let t = 0
   const { stats } = await collect(
     [
       {
         name: 'one',
         run: async () => {
-          tally('12345')
+          tally('ré😀')
+          skipped()
           fault(new Error("open '/home/lena/missing.json'"))
           return undefined
         },
@@ -47,16 +48,31 @@ test('collect records duration, reads, chars and errors per named poll', async (
     false,
     async () => (t += 250),
   )
-  expect(stats.one).toMatchObject({ at: 1000, ms: 250, files: 1, chars: 5, errors: 1 })
+  expect(stats.one).toMatchObject({
+    at: 1000,
+    ms: 250,
+    files: 1,
+    chars: 4,
+    bytes: 7,
+    skipped: 1,
+    errors: 1,
+  })
   expect(stats.one?.lastError).toBe("open 'missing.json'")
   expect(stats.two).toMatchObject({ errors: 1, lastError: 'failed x.out' })
   expect(Object.keys(stats)).toEqual(['one', 'two'])
 })
 
 test('mergeDiag keeps the same record while only the time of the poll moves', () => {
-  const held = { a: { at: 1, ms: 200, files: 1, chars: 5, errors: 0 } }
-  expect(mergeDiag(held, { a: { at: 9, ms: 230, files: 1, chars: 5, errors: 0 } })).toBe(held)
-  expect(mergeDiag(held, { a: { at: 9, ms: 230, files: 2, chars: 5, errors: 0 } }).a?.files).toBe(2)
+  const held = { a: { at: 1, ms: 200, files: 1, chars: 5, bytes: 5, skipped: 0, errors: 0 } }
+  expect(
+    mergeDiag(held, { a: { at: 9, ms: 230, files: 1, chars: 5, bytes: 5, skipped: 0, errors: 0 } }),
+  ).toBe(held)
+  expect(
+    mergeDiag(held, { a: { at: 9, ms: 230, files: 2, chars: 5, bytes: 5, skipped: 0, errors: 0 } })
+      .a?.files,
+  ).toBe(2)
+  expect(mergeDiag(held, { a: { ...held.a, bytes: 6 } }).a?.bytes).toBe(6)
+  expect(mergeDiag(held, { a: { ...held.a, skipped: 1 } }).a?.skipped).toBe(1)
 })
 
 test('the report has counts and versions and no titles, prompts or full paths', () => {
@@ -70,6 +86,8 @@ test('the report has counts and versions and no titles, prompts or full paths', 
         ms: 100,
         files: 2,
         chars: 90,
+        bytes: 94,
+        skipped: 3,
         errors: 1,
         lastError: "open '/home/lena/a/b.out'",
       },
@@ -88,7 +106,9 @@ test('the report has counts and versions and no titles, prompts or full paths', 
   expect(text).toContain('Rabe 0.6.0, Claude Code 2.1.296')
   expect(text).toContain('pricesFile: set')
   expect(text).toContain('shell running 1')
-  expect(text).toContain("- shells: 100 ms, 2 files, 90 chars, 1 errors, last error: open 'b.out'")
+  expect(text).toContain(
+    "- shells: 100 ms, 2 files, 90 chars, 94 bytes, 3 skipped, 1 errors, last error: open 'b.out'",
+  )
   for (const secret of ['lena', 'secret-project', 'rm -rf']) expect(text).not.toContain(secret)
   expect(text).toContain(
     '- agents: no poll recorded (not due, inactive session, or hook unavailable)',
@@ -103,12 +123,14 @@ test('/rabe-diag prints the stored records', async ($, on) => {
   core(on)
   files(on, { '/p/.claude-plugin/plugin.json': '{"version":"1.2.3"}' })
   state['rabe.diag'] = {
-    value: { agents: { at: 1, ms: 300, files: 4, chars: 100, errors: 0 } },
+    value: { agents: { at: 1, ms: 300, files: 4, chars: 100, bytes: 100, skipped: 2, errors: 0 } },
     version: 1,
   }
   diag(on, { timelineHours: 4, other: 'x' })
   const answer = await $.command.run({ command: 'rabe-diag', args: '' } as never)
-  expect(answer.text).toContain('- agents: 300 ms, 4 files, 100 chars, 0 errors')
+  expect(answer.text).toContain(
+    '- agents: 300 ms, 4 files, 100 chars, 100 bytes, 2 skipped, 0 errors',
+  )
   expect(answer.text).toContain('timelineHours: 4')
   expect(answer.text).not.toContain('other')
 })

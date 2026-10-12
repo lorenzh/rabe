@@ -1,5 +1,7 @@
 import type { On } from 'claude-code'
 
+import { byteLength } from './reading'
+
 export type Held = Record<string, { value: unknown; version: number }>
 
 // The test's `$` has no state noun: tests answer `$.state` from memory and read
@@ -23,7 +25,7 @@ export function memoryState(on: On): Held {
   return held
 }
 
-export function files(on: On, held: Record<string, string>): void {
+export function files(on: On, held: Record<string, string>, log?: string[]): void {
   on('fs.stat', async (_$, e, next) => {
     const isFile = e.path in held
     const isDir = Object.keys(held).some(path => path.startsWith(`${e.path}/`))
@@ -31,7 +33,7 @@ export function files(on: On, held: Record<string, string>): void {
       ? {
           value: {
             kind: isFile ? ('file' as const) : ('dir' as const),
-            size: held[e.path]?.length ?? 0,
+            size: byteLength(held[e.path] ?? ''),
             mtimeMs: 0,
             isLink: false,
             ...(e.resolve && { realPath: e.path }),
@@ -39,7 +41,28 @@ export function files(on: On, held: Record<string, string>): void {
         }
       : next(e)
   })
-  on('fs.read', async (_$, e, next) => (e.path in held ? { value: held[e.path] ?? '' } : next(e)))
+  on('fs.read', { path: /^/ }, async (_$, e, next) => {
+    if (!(e.path in held)) return next(e)
+    log?.push(`read ${e.path}`)
+    return { value: held[e.path] ?? '' }
+  })
+  on('process.run', { argv: ['ls', 'tail'] }, async (_$, e, next) => {
+    const path = e.argv.at(-1) ?? ''
+    const text = held[path]
+    if (text === undefined) return next(e)
+    if (e.argv[0] === 'ls')
+      return { value: { exitCode: 0, stdout: '1 file\n', stderr: '' } } as never
+    if (e.argv[0] !== 'tail') return next(e)
+    log?.push(`tail ${e.argv[2]} ${path}`)
+    const offset = Number(String(e.argv[2]).slice(1)) - 1
+    let bytes = 0
+    let stdout = ''
+    for (const char of text) {
+      if (bytes >= offset) stdout += char
+      bytes += byteLength(char)
+    }
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false } } as never
+  })
 }
 
 export function core(on: On): void {

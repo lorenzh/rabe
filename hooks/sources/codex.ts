@@ -1,8 +1,8 @@
 import type { EngineInterface, FsStat, On } from 'claude-code'
 
-import type { RabeCodexStep, RabeEdit, RabeTokens } from '../../types'
+import type { RabeCodexStep, RabeEdit, RabeRollout, RabeRolloutCursor } from '../../types'
 import { linkForwarders } from '../forwarders'
-import { fault, type Pollers, tally } from '../loop'
+import { fault, type Pollers, skipped, tally } from '../loop'
 import {
   clip,
   type EndStatus,
@@ -12,6 +12,7 @@ import {
   type RabeItemOf,
 } from '../model'
 import { type CodexRequest, codexUsd, type Prices, parsePrices, withOverride } from '../prices'
+import { byteLength, inodeOf, readChunk, readPlan, unchanged } from '../reading'
 import {
   addItem,
   type Change,
@@ -28,7 +29,6 @@ import { shellWrites } from '../writes'
 const CODEX_DATA = 'plugins/data/codex-openai-codex'
 const CODEX_PLUGIN = 'codex@openai-codex'
 const MAX_READ = 4 * 1024 * 1024
-const TAIL_LINES = 200
 const RUN_MS = 5000
 const MAX_STEPS = 50
 const MAX_TEXT = 300
@@ -43,19 +43,7 @@ type Rec = Record<string, unknown>
 
 export type CodexJob = Rec & { id: string }
 
-export type Rollout = {
-  model?: string
-  effort?: string
-  sandbox?: string
-  prompt?: string
-  tokens?: RabeTokens
-  // One per model request, from `last_token_usage`, with the model then in use.
-  requests: CodexRequest[]
-  commandCount: number
-  steps: RabeCodexStep[]
-  edits?: RabeEdit[]
-  checks?: Check[]
-}
+export type Rollout = RabeRollout
 
 // A file a shell command may have written while it ran, from `from` to `to`.
 export type Check = { path: string; from: number; to: number }
@@ -181,20 +169,37 @@ function request(value: unknown, model: string | undefined): CodexRequest {
 // the jobs before it in the same file, and counts none of them. `until` is a
 // finished job's end: the turns of jobs that resumed the thread later count
 // nothing either.
+export type RolloutCursor = RabeRolloutCursor
+
 export function parseRollout(text: string, home?: string, since?: number, until?: number): Rollout {
-  const out: Rollout = { requests: [], commandCount: 0, steps: [] }
-  let total = ''
-  // the thread's total when the job started; undefined while none was seen
-  let base: Rec | undefined
-  let isResumed = false
-  const edits: RabeEdit[] = []
+  return advanceRollout(text, undefined, home, since, until).out
+}
+
+export function advanceRollout(
+  text: string,
+  held?: RolloutCursor,
+  home?: string,
+  since?: number,
+  until?: number,
+): RolloutCursor {
+  const out: Rollout = held
+    ? { ...held.out, requests: [], steps: [...held.out.steps] }
+    : { requests: [], commandCount: 0, steps: [] }
+  delete out.checks
+  let total = held?.total ?? ''
+  let base = held?.base
+  let isResumed = held?.isResumed ?? false
+  const edits: RabeEdit[] = [...(out.edits ?? [])]
   const checks: Check[] = []
-  const pending = new Map<string, RabeCodexStep>()
+  const pending = { ...held?.pending }
+  let at = held?.at
   for (const raw of text.split('\n')) {
     const record = parseJson(raw)
     if (!record) continue
     const payload = rec(record.payload)
-    if (until !== undefined && Date.parse(str(record.timestamp) ?? '') > until) continue
+    const timestamp = Date.parse(str(record.timestamp) ?? '')
+    if (until !== undefined && timestamp > until) continue
+    if (Number.isFinite(timestamp)) at = Math.max(at ?? 0, timestamp)
     if (record.type === 'turn_context') {
       const settings = rec(rec(payload.collaboration_mode).settings)
       out.model = str(payload.model) ?? str(settings.model) ?? out.model
@@ -266,19 +271,31 @@ export function parseRollout(text: string, home?: string, since?: number, until?
           text: clip(pendingCommand(payload.input), MAX_TEXT),
           isRunning: true,
         }
-        pending.set(String(payload.call_id), step)
+        pending[String(payload.call_id)] = out.steps.length
         out.steps.push(step)
       } else if (payload.type === 'custom_tool_call_output') {
-        const step = pending.get(String(payload.call_id))
-        out.steps = out.steps.filter(one => one !== step)
+        const index = pending[String(payload.call_id)]
+        if (index !== undefined) {
+          out.steps.splice(index, 1)
+          delete pending[String(payload.call_id)]
+          for (const id of Object.keys(pending)) {
+            if ((pending[id] ?? 0) > index) pending[id] = (pending[id] as number) - 1
+          }
+        }
       }
     }
   }
+  const dropped = Math.max(0, out.steps.length - MAX_STEPS)
   out.steps = out.steps.slice(-MAX_STEPS)
+  for (const id of Object.keys(pending)) {
+    const index = (pending[id] as number) - dropped
+    if (index < 0) delete pending[id]
+    else pending[id] = index
+  }
   if (edits.length) out.edits = edits.slice(-MAX_EDITS)
   if (checks.length) out.checks = checks.slice(-MAX_EDITS)
 
-  return defined(out)
+  return { out: defined(out), total, base, isResumed, pending, at }
 }
 
 export function jobEnd(status: unknown): EndStatus | undefined {
@@ -388,7 +405,7 @@ async function findRollout(
   for (const offset of [0, -DAY, DAY]) {
     const day = new Date(startedAt + offset).toISOString().slice(0, 10).replaceAll('-', '/')
     const dir = `${codexHome}/sessions/${day}`
-    const entries = await $.fs.list(dir).catch(() => [])
+    const entries = await $.fs.list(dir).catch(e => fault(e, []))
     const found = entries.find(entry => entry.name.endsWith(`-${threadId}.jsonl`))
     if (found) return `${dir}/${found.name}`
   }
@@ -462,7 +479,7 @@ async function readSession(
   const path =
     held?.detail.sessionPath ??
     (await findRollout($, codexHome, threadId, jobStart(job) ?? (await $.clock.now())))
-  const stat = path ? await $.fs.stat(path).catch(() => undefined) : undefined
+  const stat = path ? await $.fs.stat(path).catch(fault) : undefined
   if (!path || !stat) {
     if (jobEnd(job.status)) return { isMissing: true }
 
@@ -470,41 +487,138 @@ async function readSession(
     return held?.detail.sessionPath ? { path } : undefined
   }
   const updatedAt = stat.mtimeMs
-  if (updatedAt === held?.detail.sessionUpdatedAt) return { path, updatedAt }
-  // no updatedAt on failure, so the next poll tries again
-  const home = await $.env.get('HOME')
-  if (stat.size <= MAX_READ) {
+  const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'rollouts' })
+  const key = itemId('codex', job.id)
+  const saved = value[key]
+  const until = jobStop(job)
+  const since = jobStart(job)
+  const previous =
+    saved?.path === path &&
+    saved.since === since &&
+    (saved.until === until || (until !== undefined && (saved.parser.at ?? 0) <= until))
+      ? saved
+      : undefined
+  const same = previous && unchanged(stat, previous.cursor)
+  if (
+    (same && (previous.cursor.offset >= previous.cursor.size || previous.cursor.partial)) ||
+    (!saved && updatedAt === held?.detail.sessionUpdatedAt)
+  ) {
+    skipped()
+    return { path, updatedAt }
+  }
+  const identity = same
+    ? previous.cursor.identity
+    : await $.process
+        .run(['ls', '-diL', '--', path], { timeoutMs: RUN_MS })
+        .then(result =>
+          result.exitCode === 0
+            ? inodeOf(result.stdout)
+            : fault(`inode lookup exited with code ${result.exitCode}`),
+        )
+        .catch(fault)
+  if (!identity) {
+    if (stat.size > MAX_READ) return { path }
     const text = await $.fs.read(path).then(tally, fault)
     if (text === undefined) return { path }
     const rollout = await confirmed(
       $,
-      parseRollout(String(text), home, jobStart(job), jobStop(job)),
+      parseRollout(String(text), await $.env.get('HOME'), jobStart(job), until),
       looks,
     )
-
     return { path, updatedAt, rollout, usd: codexUsd(await prices($, file), rollout.requests) }
   }
-  const head = await $.process
-    .run(['grep', '-m', '2', '-E', '"type":"(turn_context|UserMessage)"', '--', path], {
-      timeoutMs: RUN_MS,
-    })
-    .catch(() => undefined)
-  const tail = await $.process
-    .run(['tail', '-n', String(TAIL_LINES), '--', path], { timeoutMs: RUN_MS })
-    .catch(() => undefined)
-  if (!head || !tail || tail.exitCode !== 0) return { path }
-
-  // the head and tail miss requests between them, so no usd
+  const stamp = { size: stat.size, mtimeMs: stat.mtimeMs, identity }
+  const plan = readPlan(stamp, previous?.cursor, MAX_READ)
+  if (!plan) {
+    skipped()
+    return { path, updatedAt }
+  }
+  const { offset, reset, whole } = plan
+  const home = await $.env.get('HOME')
+  let text: string
+  let truncated = false
+  if (whole) {
+    const read = await $.fs.read(path).then(tally, fault)
+    if (read === undefined) return { path }
+    text = String(read)
+  } else {
+    const result = await $.process
+      .run(['tail', '-c', `+${offset + 1}`, '--', path], { timeoutMs: RUN_MS })
+      .catch(fault)
+    if (!result) return { path }
+    text = tally(result.stdout)
+    if (result.exitCode !== 0) {
+      fault(`tail exited with code ${result.exitCode}`)
+      return { path }
+    }
+    truncated = result.isStdoutTruncated
+  }
+  const chunk = readChunk(text, truncated, true, previous?.cursor.isDiscarding)
+  if (truncated && chunk.bytes === 0) return { path }
+  const parser = advanceRollout(
+    chunk.text,
+    reset ? undefined : previous?.parser,
+    home,
+    jobStart(job),
+    until,
+  )
+  const rollout = await confirmed($, parser.out, looks)
+  parser.out = { ...rollout, requests: [] }
+  const cost = rollout.requests.length ? codexUsd(await prices($, file), rollout.requests) : 0
+  const isUnpriced = (!reset && previous?.isUnpriced === true) || cost === undefined
+  const hasRequests = (!reset && previous?.hasRequests === true) || rollout.requests.length > 0
+  const usd = (reset ? 0 : (previous?.usd ?? 0)) + (cost ?? 0)
+  const cursor = {
+    ...stamp,
+    offset: offset + chunk.bytes,
+    partial: chunk.partial,
+    isDiscarding: chunk.isDiscarding,
+  }
+  const hasSkipped = (!reset && previous?.hasSkipped === true) || chunk.isDiscarding === true
+  await $.state.set(
+    { plugin: 'rabe', key: 'rollouts' },
+    {
+      ...value,
+      [key]: { path, cursor, parser, usd, until, isUnpriced, hasRequests, hasSkipped, since },
+    },
+    { ifVersion: version },
+  )
+  const isPartial = hasSkipped || truncated || offset + byteLength(text) < stat.size
   return {
     path,
     updatedAt,
-    isPartial: true,
-    rollout: await confirmed(
-      $,
-      parseRollout(`${head.stdout}\n${tail.stdout}`, home, jobStart(job), jobStop(job)),
-      looks,
-    ),
+    rollout,
+    isPartial,
+    usd: isPartial || isUnpriced || !hasRequests ? undefined : usd,
   }
+}
+
+async function readJson(
+  $: EngineInterface,
+  path: string,
+  known?: FsStat,
+): Promise<Rec | undefined> {
+  const stat = known ?? (await $.fs.stat(path).catch(fault))
+  if (stat?.kind !== 'file') return undefined
+  const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'codexFiles' })
+  const held = value[path]
+  if (unchanged(stat, held)) {
+    skipped()
+    return held?.data
+  }
+  const read = await $.fs.read(path).then(tally, fault)
+  const text = typeof read === 'string' ? read : ''
+  const parsed = parseJson(text)
+  if (!parsed) return undefined
+  await $.state.set(
+    { plugin: 'rabe', key: 'codexFiles' },
+    {
+      ...value,
+      [path]: { size: stat.size, mtimeMs: stat.mtimeMs, data: parsed },
+    },
+    { ifVersion: version },
+  )
+  return parsed
 }
 
 async function refresh(
@@ -518,38 +632,84 @@ async function refresh(
   file: string,
   poll: Poll,
 ): Promise<void> {
-  const saved = parseJson(String(await $.fs.read(jobPath).then(tally, e => fault(e, ''))))
+  const saved = await readJson($, jobPath)
   const job: CodexJob = { ...entry, ...saved, id: entry.id }
   if (job.sessionId !== sessionId) return
-  const end = jobEnd(job.status)
+  const held = items.find((one): one is RabeItemOf<'codex'> => one.id === itemId('codex', job.id))
+  const end =
+    jobEnd(job.status) ??
+    (held?.status === 'done' || held?.status === 'failed' || held?.status === 'stopped'
+      ? held.status
+      : undefined)
   const now = await $.clock.now()
-  const endedAt = Date.parse(str(job.completedAt) ?? '') || now
+  const endedAt = Date.parse(str(job.completedAt) ?? '') || held?.endedAt || now
   const change = (item: NewItem) => (list: RabeItem[]) => {
     const added = addItem(list, item, now)
 
     return end ? endItem(added, item.id, end, endedAt) : added
   }
-  const held = items.find((one): one is RabeItemOf<'codex'> => one.id === itemId('codex', job.id))
   // a finished job the cap would drop again: its session file is not read
   if (!held && commit(items, change(codexItem(job, undefined))) === undefined) return
   const session = await readSession($, codexHome, job, held, looks, file)
   stage(poll, change(codexItem(job, session)))
 }
 
+async function cleanFiles(
+  $: EngineInterface,
+  items: RabeItem[],
+  workspaces: Set<string>,
+): Promise<void> {
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'rollouts' })
+    const { value: current = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, Object.keys(value), [...items, ...current])
+    if (next === value) break
+    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'rollouts' }, next, {
+      ifVersion: version,
+    })
+    if (isSet) break
+  }
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'codexFiles' })
+    const { value: current = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const ids = new Set(
+      [...items, ...current].filter(item => item.kind === 'codex').map(item => item.id),
+    )
+    const entries = Object.entries(value).filter(([path, entry]) => {
+      const jobId = /\/jobs\/([^/]+)\.json$/.exec(path)?.[1]
+      return jobId
+        ? ids.has(itemId('codex', jobId)) &&
+            workspaces.has(path.replace(/\/jobs\/[^/]+\.json$/, '/state.json'))
+        : workspaces.has(path) &&
+            list(entry.data.jobs).some(job => ids.has(itemId('codex', str(rec(job).id) ?? '')))
+    })
+    if (entries.length === Object.keys(value).length) return
+    const { isSet } = await $.state.set(
+      { plugin: 'rabe', key: 'codexFiles' },
+      Object.fromEntries(entries),
+      { ifVersion: version },
+    )
+    if (isSet) return
+  }
+}
+
 async function pollCodex($: EngineInterface, file: string, items: RabeItem[]): Promise<Change> {
   const poll: Poll = { items, changes: [] }
   const { claude, codex } = await homes($)
+  const { value: cursors = {} } = await $.state.get({ plugin: 'rabe', key: 'rollouts' })
+  const workspaces = new Set<string>()
   const stateRoot = `${claude}/${CODEX_DATA}/state`
   const sessionId = await $.session.id()
   const { startedAt: since } = await $.session.usage()
   const looks: Looks = { asked: new Map(), known: new Map(), stop: new AbortController() }
   // ponytail: one stat per workspace folder per poll; keep a folder list in $.state if there are hundreds
-  for (const dir of await $.fs.list(stateRoot).catch(() => [])) {
+  for (const dir of await $.fs.list(stateRoot).catch(e => fault(e, []))) {
     if (dir.kind !== 'dir') continue
     const statePath = `${stateRoot}/${dir.name}/state.json`
-    const stat = await $.fs.stat(statePath).catch(() => undefined)
+    const stat = await $.fs.stat(statePath).catch(fault)
     if (!stat || stat.mtimeMs < since) continue
-    const state = parseJson(String(await $.fs.read(statePath).then(tally, e => fault(e, ''))))
+    workspaces.add(statePath)
+    const state = await readJson($, statePath, stat)
     for (const entry of list(state?.jobs).map(rec)) {
       const id = str(entry.id)
       // the plugin's state.json can hold a bare status patch; its job file has the session
@@ -557,7 +717,9 @@ async function pollCodex($: EngineInterface, file: string, items: RabeItem[]): P
       if (!id || !/^\w[\w.-]*$/.test(id)) continue
       if (entry.sessionId !== undefined && entry.sessionId !== sessionId) continue
       const held = items.find((one): one is RabeItemOf<'codex'> => one.id === itemId('codex', id))
-      if (held && held.status !== 'running') continue
+      const cursor = cursors[itemId('codex', id)]?.cursor
+      const backlog = cursor && cursor.offset < cursor.size && !cursor.partial
+      if (held && held.status !== 'running' && !backlog) continue
       await refresh(
         $,
         sessionId,
@@ -568,11 +730,12 @@ async function pollCodex($: EngineInterface, file: string, items: RabeItem[]): P
         looks,
         file,
         poll,
-      ).catch(() => undefined)
+      ).catch(fault)
     }
   }
   looks.stop.abort()
   stage(poll, linkForwarders)
+  await cleanFiles($, poll.items, workspaces)
   return changeOf(poll, items)
 }
 

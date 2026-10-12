@@ -11,7 +11,7 @@ import type {
 
 import type { RabeCodexCall, RabeEdit, RabeToolUse, RabeTurn } from '../../types'
 import { companionCall, companionOutput } from '../forwarders'
-import { fault, type Pollers, tally } from '../loop'
+import { fault, type Pollers, skipped, tally } from '../loop'
 import {
   clip,
   type EndStatus,
@@ -24,6 +24,7 @@ import {
   type RabeTokens,
 } from '../model'
 import { claudeUsd, type Prices, parsePrices, withOverride } from '../prices'
+import { unchanged } from '../reading'
 import {
   addItem,
   type Change,
@@ -492,9 +493,34 @@ async function readMeta(
   const item = asAgent(items, id)
   const path = item && metaPath(item, items)
   if (!path) return
+  const stat = await $.fs.stat(path).catch(fault)
+  if (stat?.kind !== 'file') return
+  const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'agentFiles' })
+  const held = value[id]
+  if (held?.path === path && unchanged(stat, held)) {
+    skipped()
+    return
+  }
   const text = await $.fs.read(path).then(tally, fault)
   const patch = typeof text === 'string' ? metaPatch(text) : undefined
-  return patch ? list => updateItem(list, id, { detail: patch }) : undefined
+  if (!patch) return
+  await $.state.set(
+    { plugin: 'rabe', key: 'agentFiles' },
+    {
+      ...value,
+      [id]: { path, size: stat.size, mtimeMs: stat.mtimeMs },
+    },
+    { ifVersion: version },
+  )
+  return list => updateItem(list, id, { detail: patch })
+}
+
+async function cleanFiles($: EngineInterface, items: RabeItem[]): Promise<void> {
+  const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'agentFiles' })
+  const { value: current = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+  const next = prune(value, Object.keys(value), [...items, ...current])
+  if (next !== value)
+    await $.state.set({ plugin: 'rabe', key: 'agentFiles' }, next, { ifVersion: version })
 }
 
 async function pollAgents($: EngineInterface, items: RabeItem[]): Promise<Change> {
@@ -522,6 +548,7 @@ async function pollAgents($: EngineInterface, items: RabeItem[]): Promise<Change
       if (change) stage(poll, change)
     }
   }
+  await cleanFiles($, poll.items)
   return changeOf(poll, items)
 }
 

@@ -145,7 +145,7 @@ export type RabeTab = 'items' | 'cost' | 'effects' | 'timeline'
 
 export type RabeLine = { at: number; text: string }
 
-export type RabeLines = { seen: number; lines: RabeLine[] }
+export type RabeLines = { seen: number; lines: RabeLine[]; cursor?: RabeFileCursor }
 
 // Item ids per list (a group of the Items tab, `cost`, `timeline`) in the
 // order the pane showed them when it opened.
@@ -177,15 +177,48 @@ export type RabeWorktree = {
 // open, so no row folds away under the focus.
 export type RabeWindow = { base: number; hours: number; since: number }
 
+export type RabeFileCursor = {
+  size: number
+  mtimeMs: number
+  offset: number
+  identity?: string
+  partial: boolean
+  isDiscarding?: boolean
+}
+
+export type RabeRollout = {
+  model?: string
+  effort?: string
+  sandbox?: string
+  prompt?: string
+  tokens?: RabeTokens
+  requests: { model?: string; input: number; cached: number; write: number; output: number }[]
+  commandCount: number
+  steps: RabeCodexStep[]
+  edits?: RabeEdit[]
+  checks?: { path: string; from: number; to: number }[]
+}
+
+export type RabeRolloutCursor = {
+  out: RabeRollout
+  total: string
+  base?: Record<string, unknown>
+  isResumed: boolean
+  at?: number
+  pending: Record<string, number>
+}
+
 // The last poll of one source (`agents`, `codex`, `shells`, `monitors`,
 // `worktrees`): when it ran, how long it took (rounded to 100 ms), the files
-// and chars it read, its failures, and the last failure's text with paths
+// and text it read, unchanged files skipped, its failures, and the last failure's text with paths
 // shortened. Written only when a value changes.
 export type RabeDiag = {
   at: number
   ms: number
   files: number
   chars: number
+  bytes: number
+  skipped: number
   errors: number
   lastError?: string
 }
@@ -194,6 +227,22 @@ declare module 'claude-code' {
   interface PluginState {
     rabe: {
       items: RabeItem[]
+      agentFiles: Record<string, { path: string; size: number; mtimeMs: number }>
+      codexFiles: Record<string, { size: number; mtimeMs: number; data: Record<string, unknown> }>
+      rollouts: Record<
+        string,
+        {
+          path: string
+          cursor: RabeFileCursor
+          parser: RabeRolloutCursor
+          usd: number
+          isUnpriced: boolean
+          hasRequests: boolean
+          hasSkipped: boolean
+          until?: number
+          since?: number
+        }
+      >
       tab: RabeTab
       turns: Record<string, RabeTurn[]>
       lines: Record<string, RabeLines>

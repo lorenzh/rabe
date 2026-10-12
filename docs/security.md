@@ -43,9 +43,9 @@ Text from transcripts, meta files, output files, Codex files and workflow script
 ### Commands
 
 - `$.process.run` takes an argument array. Never build a shell string, and never run `sh -c` or `bash -c` with a path, id or file content in it.
-- `argv[0]` is a fixed program name (`git`, `tail`, `grep`, `node`). It never comes from a file.
+- `argv[0]` is a fixed program name (`git`, `tail`, `ls`, `node`). It never comes from a file.
 - Put `--` before a path or id that comes from a file or a tool result, so a value that starts with `-` cannot become an option.
-- Keep the time and output limits: `$.process.run` stops at 30 seconds and 4 MiB per stream by default. A command that a poll runs sets `timeoutMs: 5000`. Check `isStdoutTruncated` where a cut answer is wrong; the `tail` and `grep` reads of large files need no check, since a cut last line only fails to parse.
+- Keep the time and output limits: `$.process.run` stops at 30 seconds and 4 MiB per stream by default. A command that a poll runs sets `timeoutMs: 5000`. Check `isStdoutTruncated` where a cut answer is wrong. Incremental readers advance through complete records in cut output. They retry the remainder on a later poll.
 - A command that a poll runs must be read-only.
 
 ### Paths

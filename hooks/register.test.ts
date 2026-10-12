@@ -77,6 +77,11 @@ test('band and pane keep the old counts during a poll and draw the completed tic
   let ended = false
   let release = () => {}
   let pause: Promise<void> | undefined
+  on('fs.stat', async (_$, e, next) =>
+    e.path.endsWith('.meta.json')
+      ? { value: { kind: 'file', size: 100, mtimeMs: pause ? 2 : 1, isLink: false } }
+      : next(e),
+  )
   on(
     'agent.list',
     async () =>
@@ -223,6 +228,11 @@ test('an event write during a poll is kept when the staged changes commit', asyn
   core(on)
   let release = () => {}
   let pause: Promise<void> | undefined
+  on('fs.stat', async (_$, e, next) =>
+    e.path.endsWith('.meta.json')
+      ? { value: { kind: 'file', size: 100, mtimeMs: pause ? 2 : 1, isLink: false } }
+      : next(e),
+  )
   on(
     'agent.list',
     async () => ({ value: [{ id: 'a1', status: 'running', name: 'First' }] }) as never,
@@ -368,10 +378,13 @@ function agentsAndMeta(on: Parameters<typeof memoryState>[0], denyDiag = false) 
         ],
       }) as never,
   )
-  files(on, { '/s/agent-a1.meta.json': '{"cwd":"/repo/a"}' })
   on('fs.read', { path: /a2\.meta\.json$/ }, async () => ({
     deny: 'EACCES /home/lena/private/notes.json',
   }))
+  files(on, {
+    '/s/agent-a1.meta.json': '{"cwd":"/repo/a"}',
+    '/s/agent-a2.meta.json': '{}',
+  })
   state['rabe.items'] = {
     value: ['a1', 'a2'].map(id => ({
       id: `agent:${id}`,
@@ -393,7 +406,7 @@ test('the agents record counts one read file and one denied read, without privat
   await $.session.start(START)
   await clock.advance(0)
   const record = (state['rabe.diag']?.value as Record<string, unknown> | undefined)?.agents
-  expect(record).toMatchObject({ files: 1, chars: 17, errors: 1 })
+  expect(record).toMatchObject({ files: 1, chars: 17, bytes: 17, skipped: 0, errors: 1 })
   expect(JSON.stringify(state['rabe.diag']?.value)).not.toContain('private')
 })
 
