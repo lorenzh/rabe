@@ -16,6 +16,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Changed
 
+- Separate pane data validation from API calls, with no behaviour change ([#134](https://github.com/lorenzh/rabe/pull/134), refs [#75](https://github.com/lorenzh/rabe/issues/75))
 - Read appended bytes, bound large-file parsing, cache metadata without process access, and skip unchanged desktop rollouts ([#132](https://github.com/lorenzh/rabe/pull/132), fixes [#71](https://github.com/lorenzh/rabe/issues/71))
 - Refresh background work together without overlapping polls, and reduce polling while idle. ([#127](https://github.com/lorenzh/rabe/pull/127), fixes [#72](https://github.com/lorenzh/rabe/issues/72))
 - Keep fast all-fit arrow bursts in order after queued tab changes, including wraparound (fixes #123)
