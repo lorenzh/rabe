@@ -1,6 +1,7 @@
 import type { EngineInterface, Register } from 'claude-code'
-
-import { collect, delayOf, nextStep, type Pollers } from './loop'
+import type { RabeDiag } from '../types'
+import { diag } from './diag'
+import { collect, delayOf, mergeDiag, nextStep, type Pollers } from './loop'
 import type { RabeItem } from './model'
 import { type Change, commit, prune } from './registry'
 import { sources } from './sources'
@@ -39,8 +40,9 @@ export const register: Register = (on, options) => {
             $.ui.invalidate('ui.render')
             return
           }
-          const collected = await collect([...pollers], items, now)
+          const collected = await collect([...pollers], items, now, false, () => $.clock.now())
           if (session !== generation) return
+          await saveDiag($, collected.stats)
           const changed = await write($, collected.change, {
             version,
             before: items,
@@ -65,7 +67,8 @@ export const register: Register = (on, options) => {
     try {
       const now = await $.clock.now()
       const { value: items = [], version } = await $.state.get({ plugin: 'rabe', key: 'items' })
-      const collected = await collect([...pollers], items, now, true)
+      const collected = await collect([...pollers], items, now, true, () => $.clock.now())
+      if (session === generation) await saveDiag($, collected.stats)
       if (session === generation)
         await write($, collected.change, { version, before: items, items: collected.items })
     } catch {
@@ -78,7 +81,24 @@ export const register: Register = (on, options) => {
   sources(on, file, pollers)
   band(on)
   pane(on, hoursOf(options.timelineHours))
+  diag(on, options)
   if (options.hideBuiltinTasks !== false) builtin(on)
+}
+
+// Writes the polls' records only when one changed.
+async function saveDiag(
+  $: Pick<EngineInterface, 'state'>,
+  stats: Record<string, RabeDiag>,
+): Promise<void> {
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diag' })
+    const next = mergeDiag(value, stats)
+    if (next === value) return
+    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'diag' }, next, {
+      ifVersion: version,
+    })
+    if (isSet) return
+  }
 }
 
 async function write(

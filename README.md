@@ -148,6 +148,7 @@ Commands:
 
 - `/rabe`: open the pane.
 - `/rabe-stop codex:<job id>`: cancel a running Codex job. `x` in the pane does the same.
+- `/rabe-diag`: show what each source read in its last poll, with versions and options, and no prompts, titles or full paths. Run it when something shows `n/a` or is missing.
 - `/rabe:report-bug`: write a bug report for this repository.
 - `/rabe:feedback`: write an idea or a comment for this repository.
 
@@ -202,7 +203,7 @@ Rabe polls its sources in one loop. A slow poll makes the loop skip ticks. Start
 
 Rabe runs `tail` and `grep` to read files over 4 MiB. It runs `git worktree list` every 10 seconds in the session's folder to know the worktrees. When you stop a Codex job, it runs the Codex plugin's own cancel script. A refusal sends fixed text to Claude. The pane toast can show the first error line.
 
-`/rabe:report-bug` includes the details you provide, reproduction steps, Rabe and Claude Code versions, your operating system and any error lines you give it. Both report commands ask Claude Code to leave out home paths, user or project names, prompts, tokens and email addresses; `/rabe:report-bug` also asks it to leave out transcript text. These are instructions, not automatic redaction filters. Review the full draft before approving it. See [SECURITY.md](SECURITY.md) to report a vulnerability privately.
+`/rabe-diag` prints versions, option values (`pricesFile` only as set or not set), item counts and per-source poll counts with error text cut and paths shortened to file names. `/rabe:report-bug` asks you to run it and include its text. It includes the details you provide, reproduction steps, Rabe and Claude Code versions, your operating system and any error lines you give it. Both report commands ask Claude Code to leave out home paths, user or project names, prompts, tokens and email addresses; `/rabe:report-bug` also asks it to leave out transcript text. These are instructions, not automatic redaction filters. Review the full draft before approving it. See [SECURITY.md](SECURITY.md) to report a vulnerability privately.
 
 ## Requirements
 

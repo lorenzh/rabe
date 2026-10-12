@@ -12,10 +12,11 @@ Facts gathered for the report:
 - Rabe version: read `version` from `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`.
 - Claude Code version: !`claude --version`
 - Operating system: !`uname -sr`
+- Diagnostics: ask the person to run `/rabe-diag` and paste its output. It has versions, options, item counts and per-source poll counts, and no prompts or full paths. Put it in the draft under a Diagnostics heading.
 
 Steps:
 1. If what happened, what they expected, or how to reproduce it is unclear, ask for the missing parts in one short message. Ask also for any error lines the /rabe pane showed.
-2. Write a draft with a short title and these sections, matching `.github/ISSUE_TEMPLATE/bug_report.yml`: What happened, What you expected, Steps to reproduce, Rabe version, Claude Code version, Operating system, Error lines.
+2. Write a draft with a short title and these sections, matching `.github/ISSUE_TEMPLATE/bug_report.yml`: What happened, What you expected, Steps to reproduce, Rabe version, Claude Code version, Operating system, Error lines, Diagnostics (the `/rabe-diag` text, if they have it).
 3. Keep private data out: no home paths, user or project names, prompts, transcript text, tokens or email addresses. Replace them with placeholders such as `<project>`. Include such data only if the person asks for it.
 4. Show the full draft and ask: "Create this issue in lorenzh/rabe? It will be public." Do nothing more until they say yes. Apply any changes they ask for and show the draft again.
 5. After a yes: if `gh auth status` succeeds:

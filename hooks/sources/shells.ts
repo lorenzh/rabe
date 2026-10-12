@@ -1,6 +1,6 @@
 import type { EngineInterface, On } from 'claude-code'
 
-import type { Pollers } from '../loop'
+import { fault, type Pollers, tally } from '../loop'
 import { itemId, type RabeItem } from '../model'
 import {
   addItem,
@@ -91,13 +91,15 @@ async function readWhole(
       return { isWhole: false }
     path = stat.realPath
     const { size } = stat
-    if (size <= MAX_READ) return { text: String(await $.fs.read(path)), isWhole: true }
+    if (size <= MAX_READ) return { text: String(tally(await $.fs.read(path))), isWhole: true }
     const { stdout } = await $.process.run(['tail', '-c', TAIL_BYTES, '--', path], {
       timeoutMs: RUN_MS,
     })
 
-    return { text: stdout, isWhole: false }
-  } catch {
+    return { text: tally(stdout), isWhole: false }
+  } catch (error) {
+    fault(error)
+
     return { isWhole: false }
   }
 }
@@ -224,7 +226,7 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
 
 export function shells(on: On, pollers: Pollers): void {
   on('session.start', { isInteractive: [true, false] }, async ($, e, next) => {
-    pollers.push({ run: items => pollShells($, items), initial: false })
+    pollers.push({ name: 'shells', run: items => pollShells($, items), initial: false })
     return next(e)
   })
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {

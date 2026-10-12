@@ -23,6 +23,8 @@ Use this index to find the guide that matches your question.
 - [Architecture overview](architecture.md): module map, the shared poll loop, pure scheduling rules, repeated starts, idle backoff, and links to detailed behavior.
 - [Shared poll loop](architecture/loop.md): scheduling rules, source changes, repeated starts, and one completed write.
 - [State and items](architecture/state.md): item model, idle teammates, registry, state writes, and turns.
+- [Diagnostics](architecture/diagnostics.md): per-source poll records in `rabe.diag`, `/rabe-diag` and its redaction.
+- [State and items](architecture/state.md): item model, registry, state writes, and turns.
 - [Sources](architecture/sources.md): poll callbacks that return changes, source modules, and source tests.
 - [Price estimate](architecture/prices.md): price lookup and cost estimates.
 - [UI rendering](architecture/ui.md): view contract, renderer, palette, cells, sizing, and band.

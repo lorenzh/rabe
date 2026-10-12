@@ -2,7 +2,7 @@ import type { EngineInterface, FsStat, On } from 'claude-code'
 
 import type { RabeCodexStep, RabeEdit, RabeTokens } from '../../types'
 import { linkForwarders } from '../forwarders'
-import type { Pollers } from '../loop'
+import { fault, type Pollers, tally } from '../loop'
 import {
   clip,
   type EndStatus,
@@ -440,11 +440,11 @@ async function confirmed($: EngineInterface, rollout: Rollout, looks: Looks): Pr
 // The built-in table, or with the user's file (`pricesFile`) its rows first. A
 // file that is set but cannot be read gives no prices: costs show n/a.
 async function prices($: EngineInterface, file: string): Promise<Prices> {
-  const read = (path: string) => $.fs.read(path).then(text => parsePrices(String(text)))
-  const built = await read(`${$.plugin.root}/data/prices.csv`).catch(() => [])
+  const read = (path: string) => $.fs.read(path).then(text => parsePrices(String(tally(text))))
+  const built = await read(`${$.plugin.root}/data/prices.csv`).catch(e => fault(e, []))
   if (!file) return built
   const home = file.startsWith('~/') && (await $.env.get('HOME').catch(() => undefined))
-  const own = await read(home ? `${home}${file.slice(1)}` : file).catch(() => undefined)
+  const own = await read(home ? `${home}${file.slice(1)}` : file).catch(fault)
 
   return own ? withOverride(built, own) : []
 }
@@ -474,7 +474,7 @@ async function readSession(
   // no updatedAt on failure, so the next poll tries again
   const home = await $.env.get('HOME')
   if (stat.size <= MAX_READ) {
-    const text = await $.fs.read(path).catch(() => undefined)
+    const text = await $.fs.read(path).then(tally, fault)
     if (text === undefined) return { path }
     const rollout = await confirmed(
       $,
@@ -518,7 +518,7 @@ async function refresh(
   file: string,
   poll: Poll,
 ): Promise<void> {
-  const saved = parseJson(String(await $.fs.read(jobPath).catch(() => '')))
+  const saved = parseJson(String(await $.fs.read(jobPath).then(tally, e => fault(e, ''))))
   const job: CodexJob = { ...entry, ...saved, id: entry.id }
   if (job.sessionId !== sessionId) return
   const end = jobEnd(job.status)
@@ -549,7 +549,7 @@ async function pollCodex($: EngineInterface, file: string, items: RabeItem[]): P
     const statePath = `${stateRoot}/${dir.name}/state.json`
     const stat = await $.fs.stat(statePath).catch(() => undefined)
     if (!stat || stat.mtimeMs < since) continue
-    const state = parseJson(String(await $.fs.read(statePath).catch(() => '')))
+    const state = parseJson(String(await $.fs.read(statePath).then(tally, e => fault(e, ''))))
     for (const entry of list(state?.jobs).map(rec)) {
       const id = str(entry.id)
       // the plugin's state.json can hold a bare status patch; its job file has the session
@@ -586,7 +586,9 @@ async function cancel($: EngineInterface, id: string): Promise<{ text: string }>
   if (item?.status !== 'running') return { text: `No running Codex job ${id}.` }
   const { claude } = await homes($)
   const installed = parseJson(
-    String(await $.fs.read(`${claude}/plugins/installed_plugins.json`).catch(() => '')),
+    String(
+      await $.fs.read(`${claude}/plugins/installed_plugins.json`).then(tally, e => fault(e, '')),
+    ),
   )
   const root = str(rec(list(rec(installed?.plugins)[CODEX_PLUGIN])[0]).installPath)
   if (!root) return { text: 'Stop refused: the Codex plugin is not installed.' }
@@ -629,7 +631,7 @@ async function cancel($: EngineInterface, id: string): Promise<{ text: string }>
 
 export function codex(on: On, file: string, pollers: Pollers): void {
   on('session.start', { isInteractive: true }, async ($, e, next) => {
-    pollers.push({ run: items => pollCodex($, file, items), initial: false })
+    pollers.push({ name: 'codex', run: items => pollCodex($, file, items), initial: false })
     const started = await next(e)
     await $.command.register({
       name: 'rabe-stop',
