@@ -53,5 +53,4 @@ Limits: `$.process` is CLI only, so the desktop app shows worktrees from agent m
 | Retries | Not reported: a retried agent does not raise `agent.spawn` again (d.ts:345). |
 | Stop | The whole run with `TaskStop` on its task id. A single workflow agent cannot be stopped: `TaskStop` takes background tasks, teammates and named background agents only (d.ts:16568), so Rabe offers only `g: stop run` on a workflow agent. |
 
-
-Agent metadata is cached by path, inode, size and modification time in session state. A changed file is read whole. An unchanged file causes no content read or cursor write. Agent turns and tokens still come from API events. Rabe does not poll agent transcript contents. See [incremental file reads](../architecture/reading.md).
+Agent metadata is cached by path, size and modification time in session state. A changed file is read whole. An unchanged file causes no content read or cursor write. Agent turns and tokens still come from API events. Rabe does not poll agent transcript contents. See [incremental file reads](../architecture/reading.md).
