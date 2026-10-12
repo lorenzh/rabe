@@ -148,7 +148,7 @@ async function pollShells($: EngineInterface, items: RabeItem[]): Promise<Change
       })
     }
   } catch {}
-  return changeOf(poll)
+  return changeOf(poll, items)
 }
 
 async function onNotifications($: EngineInterface, text: string): Promise<void> {

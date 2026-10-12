@@ -508,7 +508,7 @@ async function pollAgents($: EngineInterface, items: RabeItem[]): Promise<Change
       if (change) stage(poll, change)
     }
   }
-  return changeOf(poll)
+  return changeOf(poll, items)
 }
 
 // The built-in table, or with the user's file (`pricesFile`) its rows first. A
@@ -548,7 +548,7 @@ async function recordStep(
 
 export function agents(on: On, file: string, pollers: Pollers): void {
   on('session.start', { cwd: /^/ }, async ($, e, next) => {
-    pollers.push({ run: items => pollAgents($, items) })
+    pollers.push({ run: items => pollAgents($, items), every: 3000 })
     return next(e)
   })
 

@@ -1,6 +1,6 @@
 import type { On } from 'claude-code'
-import type { Pollers } from '../loop'
 
+import type { Pollers } from '../loop'
 import { agents } from './agents'
 import { codex } from './codex'
 import { crons } from './crons'

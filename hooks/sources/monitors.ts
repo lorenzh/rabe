@@ -122,7 +122,7 @@ async function pollMonitors($: EngineInterface, items: RabeItem[]): Promise<Chan
       })
     }
   } catch {}
-  return changeOf(poll)
+  return changeOf(poll, items)
 }
 
 async function onNotifications($: EngineInterface, text: string): Promise<void> {

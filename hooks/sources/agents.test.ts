@@ -928,7 +928,7 @@ test('the poll adds listed agents and reads the meta file of running ones', asyn
     agent_type: 'Explore',
     transcript_path: '/p/s1.jsonl',
   })
-  await clock.advance(3000)
+  await clock.advance(4000)
 
   const list = held.items ?? []
   expect(list.map(one => [one.id, one.status, one.parentId])).toEqual([
@@ -1078,7 +1078,7 @@ test('a poll that ends an agent drops the turns and lines of what the cap pushes
 
   // The timer's poll ends agent r: the oldest ended agent, w0, leaves with its state.
   listed = [{ id: 'r', description: 'r', type: 'Explore', status: 'completed' }]
-  await clock.advance(3000)
+  await clock.advance(4000)
   const items = state['rabe.items']?.value as RabeItem[]
   expect(items.some(item => item.id === 'agent:w0')).toBe(false)
   expect(state['rabe.turns']?.value).toEqual({ 'agent:w1': [turn(1)] })
@@ -1100,7 +1100,7 @@ test('a poll that lists an ended agent as running again puts it back to running'
   expect(state['rabe.items']?.value).toEqual([done])
 
   status = 'running'
-  await clock.advance(3000)
+  await clock.advance(4000)
   expect(state['rabe.items']?.value).toEqual([{ ...agent, status: 'running' }])
 })
 
@@ -1118,7 +1118,7 @@ test('an agent the cap dropped comes back when the list shows it running', async
   ).toBe(false)
 
   listed = listed.map(one => (one.id === 'a4000' ? { ...one, status: 'running' } : one))
-  await clock.advance(3000)
+  await clock.advance(4000)
   const items = state['rabe.items']?.value as RabeItem[]
   expect(items.find(item => item.id === 'agent:a4000')?.status).toBe('running')
   expect(items).toHaveLength(MAX_ENDED + 1)
@@ -1284,4 +1284,42 @@ test("an agent's companion calls keep their start, end and the job or thread the
     { at: 7100, command: 'task', text: `${COMPANION} "deny"`, endedAt: 7800 },
     { at: 7800, command: 'task', text: `${COMPANION} "oops"`, endedAt: 8500, threadId: 'th-8' },
   ])
+})
+
+declare const console: { log(message: string): void }
+
+test('time unchanged polls of 5000 completed agents', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  core(on)
+  const agents = completed(5000)
+  let calls = 0
+  on('agent.list', async () => {
+    calls++
+    return { value: agents }
+  })
+  state['rabe.items'] = {
+    value: agents.slice(0, MAX_ENDED).map(info => ({
+      id: `agent:${info.id}`,
+      kind: 'agent',
+      title: info.description,
+      status: 'done',
+      seenAt: 1000,
+      endedAt: 1000,
+      detail: { agentId: info.id, type: info.type, description: info.description },
+    })),
+    version: 1,
+  }
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await clock.advance(0)
+  const first = state['rabe.items']
+  const before = calls
+  const started = Date.now()
+  for (let n = 0; n < 3; n++) await clock.advance(10000)
+  const elapsed = Date.now() - started
+  expect(state['rabe.items']).toBe(first)
+  expect(calls).toBeGreaterThan(before)
+  console.log(
+    `5000-agent unchanged poll: ${elapsed / (calls - before)} ms/poll (${calls - before} polls)`,
+  )
 })

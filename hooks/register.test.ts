@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import type { RabeItem } from './model'
+import { register } from './register'
 import { core, files, memoryState } from './testing'
 import { screen } from './ui/fixtures'
 
@@ -110,7 +111,7 @@ test('band and pane keep the old counts during a poll and draw the completed tic
   pause = new Promise(resolve => {
     release = resolve
   })
-  await clock.advance(2000)
+  await clock.advance(4000)
   for (const surface of ['terminal', 'desktop'] as const) {
     const band = await $.ui.mount({
       surface,
@@ -248,7 +249,7 @@ test('an event write during a poll is kept when the staged changes commit', asyn
   pause = new Promise(resolve => {
     release = resolve
   })
-  await clock.advance(2000)
+  await clock.advance(4000)
   const items = state['rabe.items']?.value as RabeItem[]
   state['rabe.items'] = {
     value: [
@@ -288,7 +289,7 @@ test('a repeated session start keeps one agent poll per tick', async ($, on) => 
   await $.session.start(START)
   await $.session.start(START)
   calls = 0
-  await clock.advance(2000)
+  await clock.advance(4000)
   expect(calls).toBe(1)
 })
 
@@ -309,9 +310,46 @@ test('a thrown Codex poll still commits the agent poll in the same tick', async 
   })
   await $.session.start(START)
   discovered = true
-  await clock.advance(2000)
-  expect(failures).toBe(1)
+  await clock.advance(4000)
+  expect(failures).toBe(2)
   expect(((state['rabe.items']?.value ?? []) as RabeItem[]).map(item => item.id)).toEqual([
     'agent:a1',
   ])
+})
+
+test('a timer failure also swallows a failed recovery clock read', async () => {
+  let start: ((...args: unknown[]) => unknown) | undefined
+  let tick = () => {}
+  register(
+    ((event: string, _matcher: unknown, handler: (...args: unknown[]) => unknown) => {
+      if (event === 'session.start' && !start) start = handler
+      return { catch: () => {} }
+    }) as never,
+    {},
+  )
+  let failed = false
+  let reads = 0
+  const engine = {
+    clock: {
+      now: async () => {
+        reads++
+        if (failed) throw new Error('clock unavailable')
+        return 1000
+      },
+      every: (_ms: number, callback: () => void) => {
+        tick = callback
+        return { cancel: () => {} }
+      },
+    },
+    state: { get: async () => ({ value: [], version: 0 }) },
+  }
+  await start?.(engine, START, async () => START)
+  const before = reads
+  failed = true
+  tick()
+  for (let n = 0; n < 10; n++) await Promise.resolve()
+  expect(reads).toBe(before + 2)
+  tick()
+  for (let n = 0; n < 10; n++) await Promise.resolve()
+  expect(reads).toBe(before + 4)
 })

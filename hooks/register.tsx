@@ -1,4 +1,5 @@
 import type { EngineInterface, Register } from 'claude-code'
+
 import { collect, delayOf, nextStep, type Pollers } from './loop'
 import type { RabeItem } from './model'
 import { type Change, commit, prune } from './registry'
@@ -52,7 +53,9 @@ export const register: Register = (on, options) => {
           due = now + pace.delay
           if (active || changed) $.ui.invalidate('ui.render')
         } catch {
-          due = (await $.clock.now()) + 2000
+          try {
+            due = (await $.clock.now()) + 2000
+          } catch {}
         } finally {
           running = false
         }

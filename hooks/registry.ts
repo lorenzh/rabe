@@ -99,6 +99,9 @@ export function stage(poll: Poll, change: Change): void {
   poll.items = capEnded(change(poll.items))
 }
 
-export function changeOf(poll: Poll): Change {
-  return items => poll.changes.reduce((list, change) => capEnded(change(list)), items)
+export function changeOf(poll: Poll, start: RabeItem[]): Change {
+  return items =>
+    items === start
+      ? poll.items
+      : poll.changes.reduce((list, change) => capEnded(change(list)), items)
 }

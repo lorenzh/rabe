@@ -573,7 +573,7 @@ async function pollCodex($: EngineInterface, file: string, items: RabeItem[]): P
   }
   looks.stop.abort()
   stage(poll, linkForwarders)
-  return changeOf(poll)
+  return changeOf(poll, items)
 }
 
 function firstLine(text: string): string {

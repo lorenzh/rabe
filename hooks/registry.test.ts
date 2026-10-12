@@ -4,6 +4,7 @@ import type { NewItem } from './model'
 import {
   addItem,
   capEnded,
+  changeOf,
   commit,
   endItem,
   MAX_ENDED,
@@ -174,4 +175,19 @@ test('staged items keep the ended cap for the sources that follow', () => {
   ])
   expect(poll.items).toHaveLength(MAX_ENDED)
   expect(poll.items[0]?.id).toBe('shell:1')
+})
+
+test('a staged poll reuses its start list and replays only on another list', () => {
+  const start: import('./model').RabeItem[] = []
+  const poll: Poll = { items: start, changes: [] }
+  let calls = 0
+  stage(poll, items => {
+    calls++
+    return addItem(items, shell, 1000)
+  })
+  const change = changeOf(poll, start)
+  expect(change(start)).toBe(poll.items)
+  expect(calls).toBe(1)
+  expect(change([])).toEqual(poll.items)
+  expect(calls).toBe(2)
 })

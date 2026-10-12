@@ -57,6 +57,6 @@ Each item poll returns a pure `Change`. A source can stage several changes local
 
 The band and pane read the same published item list. They cannot see a partial item poll. Output history and the worktree list keep their separate state keys. Their readers still skip writes when those values did not change.
 
-While items run, sources poll every two seconds. The same timer redraws the views each second. After five unchanged passes with no running items, the loop polls every ten seconds. A new running item wakes polling on the next tick. Worktrees refresh at most once every ten seconds. A failed source does not stop the remaining sources.
+While items run, the loop polls every two seconds. Agents keep a minimum three-second gap. The same timer redraws the views each second. After five unchanged passes with no running items, the loop polls every ten seconds. A new running item wakes polling on the next tick. Worktrees refresh at most once every ten seconds. A failed source does not stop the remaining sources.
 
 See [shared poll loop](architecture/loop.md) for scheduling rules, repeated starts and the write path.
