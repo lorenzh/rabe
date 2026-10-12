@@ -1503,41 +1503,46 @@ test('a plain subagent that reports idle stays running in the poll and ends on i
   })
 })
 
-test('unchanged agent metadata is not read again and a rewrite updates its phase', async ($, on) => {
-  const clock = mock.clock(on, { now: 1000 })
-  const state = memoryState(on)
-  core(on)
-  state['rabe.items'] = {
-    value: [{ ...agent, detail: { ...agent.detail, transcriptPath: '/s/agent-a1.jsonl' } }],
-    version: 1,
-  }
-  on('agent.list', async () => ({ value: [{ id: 'a1', status: 'running' }] }) as never)
-  let text = '{"cwd":"/work/a"}'
-  let mtimeMs = 1
-  let reads = 0
-  let spawns = 0
-  on('fs.stat', async () => ({
-    value: { kind: 'file', size: text.length, mtimeMs, isLink: false },
-  }))
-  on('process.run', { argv: 'ls' }, async () => {
-    spawns++
-    return { value: { exitCode: 0, stdout: '1 file\n', stderr: '' } } as never
+for (const available of [true, false]) {
+  test(`agent metadata is cached and refreshed with inode lookup ${available ? 'available' : 'unavailable'}`, async ($, on) => {
+    const clock = mock.clock(on, { now: 1000 })
+    const state = memoryState(on)
+    core(on)
+    state['rabe.items'] = {
+      value: [{ ...agent, detail: { ...agent.detail, transcriptPath: '/s/agent-a1.jsonl' } }],
+      version: 1,
+    }
+    on('agent.list', async () => ({ value: [{ id: 'a1', status: 'running' }] }) as never)
+    let text = '{"cwd":"/work/a"}'
+    let mtimeMs = 1
+    let reads = 0
+    let spawns = 0
+    on('fs.stat', async () => ({
+      value: { kind: 'file', size: text.length, mtimeMs, isLink: false },
+    }))
+    on('process.run', { argv: 'ls' }, async () => {
+      spawns++
+      return available
+        ? ({ value: { exitCode: 0, stdout: '1 file\n', stderr: '' } } as never)
+        : { deny: 'No process host' }
+    })
+    on('fs.read', async () => {
+      reads++
+      return { value: text }
+    })
+    await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: false })
+    const first = state['rabe.agentFiles']
+    await clock.advance(4000)
+    expect(reads).toBe(1)
+    expect(spawns).toBe(0)
+    expect(state['rabe.agentFiles']).toBe(first)
+    text = '{"cwd":"/work/b"}'
+    mtimeMs++
+    await clock.advance(4000)
+    expect(reads).toBe(2)
+    expect(spawns).toBe(0)
+    expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.detail).toMatchObject({
+      cwd: '/work/b',
+    })
   })
-  on('fs.read', async () => {
-    reads++
-    return { value: text }
-  })
-  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: false })
-  const first = state['rabe.agentFiles']
-  await clock.advance(4000)
-  expect(reads).toBe(1)
-  expect(spawns).toBe(1)
-  expect(state['rabe.agentFiles']).toBe(first)
-  text = '{"cwd":"/work/b"}'
-  mtimeMs++
-  await clock.advance(4000)
-  expect(reads).toBe(2)
-  expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.detail).toMatchObject({
-    cwd: '/work/b',
-  })
-})
+}

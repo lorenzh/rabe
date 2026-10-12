@@ -212,11 +212,8 @@ declare module 'claude-code' {
   interface PluginState {
     rabe: {
       items: RabeItem[]
-      agentFiles: Record<string, { path: string; size: number; mtimeMs: number; identity?: string }>
-      codexFiles: Record<
-        string,
-        { size: number; mtimeMs: number; data: Record<string, unknown>; identity?: string }
-      >
+      agentFiles: Record<string, { path: string; size: number; mtimeMs: number }>
+      codexFiles: Record<string, { size: number; mtimeMs: number; data: Record<string, unknown> }>
       rollouts: Record<
         string,
         {

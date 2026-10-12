@@ -627,6 +627,33 @@ test('an unchanged session file causes no second write', async ($, on) => {
   expect(writes).toHaveLength(1)
 })
 
+test('small rollouts are read only when changed if inode lookup is unavailable', async ($, on) => {
+  const writes = watchItems(on)
+  prices(on)
+  on('process.run', { argv: 'ls' }, async () => ({ deny: 'No process host' }))
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: ROLLOUT,
+  })
+  await startAndTick($, w)
+  const first = writes.at(-1)?.[0]
+  expect(first?.costUsd).toBeDefined()
+  w.calls.length = 0
+  await w.clock.advance(4000)
+  expect(w.calls.filter(call => call === `read ${ROLLOUT_PATH}`)).toEqual([])
+  expect(w.calls.filter(call => call === 'stat /work/in.md')).toEqual([])
+  expect(writes).toHaveLength(1)
+  w.files.set(ROLLOUT_PATH, {
+    text: `${ROLLOUT}\n${line('turn_context', { model: 'gpt-6-luna' })}`,
+    mtimeMs: 6000,
+  })
+  await w.clock.advance(2000)
+  expect(w.calls.filter(call => call === `read ${ROLLOUT_PATH}`)).toHaveLength(1)
+  expect(writes.at(-1)?.[0]?.detail).toMatchObject({ model: 'gpt-6-luna' })
+  expect(writes.at(-1)?.[0]?.costUsd).toBe(first?.costUsd)
+})
+
 test('a finished job ends its item; a gone session file shows as missing', async ($, on) => {
   const writes = watchItems(on)
   const w = world(on, {
@@ -895,6 +922,7 @@ test('unchanged job and state files are cached while only appended rollout bytes
     [ROLLOUT_PATH]: first,
   })
   await startAndTick($, w)
+  expect(w.calls.filter(call => call.startsWith('ls '))).toEqual([`ls ${ROLLOUT_PATH}`])
   w.calls.length = 0
   const written = writes.length
   await w.clock.advance(2000)
@@ -1012,4 +1040,39 @@ test('the JSON cache drops job files for removed items and vanished workspaces',
   w.files.delete(`${WS}/state.json`)
   await w.clock.advance(2000)
   expect(state['rabe.codexFiles']?.value).toEqual({})
+})
+
+test('job and workspace JSON stay cached without a process host and refresh on rewrites', async ($, on) => {
+  const state = memoryState(on)
+  on('process.run', async () => ({ deny: 'No process host' }))
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+  })
+  await startAndTick($, w)
+  const first = state['rabe.codexFiles']
+  expect(first?.value).toMatchObject({
+    [`${WS}/state.json`]: { data: { jobs: [job()] } },
+    [`${WS}/jobs/task-1.json`]: { data: job() },
+  })
+  w.calls.length = 0
+  await w.clock.advance(2000)
+  expect(w.calls.filter(call => /^(read|ls) /.test(call))).toEqual([])
+  expect(state['rabe.codexFiles']).toBe(first)
+  const rewritten = job({ summary: 'Updated job' })
+  for (const path of [`${WS}/state.json`, `${WS}/jobs/task-1.json`]) {
+    w.files.set(path, {
+      text: JSON.stringify(path.endsWith('state.json') ? { jobs: [rewritten] } : rewritten),
+      mtimeMs: 6000,
+    })
+  }
+  await w.clock.advance(2000)
+  expect(w.calls.filter(call => call.startsWith('read ')).sort()).toEqual([
+    `read ${WS}/jobs/task-1.json`,
+    `read ${WS}/state.json`,
+  ])
+  expect(state['rabe.codexFiles']?.value).toMatchObject({
+    [`${WS}/state.json`]: { data: { jobs: [rewritten] } },
+    [`${WS}/jobs/task-1.json`]: { data: rewritten },
+  })
 })

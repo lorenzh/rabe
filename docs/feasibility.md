@@ -31,7 +31,6 @@ The mod API has no call that lists the running background tasks. `background_tas
 
 Rabe keeps its own list. It adds an item when a hook reports a start (`tool.call` for Bash, Monitor, CronCreate, ScheduleWakeup and Workflow, `agent.spawn`), and closes it when a task notification or result arrives. It corrects the list on `classic.Stop`. Items that started before Rabe loaded show only what `$.agent.list()`, `CronList` and the files on disk tell.
 
-
 ## Incremental reader benchmark
 
 Run `bun scripts/benchmark-reads.ts` to repeat the warm-reader benchmark. It uses 200 sparse files and the production cursor and rollout parser. Each file represents either 1 MiB or 50 MiB of consumed history. Each append adds one 374-byte JSON record per file.

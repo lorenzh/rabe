@@ -21,7 +21,7 @@ Use this index to find the guide that matches your question.
 ## Architecture
 
 - [Architecture overview](architecture.md): module map, the shared poll loop, pure scheduling rules, repeated starts, idle backoff, and links to detailed behavior.
-- [Incremental file reads](architecture/reading.md): atomic output cursors, UTF-8 limits, stat-only idle polls, bounded parsing, and pruned metadata caches.
+- [Incremental file reads](architecture/reading.md): atomic output cursors, UTF-8 limits, stat-only idle polls, bounded parsing, desktop rollout reads, and metadata caches without process access.
 - [Shared poll loop](architecture/loop.md): scheduling rules, source changes, repeated starts, and one completed write.
 - [State and items](architecture/state.md): item model, idle teammates, registry, state writes, and turns.
 - [Sources](architecture/sources.md): poll callbacks that return changes, source modules, and source tests.

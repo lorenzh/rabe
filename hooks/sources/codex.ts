@@ -507,6 +507,7 @@ async function readSession(
         .run(['ls', '-diL', '--', path], { timeoutMs: RUN_MS })
         .then(result => (result.exitCode === 0 ? inodeOf(result.stdout) : undefined))
         .catch(() => undefined)
+  if (!identity && updatedAt === held?.detail.sessionUpdatedAt) return { path, updatedAt }
   if (!identity) {
     if (stat.size > MAX_READ) return { path }
     const text = await $.fs.read(path).catch(() => undefined)
@@ -587,20 +588,15 @@ async function readJson(
   const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'codexFiles' })
   const held = value[path]
   if (unchanged(stat, held)) return held?.data
-  const identity = await $.process
-    .run(['ls', '-diL', '--', path], { timeoutMs: RUN_MS })
-    .then(result => (result.exitCode === 0 ? inodeOf(result.stdout) : undefined))
-    .catch(() => undefined)
   const read = await $.fs.read(path).catch(() => undefined)
   const text = typeof read === 'string' ? read : ''
   const parsed = parseJson(text)
   if (!parsed) return undefined
-  if (!identity) return parsed
   await $.state.set(
     { plugin: 'rabe', key: 'codexFiles' },
     {
       ...value,
-      [path]: { size: stat.size, mtimeMs: stat.mtimeMs, data: parsed, identity },
+      [path]: { size: stat.size, mtimeMs: stat.mtimeMs, data: parsed },
     },
     { ifVersion: version },
   )
