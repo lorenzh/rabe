@@ -96,7 +96,7 @@ function costBox(model: Model, own: RabeItem): Line[] {
         ? item.detail.sessionUpdatedAt
         : undefined
   const right: Span[] =
-    item.kind === 'workflow' || item.status !== 'running'
+    item.kind === 'workflow' || isEnded(item)
       ? []
       : at === undefined
         ? [['active n/a ', dim]]

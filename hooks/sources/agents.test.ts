@@ -1473,3 +1473,30 @@ test('the roster restores an ended teammate to idle and identifies it at turn co
   expect(item?.status).toBe('idle')
   expect(item?.endedAt).toBeUndefined()
 })
+
+test('a plain subagent that reports idle stays running in the poll and ends on its turn', async ($, on) => {
+  const clock = mock.clock(on, { now: 5000 })
+  const state = memoryState(on)
+  core(on)
+  on('agent.spawn', async () => ({ model: 'm', agentId: 'a1' }))
+  on('agent.list', async () => ({
+    value: [{ id: 'a1', type: 'Explore', description: 'verify:db.ts', status: 'idle' }],
+  }))
+  on('turn.complete', async () => ({ text: '' }))
+  await $.agent.spawn({ ...SPAWN, workflow: undefined })
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await clock.advance(4000)
+  expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.status).toBe('running')
+  await $.turn.complete({
+    agentId: 'a1',
+    turnId: 't',
+    answer: 'ready',
+    reason: 'answer',
+    durationMs: 10,
+    isAborted: false,
+  })
+  expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]).toMatchObject({
+    status: 'done',
+    endedAt: 9000,
+  })
+})

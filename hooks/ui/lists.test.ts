@@ -478,3 +478,14 @@ test('only cron jobs still running count as ended with the session', () => {
   expect(previousOf([...ended, babysit], NOW, {}).counts.cron).toBe(1)
   expect(previousOf(ended, NOW, {}).counts.cron ?? 0).toBe(0)
 })
+
+test('idle teammates sort with live items before newer ended items', () => {
+  const idle: RabeItem = { ...plan, status: 'idle', startedAt: 1, endedAt: undefined }
+  const running: RabeItem = { ...explore, status: 'running', startedAt: 2 }
+  const ended: RabeItem = { ...review, status: 'done', endedAt: NOW }
+  expect(grouped([ended, idle, running])[0]?.items.map(item => item.id)).toEqual([
+    running.id,
+    idle.id,
+    ended.id,
+  ])
+})

@@ -188,8 +188,7 @@ const recency = (item: RabeItem) => item.endedAt ?? item.startedAt ?? item.seenA
 
 export function sortItems(items: RabeItem[]): RabeItem[] {
   return items.toSorted(
-    (a, b) =>
-      Number(b.status === 'running') - Number(a.status === 'running') || recency(b) - recency(a),
+    (a, b) => Number(!isEnded(b)) - Number(!isEnded(a)) || recency(b) - recency(a),
   )
 }
 
@@ -209,7 +208,7 @@ export function stable<T extends { id: string }>(
 }
 
 // The Items tab's groups, failed first. Without `order` each group sorts
-// running first, then the newest; with it, a held item stays in the group and
+// running and idle first, then the newest; with it, a held item stays in the group and
 // place `orderOf` gave it, and an item Rabe saw since goes to the group of its
 // kind (failed or not, so it never changes group), after the held rows, in
 // the order Rabe saw it. The pane moves the focus ring back onto its row when

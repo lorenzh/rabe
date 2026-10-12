@@ -2,7 +2,7 @@
 title: How to test Rabe
 description: How to test the Rabe mod - unit tests of pure functions, hook and UI tests with claude-code/testing, a failing test first for each bug, live checks in a real Claude Code session through tmux with scripts/live-check.sh, and what CI runs.
 tags: [testing, tdd, ci, live-check, tmux]
-keywords: [claude plugin test, ui.close, closer, regain, claude-code/testing, mock.clock, advance, memoryState, files, core, state.set, tool.call, ui.mount, terminal, desktop, find, findAll, press, ui.focus, origin person, arm, arming, disarmed, focus order, append-only, stepRow, fixtures, live-check.sh, live-check.test.sh, test:scripts, tmux socket, send-keys, capture-pane, fake tmux, pane_pid, timeout, background shells, key handling, #37, bun run check, CI]
+keywords: [idle, agent teams, claude plugin test, ui.close, closer, regain, claude-code/testing, mock.clock, advance, memoryState, files, core, state.set, tool.call, ui.mount, terminal, desktop, find, findAll, press, ui.focus, origin person, arm, arming, disarmed, focus order, append-only, stepRow, fixtures, live-check.sh, live-check.test.sh, test:scripts, tmux socket, send-keys, capture-pane, fake tmux, pane_pid, timeout, background shells, key handling, #37, bun run check, CI]
 ---
 
 # How to test Rabe
@@ -139,6 +139,17 @@ scripts/live-check.sh --shells 3 --keys 'Down Down Enter' --expect 'b: back'
 | `--dry-run` | off | Print the plan and stop. |
 
 The binary is `claude` on `PATH`, or the one named in the environment variable `CLAUDE`. The exit code is 0 when every round passed, 1 when a round failed and 2 for a usage or setup error: the socket already has a session, tmux could not start the session, the seeded shells did not start, Rabe did not open, a round could not select the first row, or a capture failed.
+
+### Issue #118 live check
+
+Checked on 2026-10-12 with Claude Code 2.1.296 and the local fix for issue #118.
+Both runs used separate tmux sockets and short arithmetic tasks without file writes.
+
+- With `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, a named teammate reported its answer and sent an idle notification. The Rabe Items pane showed `1 idle` and two ended plain subagents. The teammate detail said `idle` and kept its lifetime open through `now`. It also showed its last activity. The second plain subagent was an extra agent spawned during the task. Both plain subagents finished as `done`.
+- With `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` unset, a plain background subagent reported its answer. The Rabe Items pane showed `1 ended`, with status `done` and an end time.
+
+These checks read the Rabe pane itself after the completion notifications.
+They do not cover waking or stopping a teammate.
 
 ### Measure key handling
 

@@ -1,5 +1,5 @@
 import type { RabeWindow } from '../../../types'
-import type { RabeItem } from '../../model'
+import { isEnded, type RabeItem } from '../../model'
 import { nextRun } from '../../schedule'
 import { fit } from '../cells/grid'
 import { C, CHIP, type Style, tone } from '../cells/palette'
@@ -225,7 +225,7 @@ const spanText = (ms: number) => (ms < 2 * HOUR ? `${Math.round(ms / 60_000)} mi
 export const timelineView: View = (model, size, sel): Drawn => {
   const since = sel.window?.since ?? 0
   const all = stable(kept(shown(model.items), model.removed), sel.order?.timeline, byStart)
-  const list = all.filter(item => item.status === 'running' || (item.endedAt ?? since) >= since)
+  const list = all.filter(item => !isEnded(item) || (item.endedAt ?? since) >= since)
   const folded = all.length - list.length
   const selected = list.find(item => item.id === sel.selected) ?? list[0]
   const start = Math.max(

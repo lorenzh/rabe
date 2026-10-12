@@ -295,3 +295,14 @@ test('idle stays readable when a long agent name is cut on every surface', () =>
     }
   }
 })
+
+test('idle teammates remain in the timeline window regardless of an old end timestamp', () => {
+  for (const endedAt of [undefined, NOW - 10_000]) {
+    const idle: RabeItem = { ...plan, status: 'idle', endedAt }
+    const drawn = timelineView({ ...MODEL, items: [idle] }, SIZE, {
+      ...NO_SELECTION,
+      window: { since: NOW - 1000, hours: 4, base: 4 },
+    })
+    expect(rowKeys(drawn)).toContain(`row:${idle.id}`)
+  }
+})
