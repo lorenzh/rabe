@@ -177,10 +177,62 @@ export type RabeWorktree = {
 // open, so no row folds away under the focus.
 export type RabeWindow = { base: number; hours: number; since: number }
 
+export type RabeFileCursor = {
+  size: number
+  mtimeMs: number
+  offset: number
+  identity?: string
+  partial: boolean
+  isDiscarding?: boolean
+}
+
+export type RabeRollout = {
+  model?: string
+  effort?: string
+  sandbox?: string
+  prompt?: string
+  tokens?: RabeTokens
+  requests: { model?: string; input: number; cached: number; write: number; output: number }[]
+  commandCount: number
+  steps: RabeCodexStep[]
+  edits?: RabeEdit[]
+  checks?: { path: string; from: number; to: number }[]
+}
+
+export type RabeRolloutCursor = {
+  out: RabeRollout
+  total: string
+  base?: Record<string, unknown>
+  isResumed: boolean
+  at?: number
+  pending: Record<string, number>
+}
+
 declare module 'claude-code' {
   interface PluginState {
     rabe: {
       items: RabeItem[]
+      shellFiles: Record<string, RabeFileCursor>
+      monitorFiles: Record<string, RabeFileCursor>
+      agentFiles: Record<string, { path: string; size: number; mtimeMs: number; identity?: string }>
+      codexFiles: Record<
+        string,
+        { size: number; mtimeMs: number; data: Record<string, unknown>; identity?: string }
+      >
+      rollouts: Record<
+        string,
+        {
+          path: string
+          cursor: RabeFileCursor
+          parser: RabeRolloutCursor
+          usd: number
+          isUnpriced: boolean
+          hasRequests: boolean
+          hasSkipped: boolean
+          until?: number
+          since?: number
+        }
+      >
       tab: RabeTab
       turns: Record<string, RabeTurn[]>
       lines: Record<string, RabeLines>

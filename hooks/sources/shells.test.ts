@@ -337,7 +337,9 @@ test('an output file over 4 MiB is read with tail, its path after --', async ($,
   on('process.run', async (_$, e) => {
     runs.push([...e.argv])
     timeouts.push(e.init?.timeoutMs)
-    return { value: { exitCode: 0, stdout: 'port 4000\n', stderr: '' } } as never
+    return {
+      value: { exitCode: 0, stdout: e.argv[0] === 'ls' ? '1 file\n' : 'port 4000\n', stderr: '' },
+    } as never
   })
   const state = memoryState(on)
   bash(on)
@@ -345,7 +347,7 @@ test('an output file over 4 MiB is read with tail, its path after --', async ($,
   await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
   await $.tool.call({ tool: 'Bash', command: 'bun run dev', run_in_background: true })
   await clock.advance(2000)
-  expect(runs).toContainEqual(['tail', '-c', '1048576', '--', path])
+  expect(runs).toContainEqual(['tail', '-c', '+1', '--', path])
   expect(timeouts.every(ms => ms !== undefined && ms <= 5000)).toBe(true)
   expect((state['rabe.items']?.value as RabeItem[] | undefined)?.[0]).toMatchObject({
     detail: { port: 4000 },
@@ -395,3 +397,122 @@ for (const path of [
     expect(state['rabe.lines']?.value).toBeUndefined()
   })
 }
+
+test('an unchanged output reads nothing and an append reads only the new bytes', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const path = `${DIR}/b1.output`
+  const held = { [path]: 'ready\n' }
+  const reads: string[] = []
+  const tails: string[][] = []
+  on('fs.read', async (_$, e, next) => {
+    reads.push(e.path)
+    return next(e)
+  })
+  on('process.run', async (_$, e, next) => {
+    if (e.argv[0] !== 'tail') return next(e)
+    tails.push([...e.argv])
+    const start = Number(String(e.argv[2]).slice(1)) - 1
+    return { value: { exitCode: 0, stdout: held[path].slice(start), stderr: '' } } as never
+  })
+  files(on, held)
+  bash(on)
+  core(on)
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'bun run dev', run_in_background: true })
+  await clock.advance(2000)
+  const versions = Object.fromEntries(
+    Object.entries(state).map(([key, value]) => [key, value.version]),
+  )
+  reads.length = 0
+  await clock.advance(2000)
+  expect(reads).toEqual([])
+  expect(tails).toEqual([])
+  expect(
+    Object.fromEntries(Object.entries(state).map(([key, value]) => [key, value.version])),
+  ).toEqual(versions)
+  held[path] += 'more\n'
+  await clock.advance(2000)
+  expect(tails).toEqual([['tail', '-c', '+7', '--', path]])
+  expect(state['rabe.lines']?.value).toEqual({
+    'shell:b1': {
+      seen: 2,
+      lines: [
+        { at: 3000, text: 'ready' },
+        { at: 7000, text: 'more' },
+      ],
+    },
+  })
+})
+
+test('an ended shell finishes reading its backlog without changing its end time', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const path = `${DIR}/b1.output`
+  const offset = 4 * 1024 * 1024
+  on('fs.stat', async (_$, e) => ({
+    value: {
+      kind: e.path === DIR ? 'dir' : 'file',
+      size: offset + 9,
+      mtimeMs: 1,
+      realPath: e.path,
+      isLink: false,
+    },
+  }))
+  on(
+    'process.run',
+    async (_$, e) =>
+      ({
+        value: {
+          exitCode: 0,
+          stdout: e.argv[0] === 'ls' ? '1 file\n' : '[killed]\n',
+          stderr: '',
+          isStdoutTruncated: false,
+        },
+      }) as never,
+  )
+  state['rabe.items'] = { value: [{ ...running, status: 'stopped', endedAt: 500 }], version: 1 }
+  state['rabe.shellFiles'] = {
+    value: {
+      'shell:b1': { size: offset + 9, mtimeMs: 1, identity: `${path}:1`, offset, partial: false },
+    },
+    version: 1,
+  }
+  bash(on)
+  core(on)
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  await clock.advance(2000)
+  expect(
+    ((state['rabe.shellFiles']?.value ?? {}) as Record<string, { offset: number }>)['shell:b1']
+      ?.offset,
+  ).toBe(offset + 9)
+  expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.endedAt).toBe(500)
+})
+
+test('small output still follows when inode lookup is unavailable', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const path = `${DIR}/b1.output`
+  const held = { [path]: 'ready\n' }
+  on('process.run', { argv: 'ls' }, async () => ({ deny: 'No process host' }))
+  files(on, held)
+  bash(on)
+  core(on)
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'build', run_in_background: true })
+  await clock.advance(2000)
+  const first = state['rabe.lines']
+  await clock.advance(2000)
+  expect(state['rabe.lines']).toBe(first)
+  held[path] += 'done\n\n[exited with code 0]\n'
+  await clock.advance(2000)
+  expect(state['rabe.lines']?.value).toEqual({
+    'shell:b1': {
+      seen: 2,
+      lines: [
+        { at: 3000, text: 'ready' },
+        { at: 7000, text: 'done' },
+      ],
+    },
+  })
+})

@@ -492,9 +492,43 @@ async function readMeta(
   const item = asAgent(items, id)
   const path = item && metaPath(item, items)
   if (!path) return
+  const stat = await $.fs.stat(path).catch(() => undefined)
+  if (stat?.kind !== 'file') return
+  const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'agentFiles' })
+  const held = value[id]
+  const identity = await $.process
+    .run(['ls', '-diL', '--', path], { timeoutMs: 5000 })
+    .then(result => (result.exitCode === 0 ? /^\s*(\d+)/.exec(result.stdout)?.[1] : undefined))
+    .catch(() => undefined)
+  if (
+    identity &&
+    held?.identity === identity &&
+    held.path === path &&
+    held.size === stat.size &&
+    held.mtimeMs === stat.mtimeMs
+  )
+    return
   const text = await $.fs.read(path).catch(() => undefined)
   const patch = typeof text === 'string' ? metaPatch(text) : undefined
-  return patch ? list => updateItem(list, id, { detail: patch }) : undefined
+  if (!patch) return
+  if (identity)
+    await $.state.set(
+      { plugin: 'rabe', key: 'agentFiles' },
+      {
+        ...value,
+        [id]: { path, size: stat.size, mtimeMs: stat.mtimeMs, identity },
+      },
+      { ifVersion: version },
+    )
+  return list => updateItem(list, id, { detail: patch })
+}
+
+async function cleanFiles($: EngineInterface, items: RabeItem[]): Promise<void> {
+  const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'agentFiles' })
+  const { value: current = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+  const next = prune(value, Object.keys(value), [...items, ...current])
+  if (next !== value)
+    await $.state.set({ plugin: 'rabe', key: 'agentFiles' }, next, { ifVersion: version })
 }
 
 async function pollAgents($: EngineInterface, items: RabeItem[]): Promise<Change> {
@@ -522,6 +556,7 @@ async function pollAgents($: EngineInterface, items: RabeItem[]): Promise<Change
       if (change) stage(poll, change)
     }
   }
+  await cleanFiles($, poll.items)
   return changeOf(poll, items)
 }
 

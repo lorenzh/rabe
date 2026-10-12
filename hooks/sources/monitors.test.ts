@@ -240,3 +240,60 @@ for (const path of [
     expect(state['rabe.lines']?.value).toBeUndefined()
   })
 }
+
+test('monitor cursors skip idle output, repair UTF-8 partial lines and detect replacement', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const held = { [OUT]: 'réad\npar' }
+  const reads: string[] = []
+  const tails: string[][] = []
+  let inode = 1
+  on('fs.read', async (_$, e, next) => {
+    reads.push(e.path)
+    return next(e)
+  })
+  on(
+    'process.run',
+    { argv: 'ls' },
+    async () => ({ value: { exitCode: 0, stdout: `${inode} file\n`, stderr: '' } }) as never,
+  )
+  on('process.run', { argv: 'tail' }, async (_$, e, next) => {
+    tails.push([...e.argv])
+    return next(e)
+  })
+  files(on, held)
+  tools(on)
+  core(on)
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'sleep 10', run_in_background: true })
+  await arm($)
+  await clock.advance(2000)
+  const versions = Object.fromEntries(
+    Object.entries(state).map(([key, value]) => [key, value.version]),
+  )
+  reads.length = 0
+  await clock.advance(2000)
+  expect(reads).toEqual([])
+  expect(
+    Object.fromEntries(Object.entries(state).map(([key, value]) => [key, value.version])),
+  ).toEqual(versions)
+  held[OUT] += 'tial\n'
+  await clock.advance(2000)
+  expect(tails).toEqual([['tail', '-c', '+7', '--', OUT]])
+  expect(state['rabe.lines']?.value).toMatchObject({
+    'monitor:m1': {
+      seen: 2,
+      lines: [
+        { at: 3000, text: 'réad' },
+        { at: 3000, text: 'partial' },
+      ],
+    },
+  })
+  // Same size and mtime as the file the cursor just consumed.
+  held[OUT] = 'new file line\n'
+  inode++
+  await clock.advance(2000)
+  expect(state['rabe.lines']?.value).toMatchObject({
+    'monitor:m1': { seen: 1, lines: [{ at: 9000, text: 'new file line' }] },
+  })
+})

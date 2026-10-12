@@ -77,6 +77,11 @@ test('band and pane keep the old counts during a poll and draw the completed tic
   let ended = false
   let release = () => {}
   let pause: Promise<void> | undefined
+  on('fs.stat', async (_$, e, next) =>
+    e.path.endsWith('.meta.json')
+      ? { value: { kind: 'file', size: 100, mtimeMs: pause ? 2 : 1, isLink: false } }
+      : next(e),
+  )
   on(
     'agent.list',
     async () =>
@@ -223,6 +228,11 @@ test('an event write during a poll is kept when the staged changes commit', asyn
   core(on)
   let release = () => {}
   let pause: Promise<void> | undefined
+  on('fs.stat', async (_$, e, next) =>
+    e.path.endsWith('.meta.json')
+      ? { value: { kind: 'file', size: 100, mtimeMs: pause ? 2 : 1, isLink: false } }
+      : next(e),
+  )
   on(
     'agent.list',
     async () => ({ value: [{ id: 'a1', status: 'running', name: 'First' }] }) as never,

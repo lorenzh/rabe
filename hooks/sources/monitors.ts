@@ -1,7 +1,7 @@
 import type { EngineInterface, On } from 'claude-code'
-
 import type { Pollers } from '../loop'
-import { type EndStatus, itemId, type RabeItem } from '../model'
+import { itemId, type RabeItem } from '../model'
+import { fileOffset, fileReset, outputLines, readChunk } from '../reading'
 import {
   addItem,
   type Change,
@@ -62,15 +62,21 @@ async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Pro
   }
 }
 
-// ponytail: reads files up to 4 MiB whole; a larger monitor output is not followed
-async function follow(
-  $: EngineInterface,
-  id: string,
-  path: string,
-): Promise<EndStatus | undefined> {
+let reading = Promise.resolve()
+
+function readOutput($: EngineInterface, path: string, id: string): Promise<{ text?: string }> {
+  const result = reading.then(() => readFile($, path, id))
+  reading = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  return result
+}
+
+async function readFile($: EngineInterface, path: string, id: string): Promise<{ text?: string }> {
   try {
     const folder = taskFolder(path, await $.session.id(), await $.session.root())
-    if (!folder) return undefined
+    if (!folder) return {}
     const root = await $.fs.stat(folder, { resolve: true })
     const stat = await $.fs.stat(path, { resolve: true })
     if (
@@ -78,27 +84,88 @@ async function follow(
       stat.realPath !== `${root.realPath}/${path.slice(path.lastIndexOf('/') + 1)}` ||
       stat.kind !== 'file'
     )
-      return undefined
+      return {}
     path = stat.realPath
-    const { size } = stat
-    if (size > MAX_READ) return undefined
-    const { lines, ended } = parseOutput(String(await $.fs.read(path)))
-    const now = await $.clock.now()
-    for (;;) {
-      const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
-      const next = appendLines(value[id], lines, now)
-      if (!next) break
-      const { isSet } = await $.state.set(
-        { plugin: 'rabe', key: 'lines' },
-        { ...value, [id]: next },
-        { ifVersion: version },
-      )
-      if (isSet) break
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'monitorFiles' })
+    const held = value[id]
+    const identity = await $.process
+      .run(['ls', '-diL', '--', path], { timeoutMs: 5000 })
+      .then(result => (result.exitCode === 0 ? /^\s*(\d+)/.exec(result.stdout)?.[1] : undefined))
+      .catch(() => undefined)
+    if (!identity) {
+      if (stat.size > MAX_READ) return {}
+      const text = String(await $.fs.read(path))
+      const parsed = parseOutput(text)
+      await keepLines($, id, parsed.lines, false, false, parsed.ended !== undefined, true)
+      return { text }
     }
-
-    return ended
+    const stamp = { size: stat.size, mtimeMs: stat.mtimeMs, identity: `${path}:${identity}` }
+    const offset = fileOffset(stamp, held)
+    if (offset === undefined) return {}
+    let text: string
+    let truncated = false
+    if (offset === 0 && stat.size <= MAX_READ) text = String(await $.fs.read(path))
+    else {
+      const result = await $.process.run(['tail', '-c', `+${offset + 1}`, '--', path], {
+        timeoutMs: 5000,
+      })
+      if (result.exitCode !== 0) return {}
+      text = result.stdout
+      truncated = result.isStdoutTruncated
+    }
+    const chunk = readChunk(text, truncated, false, held?.isDiscarding)
+    if (truncated && chunk.bytes === 0) return {}
+    const parsed = parseOutput(chunk.text)
+    await keepLines(
+      $,
+      id,
+      parsed.lines,
+      fileReset(stamp, held),
+      !fileReset(stamp, held) && held?.partial === true,
+      parsed.ended !== undefined,
+    )
+    await $.state.set(
+      { plugin: 'rabe', key: 'monitorFiles' },
+      {
+        ...value,
+        [id]: {
+          ...stamp,
+          offset: offset + chunk.bytes,
+          partial: chunk.partial,
+          isDiscarding: chunk.isDiscarding,
+        },
+      },
+      { ifVersion: version },
+    )
+    return { text: chunk.text }
   } catch {
-    return undefined
+    return {}
+  }
+}
+
+async function keepLines(
+  $: EngineInterface,
+  id: string,
+  lines: string[],
+  reset: boolean,
+  partial: boolean,
+  ended: boolean,
+  whole = false,
+): Promise<void> {
+  const now = await $.clock.now()
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
+    const next = whole
+      ? appendLines(value[id], lines, now)
+      : outputLines(value[id], lines, now, reset, partial, ended)
+    if (!next) return
+    if (JSON.stringify(next) === JSON.stringify(value[id])) return
+    const { isSet } = await $.state.set(
+      { plugin: 'rabe', key: 'lines' },
+      { ...value, [id]: next },
+      { ifVersion: version },
+    )
+    if (isSet) return
   }
 }
 
@@ -106,22 +173,39 @@ function runningMonitors(items: RabeItem[]) {
   return items.flatMap(item => (item.kind === 'monitor' && item.status === 'running' ? [item] : []))
 }
 
+async function cleanFiles($: EngineInterface, items: RabeItem[]): Promise<void> {
+  const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'monitorFiles' })
+  const { value: current = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+  const next = prune(value, Object.keys(value), [...items, ...current])
+  if (next !== value)
+    await $.state.set({ plugin: 'rabe', key: 'monitorFiles' }, next, { ifVersion: version })
+}
+
 async function pollMonitors($: EngineInterface, items: RabeItem[]): Promise<Change> {
   const poll: Poll = { items, changes: [] }
+  const { value: cursors = {} } = await $.state.get({ plugin: 'rabe', key: 'monitorFiles' })
   try {
-    for (const item of runningMonitors(items)) {
+    for (const item of items.filter((item): item is RabeItem & { kind: 'monitor' } => {
+      const cursor = cursors[item.id]
+      return (
+        item.kind === 'monitor' &&
+        (item.status === 'running' ||
+          (cursor !== undefined && cursor.offset < cursor.size && !cursor.partial))
+      )
+    })) {
       const path =
         item.detail.outputPath ?? (item.detail.taskId && taskOutput(items, item.detail.taskId))
       if (!path) continue
-      const ended = await follow($, item.id, path)
+      const ended = parseOutput((await readOutput($, path, item.id)).text ?? '').ended
       const now = await $.clock.now()
       stage(poll, held => {
         const next = updateItem(held, item.id, { detail: { outputPath: path } })
 
-        return ended ? endItem(next, item.id, ended, now) : next
+        return ended && item.status === 'running' ? endItem(next, item.id, ended, now) : next
       })
     }
   } catch {}
+  await cleanFiles($, poll.items)
   return changeOf(poll, items)
 }
 
@@ -130,7 +214,7 @@ async function onNotifications($: EngineInterface, text: string): Promise<void> 
   for (const one of parseNotifications(text)) {
     const id = itemId('monitor', one.taskId)
     if (!one.status || !items.some(item => item.id === id)) continue
-    if (one.outputFile) await follow($, id, one.outputFile)
+    if (one.outputFile) await readOutput($, one.outputFile, id)
     const now = await $.clock.now()
     await write($, held =>
       endItem(
@@ -152,7 +236,9 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
     // A subagent's task may be missing from the main session's list; the poll
     // ends it from the exit line of its output file.
     if (item.parentId?.startsWith('agent:')) continue
-    const ended = item.detail.outputPath && (await follow($, item.id, item.detail.outputPath))
+    const ended =
+      item.detail.outputPath &&
+      parseOutput((await readOutput($, item.detail.outputPath, item.id)).text ?? '').ended
     await write($, held => endItem(held, item.id, ended || 'stopped', now))
   }
   await write($, held =>

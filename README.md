@@ -200,7 +200,7 @@ Rabe keeps its items in Claude Code session state. That includes agent reply tex
 
 Rabe polls its sources in one loop. A slow poll makes the loop skip ticks. Starting the session again replaces its timer and polls. A failed poll leaves the other sources running. Item counts change together after the loop finishes. The loop polls every two seconds while work runs and every ten seconds after five unchanged idle polls. Agent polls keep a minimum three-second gap.
 
-Rabe runs `tail` and `grep` to read files over 4 MiB. It runs `git worktree list` every 10 seconds in the session's folder to know the worktrees. When you stop a Codex job, it runs the Codex plugin's own cancel script. A refusal sends fixed text to Claude. The pane toast can show the first error line.
+Rabe keeps file cursors and parser summaries in session state. It skips unchanged files and reads only appended bytes. Shell and monitor output continues past 4 MiB. Rabe runs `tail` for these reads and `ls -diL` to detect replaced files. It runs `git worktree list` every 10 seconds in the session's folder to know the worktrees. When you stop a Codex job, it runs the Codex plugin's own cancel script. A refusal sends fixed text to Claude. The pane toast can show the first error line.
 
 `/rabe:report-bug` includes the details you provide, reproduction steps, Rabe and Claude Code versions, your operating system and any error lines you give it. Both report commands ask Claude Code to leave out home paths, user or project names, prompts, tokens and email addresses; `/rabe:report-bug` also asks it to leave out transcript text. These are instructions, not automatic redaction filters. Review the full draft before approving it. See [SECURITY.md](SECURITY.md) to report a vulnerability privately.
 

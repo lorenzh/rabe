@@ -1,7 +1,7 @@
 import type { EngineInterface, On } from 'claude-code'
-
 import type { Pollers } from '../loop'
 import { itemId, type RabeItem } from '../model'
+import { fileOffset, fileReset, outputLines, readChunk } from '../reading'
 import {
   addItem,
   type Change,
@@ -25,8 +25,6 @@ import {
 } from '../tasks'
 
 const MAX_READ = 4 * 1024 * 1024
-const TAIL_BYTES = '1048576'
-const RUN_MS = 5000
 
 // Each event takes one hook without a matcher per plugin; these match every event.
 const ANY_STOP = { stop_hook_active: [true, false] }
@@ -69,18 +67,21 @@ async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Pro
   }
 }
 
-async function readOutput($: EngineInterface, path: string): Promise<string | undefined> {
-  return (await readWhole($, path)).text
+let reading = Promise.resolve()
+
+function readOutput($: EngineInterface, path: string, id: string): Promise<{ text?: string }> {
+  const result = reading.then(() => readFile($, path, id))
+  reading = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  return result
 }
 
-// `isWhole` is false when only the file's tail was read.
-async function readWhole(
-  $: EngineInterface,
-  path: string,
-): Promise<{ text?: string; isWhole: boolean }> {
+async function readFile($: EngineInterface, path: string, id: string): Promise<{ text?: string }> {
   try {
     const folder = taskFolder(path, await $.session.id(), await $.session.root())
-    if (!folder) return { isWhole: false }
+    if (!folder) return {}
     const root = await $.fs.stat(folder, { resolve: true })
     const stat = await $.fs.stat(path, { resolve: true })
     if (
@@ -88,28 +89,82 @@ async function readWhole(
       stat.realPath !== `${root.realPath}/${path.slice(path.lastIndexOf('/') + 1)}` ||
       stat.kind !== 'file'
     )
-      return { isWhole: false }
+      return {}
     path = stat.realPath
-    const { size } = stat
-    if (size <= MAX_READ) return { text: String(await $.fs.read(path)), isWhole: true }
-    const { stdout } = await $.process.run(['tail', '-c', TAIL_BYTES, '--', path], {
-      timeoutMs: RUN_MS,
-    })
-
-    return { text: stdout, isWhole: false }
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'shellFiles' })
+    const held = value[id]
+    const identity = await $.process
+      .run(['ls', '-diL', '--', path], { timeoutMs: 5000 })
+      .then(result => (result.exitCode === 0 ? /^\s*(\d+)/.exec(result.stdout)?.[1] : undefined))
+      .catch(() => undefined)
+    if (!identity) {
+      if (stat.size > MAX_READ) return {}
+      const text = String(await $.fs.read(path))
+      const parsed = parseOutput(text)
+      await keepLines($, id, parsed.lines, false, false, parsed.ended !== undefined, true)
+      return { text }
+    }
+    const stamp = { size: stat.size, mtimeMs: stat.mtimeMs, identity: `${path}:${identity}` }
+    const offset = fileOffset(stamp, held)
+    if (offset === undefined) return {}
+    let text: string
+    let truncated = false
+    if (offset === 0 && stat.size <= MAX_READ) text = String(await $.fs.read(path))
+    else {
+      const result = await $.process.run(['tail', '-c', `+${offset + 1}`, '--', path], {
+        timeoutMs: 5000,
+      })
+      if (result.exitCode !== 0) return {}
+      text = result.stdout
+      truncated = result.isStdoutTruncated
+    }
+    const chunk = readChunk(text, truncated, false, held?.isDiscarding)
+    if (truncated && chunk.bytes === 0) return {}
+    const parsed = parseOutput(chunk.text)
+    await keepLines(
+      $,
+      id,
+      parsed.lines,
+      fileReset(stamp, held),
+      !fileReset(stamp, held) && held?.partial === true,
+      parsed.ended !== undefined,
+    )
+    await $.state.set(
+      { plugin: 'rabe', key: 'shellFiles' },
+      {
+        ...value,
+        [id]: {
+          ...stamp,
+          offset: offset + chunk.bytes,
+          partial: chunk.partial,
+          isDiscarding: chunk.isDiscarding,
+        },
+      },
+      { ifVersion: version },
+    )
+    return { text: chunk.text }
   } catch {
-    return { isWhole: false }
+    return {}
   }
 }
 
-// ponytail: lines are counted from the file's start, so a shell whose output
-// passed 4 MiB keeps the lines it had; the pane shows those.
-async function keepLines($: EngineInterface, id: string, lines: string[]): Promise<void> {
+async function keepLines(
+  $: EngineInterface,
+  id: string,
+  lines: string[],
+  reset: boolean,
+  partial: boolean,
+  ended: boolean,
+  whole = false,
+): Promise<void> {
   const now = await $.clock.now()
   for (;;) {
     const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
-    const next = appendLines(value[id], lines, now)
+    const next = whole
+      ? appendLines(value[id], lines, now)
+      : outputLines(value[id], lines, now, reset, partial, ended)
     if (!next) return
+    if (JSON.stringify(next) === JSON.stringify(value[id])) return
     const { isSet } = await $.state.set(
       { plugin: 'rabe', key: 'lines' },
       { ...value, [id]: next },
@@ -123,16 +178,31 @@ function runningShells(items: RabeItem[]) {
   return items.flatMap(item => (item.kind === 'shell' && item.status === 'running' ? [item] : []))
 }
 
+async function cleanFiles($: EngineInterface, items: RabeItem[]): Promise<void> {
+  const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'shellFiles' })
+  const { value: current = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+  const next = prune(value, Object.keys(value), [...items, ...current])
+  if (next !== value)
+    await $.state.set({ plugin: 'rabe', key: 'shellFiles' }, next, { ifVersion: version })
+}
+
 async function pollShells($: EngineInterface, items: RabeItem[]): Promise<Change> {
   const poll: Poll = { items, changes: [] }
+  const { value: cursors = {} } = await $.state.get({ plugin: 'rabe', key: 'shellFiles' })
   try {
-    for (const item of runningShells(items)) {
-      const { text, isWhole } = item.detail.outputPath
-        ? await readWhole($, item.detail.outputPath)
-        : { isWhole: false }
+    for (const item of items.filter((item): item is RabeItem & { kind: 'shell' } => {
+      const cursor = cursors[item.id]
+      return (
+        item.kind === 'shell' &&
+        (item.status === 'running' ||
+          (cursor !== undefined && cursor.offset < cursor.size && !cursor.partial))
+      )
+    })) {
+      const { text } = item.detail.outputPath
+        ? await readOutput($, item.detail.outputPath, item.id)
+        : {}
       if (!text) continue
-      const { exitCode, ended, lines } = parseOutput(text)
-      if (isWhole) await keepLines($, item.id, lines)
+      const { exitCode, ended } = parseOutput(text)
       const port = item.detail.port ?? guessPort(text)
       const now = await $.clock.now()
       const portAt = item.detail.portAt ?? (port ? now : undefined)
@@ -144,10 +214,11 @@ async function pollShells($: EngineInterface, items: RabeItem[]): Promise<Change
           },
         })
 
-        return ended ? endItem(next, item.id, ended, now) : next
+        return ended && item.status === 'running' ? endItem(next, item.id, ended, now) : next
       })
     }
   } catch {}
+  await cleanFiles($, poll.items)
   return changeOf(poll, items)
 }
 
@@ -158,8 +229,7 @@ async function onNotifications($: EngineInterface, text: string): Promise<void> 
     const id = itemId('shell', one.taskId)
     const item = items.find(held => held.id === id)
     const path = one.outputFile ?? (item?.kind === 'shell' ? item.detail.outputPath : undefined)
-    const read = item && path ? await readWhole($, path) : undefined
-    if (read?.text && read.isWhole) await keepLines($, id, parseOutput(read.text).lines)
+    if (item && path) await readOutput($, path, id)
   }
   const now = await $.clock.now()
   await write($, held =>
@@ -186,7 +256,8 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
     // A subagent's task may be missing from the main session's list; the poll
     // ends it from the exit line of its output file.
     if (item.parentId?.startsWith('agent:')) continue
-    const text = item.detail.outputPath && (await readOutput($, item.detail.outputPath))
+    const text =
+      item.detail.outputPath && (await readOutput($, item.detail.outputPath, item.id)).text
     const { exitCode, ended = 'stopped' } = parseOutput(text || '')
     await write($, held =>
       endItem(

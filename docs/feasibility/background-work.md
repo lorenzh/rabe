@@ -27,7 +27,7 @@ keywords: [Codex jobs, shells, monitors, cron jobs, loops, resume-last, resumed 
 
 Limits of the link: a job started by a call that went to the background (`run_in_background`, or the 2-minute Bash timeout) links only by the prompt while that call runs, and a prompt passed in a file (`--prompt-file`) or through stdin links only through the thread id once the call returned. A job started by the main session's own companion call is not tracked as a call, so if it had the same prompt as a forwarder's call at the same time, the forwarder could take it until the call returns its job id or thread, or until the forwarder's own job shows too (two jobs fit, so neither is linked); the stop-gate hook's jobs have their own summary and never match. Without proof the forwarder and the job stay two rows.
 
-Limits: Codex deletes old session files, and their file changes with them; so older jobs show `n/a` for tokens and model. `$.fs` rejects reads over 4 MiB (d.ts:3200), and some session files are larger (seen: 4.9 MB): Rabe reads those with `grep -m 2` for the turn context and prompt and `tail -n 200` for the rest, through `$.process.run`, so the step list, the command count and the file changes cover the last 200 lines only.
+Limits: Codex deletes old session files. Older jobs then show `n/a` for file data. Rabe keeps a byte cursor for each rollout and parses only new records. Files beyond the 4 MiB read limit catch up over several polls. A record larger than that limit is skipped. Such a rollout stays partial and has no cost estimate. See [incremental file reads](../architecture/reading.md).
 
 
 ## Background shells
@@ -36,7 +36,7 @@ Limits: Codex deletes old session files, and their file changes with them; so ol
 |---|---|
 | Command, task id | Bash `tool.call` input and result `backgroundTaskId` (d.ts:16032, d.ts:20215). Set for `run_in_background`, Ctrl+B (`backgroundedByUser`) and a timed-out command (`timedOutAfterMs`). |
 | Output file path | The result `text`: `Command running in background with ID: <id>. Output is being written to: <path>.` Tested. |
-| Output, exit code | `/tmp/claude-<uid>/<project>/<session>/tasks/<taskId>.output`. Live output, then an empty line and `[exited with code N]`, or `[killed]` for a stopped task. Tested. Read with `$.fs` up to 4 MiB, beyond that with `tail -c` through `$.process.run`. |
+| Output, exit code | `/tmp/claude-<uid>/<project>/<session>/tasks/<taskId>.output`. Live output, then an empty line and `[exited with code N]`, or `[killed]` for a stopped task. Tested. Read once with `$.fs` up to 4 MiB. New bytes arrive through `tail -c +N` with a session cursor. Larger output catches up over several polls. |
 | End | `prompt.submit` with `origin.kind` `task-notification`. Its text holds `<task-notification>` blocks with `<task-id>`, `<tool-use-id>`, `<output-file>`, `<status>` (`completed`, `failed`, `killed`) and `<summary>` (`… failed with exit code 3`). Tested. The `UserMessage` row's `task` (d.ts:14467) has the same fields and `durationMs`, but only while the row is drawn. |
 | Still running | `classic.Stop` `background_tasks` lists running work (`type` `shell` with `command`, `monitor`, `subagent`, `workflow`); a finished task is not in it. A Monitor tool task runs as a `local_bash` task, so it is listed as `shell` with a `command`; `monitor` is only an MCP or WebSocket monitor (checked in the 2.1.295 source, `local_bash: "shell"`, `monitor_mcp` and `monitor_ws: "monitor"`). |
 | Port | Not reported. Guessed from the output (`localhost:5173`, `127.0.0.1:8080`, `port 4000`). `ss -ltnp` is not used. |
@@ -56,6 +56,8 @@ Command, description, timeout and `persistent` come from the Monitor tool input 
 The result text (`Monitor started (task <id>, expires in …)`) has no file path. The output file sits beside the shells' files (`tasks/<taskId>.output`) and ends with the same exit line. Tested. Rabe takes the folder from a path it already knows; the end notification also carries `<output-file>`.
 
 Notifications: each batch of lines arrives as a `<task-notification>` with `<summary>Monitor event: "…"</summary>` and `<event>` lines and no `<status>`; the end has `<status>completed</status>` and `Monitor "…" stream ended`. Tested.
+
+Monitors use the same cursor rules as shells. Their output continues beyond 4 MiB. Unchanged files cause no content read or state write.
 
 Line times: task notifications are delayed and often carry several lines, so their time is not when the line was written. Follow the monitor's output file instead, and label the times "received".
 

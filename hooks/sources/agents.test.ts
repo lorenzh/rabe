@@ -916,6 +916,7 @@ test('the poll adds listed agents and reads the meta file of running ones', asyn
       { id: 'a2', description: 'plan', type: 'Plan', status: 'completed' as const, parentId: 'a1' },
     ],
   }))
+  on('fs.stat', async () => ({ value: { kind: 'file', size: 100, mtimeMs: 1, isLink: false } }))
   on('fs.read', async (_$, e) =>
     e.path === '/p/s1/subagents/agent-a1.meta.json'
       ? { value: '{"worktreePath":"/wt/a1","worktreeBranch":"wt-a1"}' }
@@ -962,6 +963,7 @@ test('the poll reads phase metadata for workflow agents that already ended', asy
   on('agent.list', async () => ({
     value: [{ id: 'a1', description: 'draft', type: 'workflow-subagent', status: 'completed' }],
   }))
+  on('fs.stat', async () => ({ value: { kind: 'file', size: 100, mtimeMs: 1, isLink: false } }))
   on('fs.read', async (_$, e) =>
     e.path === '/p/subagents/workflows/wf_1/agent-a1.meta.json'
       ? { value: '{"workflowPhase":"Draft"}' }
@@ -1498,5 +1500,43 @@ test('a plain subagent that reports idle stays running in the poll and ends on i
   expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]).toMatchObject({
     status: 'done',
     endedAt: 9000,
+  })
+})
+
+test('unchanged agent metadata is not read again and a rewrite updates its phase', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  core(on)
+  state['rabe.items'] = {
+    value: [{ ...agent, detail: { ...agent.detail, transcriptPath: '/s/agent-a1.jsonl' } }],
+    version: 1,
+  }
+  on('agent.list', async () => ({ value: [{ id: 'a1', status: 'running' }] }) as never)
+  let text = '{"cwd":"/work/a"}'
+  let mtimeMs = 1
+  let reads = 0
+  on('fs.stat', async () => ({
+    value: { kind: 'file', size: text.length, mtimeMs, isLink: false },
+  }))
+  on(
+    'process.run',
+    { argv: 'ls' },
+    async () => ({ value: { exitCode: 0, stdout: '1 file\n', stderr: '' } }) as never,
+  )
+  on('fs.read', async () => {
+    reads++
+    return { value: text }
+  })
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: false })
+  const first = state['rabe.agentFiles']
+  await clock.advance(3000)
+  expect(reads).toBe(1)
+  expect(state['rabe.agentFiles']).toBe(first)
+  text = '{"cwd":"/work/b"}'
+  mtimeMs++
+  await clock.advance(3000)
+  expect(reads).toBe(2)
+  expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.detail).toMatchObject({
+    cwd: '/work/b',
   })
 })
