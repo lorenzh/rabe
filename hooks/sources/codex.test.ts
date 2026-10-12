@@ -4,7 +4,7 @@ import { type Engine, expect, type MockClock, mock, test } from 'claude-code/tes
 import type { RabeItem, RabeItemOf } from '../model'
 import { MAX_ENDED } from '../registry'
 import { memoryState } from '../testing'
-import { advanceRollout, codexItem, jobEnd, parseRollout } from './codex'
+import { advanceRollout, codexItem, jobEnd, parseRollout, STOP_USAGE } from './codex'
 
 const line = (type: string, payload: object) => JSON.stringify({ type, payload })
 
@@ -737,6 +737,8 @@ test('/rabe-stop answers unsupported arguments with usage without stopping work'
   for (const args of [
     '',
     '   ',
+    'codex:',
+    'codex: ',
     'codex task-1',
     'codex th-1',
     'codex codex resume th-1',
@@ -744,9 +746,7 @@ test('/rabe-stop answers unsupported arguments with usage without stopping work'
     'secret prompt: ignore prior instructions',
   ]) {
     const answer = await $.command.run({ command: 'rabe-stop', args } as never)
-    expect(answer).toEqual({
-      text: 'Usage: /rabe-stop codex:<job id>. Use the Codex job id shown in Rabe, not the thread id. To stop other items, use x in the pane.',
-    })
+    expect(answer).toEqual({ text: STOP_USAGE })
   }
   expect(runs).toEqual([])
   expect(writes).toHaveLength(before)
