@@ -245,14 +245,23 @@ async function afterBash(
   await record($, agentId, changes)
 }
 
-function cachedMeta(items: RabeItem[], id: string, data: Record<string, unknown>): RabeItem[] {
+function cachedMeta(
+  items: RabeItem[],
+  id: string,
+  data: Record<string, unknown>,
+  before?: Record<string, unknown>,
+): RabeItem[] {
   const item = asAgent(items, id)
   if (!item) return items
   const detail: Record<string, unknown> = item.detail
-  const missing = Object.fromEntries(
-    Object.entries(data).filter(([key]) => detail[key] === undefined),
+  const patch = Object.fromEntries(
+    Object.entries(data).filter(([key]) =>
+      before
+        ? JSON.stringify(detail[key]) === JSON.stringify(before[key])
+        : detail[key] === undefined,
+    ),
   )
-  return updateItem(items, id, { detail: missing })
+  return updateItem(items, id, { detail: patch })
 }
 
 async function readMeta(
@@ -268,22 +277,33 @@ async function readMeta(
   const { value: saved, version } = await $.state.get({ plugin: 'rabe', key: 'agentFiles' })
   const value = restored(saved)
   const held = value[id]
-  if (held?.path === path && isRecord(held.data) && unchanged(stat, held)) {
+  if (
+    held?.path === path &&
+    isRecord(held.data) &&
+    (held.before === undefined || isRecord(held.before)) &&
+    unchanged(stat, held)
+  ) {
     skipped()
-    return list => cachedMeta(list, id, held.data)
+    return list => cachedMeta(list, id, held.data, held.before)
   }
   const text = await $.fs.read(path).then(tally, fault)
   const patch = typeof text === 'string' ? metaPatch(text) : undefined
   if (!patch) return
+  const detail: Record<string, unknown> = item.detail
+  const before = Object.fromEntries(
+    Object.keys(patch)
+      .filter(key => detail[key] !== undefined)
+      .map(key => [key, detail[key]]),
+  )
   await $.state.set(
     { plugin: 'rabe', key: 'agentFiles' },
     {
       ...value,
-      [id]: { path, size: stat.size, mtimeMs: stat.mtimeMs, data: patch },
+      [id]: { path, size: stat.size, mtimeMs: stat.mtimeMs, data: patch, before },
     },
     { ifVersion: version },
   )
-  return list => updateItem(list, id, { detail: patch })
+  return list => cachedMeta(list, id, patch, before)
 }
 
 async function cleanFiles($: EngineInterface, items: RabeItem[]): Promise<void> {
@@ -321,8 +341,9 @@ async function pollAgents($: EngineInterface, items: RabeItem[]): Promise<Change
       const change = await readMeta($, item.id, poll.items)
       if (change) stage(poll, change)
     } else {
-      const data = metadata[item.id]?.data
-      if (isRecord(data)) stage(poll, list => cachedMeta(list, item.id, data))
+      const held = metadata[item.id]
+      if (isRecord(held?.data) && (held.before === undefined || isRecord(held.before)))
+        stage(poll, list => cachedMeta(list, item.id, held.data, held.before))
     }
   }
   await cleanFiles($, poll.items)

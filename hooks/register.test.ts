@@ -222,7 +222,7 @@ test('idle polls back off, and a newly running item wakes the next tick', async 
   expect(calls).toBe(idleCalls + 1)
 })
 
-test('an event write during a poll is kept when the staged changes commit', async ($, on) => {
+test('an event write during a poll keeps cleared metadata and added items', async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const state = memoryState(on)
   core(on)
@@ -283,7 +283,7 @@ test('an event write during a poll is kept when the staged changes commit', asyn
     'shell:b1',
   ])
   expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.detail).toMatchObject({
-    cwd: '/repo',
+    cwd: undefined,
   })
 })
 

@@ -31,7 +31,11 @@ Each chunk prices only its new requests. Session state keeps the sum rather than
 
 Agent metadata uses `rabe.agentFiles`. Codex job and workspace JSON use `rabe.codexFiles`. These files are rewritten rather than appended. Unchanged size and modification time reuse their metadata. The source reads a changed file whole. These caches use no inode lookup and also work without a process host. Each poll prunes the Codex JSON cache against retained jobs and their workspace files. Removed jobs and vanished workspaces leave no cached documents.
 
-Caches keep the parsed agent metadata and Codex rollout fields. Output entries keep the exit status and code. Shell entries also keep the discovered port. The item write happens after these reader writes. If a newer session start discards the pass, the next poll applies the stored fields again. A refused or failed item write has the same recovery. When the source applies an item change, cached agent metadata fills only fields that are `undefined`. This preserves newer event values. A real read of changed agent metadata still applies the full patch. The task-list hook also uses cached exit results. An agent that ends before the retry still gets its missing cached metadata. An unchanged file needs no new content read for this retry.
+Caches keep the parsed agent metadata and Codex rollout fields. Output entries keep the exit status and code. Shell entries also keep the discovered port. The item write happens after these reader writes. If a newer session start discards the pass, the next poll applies the stored fields again. A refused or failed item write has the same recovery.
+
+Agent metadata entries also keep a JSON-safe `before` map of detail values for patched keys at read time. Missing values stay absent. When a current value matches `before` through `JSON.stringify`, the first publication and later replay apply that metadata field. Absent values compare equal. This recovers changed metadata while preserving newer event values.
+
+Older entries without `before` fill only fields that are `undefined`. An agent that ends before the retry still gets cached metadata under the same rule. An unchanged file needs no new content read for this retry. The task-list hook also uses cached exit results.
 
 The [diagnostics](diagnostics.md) record counts each returned content chunk and its UTF-8 bytes. Unchanged files increase `skipped` without increasing reads or bytes. Inode command output does not count as file content. Failed reads and process calls increase `errors`.
 

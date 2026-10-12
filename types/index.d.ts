@@ -236,7 +236,13 @@ declare module 'claude-code' {
       items: RabeItem[]
       agentFiles: Record<
         string,
-        { path: string; size: number; mtimeMs: number; data: Partial<RabeAgentDetail> }
+        {
+          path: string
+          size: number
+          mtimeMs: number
+          data: Partial<RabeAgentDetail>
+          before?: Record<string, unknown>
+        }
       >
       codexFiles: Record<string, { size: number; mtimeMs: number; data: Record<string, unknown> }>
       rollouts: Record<
