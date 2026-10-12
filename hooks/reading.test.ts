@@ -1,6 +1,14 @@
 import { expect, test } from 'claude-code/testing'
 
-import { byteLength, fileOffset, inodeOf, outputLines, readChunk, readPlan } from './reading'
+import {
+  byteLength,
+  cursorOf,
+  fileOffset,
+  inodeOf,
+  outputLines,
+  readChunk,
+  readPlan,
+} from './reading'
 
 const stat = { size: 6, mtimeMs: 1, identity: '1' }
 const held = { ...stat, offset: 6, partial: false }
@@ -81,4 +89,19 @@ test('read plans use whole small files and byte tails for appends or large reset
     whole: false,
   })
   expect(readPlan(stat, held, 8)).toBeUndefined()
+})
+
+test('restored cursors reject fractional byte positions and invalid fields', () => {
+  for (const value of [
+    null,
+    [],
+    { ...held, offset: 0.5 },
+    { ...held, size: 6.5 },
+    { ...held, offset: Infinity },
+    { ...held, identity: 42 },
+    { ...held, partial: 'false' },
+  ]) {
+    expect(cursorOf(value)).toBeUndefined()
+  }
+  expect(cursorOf(held)).toBe(held)
 })

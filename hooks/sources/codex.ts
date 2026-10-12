@@ -5,7 +5,16 @@ import { linkForwarders } from '../forwarders'
 import { fault, type Pollers, skipped, tally } from '../loop'
 import { itemId, type NewItem, type RabeItem, type RabeItemOf } from '../model'
 import { codexUsd, type Prices, parsePrices, withOverride } from '../prices'
-import { byteLength, inodeOf, readChunk, readPlan, unchanged } from '../reading'
+import {
+  byteLength,
+  cursorOf,
+  inodeOf,
+  isRecord,
+  readChunk,
+  readPlan,
+  restored,
+  unchanged,
+} from '../reading'
 import {
   addItem,
   type Change,
@@ -32,6 +41,7 @@ import {
   type Rec,
   type Rollout,
   rec,
+  rolloutCursor,
   str,
 } from './codex-data'
 
@@ -179,9 +189,22 @@ async function readSession(
     return held?.detail.sessionPath ? { path } : undefined
   }
   const updatedAt = stat.mtimeMs
-  const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'rollouts' })
+  const { value: savedValue, version } = await $.state.get({ plugin: 'rabe', key: 'rollouts' })
+  const value = restored(savedValue)
   const key = itemId('codex', job.id)
-  const saved = value[key]
+  const entry = value[key]
+  const saved =
+    entry &&
+    typeof entry.path === 'string' &&
+    cursorOf(entry.cursor) &&
+    rolloutCursor(entry.parser) &&
+    typeof entry.usd === 'number' &&
+    Number.isFinite(entry.usd) &&
+    (['isUnpriced', 'hasRequests', 'hasSkipped'] as const).every(
+      key => typeof entry[key] === 'boolean',
+    )
+      ? entry
+      : undefined
   const until = jobStop(job)
   const since = jobStart(job)
   const previous =
@@ -193,10 +216,19 @@ async function readSession(
   const same = previous && unchanged(stat, previous.cursor)
   if (
     (same && (previous.cursor.offset >= previous.cursor.size || previous.cursor.partial)) ||
-    (!saved && updatedAt === held?.detail.sessionUpdatedAt)
+    (entry === undefined && updatedAt === held?.detail.sessionUpdatedAt)
   ) {
     skipped()
-    return { path, updatedAt }
+    if (!previous) return { path, updatedAt }
+    const isPartial =
+      previous.hasSkipped || (previous.cursor.offset < stat.size && !previous.cursor.partial)
+    return {
+      path,
+      updatedAt,
+      rollout: previous.parser.out,
+      isPartial,
+      usd: isPartial || previous.isUnpriced || !previous.hasRequests ? undefined : previous.usd,
+    }
   }
   const identity = same
     ? previous.cursor.identity
@@ -245,7 +277,7 @@ async function readSession(
     }
     truncated = result.isStdoutTruncated
   }
-  const chunk = readChunk(text, truncated, true, previous?.cursor.isDiscarding)
+  const chunk = readChunk(text, truncated, true, reset ? false : previous?.cursor.isDiscarding)
   if (truncated && chunk.bytes === 0) return { path }
   const parser = advanceRollout(
     chunk.text,
@@ -292,9 +324,10 @@ async function readJson(
 ): Promise<Rec | undefined> {
   const stat = known ?? (await $.fs.stat(path).catch(fault))
   if (stat?.kind !== 'file') return undefined
-  const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'codexFiles' })
+  const { value: savedValue, version } = await $.state.get({ plugin: 'rabe', key: 'codexFiles' })
+  const value = restored(savedValue)
   const held = value[path]
-  if (unchanged(stat, held)) {
+  if (isRecord(held?.data) && unchanged(stat, held)) {
     skipped()
     return held?.data
   }
@@ -352,7 +385,8 @@ async function cleanFiles(
   workspaces: Set<string>,
 ): Promise<void> {
   for (;;) {
-    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'rollouts' })
+    const { value: savedValue, version } = await $.state.get({ plugin: 'rabe', key: 'rollouts' })
+    const value = restored(savedValue)
     const { value: current = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const next = prune(value, Object.keys(value), [...items, ...current])
     if (next === value) break
@@ -362,7 +396,8 @@ async function cleanFiles(
     if (isSet) break
   }
   for (;;) {
-    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'codexFiles' })
+    const { value: savedValue, version } = await $.state.get({ plugin: 'rabe', key: 'codexFiles' })
+    const value = restored(savedValue)
     const { value: current = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const ids = new Set(
       [...items, ...current].filter(item => item.kind === 'codex').map(item => item.id),
@@ -373,7 +408,9 @@ async function cleanFiles(
         ? ids.has(itemId('codex', jobId)) &&
             workspaces.has(path.replace(/\/jobs\/[^/]+\.json$/, '/state.json'))
         : workspaces.has(path) &&
-            list(entry.data.jobs).some(job => ids.has(itemId('codex', str(rec(job).id) ?? '')))
+            list(rec(entry?.data).jobs).some(job =>
+              ids.has(itemId('codex', str(rec(job).id) ?? '')),
+            )
     })
     if (entries.length === Object.keys(value).length) return
     const { isSet } = await $.state.set(
@@ -388,7 +425,8 @@ async function cleanFiles(
 async function pollCodex($: EngineInterface, file: string, items: RabeItem[]): Promise<Change> {
   const poll: Poll = { items, changes: [] }
   const { claude, codex } = await homes($)
-  const { value: cursors = {} } = await $.state.get({ plugin: 'rabe', key: 'rollouts' })
+  const { value } = await $.state.get({ plugin: 'rabe', key: 'rollouts' })
+  const cursors = restored(value)
   const workspaces = new Set<string>()
   const stateRoot = `${claude}/${CODEX_DATA}/state`
   const sessionId = await $.session.id()
@@ -409,7 +447,7 @@ async function pollCodex($: EngineInterface, file: string, items: RabeItem[]): P
       if (!id || !/^\w[\w.-]*$/.test(id)) continue
       if (entry.sessionId !== undefined && entry.sessionId !== sessionId) continue
       const held = items.find((one): one is RabeItemOf<'codex'> => one.id === itemId('codex', id))
-      const cursor = cursors[itemId('codex', id)]?.cursor
+      const cursor = cursorOf(cursors[itemId('codex', id)]?.cursor)
       const backlog = cursor && cursor.offset < cursor.size && !cursor.partial
       if (held && held.status !== 'running' && !backlog) continue
       await refresh(

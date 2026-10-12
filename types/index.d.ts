@@ -145,7 +145,14 @@ export type RabeTab = 'items' | 'cost' | 'effects' | 'timeline'
 
 export type RabeLine = { at: number; text: string }
 
-export type RabeLines = { seen: number; lines: RabeLine[]; cursor?: RabeFileCursor }
+export type RabeLines = {
+  seen: number
+  lines: RabeLine[]
+  cursor?: RabeFileCursor
+  ended?: 'done' | 'failed' | 'stopped'
+  exitCode?: number
+  port?: number
+}
 
 // Item ids per list (a group of the Items tab, `cost`, `timeline`) in the
 // order the pane showed them when it opened.
@@ -210,8 +217,8 @@ export type RabeRolloutCursor = {
 
 // The last poll of one source (`agents`, `codex`, `shells`, `monitors`,
 // `worktrees`): when it ran, how long it took (rounded to 100 ms), the files
-// and text it read, unchanged files skipped, its failures, and the last failure's text with paths
-// shortened. Written only when a value changes.
+// and text it read, unchanged files skipped, its failures, and the last
+// failure's fixed category. Written only when a value changes.
 export type RabeDiag = {
   at: number
   ms: number
@@ -227,7 +234,16 @@ declare module 'claude-code' {
   interface PluginState {
     rabe: {
       items: RabeItem[]
-      agentFiles: Record<string, { path: string; size: number; mtimeMs: number }>
+      agentFiles: Record<
+        string,
+        {
+          path: string
+          size: number
+          mtimeMs: number
+          data: Partial<RabeAgentDetail>
+          before?: Record<string, unknown>
+        }
+      >
       codexFiles: Record<string, { size: number; mtimeMs: number; data: Record<string, unknown> }>
       rollouts: Record<
         string,

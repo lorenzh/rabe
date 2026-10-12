@@ -4,7 +4,7 @@ import { type Engine, expect, mock, test } from 'claude-code/testing'
 import type { RabeEdit } from '../../types'
 import type { RabeItem, RabeItemOf, RabeTurn } from '../model'
 import { MAX_ENDED } from '../registry'
-import { core, memoryState } from '../testing'
+import { core, files, memoryState } from '../testing'
 import { addTurn, agentTranscript, metaPatch, metaPath, toolSummary } from './agents'
 
 const SPAWN: AgentSpawnInput = {
@@ -1552,3 +1552,338 @@ for (const available of [true, false]) {
     })
   })
 }
+
+for (const status of ['running', 'done'] as const) {
+  test(`an unchanged ${status} agent poll keeps newer event metadata`, async ($, on) => {
+    const clock = mock.clock(on, { now: 1000 })
+    const state = memoryState(on)
+    core(on)
+    on('agent.list', async () => ({ value: [] }))
+    on('classic.SubagentStart', async () => ({}))
+    on('turn.complete', async () => ({ text: '' }))
+    const log: string[] = []
+    files(on, { '/s/agent-a1.meta.json': '{"cwd":"/old-tree"}' }, log)
+    state['rabe.items'] = {
+      value: [{ ...agent, detail: { ...agent.detail, transcriptPath: '/s/agent-a1.jsonl' } }],
+      version: 1,
+    }
+    await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: false })
+    if (status === 'done') {
+      await $.turn.complete({
+        agentId: 'a1',
+        turnId: 't',
+        answer: '',
+        reason: 'answer',
+        durationMs: 10,
+        isAborted: false,
+      })
+    }
+    await $.classic.SubagentStart({
+      agent_id: 'a1',
+      agent_type: 'Explore',
+      transcript_path: '/s/agent-a1.jsonl',
+      cwd: '/newer-tree',
+    })
+    await clock.advance(4000)
+    expect((state['rabe.items']?.value as RabeItem[])?.[0]).toMatchObject({
+      status,
+      detail: { cwd: '/newer-tree' },
+    })
+    expect(log).toEqual(['read /s/agent-a1.meta.json'])
+  })
+}
+
+test('an unchanged agent poll recovers metadata after a failed first publication', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  let reject = true
+  on('state.set', { key: 'items' }, async (_$, e, next) => {
+    if (reject) {
+      reject = false
+      return { deny: 'item write failed' }
+    }
+    return next(e)
+  })
+  const state = memoryState(on)
+  core(on)
+  on('agent.list', async () => ({ value: [] }))
+  const log: string[] = []
+  files(on, { '/s/agent-a1.meta.json': '{"cwd":"/old-tree","worktreeBranch":"agent-a1"}' }, log)
+  state['rabe.items'] = {
+    value: [{ ...agent, detail: { ...agent.detail, transcriptPath: '/s/agent-a1.jsonl' } }],
+    version: 1,
+  }
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: false })
+  expect((state['rabe.items']?.value as RabeItem[])?.[0]?.detail).not.toHaveProperty('cwd')
+  await clock.advance(4000)
+  expect((state['rabe.items']?.value as RabeItem[])?.[0]?.detail).toMatchObject({
+    cwd: '/old-tree',
+    worktreeBranch: 'agent-a1',
+  })
+  expect(log).toEqual(['read /s/agent-a1.meta.json'])
+})
+
+for (const status of ['running', 'done'] as const) {
+  test(`an unchanged ${status} agent poll recovers changed metadata after a failed publication`, async ($, on) => {
+    const clock = mock.clock(on, { now: 1000 })
+    let reject = false
+    on('state.set', { key: 'items' }, async (_$, e, next) => {
+      if (reject) {
+        reject = false
+        return { deny: 'item write failed' }
+      }
+      return next(e)
+    })
+    const state = memoryState(on)
+    core(on)
+    let completed = false
+    on(
+      'agent.list',
+      async () => ({ value: [{ id: 'a1', status: completed ? 'completed' : 'running' }] }) as never,
+    )
+    const log: string[] = []
+    const metadata = { '/s/agent-a1.meta.json': '{"cwd":"/old-tree"}' }
+    files(on, metadata, log)
+    state['rabe.items'] = {
+      value: [{ ...agent, detail: { ...agent.detail, transcriptPath: '/s/agent-a1.jsonl' } }],
+      version: 1,
+    }
+    await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: false })
+    metadata['/s/agent-a1.meta.json'] = '{"cwd":"/new-tree","worktreeBranch":"agent-a1"}'
+    reject = true
+    await clock.advance(4000)
+    expect((state['rabe.items']?.value as RabeItem[])?.[0]?.detail).toMatchObject({
+      cwd: '/old-tree',
+    })
+    completed = status === 'done'
+    await clock.advance(4000)
+    expect((state['rabe.items']?.value as RabeItem[])?.[0]).toMatchObject({
+      status,
+      detail: { cwd: '/new-tree', worktreeBranch: 'agent-a1' },
+    })
+    expect(state['rabe.agentFiles']?.value).toEqual({
+      'agent:a1': {
+        path: '/s/agent-a1.meta.json',
+        size: metadata['/s/agent-a1.meta.json'].length,
+        mtimeMs: 0,
+        data: { cwd: '/new-tree', worktreeBranch: 'agent-a1' },
+        before: { cwd: '/old-tree' },
+      },
+    })
+    expect(log).toEqual(['read /s/agent-a1.meta.json', 'read /s/agent-a1.meta.json'])
+  })
+
+  test(`a changed agent poll keeps newer ${status} event metadata before publication and on replay`, async ($, on) => {
+    const clock = mock.clock(on, { now: 1000 })
+    let paused = false
+    on('state.set', { key: 'agentFiles' }, async (_$, e, next) => {
+      const result = await next(e)
+      if (paused) {
+        paused = false
+        await $.classic.SubagentStart({
+          agent_id: 'a1',
+          agent_type: 'Explore',
+          transcript_path: '/s/agent-a1.jsonl',
+          cwd: '/newer-tree',
+        })
+        if (status === 'done') {
+          await $.turn.complete({
+            agentId: 'a1',
+            turnId: 't',
+            answer: '',
+            reason: 'answer',
+            durationMs: 10,
+            isAborted: false,
+          })
+        }
+      }
+      return result
+    })
+    const state = memoryState(on)
+    core(on)
+    on('agent.list', async () => ({ value: [] }))
+    on('classic.SubagentStart', async () => ({}))
+    on('turn.complete', async () => ({ text: '' }))
+    const log: string[] = []
+    const metadata = { '/s/agent-a1.meta.json': '{"cwd":"/old-tree"}' }
+    files(on, metadata, log)
+    state['rabe.items'] = {
+      value: [{ ...agent, detail: { ...agent.detail, transcriptPath: '/s/agent-a1.jsonl' } }],
+      version: 1,
+    }
+    await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: false })
+    metadata['/s/agent-a1.meta.json'] = '{"cwd":"/new-tree","worktreeBranch":"agent-a1"}'
+    paused = true
+    await clock.advance(4000)
+    expect(paused).toBe(false)
+    expect((state['rabe.items']?.value as RabeItem[])?.[0]).toMatchObject({
+      status,
+      detail: { cwd: '/newer-tree', worktreeBranch: 'agent-a1' },
+    })
+    await clock.advance(4000)
+    expect((state['rabe.items']?.value as RabeItem[])?.[0]).toMatchObject({
+      status,
+      detail: { cwd: '/newer-tree', worktreeBranch: 'agent-a1' },
+    })
+    expect(log).toEqual(['read /s/agent-a1.meta.json', 'read /s/agent-a1.meta.json'])
+  })
+}
+
+test('an agent metadata cache without before fills only missing fields', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  core(on)
+  on('agent.list', async () => ({ value: [] }))
+  const log: string[] = []
+  const text = '{"cwd":"/old-tree","worktreeBranch":"agent-a1"}'
+  files(on, { '/s/agent-a1.meta.json': text }, log)
+  state['rabe.items'] = {
+    value: [
+      {
+        ...agent,
+        detail: { ...agent.detail, transcriptPath: '/s/agent-a1.jsonl', cwd: '/newer-tree' },
+      },
+    ],
+    version: 1,
+  }
+  state['rabe.agentFiles'] = {
+    value: {
+      'agent:a1': {
+        path: '/s/agent-a1.meta.json',
+        size: text.length,
+        mtimeMs: 0,
+        data: { cwd: '/old-tree', worktreeBranch: 'agent-a1' },
+      },
+    },
+    version: 1,
+  }
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: false })
+  await clock.advance(4000)
+  expect((state['rabe.items']?.value as RabeItem[])?.[0]?.detail).toMatchObject({
+    cwd: '/newer-tree',
+    worktreeBranch: 'agent-a1',
+  })
+  expect(log).toEqual([])
+})
+
+test('a discarded agent pass replays changed metadata without another read', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  let restart = false
+  on('state.set', { key: 'agentFiles' }, async (_$, e, next) => {
+    const result = await next(e)
+    if (restart) {
+      restart = false
+      await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: false })
+    }
+    return result
+  })
+  const state = memoryState(on)
+  core(on)
+  on('agent.list', async () => ({ value: [] }))
+  const log: string[] = []
+  const metadata = { '/s/agent-a1.meta.json': '{"cwd":"/old-tree"}' }
+  files(on, metadata, log)
+  state['rabe.items'] = {
+    value: [{ ...agent, detail: { ...agent.detail, transcriptPath: '/s/agent-a1.jsonl' } }],
+    version: 1,
+  }
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: false })
+  metadata['/s/agent-a1.meta.json'] = '{"cwd":"/new-tree","worktreeBranch":"agent-a1"}'
+  restart = true
+  await clock.advance(4000)
+  expect(restart).toBe(false)
+  expect((state['rabe.items']?.value as RabeItem[])?.[0]?.detail).toMatchObject({
+    cwd: '/new-tree',
+  })
+  expect(log).toEqual(['read /s/agent-a1.meta.json', 'read /s/agent-a1.meta.json'])
+})
+
+test('a discarded agent pass replays cached metadata without another read', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  let restart = true
+  on('state.set', { key: 'agentFiles' }, async (_$, e, next) => {
+    const result = await next(e)
+    if (restart) {
+      restart = false
+      await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: false })
+    }
+    return result
+  })
+  const state = memoryState(on)
+  core(on)
+  on('agent.list', async () => ({ value: [] }))
+  const log: string[] = []
+  files(on, { '/s/agent-a1.meta.json': '{"cwd":"/work/a"}' }, log)
+  state['rabe.items'] = {
+    value: [{ ...agent, detail: { ...agent.detail, transcriptPath: '/s/agent-a1.jsonl' } }],
+    version: 1,
+  }
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: false })
+  expect(restart).toBe(false)
+  expect((state['rabe.items']?.value as RabeItem[])?.[0]?.detail).toMatchObject({ cwd: '/work/a' })
+  expect(log).toEqual(['read /s/agent-a1.meta.json'])
+})
+
+for (const broken of [
+  null,
+  [],
+  'bad',
+  { 'agent:a1': { path: '/s/agent-a1.meta.json', size: 17, mtimeMs: 0, data: null } },
+  {
+    'agent:a1': {
+      path: '/s/agent-a1.meta.json',
+      size: 17,
+      mtimeMs: 0,
+      data: { cwd: '/bad' },
+      before: null,
+    },
+  },
+]) {
+  test(`agents rebuild malformed metadata caches ${JSON.stringify(broken)}`, async ($, on) => {
+    const clock = mock.clock(on, { now: 1000 })
+    const state = memoryState(on)
+    core(on)
+    on('agent.list', async () => ({ value: [] }))
+    files(on, { '/s/agent-a1.meta.json': '{"cwd":"/work/a"}' })
+    state['rabe.items'] = {
+      value: [{ ...agent, detail: { ...agent.detail, transcriptPath: '/s/agent-a1.jsonl' } }],
+      version: 1,
+    }
+    state['rabe.agentFiles'] = { value: broken, version: 1 }
+    await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: false })
+    await clock.advance(4000)
+    expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.detail).toMatchObject({
+      cwd: '/work/a',
+    })
+  })
+}
+
+test('an agent ending after a discarded pass still gets its cached metadata', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  let reject = true
+  on('state.set', { key: 'items' }, async (_$, e, next) => {
+    if (reject) {
+      reject = false
+      return { deny: 'item write failed' }
+    }
+    return next(e)
+  })
+  const state = memoryState(on)
+  core(on)
+  let completed = false
+  on(
+    'agent.list',
+    async () => ({ value: [{ id: 'a1', status: completed ? 'completed' : 'running' }] }) as never,
+  )
+  files(on, { '/s/agent-a1.meta.json': '{"cwd":"/work/a"}' })
+  state['rabe.items'] = {
+    value: [{ ...agent, detail: { ...agent.detail, transcriptPath: '/s/agent-a1.jsonl' } }],
+    version: 1,
+  }
+  await $.session.start({ cwd: '/work', surface: 'terminal', isInteractive: false })
+  completed = true
+  await clock.advance(4000)
+  expect((state['rabe.items']?.value as RabeItem[])?.[0]).toMatchObject({
+    status: 'done',
+    detail: { cwd: '/work/a' },
+  })
+})

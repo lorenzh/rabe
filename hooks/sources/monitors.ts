@@ -1,8 +1,17 @@
 import type { EngineInterface, On } from 'claude-code'
-import type { RabeFileCursor } from '../../types'
+import type { RabeFileCursor, RabeLines } from '../../types'
 import { fault, type Pollers, skipped, tally } from '../loop'
 import { itemId, type RabeItem } from '../model'
-import { inodeOf, outputUpdate, readChunk, readPlan, unchanged } from '../reading'
+import {
+  cursorOf,
+  inodeOf,
+  linesOf,
+  outputUpdate,
+  readChunk,
+  readPlan,
+  restored,
+  unchanged,
+} from '../reading'
 import {
   addItem,
   type Change,
@@ -58,7 +67,11 @@ async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Pro
 
 let reading = Promise.resolve()
 
-function readOutput($: EngineInterface, path: string, id: string): Promise<{ text?: string }> {
+function readOutput(
+  $: EngineInterface,
+  path: string,
+  id: string,
+): Promise<Pick<RabeLines, 'ended' | 'exitCode' | 'port'> & { text?: string }> {
   const result = reading.then(() => readFile($, path, id))
   reading = result.then(
     () => undefined,
@@ -67,7 +80,11 @@ function readOutput($: EngineInterface, path: string, id: string): Promise<{ tex
   return result
 }
 
-async function readFile($: EngineInterface, path: string, id: string): Promise<{ text?: string }> {
+async function readFile(
+  $: EngineInterface,
+  path: string,
+  id: string,
+): Promise<Pick<RabeLines, 'ended' | 'exitCode' | 'port'> & { text?: string }> {
   try {
     const folder = taskFolder(path, await $.session.id(), await $.session.root())
     if (!folder) return {}
@@ -80,12 +97,14 @@ async function readFile($: EngineInterface, path: string, id: string): Promise<{
     )
       return {}
     path = stat.realPath
-    const { value = {} } = await $.state.get({ plugin: 'rabe', key: 'lines' })
-    const held = value[id]?.cursor
+    const { value: saved } = await $.state.get({ plugin: 'rabe', key: 'lines' })
+    const value = restored(saved)
+    const output = linesOf(value[id])
+    const held = output?.cursor
     const same = held?.identity?.startsWith(`${path}:`) && unchanged(stat, held)
     if (same && held && (held.offset >= held.size || held.partial)) {
       skipped()
-      return {}
+      return output ?? {}
     }
     const identity = same
       ? held?.identity?.slice(path.length + 1)
@@ -101,14 +120,17 @@ async function readFile($: EngineInterface, path: string, id: string): Promise<{
       if (stat.size > MAX_READ) return {}
       const text = String(tally(await $.fs.read(path)))
       const parsed = parseOutput(text)
-      await keepLines($, id, parsed.lines, false, false, parsed.ended !== undefined)
-      return { text }
+      await keepLines($, id, parsed.lines, false, false, parsed.ended !== undefined, undefined, {
+        ended: parsed.ended,
+        exitCode: parsed.exitCode,
+      })
+      return { text, ended: parsed.ended, exitCode: parsed.exitCode }
     }
     const stamp = { size: stat.size, mtimeMs: stat.mtimeMs, identity: `${path}:${identity}` }
     const plan = readPlan(stamp, held, MAX_READ)
     if (!plan) {
       skipped()
-      return {}
+      return output ?? {}
     }
     const { offset, reset, whole } = plan
     let text: string
@@ -125,7 +147,7 @@ async function readFile($: EngineInterface, path: string, id: string): Promise<{
       }
       truncated = result.isStdoutTruncated
     }
-    const chunk = readChunk(text, truncated, false, held?.isDiscarding)
+    const chunk = readChunk(text, truncated, false, reset ? false : held?.isDiscarding)
     if (truncated && chunk.bytes === 0) return {}
     const parsed = parseOutput(chunk.text)
     await keepLines(
@@ -141,8 +163,9 @@ async function readFile($: EngineInterface, path: string, id: string): Promise<{
         partial: chunk.partial,
         isDiscarding: chunk.isDiscarding,
       },
+      { ended: parsed.ended, exitCode: parsed.exitCode },
     )
-    return { text: chunk.text }
+    return { text: chunk.text, ended: parsed.ended, exitCode: parsed.exitCode }
   } catch (error) {
     fault(error)
     return {}
@@ -157,11 +180,13 @@ async function keepLines(
   partial: boolean,
   ended: boolean,
   cursor?: RabeFileCursor,
+  result: Pick<RabeLines, 'ended' | 'exitCode' | 'port'> = {},
 ): Promise<void> {
   const now = await $.clock.now()
   for (;;) {
-    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
-    const next = outputUpdate(value[id], lines, now, reset, partial, ended, cursor)
+    const { value: saved, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
+    const value = restored(saved)
+    const next = outputUpdate(linesOf(value[id]), lines, now, reset, partial, ended, cursor, result)
     if (!next) return
     const { isSet } = await $.state.set(
       { plugin: 'rabe', key: 'lines' },
@@ -178,10 +203,11 @@ function runningMonitors(items: RabeItem[]) {
 
 async function pollMonitors($: EngineInterface, items: RabeItem[]): Promise<Change> {
   const poll: Poll = { items, changes: [] }
-  const { value: cursors = {} } = await $.state.get({ plugin: 'rabe', key: 'lines' })
+  const { value } = await $.state.get({ plugin: 'rabe', key: 'lines' })
+  const cursors = restored(value)
   try {
     for (const item of items.filter((item): item is RabeItem & { kind: 'monitor' } => {
-      const cursor = cursors[item.id]?.cursor
+      const cursor = cursorOf(cursors[item.id]?.cursor)
       return (
         item.kind === 'monitor' &&
         (item.status === 'running' ||
@@ -191,7 +217,7 @@ async function pollMonitors($: EngineInterface, items: RabeItem[]): Promise<Chan
       const path =
         item.detail.outputPath ?? (item.detail.taskId && taskOutput(items, item.detail.taskId))
       if (!path) continue
-      const ended = parseOutput((await readOutput($, path, item.id)).text ?? '').ended
+      const { ended } = await readOutput($, path, item.id)
       const now = await $.clock.now()
       stage(poll, held => {
         const next = updateItem(held, item.id, { detail: { outputPath: path } })
@@ -231,8 +257,7 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
     // ends it from the exit line of its output file.
     if (item.parentId?.startsWith('agent:')) continue
     const ended =
-      item.detail.outputPath &&
-      parseOutput((await readOutput($, item.detail.outputPath, item.id)).text ?? '').ended
+      item.detail.outputPath && (await readOutput($, item.detail.outputPath, item.id)).ended
     await write($, held => endItem(held, item.id, ended || 'stopped', now))
   }
   await write($, held =>

@@ -12,7 +12,7 @@ Facts gathered for the report:
 - Rabe version: read `version` from `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`.
 - Claude Code version: !`claude --version`
 - Operating system: !`uname -sr`
-- Diagnostics: use the context entry that starts with `Rabe diagnostics:` word for word, under a Diagnostics heading. It has versions, options, item counts and per-source poll counts, and no prompts or full paths. If it is missing or says `diagnostics unavailable`, ask the person to run `/rabe-diag` and paste its output.
+- Diagnostics: use the context entry that starts with `Rabe diagnostics:` word for word, under a Diagnostics heading. It has only fixed words, numbers and versions. Errors are fixed categories. It contains no prompts, file names or raw error text. If it is missing or says `diagnostics unavailable`, ask the person to run `/rabe-diag` and paste its output.
 
 Steps:
 1. If what happened, what they expected, or how to reproduce it is unclear, ask for the missing parts in one short message. Ask also for any error lines the /rabe pane showed.

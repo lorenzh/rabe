@@ -18,7 +18,7 @@ Each source keeps its own `prices($, file)`. Price parsing and override rules ar
 
 See [Sources](sources.md) for behaviour and [the module map](../architecture.md) for sizes.
 
-`advanceRollout` keeps the parser settings, totals and pending calls between chunks.
+`advanceRollout` keeps the parser settings, totals and pending calls between chunks. `rolloutCursor` checks restored parser summaries before the reader reuses them. It checks step kinds and the types of step text, command results, edits and tokens. An invalid summary causes a new rollout read regardless of file changes. Cached polls reapply rollout fields and their accumulated cost after a discarded or failed item write.
 `MAX_EDITS` comes from `agent-items.ts`. Agents and Codex share the limit of 100 edits. Codex also uses it for shell checks.
 
 `Check` stays private. Only the pure module exports `CodexJob`, `CodexSession`, `Rollout` and `RolloutCursor`.

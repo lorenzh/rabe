@@ -222,7 +222,7 @@ test('idle polls back off, and a newly running item wakes the next tick', async 
   expect(calls).toBe(idleCalls + 1)
 })
 
-test('an event write during a poll is kept when the staged changes commit', async ($, on) => {
+test('an event write during a poll keeps cleared metadata and added items', async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const state = memoryState(on)
   core(on)
@@ -283,7 +283,7 @@ test('an event write during a poll is kept when the staged changes commit', asyn
     'shell:b1',
   ])
   expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.detail).toMatchObject({
-    cwd: '/repo',
+    cwd: undefined,
   })
 })
 
@@ -420,4 +420,39 @@ test('a denied diag write keeps the item write', async ($, on) => {
     'First',
     'Second',
   ])
+})
+
+test('a failed shared item write retries agent metadata on the next poll', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  let reject = true
+  on('state.set', { key: 'items' }, async (_$, e, next) => {
+    if (reject) {
+      reject = false
+      return { deny: 'item write failed' }
+    }
+    return next(e)
+  })
+  const state = memoryState(on)
+  core(on)
+  on('agent.list', async () => ({ value: [] }))
+  files(on, { '/s/agent-a1.meta.json': '{"cwd":"/work/a"}' })
+  state['rabe.items'] = {
+    value: [
+      {
+        id: 'agent:a1',
+        kind: 'agent',
+        title: 'First',
+        status: 'running',
+        seenAt: 1000,
+        detail: { agentId: 'a1', transcriptPath: '/s/agent-a1.jsonl' },
+      },
+    ],
+    version: 1,
+  }
+  await $.session.start(START)
+  expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.detail).not.toHaveProperty('cwd')
+  await clock.advance(4000)
+  expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.detail).toMatchObject({
+    cwd: '/work/a',
+  })
 })

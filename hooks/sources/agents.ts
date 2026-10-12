@@ -11,7 +11,7 @@ import { companionCall } from '../forwarders'
 import { fault, type Pollers, skipped, tally } from '../loop'
 import { clip, type EndStatus, isAbsolute, isEnded, itemId, type RabeItem } from '../model'
 import { claudeUsd, type Prices, parsePrices, withOverride } from '../prices'
-import { unchanged } from '../reading'
+import { isRecord, restored, unchanged } from '../reading'
 import {
   addItem,
   type Change,
@@ -245,6 +245,25 @@ async function afterBash(
   await record($, agentId, changes)
 }
 
+function cachedMeta(
+  items: RabeItem[],
+  id: string,
+  data: Record<string, unknown>,
+  before?: Record<string, unknown>,
+): RabeItem[] {
+  const item = asAgent(items, id)
+  if (!item) return items
+  const detail: Record<string, unknown> = item.detail
+  const patch = Object.fromEntries(
+    Object.entries(data).filter(([key]) =>
+      before
+        ? JSON.stringify(detail[key]) === JSON.stringify(before[key])
+        : detail[key] === undefined,
+    ),
+  )
+  return updateItem(items, id, { detail: patch })
+}
+
 async function readMeta(
   $: EngineInterface,
   id: string,
@@ -255,28 +274,41 @@ async function readMeta(
   if (!path) return
   const stat = await $.fs.stat(path).catch(fault)
   if (stat?.kind !== 'file') return
-  const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'agentFiles' })
+  const { value: saved, version } = await $.state.get({ plugin: 'rabe', key: 'agentFiles' })
+  const value = restored(saved)
   const held = value[id]
-  if (held?.path === path && unchanged(stat, held)) {
+  if (
+    held?.path === path &&
+    isRecord(held.data) &&
+    (held.before === undefined || isRecord(held.before)) &&
+    unchanged(stat, held)
+  ) {
     skipped()
-    return
+    return list => cachedMeta(list, id, held.data, held.before)
   }
   const text = await $.fs.read(path).then(tally, fault)
   const patch = typeof text === 'string' ? metaPatch(text) : undefined
   if (!patch) return
+  const detail: Record<string, unknown> = item.detail
+  const before = Object.fromEntries(
+    Object.keys(patch)
+      .filter(key => detail[key] !== undefined)
+      .map(key => [key, detail[key]]),
+  )
   await $.state.set(
     { plugin: 'rabe', key: 'agentFiles' },
     {
       ...value,
-      [id]: { path, size: stat.size, mtimeMs: stat.mtimeMs },
+      [id]: { path, size: stat.size, mtimeMs: stat.mtimeMs, data: patch, before },
     },
     { ifVersion: version },
   )
-  return list => updateItem(list, id, { detail: patch })
+  return list => cachedMeta(list, id, patch, before)
 }
 
 async function cleanFiles($: EngineInterface, items: RabeItem[]): Promise<void> {
-  const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'agentFiles' })
+  const { value: saved, version } = await $.state.get({ plugin: 'rabe', key: 'agentFiles' })
+  const value = restored(saved)
   const { value: current = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   const next = prune(value, Object.keys(value), [...items, ...current])
   if (next !== value)
@@ -292,6 +324,8 @@ async function pollAgents($: EngineInterface, items: RabeItem[]): Promise<Change
 
     return agents.reduce((list, info) => listed(list, info, now, end), items)
   })
+  const { value: cached } = await $.state.get({ plugin: 'rabe', key: 'agentFiles' })
+  const metadata = restored(cached)
   for (const item of poll.items) {
     if (item.kind !== 'agent') continue
     const workflow = poll.items.find(
@@ -306,6 +340,10 @@ async function pollAgents($: EngineInterface, items: RabeItem[]): Promise<Change
     ) {
       const change = await readMeta($, item.id, poll.items)
       if (change) stage(poll, change)
+    } else {
+      const held = metadata[item.id]
+      if (isRecord(held?.data) && (held.before === undefined || isRecord(held.before)))
+        stage(poll, list => cachedMeta(list, item.id, held.data, held.before))
     }
   }
   await cleanFiles($, poll.items)

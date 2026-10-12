@@ -24,14 +24,12 @@ Use this index to find the guide that matches your question.
 - [Incremental file reads](architecture/reading.md): atomic output cursors, UTF-8 limits, stat-only idle polls, bounded parsing, desktop rollout reads, and metadata caches without process access.
 - [Shared poll loop](architecture/loop.md): scheduling rules, source changes, repeated starts, and one completed write.
 - [State and items](architecture/state.md): item model, idle teammates, registry, state writes, and turns.
-- [Diagnostics](architecture/diagnostics.md): per-source poll records in `rabe.diag`, incremental bytes and unchanged-file skips, `/rabe-diag` and its redaction.
+- [Diagnostics](architecture/diagnostics.md): per-source poll records in `rabe.diag`, incremental bytes and unchanged-file skips, `/rabe-diag`, fixed error categories and report failures.
 - [Sources](architecture/sources.md): poll callbacks that return changes, source modules, and source tests.
-- [Codex data](architecture/codex-data.md): Codex job and incremental rollout parsing, with hooks kept in the source.
-- [Agent items](architecture/agent-items.md): agent metadata, transcripts, turns, item updates and legacy test imports.
+- [Codex data](architecture/codex-data.md): Codex job parsing and incremental rollout parsing with restored step checks.
+- [Agent items](architecture/agent-items.md): metadata cache recovery that preserves newer event fields, transcripts and turns.
 - [Price estimate](architecture/prices.md): price lookup and cost estimates.
 - [UI rendering](architecture/ui.md): view contract, renderer, palette, cells, sizing, and band.
-- [Pane interaction state](architecture/interaction.md): pure transitions for focus, held order, regain, opening, closing and arming.
-- [Pane interaction state](architecture/interaction.md): pure transitions for focus, queued arrow bursts and wraparound, held order, regain, opening and arming.
 - [Pane interaction state](architecture/interaction.md): pure transitions for focus, nested presses, queued arrow bursts and wraparound, refused moves, held order, regain, opening and arming.
 - [Focus and keys](architecture/focus-and-keys.md): pane behavior, key controls, and focus moves.
 - [Focus order and arming](architecture/focus-order.md): held order, append-only slots, gone rows that leave the lists, target-bound keys, and arming.

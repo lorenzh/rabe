@@ -2,7 +2,7 @@
 title: Diagnostics
 description: How Rabe records the last poll of each source and prints it with /rabe-diag, without private data.
 tags: [architecture, diagnostics, privacy]
-keywords: [rabe-diag, diag, tally, fault, bytes, skipped, incremental, Probe, mergeDiag, shorten, RabeDiag, n/a, poll record, redaction, report-bug]
+keywords: [diagnostics, rabe-diag, diag, tally, fault, bytes, skipped, incremental, Probe, mergeDiag, shorten, RabeDiag, n/a, poll record, redaction, report-bug]
 ---
 
 # Diagnostics
@@ -33,12 +33,12 @@ Limits: an event hook that reads during a poll counts into that poll, so event I
 
 `hooks/diag.ts` registers `/rabe-diag` (in interactive sessions) and answers with `diagText`: the Rabe version from `plugin.json`, the Claude Code version, the three options, item counts per kind and status, and one line per polled source. A source without a record prints `no poll recorded (not due, inactive session, or hook unavailable)`, and a last line says that crons and workflows are event sources without polls. The `pricesFile` option shows only `set` or `not set`.
 
-The text has no item titles, prompts, messages or commands. `lastError` goes through `shorten`: every absolute path (`/x`, `~/x`, `C:\x`) becomes its file name when it has an extension and `…` otherwise, whitespace folds and the text is cut at 120 characters. Free text around a path, such as a deny reason from the host or another plugin, is cut but not rewritten.
+The report contains only fixed words, numbers and numeric versions. It has no file names or error message text. `shorten` classifies error codes and known messages. Its categories are `not found`, `permission denied`, `timeout` and `too large`. It also uses `exit code N`, `parse error`, `refused` and `other`. Unknown text becomes `other`. The formatter also classifies older stored errors. It checks option values and item kind/status counts before printing them. Invalid versions show `n/a`. Invalid count fields show zero. Non-object diagnostics maps and records count as absent.
 
-`/rabe-diag` is registered `immediate`, so it also runs during a turn.
+`/rabe-diag` is registered `immediate`, so it also runs during a turn. A refused or failed registration keeps the session start result. A failed report returns `diagnostics unavailable` for either command.
 
 `/rabe:report-bug` gets the same text as a context entry (`Rabe diagnostics:` and the report) from a `command.run` hook in `hooks/diag.ts`, which keeps the command's own text and context. If the report fails, the entry says `diagnostics unavailable`. The command puts the entry under Diagnostics, or asks the person to run `/rabe-diag`.
 
 ## Tests
 
-`hooks/diag.test.ts` covers recorded fields and unchanged records. It also checks redaction and both commands. `hooks/register.test.ts` checks read counts and swallowed failures. It also checks that a refused diagnostics write does not block item updates. Source tests check unchanged-file skips and the bytes returned by appended chunks.
+`hooks/diag.test.ts` covers recorded fields and unchanged records. It also checks fixed error categories and both commands. Regressions cover malformed records and failed registration or reporting. `hooks/register.test.ts` checks read counts and swallowed failures. It also checks that a refused diagnostics write does not block item updates. Source tests check unchanged-file skips and the bytes returned by appended chunks.

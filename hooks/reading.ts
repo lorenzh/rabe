@@ -3,6 +3,56 @@ import { appendLines, MAX_LINES } from './tasks'
 
 export type FileStamp = { size: number; mtimeMs: number; identity?: string }
 
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+export function restored<T>(value: Record<string, T> | undefined): Record<string, T> {
+  return isRecord(value) ? value : {}
+}
+
+export function cursorOf(value: unknown): RabeFileCursor | undefined {
+  if (!isRecord(value)) return
+  if (
+    !['size', 'mtimeMs', 'offset'].every(
+      key => typeof value[key] === 'number' && Number.isFinite(value[key]) && value[key] >= 0,
+    ) ||
+    !Number.isSafeInteger(value.size) ||
+    !Number.isSafeInteger(value.offset) ||
+    typeof value.partial !== 'boolean' ||
+    (value.identity !== undefined && typeof value.identity !== 'string') ||
+    (value.isDiscarding !== undefined && typeof value.isDiscarding !== 'boolean')
+  )
+    return
+  return value as RabeFileCursor
+}
+
+export function linesOf(value: unknown): RabeLines | undefined {
+  if (
+    !isRecord(value) ||
+    typeof value.seen !== 'number' ||
+    !Number.isFinite(value.seen) ||
+    value.seen < 0 ||
+    !Array.isArray(value.lines) ||
+    !value.lines.every(
+      line =>
+        isRecord(line) &&
+        typeof line.text === 'string' &&
+        typeof line.at === 'number' &&
+        Number.isFinite(line.at),
+    ) ||
+    (value.cursor !== undefined && !cursorOf(value.cursor)) ||
+    (value.ended !== undefined && !['done', 'failed', 'stopped'].includes(String(value.ended))) ||
+    ['exitCode', 'port'].some(
+      key =>
+        value[key] !== undefined &&
+        (typeof value[key] !== 'number' || !Number.isFinite(value[key])),
+    )
+  )
+    return
+  return value as RabeLines
+}
+
 export function inodeOf(stdout: string): string | undefined {
   return /^\s*(\d+)/.exec(stdout)?.[1]
 }
@@ -25,10 +75,21 @@ export function outputUpdate(
   partial: boolean,
   ended: boolean,
   cursor?: RabeFileCursor,
+  result: Pick<RabeLines, 'ended' | 'exitCode' | 'port'> = {},
 ): RabeLines | undefined {
-  const next = cursor
+  const output = cursor
     ? { ...outputLines(held, lines, now, reset, partial, ended), cursor }
-    : appendLines(held, lines, now)
+    : (appendLines(held, lines, now) ?? held ?? { seen: 0, lines: [] })
+  const { ended: status, exitCode, port } = result
+  const before = reset ? undefined : held
+  const next = {
+    ...output,
+    ...(status || before?.ended ? { ended: status ?? before?.ended } : {}),
+    ...(exitCode !== undefined || before?.exitCode !== undefined
+      ? { exitCode: exitCode ?? before?.exitCode }
+      : {}),
+    ...(port || before?.port ? { port: port ?? before?.port } : {}),
+  }
   return JSON.stringify(next) === JSON.stringify(held) ? undefined : next
 }
 
