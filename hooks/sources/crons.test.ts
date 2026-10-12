@@ -3,7 +3,8 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import type { RabeItem } from '../model'
 import { MAX_ENDED } from '../registry'
-import { core, memoryState } from '../testing'
+import { core, files, memoryState } from '../testing'
+import { cronFires } from './crons'
 
 const JOB = {
   id: 'c1',
@@ -321,7 +322,7 @@ test('pruning after a write keeps the output of an item a later write added', as
   // task is added and stores its output, and a0 runs again under the same id.
   const ending = $.tool.call({ tool: 'CronDelete', id: 'c1' })
   await paused
-  const items = state['rabe.items']?.value as RabeItem[]
+  const items = (state['rabe.items']?.value ?? []) as RabeItem[]
   expect(items.some(item => item.id === 'agent:a0')).toBe(false)
   const added = { ...items[1], id: 'shell:new' } as RabeItem
   const back = { ...full()[0], status: 'running' } as RabeItem
@@ -342,4 +343,141 @@ test('pruning after a write still drops the entries of the item it dropped', asy
   tools(on)
   await $.tool.call({ tool: 'CronDelete', id: 'c1' })
   expect(state['rabe.turns']?.value).toEqual({ 'shell:new': turns })
+})
+
+const fireRows = [
+  {
+    type: 'system',
+    subtype: 'scheduled_task_fire',
+    uuid: 'f1',
+    taskId: 'c1',
+    timestamp: '2026-10-09T00:24:08.132Z',
+  },
+  {
+    type: 'user',
+    uuid: 'u1',
+    parentUuid: 'f1',
+    scheduledTaskId: 'c1',
+    scheduledFireId: 'f1',
+    message: { content: 'tick' },
+  },
+]
+const jsonl = (rows: unknown[]) => rows.map(row => JSON.stringify(row)).join('\n')
+
+test('cron fires use exact fire ids, count each fire once and ignore tool results', () => {
+  const rows = [
+    ...fireRows,
+    ...fireRows,
+    { type: 'user', uuid: 'tool', message: { content: [{ type: 'tool_result' }] } },
+  ]
+  expect(cronFires(jsonl(rows))).toEqual({
+    jobs: {
+      c1: { lastFiredAt: Date.parse('2026-10-09T00:24:08.132Z'), fireCount: 1, fireId: 'f1' },
+    },
+    promptId: 'u1',
+    jobId: 'c1',
+    fireId: 'f1',
+  })
+})
+
+test('ambiguous, wrong-id, invalid-time and sidechain fires show nothing', () => {
+  for (const rows of [
+    [fireRows[0], { ...fireRows[1], scheduledTaskId: 'other' }],
+    [{ ...fireRows[0], timestamp: 'bad' }, fireRows[1]],
+    fireRows.map(row => ({ ...row, isSidechain: true })),
+    [...fireRows, { ...fireRows[1], uuid: 'u2' }],
+  ])
+    expect(cronFires(jsonl(rows)).jobs).toEqual({})
+})
+
+test('a later ordinary prompt cannot take the previous cron turn end', () => {
+  const read = cronFires(
+    jsonl([...fireRows, { type: 'user', uuid: 'person', message: { content: 'hello' } }]),
+  )
+  expect(read.promptId).toBe('person')
+  expect(read.jobId).toBe(undefined)
+  expect(read.jobs.c1?.fireCount).toBe(1)
+})
+
+test('a main cron turn keeps its API end word and ignores subagent completion', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  tools(on)
+  core(on)
+  const path = '/home/me/.claude/projects/-home-me-app/session-1.jsonl'
+  const disk = { [path]: jsonl(fireRows) }
+  files(on, disk)
+  on('env.get', { name: ['HOME', 'CLAUDE_CONFIG_DIR'] }, async (_$, e) => ({
+    value: e.name === 'HOME' ? '/home/me' : undefined,
+  }))
+  on('session.root', async () => ({ value: '/home/me/app' }))
+  on('session.id', async () => ({ value: 'session-1' }))
+  // biome-ignore lint/correctness/useYield: the engine stand-in has no chunks
+  on('turn.step', async function* (_$, e) {
+    return {
+      turnId: e.turnId,
+      index: e.index,
+      answer: '',
+      toolUses: [],
+      stopReason: 'end_turn' as const,
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        model: 'm',
+      },
+    }
+  })
+  on('turn.complete', async () => ({ text: '' }))
+  await $.tool.call({ tool: 'CronCreate', cron: JOB.cron, prompt: JOB.prompt })
+  // Seed the UUID observed by the session.append hook, without a live model.
+  state['rabe.cronTurn'] = { value: { promptId: 'u1' }, version: 1 }
+  for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'm', messageCount: 1 }));
+  const complete = {
+    answer: '',
+    durationMs: 1,
+    isAborted: false,
+    turnId: 't1',
+    reason: 'answer' as const,
+  }
+  await $.turn.complete({ ...complete, agentId: 'a1' })
+  expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.detail).not.toHaveProperty(
+    'turnEnded',
+  )
+  for (const [reason, word] of [
+    ['answer', 'answered'],
+    ['aborted', 'stopped'],
+    ['error', 'error'],
+    ['refusal', 'refused'],
+  ] as const) {
+    state['rabe.cronTurn'] = { value: { promptId: 'u1' }, version: 10 }
+    for await (const _ of $.turn.step({ turnId: 't1', index: 0, model: 'm', messageCount: 1 }));
+    await $.turn.complete({
+      ...complete,
+      reason,
+      isAborted: reason === 'aborted',
+      ...(reason === 'refusal' && { refusal: { category: null, explanation: null } }),
+    } as Parameters<typeof $.turn.complete>[0])
+    expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]).toMatchObject({
+      status: 'running',
+      detail: { fireCount: 1, turnEnded: word },
+    })
+  }
+  // A new fire clears the previous end. A later person prompt makes its end ambiguous.
+  const nextFire = [
+    { ...fireRows[0], uuid: 'f2', timestamp: '2026-10-09T00:28:53.361Z' },
+    { ...fireRows[1], uuid: 'u2', parentUuid: 'f2', scheduledFireId: 'f2' },
+  ]
+  disk[path] = jsonl([...fireRows, ...nextFire])
+  state['rabe.cronTurn'] = { value: { promptId: 'u2' }, version: 20 }
+  for await (const _ of $.turn.step({ turnId: 't2', index: 0, model: 'm', messageCount: 1 }));
+  disk[path] += '\n' + jsonl([{ type: 'user', uuid: 'person', message: { content: 'hello' } }])
+  await $.turn.complete({ ...complete, turnId: 't2' })
+  const detail = ((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.detail
+  expect(detail).toMatchObject({
+    fireCount: 2,
+    lastFiredAt: Date.parse('2026-10-09T00:28:53.361Z'),
+  })
+  expect((detail as { turnEnded?: string }).turnEnded).toBe(undefined)
 })
