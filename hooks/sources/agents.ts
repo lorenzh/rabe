@@ -245,6 +245,16 @@ async function afterBash(
   await record($, agentId, changes)
 }
 
+function cachedMeta(items: RabeItem[], id: string, data: Record<string, unknown>): RabeItem[] {
+  const item = asAgent(items, id)
+  if (!item) return items
+  const detail: Record<string, unknown> = item.detail
+  const missing = Object.fromEntries(
+    Object.entries(data).filter(([key]) => detail[key] === undefined),
+  )
+  return updateItem(items, id, { detail: missing })
+}
+
 async function readMeta(
   $: EngineInterface,
   id: string,
@@ -260,7 +270,7 @@ async function readMeta(
   const held = value[id]
   if (held?.path === path && isRecord(held.data) && unchanged(stat, held)) {
     skipped()
-    return list => updateItem(list, id, { detail: held.data })
+    return list => cachedMeta(list, id, held.data)
   }
   const text = await $.fs.read(path).then(tally, fault)
   const patch = typeof text === 'string' ? metaPatch(text) : undefined
@@ -312,7 +322,7 @@ async function pollAgents($: EngineInterface, items: RabeItem[]): Promise<Change
       if (change) stage(poll, change)
     } else {
       const data = metadata[item.id]?.data
-      if (isRecord(data)) stage(poll, list => updateItem(list, item.id, { detail: data }))
+      if (isRecord(data)) stage(poll, list => cachedMeta(list, item.id, data))
     }
   }
   await cleanFiles($, poll.items)

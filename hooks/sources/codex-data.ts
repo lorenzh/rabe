@@ -33,17 +33,48 @@ export function rec(value: unknown): Rec {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Rec) : {}
 }
 
+function validStep(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    ['message', 'reasoning', 'command'].includes(value.kind as string) &&
+    typeof value.text === 'string' &&
+    (value.exitCode === undefined || typeof value.exitCode === 'number') &&
+    (value.lines === undefined || typeof value.lines === 'number') &&
+    (value.isRunning === undefined || typeof value.isRunning === 'boolean')
+  )
+}
+
+function validEdit(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.path === 'string' &&
+    typeof value.at === 'number' &&
+    (value.via === undefined || typeof value.via === 'string') &&
+    (value.change === undefined || typeof value.change === 'string')
+  )
+}
+
+function validTokens(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.input === 'number' &&
+    typeof value.output === 'number' &&
+    (value.cached === undefined || typeof value.cached === 'number')
+  )
+}
+
 export function rolloutCursor(value: unknown): RabeRolloutCursor | undefined {
   if (
     !isRecord(value) ||
     !isRecord(value.out) ||
     !Array.isArray(value.out.steps) ||
-    !value.out.steps.every(isRecord) ||
+    !value.out.steps.every(validStep) ||
     !Array.isArray(value.out.requests) ||
     typeof value.out.commandCount !== 'number' ||
     !Number.isFinite(value.out.commandCount) ||
     (value.out.edits !== undefined &&
-      (!Array.isArray(value.out.edits) || !value.out.edits.every(isRecord))) ||
+      (!Array.isArray(value.out.edits) || !value.out.edits.every(validEdit))) ||
+    (value.out.tokens !== undefined && !validTokens(value.out.tokens)) ||
     typeof value.total !== 'string' ||
     typeof value.isResumed !== 'boolean' ||
     !isRecord(value.pending) ||

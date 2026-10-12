@@ -1123,6 +1123,39 @@ test('a failed item commit replays cached Codex rollout fields and cost', async 
   expect(w.calls.filter(call => call === `read ${ROLLOUT_PATH}`)).toEqual([])
 })
 
+test('Codex rereads an unchanged rollout with a wrong-type cached step', async ($, on) => {
+  const state = memoryState(on)
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: ROLLOUT,
+  })
+  await startAndTick($, w)
+  const held = state['rabe.rollouts']?.value as Record<string, { parser: { out: object } }>
+  const entry = held['codex:task-1']
+  expect(entry).toBeDefined()
+  if (!entry) return
+  state['rabe.rollouts'] = {
+    value: {
+      ...held,
+      'codex:task-1': {
+        ...entry,
+        parser: {
+          ...entry.parser,
+          out: { ...entry.parser.out, steps: [{ kind: 'message', text: 42 }] },
+        },
+      },
+    },
+    version: (state['rabe.rollouts']?.version ?? 0) + 1,
+  }
+  w.calls.length = 0
+  await w.clock.advance(2000)
+  expect(w.calls).toContain(`read ${ROLLOUT_PATH}`)
+  expect((state['rabe.items']?.value as RabeItem[])?.[0]?.detail).toMatchObject({
+    steps: parseRollout(ROLLOUT).steps,
+  })
+})
+
 for (const key of ['codexFiles', 'rollouts']) {
   for (const broken of [
     null,
