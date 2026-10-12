@@ -1,6 +1,7 @@
 import type { EngineInterface, Next, On, RenderSurface, UiFocusInput } from 'claude-code'
 
-import type { RabeItem, RabePrevious } from '../../types'
+import type { RabePrevious } from '../../types'
+import { isEnded, type RabeItem } from '../model'
 import {
   deferredFocus,
   heldOf,
@@ -145,7 +146,7 @@ async function stop($: EngineInterface, ids: string[]): Promise<void> {
       continue
     }
     const task = taskIdOf(item)
-    if (item.status !== 'running' || !task) {
+    if (isEnded(item) || !task) {
       ended += 1
       continue
     }
@@ -279,7 +280,7 @@ async function remove($: EngineInterface, action: Action & { type: 'remove' | 'c
     const { value: removed = [], version } = await $.state.get({ plugin: 'rabe', key: 'removed' })
     gone = kept(items, removed).filter(
       item =>
-        item.status !== 'running' &&
+        isEnded(item) &&
         (action.type === 'remove' ? action.ids.includes(item.id) : matches(item, query)),
     )
     if (gone.length === 0) return

@@ -1,4 +1,4 @@
-import { isInside, type RabeItem } from '../../model'
+import { isEnded, isInside, type RabeItem } from '../../model'
 import { nextRuns } from '../../schedule'
 import { type Span, wrap } from '../cells/grid'
 import { C, type Style } from '../cells/palette'
@@ -96,7 +96,7 @@ function costBox(model: Model, own: RabeItem): Line[] {
         ? item.detail.sessionUpdatedAt
         : undefined
   const right: Span[] =
-    item.kind === 'workflow' || item.status !== 'running'
+    item.kind === 'workflow' || isEnded(item)
       ? []
       : at === undefined
         ? [['active n/a ', dim]]
@@ -427,7 +427,7 @@ function detailButtons(
     )
   }
   if (item.kind === 'agent' && hasInput && !isWorkflowAgent(item)) {
-    const isOn = item.status === 'running'
+    const isOn = !isEnded(item)
     buttons.push(
       slot(
         `message-agent:${item.id}`,
@@ -472,7 +472,7 @@ export const detailView: View = (model, size, sel): Drawn => {
     ...bodyLines(model, item, size.columns, sel),
   ]
   const inputs: ViewInput[] =
-    item.kind === 'agent' && item.status === 'running' && size.hasInput && !isWorkflowAgent(item)
+    item.kind === 'agent' && !isEnded(item) && size.hasInput && !isWorkflowAgent(item)
       ? [
           {
             key: `message:${item.id}`,

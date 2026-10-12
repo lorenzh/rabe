@@ -1,5 +1,5 @@
 import type { RabeEdit, RabeOrder, RabePrevious, RabeWorktree } from '../../types'
-import { isAbsolute, isInside, pathKey, type RabeItem, type RabeItemKind } from '../model'
+import { isAbsolute, isEnded, isInside, pathKey, type RabeItem, type RabeItemKind } from '../model'
 import { nextRuns } from '../schedule'
 import type { Span } from './cells/grid'
 import { C, type Style } from './cells/palette'
@@ -37,6 +37,7 @@ export function glyph(item: RabeItem): string {
   if (item.status === 'failed') return '✗'
   if (item.status === 'done') return '✓'
   if (item.status === 'stopped') return '■'
+  if (item.status === 'idle') return '◷'
 
   return RUNNING_GLYPH[item.kind]
 }
@@ -74,7 +75,7 @@ export function nameSpans(item: RabeItem, style: Style = {}): Span[] {
 }
 
 export function timeLabel(item: RabeItem, now: number): string {
-  if (item.status !== 'running') return item.endedAt === undefined ? 'n/a' : ago(now - item.endedAt)
+  if (isEnded(item)) return item.endedAt === undefined ? 'n/a' : ago(now - item.endedAt)
   if (item.kind === 'cron') {
     const at = nextAt(item, now)
     return at === 'n/a' || at === 'due' ? at : `next ${at}`
@@ -99,11 +100,9 @@ function kindGroupOf(item: RabeItem): Group {
 
 // The items the list and the band's chips show: the person removed the others
 // this session (`rabe.removed`). An item that runs again shows, since nothing
-// running is ever hidden.
+// running or idle is ever hidden.
 export const kept = (items: RabeItem[], removed: readonly string[] = []): RabeItem[] =>
-  removed.length === 0
-    ? items
-    : items.filter(item => item.status === 'running' || !removed.includes(item.id))
+  removed.length === 0 ? items : items.filter(item => !isEnded(item) || !removed.includes(item.id))
 
 export function matches(item: RabeItem, query: string): boolean {
   const q = query.trim().toLowerCase()
@@ -189,8 +188,7 @@ const recency = (item: RabeItem) => item.endedAt ?? item.startedAt ?? item.seenA
 
 export function sortItems(items: RabeItem[]): RabeItem[] {
   return items.toSorted(
-    (a, b) =>
-      Number(b.status === 'running') - Number(a.status === 'running') || recency(b) - recency(a),
+    (a, b) => Number(!isEnded(b)) - Number(!isEnded(a)) || recency(b) - recency(a),
   )
 }
 
@@ -210,7 +208,7 @@ export function stable<T extends { id: string }>(
 }
 
 // The Items tab's groups, failed first. Without `order` each group sorts
-// running first, then the newest; with it, a held item stays in the group and
+// running and idle first, then the newest; with it, a held item stays in the group and
 // place `orderOf` gave it, and an item Rabe saw since goes to the group of its
 // kind (failed or not, so it never changes group), after the held rows, in
 // the order Rabe saw it. The pane moves the focus ring back onto its row when
@@ -424,8 +422,9 @@ export function byParent(list: RabeItem[], items: RabeItem[]): Family[] {
 export function groupNote(id: Group, items: RabeItem[]): string {
   if (id === 'failed') return ''
   const running = items.filter(item => item.status === 'running').length
-  const ended = items.length - running
-  const state = [running && `${running} running`, ended && `${ended} ended`]
+  const ended = items.filter(isEnded).length
+  const idle = items.filter(item => item.status === 'idle').length
+  const state = [running && `${running} running`, idle && `${idle} idle`, ended && `${ended} ended`]
     .filter(Boolean)
     .join(' · ')
   if (id === 'agents') {

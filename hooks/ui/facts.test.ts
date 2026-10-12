@@ -78,3 +78,9 @@ test('an agent outside the session folder without a worktree shows tree n/a', ()
   expect(facts(sub, NOW, ALL, '/repo').lines[0]).toBe('Plan · n/a · tree n/a')
   expect(facts(plan, NOW, ALL).lines[0]).toBe('Plan · n/a · tree n/a')
 })
+
+test('idle teammate facts say idle and keep the lifetime open', () => {
+  const idle = { ...plan, status: 'idle' as const, endedAt: undefined }
+  expect(facts(idle, NOW, [idle]).status).toBe('◷ idle')
+  expect(facts(idle, NOW, [idle]).lines.join(' ')).toContain('→ now')
+})

@@ -1,4 +1,4 @@
-import type { RabeItem } from '../../model'
+import { isEnded, type RabeItem } from '../../model'
 import type { Span } from '../cells/grid'
 import { C, type Style, tone } from '../cells/palette'
 import { facts } from '../facts'
@@ -236,7 +236,6 @@ function listButtons(
         },
       ]
     : []
-  const isEnded = (item: RabeItem) => item.status !== 'running'
   buttons.push(
     slot(
       'stop',

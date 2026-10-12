@@ -26,7 +26,7 @@ const RIGHT = 8 + 9 + 7
 function barStyle(item: RabeItem): Style {
   if (item.status === 'failed') return { fg: C.red }
   if (item.status === 'done') return { fg: C.green }
-  if (item.status === 'stopped') return dim
+  if (item.status === 'stopped' || item.status === 'idle') return dim
 
   return { fg: CHIP[item.kind].fg }
 }
@@ -42,7 +42,10 @@ function workerLine(
   const tok = tokenSum(item)
   const time = item.startedAt === undefined ? 'n/a' : short((item.endedAt ?? now) - item.startedAt)
   const blocks = tok < 0 ? '▏'.padEnd(barWidth) : bar(tok, max, barWidth)
-  const name = fit(item.title, nameWidth - 3).trimEnd()
+  const name = fit(
+    item.status === 'idle' ? `idle ${item.title}` : item.title,
+    nameWidth - 3,
+  ).trimEnd()
 
   return {
     spans: [

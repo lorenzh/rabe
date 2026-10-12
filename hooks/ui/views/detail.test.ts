@@ -794,3 +794,17 @@ test('commands and cron prompts keep their full text and marked line breaks in e
     }
   }
 })
+
+test('an idle teammate keeps its last activity label in detail', () => {
+  const idle: RabeItem = {
+    ...plan,
+    status: 'idle',
+    endedAt: undefined,
+    detail: { ...plan.detail, lastToolAt: NOW - 1000 },
+  } as RabeItem
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const shown = lines(open(model([idle]), idle.id, { ...TERMINAL, surface }).grid).join('\n')
+    expect(shown).toContain('idle')
+    expect(shown).toContain('active')
+  }
+})

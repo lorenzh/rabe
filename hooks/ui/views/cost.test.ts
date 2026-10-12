@@ -146,3 +146,22 @@ test('a removed worker has no row on the cost tab; the totals keep it', () => {
   expect(rowKeys(drawn)).toContain(`row:${explore.id}`)
   expect(lines(drawn.grid)[0]).toContain('codex ≈ $0.09  tokens 91k')
 })
+
+test('idle stays readable when a long agent name is cut on every surface', () => {
+  const idle: RabeItem = { ...plan, title: 'scout '.repeat(20), status: 'idle', endedAt: undefined }
+  for (const surface of ['terminal', 'desktop'] as const) {
+    for (const columns of [40, 80]) {
+      const drawn = costView(
+        { ...MODEL, items: [idle] },
+        { ...SIZE, columns, surface },
+        NO_SELECTION,
+      )
+      const labels = drawn.nodes.flatMap(node =>
+        'spans' in node ? node.spans.filter(isPress) : [],
+      )
+      const own = labels.find(one => one.key === `row:${idle.id}`)
+      expect(own?.label).toContain('idle')
+      expect(lines(gridOf(drawn).grid).join(' ')).toContain('◷')
+    }
+  }
+})

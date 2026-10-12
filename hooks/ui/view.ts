@@ -10,7 +10,7 @@ import type {
   RabeWindow,
   RabeWorktree,
 } from '../../types'
-import type { RabeItem } from '../model'
+import { isEnded, type RabeItem } from '../model'
 import { type Grid, MAX_COLUMNS, MAX_ROWS, type Span } from './cells/grid'
 
 // What every view reads: the sources' session values, never files. `usd` is
@@ -420,7 +420,7 @@ export function isWorkflowAgent(item: RabeItem): boolean {
 }
 
 export function canStop(item: RabeItem): boolean {
-  if (item.status !== 'running') return false
+  if (isEnded(item)) return false
   if (item.kind === 'agent') return !isWorkflowAgent(item)
   if (item.kind === 'codex') return true
   if (item.kind === 'shell' || item.kind === 'monitor' || item.kind === 'workflow') {

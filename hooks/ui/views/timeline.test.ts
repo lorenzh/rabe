@@ -276,3 +276,33 @@ test('who started what keeps a forwarder above its Codex job', () => {
   expect(at).toBeGreaterThan(0)
   expect(shown[at + 1]).toMatch(/^ {3}└─ ◐ review auth\.ts \(codex\)/)
 })
+
+test('idle stays readable when a long agent name is cut on every surface', () => {
+  const idle: RabeItem = { ...plan, title: 'scout '.repeat(20), status: 'idle', endedAt: undefined }
+  for (const surface of ['terminal', 'desktop'] as const) {
+    for (const columns of [40, 80]) {
+      const drawn = timelineView(
+        { ...MODEL, items: [idle] },
+        { ...SIZE, columns, surface },
+        NO_SELECTION,
+      )
+      const labels = drawn.nodes.flatMap(node =>
+        'spans' in node ? node.spans.filter(isPress) : [],
+      )
+      const own = labels.find(one => one.key === `row:${idle.id}`)
+      expect(own?.label).toContain('idle')
+      expect(lines(gridOf(drawn).grid).join(' ')).toContain('◷')
+    }
+  }
+})
+
+test('idle teammates remain in the timeline window regardless of an old end timestamp', () => {
+  for (const endedAt of [undefined, NOW - 10_000]) {
+    const idle: RabeItem = { ...plan, status: 'idle', endedAt }
+    const drawn = timelineView({ ...MODEL, items: [idle] }, SIZE, {
+      ...NO_SELECTION,
+      window: { since: NOW - 1000, hours: 4, base: 4 },
+    })
+    expect(rowKeys(drawn)).toContain(`row:${idle.id}`)
+  }
+})

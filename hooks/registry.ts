@@ -1,4 +1,11 @@
-import { type EndStatus, type ItemPatch, mergeItem, type NewItem, type RabeItem } from './model'
+import {
+  type EndStatus,
+  type ItemPatch,
+  isEnded,
+  mergeItem,
+  type NewItem,
+  type RabeItem,
+} from './model'
 
 export const MAX_ENDED = 200
 
@@ -32,14 +39,14 @@ export function updateItem(items: RabeItem[], id: string, patch: ItemPatch): Rab
 
 export function endItem(items: RabeItem[], id: string, status: EndStatus, now: number): RabeItem[] {
   const item = items.find(one => one.id === id)
-  if (item?.status !== 'running') return items
+  if (!item || isEnded(item)) return items
 
   return updateItem(items, id, { status, endedAt: now })
 }
 
 // Of two items that ended at once, the one Rabe saw later goes first.
 export function capEnded(items: RabeItem[], max = MAX_ENDED): RabeItem[] {
-  const ended = items.filter(item => item.status !== 'running')
+  const ended = items.filter(isEnded)
   if (ended.length <= max) return items
   const dropped = new Set(
     ended
@@ -55,9 +62,7 @@ export function capEnded(items: RabeItem[], max = MAX_ENDED): RabeItem[] {
 // so it never pushes out one Rabe watched. `undefined` once the cap is full,
 // since the cap would drop it.
 export function pastEnd(items: RabeItem[], now: number, max = MAX_ENDED): number | undefined {
-  const ends = items.flatMap(item =>
-    item.status === 'running' ? [] : [item.endedAt ?? item.seenAt],
-  )
+  const ends = items.flatMap(item => (isEnded(item) ? [item.endedAt ?? item.seenAt] : []))
 
   return ends.length >= max ? undefined : Math.min(now, ...ends)
 }

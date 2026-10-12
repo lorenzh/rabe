@@ -2123,3 +2123,39 @@ for (const newline of ['\r', '\n', '\r\n']) {
     ])
   })
 }
+
+for (const surface of SURFACES) {
+  test(`idle agents show in Items, Cost and Timeline and survive remove ended on ${surface}`, async ($, on) => {
+    const idle: RabeItemOf<'agent'> = {
+      ...(explore as RabeItemOf<'agent'>),
+      id: 'agent:idle',
+      detail: { agentId: 'idle' },
+      title: 'scout',
+      status: 'idle',
+      startedAt: NOW - 600_000,
+    }
+    const items = [idle, plan]
+    const state = hold(on, items, { selected: idle.id, order: orderOf(items) })
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    let text = (await screen(ui)).join('\n')
+    expect(text).toContain('1 idle')
+    expect(text).toContain('1 ended')
+    expect(text).not.toContain('1 running')
+    await arm($, `row:${idle.id}`)
+    await ui.redraw()
+    await ui.press({ key: 'remove' })
+    expect(state.removed).toBeUndefined()
+    await ui.press({ key: 'clear' })
+    expect(state.removed).toEqual([plan.id])
+    await ui.press({ key: 'tab-cost' })
+    text = (await screen(ui)).join('\n')
+    expect(text).toContain('idle scout')
+    expect(text).toContain('running 0')
+    expect(text).not.toContain('⚠ stuck')
+    await ui.press({ key: 'tab-timeline' })
+    text = (await screen(ui)).join('\n')
+    expect(text).toContain('idle scout')
+    expect(text).toContain('█')
+    await ui.unmount()
+  })
+}
