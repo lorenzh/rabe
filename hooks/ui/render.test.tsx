@@ -412,9 +412,16 @@ function checkTargets(
   actionsOf(list, 'hi').forEach(([key, action], i) => {
     const target = targetOf(action)
     if (target === undefined) return
+    // the list's c and m follow the selection and change nothing by themselves
+    if (key === 'copy' || key === 'message') return
     if (LIST_KEYS.includes(key)) {
       const was = (seen[i] ?? '').split(',')
-      const ids = action.type === 'stop' || action.type === 'remove' ? action.ids : []
+      const ids =
+        action.type === 'stop' || action.type === 'remove'
+          ? action.ids
+          : action.type === 'delete'
+            ? [action.id]
+            : []
       const isGained = ids.some(id => !was.includes(id))
       if (seen[i] !== undefined && isGained && !byPerson) {
         expect([shown, i, key, 'armed', isArmed]).toEqual([shown, i, key, 'armed', false])

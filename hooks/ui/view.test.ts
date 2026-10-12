@@ -12,6 +12,7 @@ import {
   messageLanding,
   NO_SELECTION,
   stepRow,
+  targetsOf,
 } from './view'
 import { paneView, selectsOnPress } from './views/pane'
 
@@ -31,10 +32,19 @@ test('a combined arrow keeps its valid move to the list boundary', () => {
 
 test('message completion returns focus to m when its field still owns focus', () => {
   const action = { type: 'message', id: 'agent:a', text: 'hello' } as const
-  expect(messageLanding(action, { tab: 'items', open: 'agent:a' }, 'message:agent:a')).toEqual([
-    'message-agent:agent:a',
-  ])
-  expect(messageLanding(action, { tab: 'items', open: 'agent:a' }, undefined)).toBeUndefined()
+  expect(
+    messageLanding(action, { tab: 'items', open: 'agent:a', selected: '' }, 'message:agent:a'),
+  ).toEqual(['message-agent:agent:a'])
+  expect(
+    messageLanding(action, { tab: 'items', open: 'agent:a', selected: '' }, undefined),
+  ).toBeUndefined()
+  // beside the list's detail the ring goes back to the list's m
+  expect(
+    messageLanding(action, { tab: 'items', open: '', selected: 'agent:a' }, 'message:agent:a'),
+  ).toEqual(['message'])
+  expect(
+    messageLanding(action, { tab: 'items', open: '', selected: 'agent:b' }, 'message:agent:a'),
+  ).toBeUndefined()
 })
 
 test('from no row, down goes to the first and up scrolls on', () => {
@@ -270,4 +280,30 @@ test('a press on another live row of the Items list selects it; on the selected 
   expect(selectsOnPress(model, { ...sel, query: 'dev' }, ci.id)).toBe(false)
   expect(selectsOnPress(model, sel, ci.id, `row:${ci.id}`)).toBe(false)
   expect(selectsOnPress(model, sel, ci.id, `row:${dev.id}`)).toBe(true)
+})
+
+test('a split delete target gained without a chosen row disarms the pane', () => {
+  const size = { columns: 100, rows: 24, surface: 'terminal', hasInput: true } as const
+  const cron = {
+    id: 'cron:c1',
+    kind: 'cron',
+    status: 'done',
+    title: 'job',
+    seenAt: NOW,
+    detail: { jobId: 'c1', prompt: 'job', schedule: '* * * * *' },
+  } as const
+  const selection = { ...NO_SELECTION, selected: cron.id, isArmed: true, isListArmed: true }
+  const targets = (status: 'done' | 'running') =>
+    targetsOf(
+      paneView({ items: [{ ...cron, status }], turns: {}, lines: {}, now: NOW }, size, selection),
+    )
+  const before = arm(
+    { ...DISARMED, isArmed: true, isListArmed: true },
+    { type: 'drawn', fallback: '', selected: cron.id, targets: targets('done') },
+  )
+  expect(targets('running')).toContain(JSON.stringify(['delete', 'd: delete job', cron.id]))
+  expect(
+    arm(before, { type: 'drawn', fallback: '', selected: cron.id, targets: targets('running') })
+      .isArmed,
+  ).toBe(false)
 })

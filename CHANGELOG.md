@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Added
+
+- The list offers `c`, `m` and `d` for the selected row while the detail shows beside it ([#70](https://github.com/lorenzh/rabe/issues/70))
+
 ## [0.7.0] - 2026-10-12
 
 ### Added
