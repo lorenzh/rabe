@@ -302,7 +302,8 @@ async function portCommand(
   try {
     const result = await $.process.run(argv, { timeoutMs: 5000 })
     if (
-      result.exitCode !== 0 ||
+      (result.exitCode !== 0 &&
+        !(argv[0] === 'fuser' && result.exitCode === 1 && !result.stdout.trim())) ||
       result.isStdoutTruncated ||
       result.isStderrTruncated ||
       (result.stderr.trim() && result.stderr.trim() !== label)

@@ -848,6 +848,7 @@ test('the task list replays a cached shell exit after a discarded item write', a
 for (const mode of [
   'silent',
   'redirected',
+  'no holder',
   'shared socket',
   'stderr',
   'missing tool',
@@ -881,18 +882,24 @@ for (const mode of [
             ? 'Darwin'
             : 'Linux'
           : e.argv[0] === 'fuser'
-            ? '100'
+            ? mode === 'no holder'
+              ? ''
+              : '100'
             : e.argv[0] === 'ps'
               ? '102 101\n101 100\n100 1\n999 1\n'
               : `LISTEN 0 128 [::]:8090 [::]:* users:(("python3",pid=102,fd=3)${mode === 'shared socket' ? ',("claude",pid=999,fd=4)' : ''})\n`
       return {
         value: {
-          exitCode: mode === 'failed command' && e.argv[0] === 'ss' ? 1 : 0,
+          exitCode:
+            (mode === 'failed command' && e.argv[0] === 'ss') ||
+            (mode === 'no holder' && e.argv[0] === 'fuser')
+              ? 1
+              : 0,
           stdout,
           stderr:
             mode === 'stderr' && e.argv[0] === 'ss'
               ? 'Cannot open netlink socket'
-              : e.argv[0] === 'fuser'
+              : e.argv[0] === 'fuser' && mode !== 'no holder'
                 ? `${path}:`
                 : '',
           isStdoutTruncated: mode === 'truncated' && e.argv[0] === 'ss',
@@ -921,6 +928,12 @@ for (const mode of [
     expect(item?.kind === 'shell' ? item.detail.port : undefined).toBe(
       found ? 8090 : mode === 'output port' ? 5173 : undefined,
     )
+    if (mode === 'no holder') {
+      expect(calls).toContainEqual(['fuser', path])
+      expect(state['rabe.diag']?.value).toMatchObject({ ports: { errors: 0 } })
+      const diag = state['rabe.diag']?.value as { ports?: { lastError?: string } } | undefined
+      expect(diag?.ports?.lastError).toBeUndefined()
+    }
     if (found) {
       expect(calls).toContainEqual(['fuser', path])
       expect(calls).toContainEqual(['ps', '-A', '-o', 'pid=,ppid='])

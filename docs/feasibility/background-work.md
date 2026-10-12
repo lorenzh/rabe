@@ -46,7 +46,7 @@ Rabe accepts only this temporary task layout with the current `$.session.id()` a
 
 The port scan runs every 6 seconds in the shared loop, after output polling. One `ps` and `ss` snapshot serves all shells in the scan. Each shell gets a fresh `fuser` lookup, so no cached PID can outlive its process. Commands use argument arrays and a 5-second timeout. `uname -s` limits the scan to Linux. Rabe does not read process arguments or environments.
 
-A missing tool, denied call, failed exit or truncated result leaves the port `n/a`. Stderr also rejects a result. This includes an exit-zero `ss` netlink error. `fuser` alone can print its exact file label on stderr. It does not accept `--`. Its path is a checked absolute task path.
+A missing tool, denied call, failed exit or truncated result leaves the port `n/a`. Stderr also rejects a result. This includes an exit-zero `ss` netlink error. If `fuser` exits with code 1 and empty stdout, no process holds the file open. The poll skips that shell without recording a fault. `fuser` alone can print its exact file label on stderr. It does not accept `--`. Its path is a checked absolute task path.
 
 The file-to-process link depends on Claude Code’s output descriptors. Pipe-backed output, daemonized children, containers and other network namespaces can have no matching host listener. Unknown ownership shows no port. The first port found stays until the shell ends, as with output detection. Desktop process access and a real mod session remain unverified for this scan.
 

@@ -20,7 +20,7 @@ Status: early development. See [releases](https://github.com/lorenzh/rabe/releas
 | Claude subagents | Count (`claude`) | Name when Claude Code provides one, otherwise the task description; tokens, prompt, turns and agent id |
 | Workflows | Count (`workflow`) | Phases and their agents in start order, with tokens and time; select an agent to open it |
 | Codex jobs (from the Codex plugin) | Count (`codex`) | Model, effort and sandbox, tokens, the prompt, each message and command with its exit code, the thread id (`c` copies `codex resume <thread id>`) |
-| Background shells | Count (`shell`) | Bash description and task id, output lines, exit code and guessed port; a foreground command running longer than 2 s, and a detached `codex exec -o <file> &`, show as running shells |
+| Background shells | Count (`shell`) | Bash description and task id, output lines, exit code and port from output or the process tree’s listening sockets on Linux; a foreground command running longer than 2 s, and a detached `codex exec -o <file> &`, show as running shells |
 | Monitors | Count (`monitor`) | Each line with the time Rabe received it |
 | Cron jobs and `/loop` wakeups | Count (`cron`) | The next five runs while running; deleted jobs say `deleted` |
 | Cost | Session cost and tokens of the background work | Cost tab: tokens and an estimate in dollars (`≈ $0.16`) per worker, workers that look stuck |
