@@ -13,6 +13,6 @@ keywords: [prices.csv, pricesFile, cost estimate, tokens]
 
 The agents and Codex sources each load the table with their own top-level `prices($, file)` (the scanner never follows `$` across an import): the built-in file under `$.plugin.root`, then the user's file first when `pricesFile` is set; a user's file that cannot be read gives an empty table, so every cost is `n/a`. The table is read when a price is needed, not kept: a module value would be one more thing a reload resets, and the read is small.
 
-An agent's cost is the sum of its steps (`addCost`): the first step sets it, each later one adds to it, and one step without a price, an agent without `startedAt` (Rabe did not see it start) or tokens without a cost (counted before the cost, an item from 0.3.0 after a reload) leave it absent for good.
+An agent's cost is the sum of its steps (`addCost` in `hooks/sources/agent-items.ts`): the first step sets it, each later one adds to it, and one step without a price, an agent without `startedAt` (Rabe did not see it start) or tokens without a cost (counted before the cost, an item from 0.3.0 after a reload) leave it absent for good.
 
 The views read `costUsd` only. `totals` in `lists.ts` sums the Claude agents and the Codex jobs apart; a worker without a cost, with or without tokens, makes its side and the whole sum `undefined`, since a smaller sum would read as the cost. Workers without tokens also count under the head's `n/a`. The detail's cost panel of a workflow follows the same rule for its agents. Costs are drawn `≈ $0.16` (`cost` in `lists.ts`).
