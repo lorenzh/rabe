@@ -25,7 +25,8 @@ The shared timer in `register.tsx` also calls `$.ui.invalidate('ui.render')`. It
 | `ui/views/detail.ts` | `detailView`, `detailLines` and `bodyLines`: one item in full, per kind; `resumeButton`, the `c: copy resume` control the Cost and Timeline tabs use too |
 | `ui/views/cost.ts`, `effects.ts`, `timeline.ts` | The other tabs |
 | `ui/views/lines.ts` | `fitLine`, `beside`, `text`, `itemLine`, `headLines`, `focusOn`, `plain`: shared row drawing; `headLines` wraps full facts and marks line breaks with `↵` |
-| `ui/lists.ts` | Pure grouping, sorting, the held order (`stable`, `orderOf`), `byParent`, the forwarders folded into their Codex jobs (`isForwarder`, `shown`, `forwarderOf`, `rowOf`, `withForwarder`, `nest`), the files agents, Codex jobs and the main session changed (`touched`, `byConflict`), labels, the band's count per kind (`bandRows`), totals, phases, tree, bars |
+| `ui/lists.ts` | Pure grouping, sorting, the held order (`stable`, `orderOf`), `byParent`, the forwarders folded into their Codex jobs (`isForwarder`, `shown`, `forwarderOf`, `rowOf`, `withForwarder`, `nest`), labels, the band's count per kind (`bandRows`), totals, phases, tree, bars |
+| `ui/touched.ts` | Pure file edit grouping (`touched`), conflicts (`byConflict`) and worktree rows (`treeOf`, `worktreeRows`); views import it directly, and `lists.ts` keeps only legacy test re-exports |
 | `ui/pane-data.ts` | Pure clipboard and toast filtering, native item names and stored-summary validation |
 | `ui/facts.ts` | The fact lines of one item (model, worktree, ids, who started it, run time, exit code; transcripts, commands and cron prompts as the `long` fact) |
 | `ui/format.ts` | Durations, ages, token and dollar amounts; `validId`, the allow list for resume and agent ids |

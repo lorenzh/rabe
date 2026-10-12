@@ -33,6 +33,7 @@ hooks/
   testing.ts          test helpers: state in memory, files, core stubs
   ui/band.tsx         the band above the prompt
   ui/pane.tsx         the /rabe command, its pane and actions
+  ui/touched.ts       pure file edits, conflicts and worktree rows
   ui/pane-data.ts     clipboard and toast text filtering; stored-summary validation
   ui/interaction.ts   pure state transitions for focus, held order, regain and arming
   ui/sequence.ts      serializes reserved press landings and focus moves
@@ -75,3 +76,4 @@ None of the splits depends on another.
 | Original module | Before | After | New module | Lines | Reason |
 |---|---:|---:|---|---:|---|
 | `pane.tsx` | 710 | 674 | [pane-data](architecture/pane-data.md) | 38 | Clipboard and toast security boundary (`clipText`/`toastText`); stored-summary validation |
+| `lists.ts` | 696 | 506 | [touched files](architecture/touched.md) | 196 | File edits, conflicts and worktree rows |
