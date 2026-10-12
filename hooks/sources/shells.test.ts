@@ -114,6 +114,27 @@ test('a foreground Bash call that runs on shows as a running shell and leaves wh
   expect(state['rabe.items']?.value).toEqual([])
 })
 
+test('a foreground call that fails after its row showed leaves no row', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  let fail = (_: Error) => {}
+  const held = new Promise<never>((_, reject) => {
+    fail = reject
+  })
+  on('tool.call', { tool: 'Bash' }, async () => held)
+  core(on)
+  const call = $.tool.call({ tool: 'Bash', command: 'sleep 900' })
+  const settled = call.then(
+    () => 'ok',
+    () => 'rejected',
+  )
+  await clock.advance(3000)
+  expect(state['rabe.items']?.value).toMatchObject([{ kind: 'shell', status: 'running' }])
+  fail(new Error('interrupted'))
+  expect(await settled).toBe('rejected')
+  expect(state['rabe.items']?.value).toEqual([])
+})
+
 test('a foreground call that Claude Code moved to the background leaves only the background row', async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const state = memoryState(on)

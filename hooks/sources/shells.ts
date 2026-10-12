@@ -393,10 +393,14 @@ export function shells(on: On, pollers: Pollers): void {
     let answer: Awaited<ReturnType<typeof next>>
     try {
       answer = await next(e)
-    } finally {
+    } catch (error) {
       stop.abort()
       await shown
+      if (added) await write($, held => held.filter(item => item.id !== id)).catch(() => undefined)
+      throw error
     }
+    stop.abort()
+    await shown
     try {
       const result = answer.result as { backgroundTaskId?: string } | undefined
       const taskId = result?.backgroundTaskId
