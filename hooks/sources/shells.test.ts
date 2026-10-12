@@ -640,6 +640,30 @@ test('small output still follows when inode lookup is unavailable', async ($, on
   })
 })
 
+test('without an inode lookup an unchanged output is skipped and raises no error', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const path = `${DIR}/b1.output`
+  const held = { [path]: 'ready\n' }
+  const log: string[] = []
+  on('process.run', { argv: 'ls' }, async () => ({ deny: 'No process host' }))
+  files(on, held, log)
+  bash(on)
+  core(on)
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'build', run_in_background: true })
+  await clock.advance(2000)
+  expect(state['rabe.diag']?.value).toMatchObject({
+    shells: { files: 1, skipped: 0, errors: 0 },
+  })
+  log.length = 0
+  await clock.advance(2000)
+  expect(log).toEqual([])
+  expect(state['rabe.diag']?.value).toMatchObject({
+    shells: { files: 0, skipped: 1, errors: 0 },
+  })
+})
+
 test('a shrinking output resets its lines and byte cursor', async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const state = memoryState(on)
