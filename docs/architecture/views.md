@@ -70,3 +70,11 @@ Claude Code shows background work itself: a pill in the hint under the prompt (`
 - The agent list under the prompt stays: no component and no setting hides it (see [feasibility](../feasibility.md)).
 
 Both views are tested on the `terminal` and `desktop` surfaces. Tests feed the session values with test hooks on `state.get`, fix the time with `mock.clock`, and read a drawing with `screen(ui)` from `fixtures.ts`: each row Box as one line, a Raster decoded, each control alone. The views can also be called directly with a model, since they are plain functions: `gridOf(drawn)` lays a view's lines into a grid as the terminal does, so `views/*.test.ts` check the text and the colors at positions. The test kit cannot answer a plugin's `$.ui.focus` (the call fails, as a refused one does), so the pane's tests check that the arrow hook keeps a one-row scroll and passes the rest, that a change of the view leaves the stops disarmed, that a person's `ui.focus` (raised by the test) arms them, that a plugin loaded beneath Rabe (`plugins` of the test, `append` tier) that sends the move onto another row, refuses it or swallows it leaves the selection on where the ring is and `x` and `g` inert, and that a press on another row selects it and arms `x` for it while a press on the selected row opens it; `view.test.ts` checks `stepRow` and `arm`, also the events the arrow hook feeds (`step`, the plugin's focus, `landed`), since the kit runs no hook for the plugin's own `$.ui.focus`.
+
+### Idle teammates
+
+Items shows `idle` beside the agent and in its group count. Idle agents count as neither running nor ended. Remove and Remove ended leave them visible. Their message and stop controls remain available with the same arming rules.
+
+The band excludes idle agents from work counts and adds no idle chip. Cost shows `idle` before the worker name and never flags an idle agent stuck. Timeline shows `idle` before the name with a dim bar. The bar covers the agent's lifetime through now. Rabe does not store idle gaps or subtract them from elapsed time.
+
+Status changes keep the held list order and the append-only focus slots. New rows still append under the existing rules in [Focus order and arming](focus-order.md).

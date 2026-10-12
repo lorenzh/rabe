@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
 import type { RabeItem } from '../model'
-import { ALL, dev, NOW, PRICED, screen } from './fixtures'
+import { ALL, dev, explore, NOW, PRICED, screen } from './fixtures'
 
 const SURFACES = ['terminal', 'desktop'] as const
 
@@ -83,6 +83,17 @@ test('a short band stays one line under the gap on every surface', async ($, on)
     const props = { ...BAND.props, maxRows: 3 }
     const ui = await $.ui.mount({ surface, ...BAND, props } as never)
     expect(await screen(ui)).toHaveLength(2)
+    await ui.unmount()
+  }
+})
+
+test('idle agents stay out of band work counts on every surface', async ($, on) => {
+  holdItems(on, [explore, { ...explore, id: 'agent:idle', title: 'scout', status: 'idle' }])
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...BAND } as never)
+    const text = (await screen(ui)).join(' ')
+    expect(text).toContain('1 claude')
+    expect(text).not.toContain('2 claude')
     await ui.unmount()
   }
 })

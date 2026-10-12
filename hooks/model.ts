@@ -17,7 +17,11 @@ export type ItemPatch = Partial<
   Pick<RabeItem, 'title' | 'status' | 'startedAt' | 'endedAt' | 'parentId' | 'tokens' | 'costUsd'>
 > & { detail?: Partial<RabeItemDetails[RabeItemKind]> }
 
-export type EndStatus = Exclude<RabeItemStatus, 'running'>
+export type EndStatus = Exclude<RabeItemStatus, 'running' | 'idle'>
+
+export function isEnded(item: Pick<RabeItem, 'status'>): boolean {
+  return item.status !== 'running' && item.status !== 'idle'
+}
 
 // Cuts text to `max` characters, the last one an ellipsis.
 export function clip(text: string, max: number): string {

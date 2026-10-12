@@ -2,7 +2,7 @@ import { expect, test } from 'claude-code/testing'
 
 import type { RabeItem, RabeItemOf } from '../model'
 import { type Grid, grid, lines, safe, write } from './cells/grid'
-import { ALL, babysit, ci, dev, explore, flow, NOW, raster, review } from './fixtures'
+import { ALL, babysit, ci, dev, explore, flow, NOW, plan, raster, review } from './fixtures'
 import { orderOf } from './lists'
 import { type Held, hold, isRowKey, render, shifts, type Ui } from './render'
 import {
@@ -778,6 +778,43 @@ test('no view has a focusable control without a visible label, including held sl
         selection.open ? ['back'] : [],
       )
       held = next.held
+    }
+  }
+})
+
+test('idle and wake transitions preserve held rows and focus slots on every surface', () => {
+  for (const surface of ['terminal', 'desktop'] as const) {
+    for (const scope of [
+      {},
+      { tab: 'cost' as const },
+      { tab: 'timeline' as const },
+      { open: explore.id },
+    ]) {
+      const items = [explore, plan, dev]
+      const sel: Selection = { ...OPEN, selected: explore.id, order: orderOf(items), ...scope }
+      const size = { ...SIZE, surface }
+      let last = draw(model(items), size, sel)
+      const keys = last.keys
+      for (const status of ['idle', 'running', 'done'] as const) {
+        const changed: RabeItem = {
+          ...explore,
+          status,
+          endedAt: status === 'done' ? NOW : undefined,
+        }
+        const next = draw(model([changed, plan, dev]), size, sel, last.held)
+        expect(next.keys).toEqual(keys)
+        if (status === 'idle' && scope.open) {
+          expect(actionsOf(next.list)).toContainEqual([
+            `message-agent:${explore.id}`,
+            { type: 'focus', key: `message:${explore.id}` },
+          ])
+          expect(actionsOf(next.list)).toContainEqual([
+            `stop:${explore.id}`,
+            { type: 'stop', ids: [explore.id] },
+          ])
+        }
+        last = next
+      }
     }
   }
 })

@@ -45,7 +45,7 @@ const COUNTS: [RabeItem['kind'], string, string][] = [
 function color(item: RabeItem): number {
   if (item.status === 'failed') return C.red
   if (item.status === 'done') return C.green
-  if (item.status === 'stopped') return C.dim
+  if (item.status === 'stopped' || item.status === 'idle') return C.dim
 
   return CHIP[item.kind].fg
 }
@@ -239,9 +239,10 @@ export const timelineView: View = (model, size, sel): Drawn => {
   const bars: Line[] = list.length
     ? list.map(item => {
         const name = fit(
-          nameSpans(item)
-            .map(([one]) => one)
-            .join(''),
+          (item.status === 'idle' ? 'idle ' : '') +
+            nameSpans(item)
+              .map(([one]) => one)
+              .join(''),
           labelWidth - 2,
         ).trimEnd()
         return {

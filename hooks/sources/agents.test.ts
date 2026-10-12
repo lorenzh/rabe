@@ -1323,3 +1323,153 @@ test('time unchanged polls of 5000 completed agents', async ($, on) => {
     `5000-agent unchanged poll: ${elapsed / (calls - before)} ms/poll (${calls - before} polls)`,
   )
 })
+
+for (const end of ['completed', 'failed', 'killed'] as const) {
+  test(`a teammate goes idle, wakes and ends only on ${end}`, async ($, on) => {
+    const clock = mock.clock(on, { now: 5000 })
+    const state = memoryState(on)
+    core(on)
+    on('agent.spawn', async () => ({ model: 'm', agentId: 'a1' }))
+    on('turn.complete', async () => ({ text: '' }))
+    let status: AgentStatus = 'running'
+    let canList = false
+    on('agent.list', async () =>
+      canList
+        ? {
+            value: [
+              {
+                id: 'a1',
+                type: 'teammate',
+                description: 'scout',
+                status,
+              },
+            ],
+          }
+        : { deny: 'unavailable' },
+    )
+    await $.agent.spawn({ ...SPAWN, workflow: undefined, isTeammate: true })
+    await $.turn.complete({
+      agentId: 'a1',
+      turnId: 't',
+      answer: 'ready',
+      reason: 'answer',
+      durationMs: 10,
+      isAborted: false,
+    })
+    let item = ((state['rabe.items']?.value ?? []) as RabeItem[])[0]
+    expect(item?.status).toBe('idle')
+    expect(item?.endedAt).toBeUndefined()
+    status = 'idle'
+    canList = true
+    await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+    const unchanged = state['rabe.items']
+    await clock.advance(4000)
+    expect(state['rabe.items']).toBe(unchanged)
+    status = 'running'
+    await clock.advance(4000)
+    item = ((state['rabe.items']?.value ?? []) as RabeItem[])[0]
+    expect(item?.status).toBe('running')
+    expect(item?.startedAt).toBe(5000)
+    expect(item?.endedAt).toBeUndefined()
+    status = 'idle'
+    await clock.advance(4000)
+    status = end
+    await clock.advance(4000)
+    item = ((state['rabe.items']?.value ?? []) as RabeItem[])[0]
+    expect(item?.status).toBe({ completed: 'done', failed: 'failed', killed: 'stopped' }[end])
+    expect(item?.endedAt).toBe(21000)
+  })
+}
+
+test('the poll finds an unwatched idle teammate even with a full ended history', async ($, on) => {
+  const clock = mock.clock(on, { now: 5000 })
+  const state = memoryState(on)
+  state['rabe.items'] = { value: ended(MAX_ENDED), version: 1 }
+  core(on)
+  on('agent.list', async () => ({
+    value: [
+      {
+        id: 'idle',
+        type: 'teammate',
+        description: 'scout',
+        status: 'idle',
+        teammateId: 'scout@team',
+      },
+      { id: 'held', type: 'Explore', description: 'held on work', status: 'waiting' },
+    ],
+  }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items).toHaveLength(MAX_ENDED + 2)
+  expect(items.find(item => item.id === 'agent:idle')).toMatchObject({
+    status: 'idle',
+    seenAt: 5000,
+  })
+  expect(items.find(item => item.id === 'agent:idle')?.endedAt).toBeUndefined()
+  expect(items.find(item => item.id === 'agent:held')?.status).toBe('running')
+  const unchanged = state['rabe.items']
+  await clock.advance(4000)
+  expect(state['rabe.items']).toBe(unchanged)
+})
+
+for (const initial of ['running', 'done'] as const) {
+  test(`a plain subagent reporting idle keeps its ${initial} state`, async ($, on) => {
+    const clock = mock.clock(on, { now: 5000 })
+    const state = memoryState(on)
+    const held: RabeItem = {
+      ...agent,
+      status: initial,
+      ...(initial === 'done' && { endedAt: 900 }),
+    }
+    state['rabe.items'] = { value: [held], version: 1 }
+    core(on)
+    on('agent.list', async () => ({
+      value: [
+        { id: 'a1', type: 'Explore', description: 'verify:db.ts', status: 'idle' },
+        { id: 'unwatched', type: 'Explore', description: 'plain', status: 'idle' },
+      ],
+    }))
+    await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+    await clock.advance(4000)
+    const items = state['rabe.items']?.value as RabeItem[]
+    expect(items.find(item => item.id === held.id)).toEqual(held)
+    expect(items.find(item => item.id === 'agent:unwatched')?.status).toBe('running')
+    expect(items.some(item => item.status === 'idle')).toBe(false)
+  })
+}
+
+test('the roster restores an ended teammate to idle and identifies it at turn completion', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const state = memoryState(on)
+  state['rabe.items'] = { value: [{ ...agent, status: 'done', endedAt: 900 }], version: 1 }
+  core(on)
+  on('agent.list', async () => ({
+    value: [
+      {
+        id: 'a1',
+        type: 'Explore',
+        description: 'verify:db.ts',
+        status: 'idle',
+        teammateId: 'scout@team',
+      },
+    ],
+  }))
+  on('turn.complete', async () => ({ text: '' }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  let item = ((state['rabe.items']?.value ?? []) as RabeItem[])[0]
+  expect(item?.status).toBe('idle')
+  expect(item?.endedAt).toBeUndefined()
+  expect(item?.kind === 'agent' && item.detail.isTeammate).toBe(true)
+  state['rabe.items'] = { value: [agent], version: 3 }
+  await $.turn.complete({
+    agentId: 'a1',
+    turnId: 't',
+    answer: 'ready',
+    reason: 'answer',
+    durationMs: 10,
+    isAborted: false,
+  })
+  item = ((state['rabe.items']?.value ?? []) as RabeItem[])[0]
+  expect(item?.status).toBe('idle')
+  expect(item?.endedAt).toBeUndefined()
+})

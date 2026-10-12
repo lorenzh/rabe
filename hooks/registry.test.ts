@@ -191,3 +191,22 @@ test('a staged poll reuses its start list and replays only on another list', () 
   expect(change([])).toEqual(poll.items)
   expect(calls).toBe(2)
 })
+
+test('idle agents survive the ended cap and can end while idle', () => {
+  const idle = {
+    id: 'agent:a',
+    kind: 'agent' as const,
+    title: 'scout',
+    status: 'idle' as const,
+    seenAt: 1,
+    startedAt: 1,
+    detail: { agentId: 'a' },
+  }
+  const done = { ...shell, seenAt: 2, status: 'done' as const, endedAt: 2 }
+  expect(capEnded([idle, done], 0)).toEqual([idle])
+  expect(pastEnd([idle], 900, 1)).toBe(900)
+  expect(endItem([idle], idle.id, 'stopped', 900)[0]).toMatchObject({
+    status: 'stopped',
+    endedAt: 900,
+  })
+})

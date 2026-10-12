@@ -1,6 +1,6 @@
 export type RabeItemKind = 'agent' | 'workflow' | 'codex' | 'shell' | 'monitor' | 'cron'
 
-export type RabeItemStatus = 'running' | 'done' | 'failed' | 'stopped'
+export type RabeItemStatus = 'running' | 'idle' | 'done' | 'failed' | 'stopped'
 
 export type RabeTokens = { input: number; output: number; cached?: number }
 
@@ -29,6 +29,7 @@ export type RabeCodexCall = {
 
 export type RabeAgentDetail = {
   agentId: string
+  isTeammate?: true
   name?: string
   type?: string
   model?: string

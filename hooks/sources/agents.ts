@@ -16,6 +16,7 @@ import {
   clip,
   type EndStatus,
   isAbsolute,
+  isEnded,
   itemId,
   type RabeItem,
   type RabeItemOf,
@@ -215,7 +216,7 @@ function asAgent(items: RabeItem[], id: string): AgentItem | undefined {
 }
 
 // Statuses of a turn in flight: an ended agent in one was resumed. `idle` is
-// not one: a teammate is idle after each turn, which already ended its item.
+// not one for plain subagents: only teammates stay alive between turns.
 const RESUMED: AgentStatus[] = ['pending', 'running', 'waiting']
 
 // An ended agent Rabe holds no item for takes `end` (see `pastEnd`), and none
@@ -227,10 +228,11 @@ function listed(
   end: number | undefined,
 ): RabeItem[] {
   const id = itemId('agent', info.id)
-  const status = LISTED[info.status] ?? 'running'
   const held = asAgent(items, id)
+  const teammate = info.teammateId || held?.detail.isTeammate
+  const status = info.status === 'idle' && teammate ? 'idle' : (LISTED[info.status] ?? 'running')
   if (!held) {
-    if (status !== 'running' && end === undefined) return items
+    if (isEnded({ status }) && end === undefined) return items
     return addItem(
       items,
       {
@@ -238,10 +240,11 @@ function listed(
         kind: 'agent',
         title: info.name || info.description || info.type,
         status,
-        ...(status !== 'running' && { endedAt: end }),
+        ...(isEnded({ status }) && { endedAt: end }),
         parentId: info.parentId ? itemId('agent', info.parentId) : undefined,
         detail: {
           agentId: info.id,
+          ...(info.teammateId && { isTeammate: true }),
           ...(info.name && { name: info.name }),
           type: info.type,
           description: info.description,
@@ -250,14 +253,24 @@ function listed(
       now,
     )
   }
-  const named = info.name
-    ? updateItem(items, id, { title: info.name, detail: { name: info.name } })
-    : items
+  const named =
+    info.name || info.teammateId
+      ? updateItem(items, id, {
+          ...(info.name && { title: info.name }),
+          detail: {
+            ...(info.name && { name: info.name }),
+            ...(info.teammateId && { isTeammate: true }),
+          },
+        })
+      : items
+  if (teammate && (status === 'running' || status === 'idle')) {
+    return updateItem(named, id, { status, endedAt: undefined })
+  }
   if (held.status !== 'running' && RESUMED.includes(info.status)) {
     return updateItem(named, id, { status: 'running', endedAt: undefined })
   }
 
-  return status === 'running' ? named : endItem(named, id, status, now)
+  return isEnded({ status }) ? endItem(named, id, status as EndStatus, now) : named
 }
 
 function stepped(
@@ -500,6 +513,7 @@ async function pollAgents($: EngineInterface, items: RabeItem[]): Promise<Change
     )
     if (
       item.status === 'running' ||
+      (item.status === 'idle' && item.detail.isTeammate) ||
       (workflow?.kind === 'workflow' &&
         workflow.detail.phases?.length &&
         item.detail.workflowPhase === undefined)
@@ -576,6 +590,7 @@ export function agents(on: On, file: string, pollers: Pollers): void {
           parentId: runId ? itemId('workflow', runId) : parent,
           detail: {
             agentId,
+            ...((e.isTeammate || result.teammateId) && { isTeammate: true }),
             ...(transcriptPath && { transcriptPath }),
             type: e.subagentType,
             model: result.model,
@@ -666,7 +681,20 @@ export function agents(on: On, file: string, pollers: Pollers): void {
     const agentId = e.agentId
     if (!agentId) return result
     const now = await $.clock.now()
-    await write($, items => endItem(items, itemId('agent', agentId), ENDED[e.reason], now))
+    const id = itemId('agent', agentId)
+    const info = (await $.agent.list().catch(() => [])).find(one => one.id === agentId)
+    await write($, items => {
+      const teammate = asAgent(items, id)?.detail.isTeammate || info?.teammateId
+      const status = info && LISTED[info.status]
+      if (teammate && (!status || !isEnded({ status }))) {
+        return updateItem(items, id, {
+          status: 'idle',
+          endedAt: undefined,
+          detail: { isTeammate: true },
+        })
+      }
+      return endItem(items, id, teammate && status ? (status as EndStatus) : ENDED[e.reason], now)
+    })
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const change = await readMeta($, itemId('agent', agentId), items)
     if (change) await write($, change)

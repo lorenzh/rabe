@@ -83,7 +83,7 @@ const RUNNING: Record<RabeItemKind, number> = {
 export function tone(item: RabeItem): number {
   if (item.status === 'failed') return C.red
   if (item.status === 'done') return C.green
-  if (item.status === 'stopped') return C.dim
+  if (item.status === 'stopped' || item.status === 'idle') return C.dim
 
   return RUNNING[item.kind]
 }

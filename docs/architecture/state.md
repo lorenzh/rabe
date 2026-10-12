@@ -26,7 +26,7 @@ One type describes everything Rabe tracks. It is written in `types/index.d.ts`, 
 
 ```ts
 type RabeItemKind = 'agent' | 'workflow' | 'codex' | 'shell' | 'monitor' | 'cron'
-type RabeItemStatus = 'running' | 'done' | 'failed' | 'stopped'
+type RabeItemStatus = 'running' | 'idle' | 'done' | 'failed' | 'stopped'
 type RabeTokens = { input: number; output: number; cached?: number }
 
 type RabeItemOf<K extends RabeItemKind> = {
@@ -50,7 +50,7 @@ type RabeItem = { [K in RabeItemKind]: RabeItemOf<K> }[RabeItemKind]
 
 | Kind | Detail fields |
 |---|---|
-| `agent` | `agentId`, `name?`, `type?`, `model?`, `description?`, `transcriptPath?`, `cwd?`, `worktreePath?`, `worktreeBranch?`, `workflowPhase?`, `workflowIndex?`, `toolCount?`, `lastTool?`, `lastToolAt?`, `edits?` (`RabeEdit[]`, the newest 100 file changes, see below), `codexCalls?` (`RabeCodexCall[]`, the newest 10 calls of the Codex companion, see Forwarders) |
+| `agent` | `agentId`, `isTeammate?` (true for a teammate), `name?`, `type?`, `model?`, `description?`, `transcriptPath?`, `cwd?`, `worktreePath?`, `worktreeBranch?`, `workflowPhase?`, `workflowIndex?`, `toolCount?`, `lastTool?`, `lastToolAt?`, `edits?` (`RabeEdit[]`, the newest 100 file changes, see below), `codexCalls?` (`RabeCodexCall[]`, the newest 10 calls of the Codex companion, see Forwarders) |
 | `workflow` | `runId`, `taskId?`, `scriptPath?`, `transcriptDir?`, `phases?` |
 | `codex` | `jobId`, `jobKind?`, `threadId?`, `model?`, `effort?`, `sandbox?`, `prompt?`, `workspaceRoot?`, `logPath?`, `sessionPath?`, `sessionUpdatedAt?`, `isSessionMissing?`, `isSessionPartial?`, `commandCount?`, `steps?`, `edits?` (`RabeEdit[]`, from the rollout) |
 | `shell` | `command`, `taskId?`, `outputPath?`, `exitCode?`, `port?`, `portAt?` (when the poll found the port) |
@@ -66,6 +66,7 @@ An optional field that is absent means the data is not known. Views show it as `
 - `NewItem`: an item without `seenAt`, what a source passes to `addItem`.
 - `ItemPatch`: the fields `updateItem` can change; `detail` is merged, not replaced.
 - `EndStatus`: `done`, `failed` or `stopped`.
+- `isEnded(item)`: false for running or idle. Counts, the cap and removal use it so idle agents remain alive.
 - `itemId(kind, nativeId)` and `mergeItem(item, patch)`. `mergeItem` always keeps the item's own `seenAt`, also when a full `RabeItem` is passed as the patch.
 
 
@@ -77,8 +78,8 @@ The items live in one session value, `$.state` key `rabe.items`, an array in the
 |---|---|
 | `addItem(items, item, now)` | Appends a new item with `seenAt: now`. For a known id it merges the fields and keeps `seenAt`. |
 | `updateItem(items, id, patch)` | Merges a patch into one item. Unknown id: no change. |
-| `endItem(items, id, status, now)` | Sets `status` and `endedAt` on a running item. An item that already ended keeps its end. |
-| `capEnded(items, max = MAX_ENDED)` | Keeps every running item and the newest 200 ended ones, newest by `endedAt`, else `seenAt`. Of two that ended at the same time, the one Rabe saw later goes first. `commit` applies it, so every write loop does. |
+| `endItem(items, id, status, now)` | Sets `status` and `endedAt` on a running or idle item. An item that already ended keeps its end. |
+| `capEnded(items, max = MAX_ENDED)` | Keeps every running and idle item and the newest 200 ended ones, newest by `endedAt`, else `seenAt`. Of two that ended at the same time, the one Rabe saw later goes first. `commit` applies it, so every write loop does. |
 | `commit(held, change)` | Applies a change and the cap. Answers `{ items, dropped }`: the capped list to write and the ids the write drops, also one the change added and the cap dropped at once. Answers `undefined` when the capped list is the held list: nothing changed, or the cap drops what the change added (an old ended item a poll finds again), so a poll then writes no state. |
 | `pastEnd(items, now)` | The end time an ended item takes when Rabe did not watch it end (a poll finds it): the oldest end of the ended items held, or `now` when there are none. `undefined` once 200 ended items are held, since the cap would drop it. So such an item never pushes out one Rabe watched. |
 | `prune(record, dropped, items)` | A per-item record (`rabe.lines`, `rabe.turns`) without the entries of the `dropped` ids that are not back in `items`; the same record when nothing goes. Only those ids go: an entry a later write added stays. |
