@@ -31,6 +31,7 @@ hooks/
   shell-words.ts      pure shell words and here-doc tokenization
   writes.ts           pure: the files a shell command line may write, and whether a path changed
   prices.ts           pure: the price table, its lookup and the dollars of a request
+  codex-exec.ts       pure: a `codex exec` call in a Bash command line, its `-o` file and `&`
   forwarders.ts       pure: the Codex companion calls of agents, and the jobs they started
   schedule.ts         pure: next runs of a cron expression
   testing.ts          test helpers: state in memory, files, core stubs

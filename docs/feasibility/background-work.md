@@ -1,8 +1,8 @@
 ---
 title: Codex and background work
-description: Data available for Codex jobs, shells, monitors, cron jobs, and loops.
+description: Data available for Codex jobs, foreground Bash calls, direct codex exec runs, shells, monitors, cron jobs, and loops.
 tags: [feasibility, Codex, background-work]
-keywords: [Codex jobs, shells, monitors, cron jobs, loops, resume-last, resumed thread, completedAt, FileChange, move_path, completed_at_ms, started_at_ms, background_tasks, session_crons, ScheduleWakeup, scheduledFor, scheduled-trigger, TaskStop, output-file, backgroundTaskId, task output, rollout, threadId, token_count, model_reasoning_summary, custom_tool_call, CommandExecution, cache_write_input_tokens, last_token_usage, CODEX_HOME, installed_plugins.json, CLAUDE_PLUGIN_DATA, codex-rescue, codex-companion, Thread ready, started in the background, kindLabel]
+keywords: [Codex jobs, foreground Bash, codex exec, output-last-message, shells, monitors, cron jobs, loops, resume-last, resumed thread, completedAt, FileChange, move_path, completed_at_ms, started_at_ms, background_tasks, session_crons, ScheduleWakeup, scheduledFor, scheduled-trigger, TaskStop, output-file, backgroundTaskId, task output, rollout, threadId, token_count, model_reasoning_summary, custom_tool_call, CommandExecution, cache_write_input_tokens, last_token_usage, CODEX_HOME, installed_plugins.json, CLAUDE_PLUGIN_DATA, codex-rescue, codex-companion, Thread ready, started in the background, kindLabel]
 ---
 
 # Codex and background work
@@ -43,6 +43,12 @@ Limits: Codex deletes old session files. Older jobs then show `n/a` for file dat
 | Stop | `TaskStop`. |
 
 Rabe accepts only this temporary task layout with the current `$.session.id()` and the project folder encoded from `$.session.root()`. It checks the resolved file against the resolved task folder before reading. An unexpected path or a symlink outside that folder gives no output. Polls, notifications and Stop correction use this check.
+
+### Foreground Bash calls and direct `codex exec`
+
+A Bash call without `run_in_background` reaches the mod's `tool.call` hook, and `next(e)` returns only when the call ends (or Claude Code moves it to the background, then the result has `backgroundTaskId`). So the hook is the only live signal of a foreground command: it carries the command, `description`, `tool_use_id` and `agentId` of the call, but no task id and no output file. Rabe adds a running shell for the call after 2 s (quick commands cause no row) and removes it when the call returns; a call moved to the background leaves only its background row.
+
+A `codex exec` run directly in a Bash command has no Codex plugin job folder, so the Codex source never sees it. A foreground run shows as the call's running shell. A run the command detaches (`nohup codex exec ... -o <file> ... &`) returns at once, so Rabe parses the command line (`hooks/codex-exec.ts`: a command word `codex` followed by `exec`, the absolute file of `-o` or `--output-last-message`, a closing `&`) and keeps the shell running until that file exists with a modification time not before the call. Limits: a detached run without an absolute `-o` file is not tracked, and one that fails before it writes the file stays running. Its rollout file is not matched to the row.
 
 ### A subagent's background tasks
 

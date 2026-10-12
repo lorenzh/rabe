@@ -1,5 +1,6 @@
 import type { EngineInterface, On } from 'claude-code'
 import type { RabeFileCursor, RabeLines } from '../../types'
+import { codexExec } from '../codex-exec'
 import { fault, type Pollers, skipped, tally } from '../loop'
 import { itemId, type RabeItem } from '../model'
 import {
@@ -34,6 +35,8 @@ import {
 } from '../tasks'
 
 const MAX_READ = 4 * 1024 * 1024
+// A foreground call shows as a shell only after this long, so quick commands cause no flicker.
+const SLOW_MS = 2000
 
 // Each event takes one hook without a matcher per plugin; these match every event.
 const ANY_STOP = { stop_hook_active: [true, false] }
@@ -231,6 +234,14 @@ async function pollShells($: EngineInterface, items: RabeItem[]): Promise<Change
           (cursor !== undefined && cursor.offset < cursor.size && !cursor.partial))
       )
     })) {
+      if (item.status === 'running' && item.detail.resultPath) {
+        const stat = await $.fs.stat(item.detail.resultPath).catch(() => undefined)
+        if (stat?.kind === 'file' && stat.mtimeMs >= (item.startedAt ?? 0)) {
+          const now = await $.clock.now()
+          stage(poll, held => endItem(held, item.id, 'done', now))
+        }
+        continue
+      }
       const output = item.detail.outputPath
         ? await readOutput($, item.detail.outputPath, item.id)
         : {}
@@ -325,18 +336,76 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
   )
 }
 
+type BashCall = { tool_use_id: string; command: string; description?: string; agentId?: string }
+
+// The row of a foreground Bash call that is still running.
+async function foreground(
+  $: EngineInterface,
+  e: BashCall,
+  id: string,
+  startedAt: number,
+  resultPath?: string,
+) {
+  const now = await $.clock.now()
+  await write($, held =>
+    addItem(
+      held,
+      {
+        id,
+        kind: 'shell',
+        title: shellTitle(e.description, e.command, 'foreground'),
+        status: 'running',
+        startedAt,
+        ...(e.agentId && { parentId: itemId('agent', e.agentId) }),
+        detail: { command: e.command, ...(resultPath && { resultPath }) },
+      },
+      now,
+    ),
+  )
+}
+
 export function shells(on: On, pollers: Pollers): void {
   on('session.start', { isInteractive: [true, false] }, async ($, e, next) => {
     pollers.push({ name: 'shells', run: items => pollShells($, items), initial: false })
     return next(e)
   })
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    const answer = await next(e)
+    if (e.tool !== 'Bash') return next(e)
+    const id = itemId('shell', `fg-${e.tool_use_id}`)
+    const stop = new AbortController()
+    let shown: Promise<void> | undefined
+    let added = false
+    let startedAt = 0
+    let exec: ReturnType<typeof codexExec>
+    if (!e.run_in_background) {
+      try {
+        startedAt = await $.clock.now()
+        exec = codexExec(e.command, await $.env.get('HOME').catch(() => undefined))
+        shown = $.clock
+          .sleep(SLOW_MS, { signal: stop.signal })
+          .then(() => foreground($, e, id, startedAt))
+          .then(() => {
+            added = true
+          })
+          .catch(() => undefined)
+      } catch {}
+    }
+    let answer: Awaited<ReturnType<typeof next>>
+    try {
+      answer = await next(e)
+    } finally {
+      stop.abort()
+      await shown
+    }
     try {
       const result = answer.result as { backgroundTaskId?: string } | undefined
       const taskId = result?.backgroundTaskId
-      if (e.tool === 'Bash' && taskId) {
-        const now = await $.clock.now()
+      const now = await $.clock.now()
+      // A `codex exec ... &` outlives the call: its result file ends the row.
+      const keep = exec?.isDetached ? exec.resultPath : undefined
+      if (keep) await foreground($, e, id, startedAt, keep)
+      else if (added) await write($, held => held.filter(item => item.id !== id))
+      if (taskId) {
         const outputPath = outputPathOf(answer.text)
         await write($, held =>
           addItem(
@@ -346,7 +415,7 @@ export function shells(on: On, pollers: Pollers): void {
               kind: 'shell',
               title: shellTitle(e.description, e.command, taskId),
               status: 'running',
-              startedAt: now,
+              startedAt: startedAt || now,
               ...(e.agentId && { parentId: itemId('agent', e.agentId) }),
               detail: { command: e.command, taskId, ...(outputPath && { outputPath }) },
             },
