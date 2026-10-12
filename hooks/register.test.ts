@@ -353,3 +353,58 @@ test('a timer failure also swallows a failed recovery clock read', async () => {
   for (let n = 0; n < 10; n++) await Promise.resolve()
   expect(reads).toBe(before + 4)
 })
+
+function agentsAndMeta(on: Parameters<typeof memoryState>[0], denyDiag = false) {
+  if (denyDiag) on('state.set', { key: 'diag' }, async () => ({ deny: 'no diag' }))
+  const state = memoryState(on)
+  core(on)
+  on(
+    'agent.list',
+    async () =>
+      ({
+        value: [
+          { id: 'a1', status: 'running', name: 'First' },
+          { id: 'a2', status: 'running', name: 'Second' },
+        ],
+      }) as never,
+  )
+  files(on, { '/s/agent-a1.meta.json': '{"cwd":"/repo/a"}' })
+  on('fs.read', { path: /a2\.meta\.json$/ }, async () => ({
+    deny: 'EACCES /home/lena/private/notes.json',
+  }))
+  state['rabe.items'] = {
+    value: ['a1', 'a2'].map(id => ({
+      id: `agent:${id}`,
+      kind: 'agent',
+      title: id,
+      status: 'running',
+      seenAt: 1000,
+      detail: { agentId: id, transcriptPath: `/s/agent-${id}.jsonl` },
+    })),
+    version: 0,
+  }
+
+  return state
+}
+
+test('the agents record counts one read file and one denied read, without private text', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = agentsAndMeta(on)
+  await $.session.start(START)
+  await clock.advance(0)
+  const record = (state['rabe.diag']?.value as Record<string, unknown> | undefined)?.agents
+  expect(record).toMatchObject({ files: 1, chars: 17, errors: 1 })
+  expect(JSON.stringify(state['rabe.diag']?.value)).not.toContain('private')
+})
+
+test('a denied diag write keeps the item write', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = agentsAndMeta(on, true)
+  await $.session.start(START)
+  await clock.advance(0)
+  expect(state['rabe.diag']).toBeUndefined()
+  expect(((state['rabe.items']?.value ?? []) as RabeItem[]).map(item => item.title)).toEqual([
+    'First',
+    'Second',
+  ])
+})

@@ -2,9 +2,9 @@ import type { RabeDiag } from '../types'
 import type { RabeItem } from './model'
 import { type Change, capEnded } from './registry'
 
-// What one poll read: files and bytes read, and failures (`lastError` is cut
+// What one poll read: files and chars (UTF-16 units, not bytes) read, and failures (`lastError` is cut
 // and has its paths shortened).
-export type Probe = { files: number; bytes: number; errors: number; lastError?: string }
+export type Probe = { files: number; chars: number; errors: number; lastError?: string }
 
 export type Poller = {
   // `name` keys the poll's record in `rabe.diag`; a poll without one keeps none.
@@ -34,13 +34,17 @@ export function pollDue(
   return (!initial || poll.initial !== false) && now >= (poll.due ?? 0)
 }
 
-// An error's text without private parts: paths keep their last name, and the
-// text is cut.
+// An error's text without private parts: every absolute path (`/x`, `~/x`,
+// `C:\x`) becomes its file name when it has an extension and `…` otherwise,
+// and the text is cut. Free text around a path stays: it is cut, not read.
 export function shorten(error: unknown): string {
   const text = error instanceof Error ? error.message : String(error)
 
   return text
-    .replace(/(?:[A-Za-z]:)?[\\/][^\s'"]*[\\/]([^\s'"\\/]+)/g, '…/$1')
+    .replace(/(?<![\w.~])(?:[A-Za-z]:[\\/]|~[\\/]|[\\/])[^\s'"]*/g, path => {
+      const name = path.split(/[\\/]/).pop() ?? ''
+      return /[^.\\/]\.[A-Za-z0-9]{1,8}$/.test(name) ? name : '…'
+    })
     .replace(/\s+/g, ' ')
     .slice(0, 120)
 }
@@ -59,7 +63,7 @@ let current: Probe | undefined
 export function tally<T>(text: T): T {
   if (current) {
     current.files++
-    current.bytes += typeof text === 'string' ? text.length : 0
+    current.chars += typeof text === 'string' ? text.length : 0
   }
 
   return text
@@ -89,7 +93,7 @@ export function mergeDiag(
       old &&
       old.ms === ms &&
       old.files === stat.files &&
-      old.bytes === stat.bytes &&
+      old.chars === stat.chars &&
       old.errors === stat.errors &&
       old.lastError === stat.lastError
     if (!same) next = { ...next, [name]: { ...stat, ms } }
@@ -109,7 +113,7 @@ export async function collect(
   const stats: Record<string, RabeDiag> = {}
   for (const poll of pollers) {
     if (!pollDue(poll, now, initial)) continue
-    const probe: Probe = { files: 0, bytes: 0, errors: 0 }
+    const probe: Probe = { files: 0, chars: 0, errors: 0 }
     const started = await tick().catch(() => now)
     current = probe
     try {
@@ -128,7 +132,7 @@ export async function collect(
         at: now,
         ms: Math.max(0, ended - started),
         files: probe.files,
-        bytes: probe.bytes,
+        chars: probe.chars,
         errors: probe.errors,
         ...(probe.lastError && { lastError: probe.lastError }),
       }

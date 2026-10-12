@@ -85,20 +85,24 @@ export const register: Register = (on, options) => {
   if (options.hideBuiltinTasks !== false) builtin(on)
 }
 
-// Writes the polls' records only when one changed.
+// Writes the polls' records only when one changed. A version conflict retries
+// a few times; a refusal or an error leaves the records as they are, and the
+// items are written anyway.
 async function saveDiag(
   $: Pick<EngineInterface, 'state'>,
   stats: Record<string, RabeDiag>,
 ): Promise<void> {
-  for (;;) {
-    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diag' })
-    const next = mergeDiag(value, stats)
-    if (next === value) return
-    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'diag' }, next, {
-      ifVersion: version,
-    })
-    if (isSet) return
-  }
+  try {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diag' })
+      const next = mergeDiag(value, stats)
+      if (next === value) return
+      const { isSet } = await $.state.set({ plugin: 'rabe', key: 'diag' }, next, {
+        ifVersion: version,
+      })
+      if (isSet) return
+    }
+  } catch {}
 }
 
 async function write(

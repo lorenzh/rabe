@@ -12,6 +12,8 @@ export type DiagFacts = {
   items: RabeItem[]
 }
 
+const POLLED = ['agents', 'codex', 'shells', 'monitors', 'worktrees']
+
 // The report `/rabe-diag` prints. It has counts, sizes, versions and option
 // values only: no prompt, title, message text or full path.
 export function diagText(facts: DiagFacts): string {
@@ -23,18 +25,23 @@ export function diagText(facts: DiagFacts): string {
     const key = `${item.kind} ${item.status}`
     counts.set(key, (counts.get(key) ?? 0) + 1)
   }
-  const polls = Object.entries(facts.diag).map(
-    ([name, d]) =>
-      `- ${name}: ${d.ms} ms, ${d.files} files, ${d.bytes} bytes, ${d.errors} errors` +
-      (d.lastError ? `, last error: ${shorten(d.lastError)}` : ''),
-  )
+  const polls = POLLED.map(name => {
+    const d = facts.diag[name]
+    if (!d) return `- ${name}: no poll recorded (not due, inactive session, or hook unavailable)`
+
+    return (
+      `- ${name}: ${d.ms} ms, ${d.files} files, ${d.chars} chars, ${d.errors} errors` +
+      (d.lastError ? `, last error: ${shorten(d.lastError)}` : '')
+    )
+  })
 
   return [
     `Rabe ${facts.rabe}, Claude Code ${facts.claude}`,
     `Options: ${options.join(', ') || 'none'}`,
     `Items: ${[...counts].map(([key, n]) => `${key} ${n}`).join(', ') || 'none'}`,
     'Last poll per source:',
-    ...(polls.length > 0 ? polls : ['- none yet']),
+    ...polls,
+    '- crons, workflows: event sources, no polls',
   ].join('\n')
 }
 
@@ -67,9 +74,16 @@ export function diag(on: On, all: Record<string, unknown>): void {
     await $.command.register({
       name: 'rabe-diag',
       description: 'Show what each Rabe source read last, without private data',
+      immediate: true,
     })
 
     return started
   })
   on('command.run', { command: 'rabe-diag' }, async $ => ({ text: await report($, options) }))
+  on('command.run', { command: 'rabe:report-bug' }, async ($, e, next) => {
+    const result = await next(e)
+    const text = await report($, options).catch(() => 'diagnostics unavailable')
+
+    return { ...result, context: [...(result.context ?? []), `Rabe diagnostics:\n${text}`] }
+  })
 }

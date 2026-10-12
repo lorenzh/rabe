@@ -179,13 +179,13 @@ export type RabeWindow = { base: number; hours: number; since: number }
 
 // The last poll of one source (`agents`, `codex`, `shells`, `monitors`,
 // `worktrees`): when it ran, how long it took (rounded to 100 ms), the files
-// and bytes it read, its failures, and the last failure's text with paths
+// and chars it read, its failures, and the last failure's text with paths
 // shortened. Written only when a value changes.
 export type RabeDiag = {
   at: number
   ms: number
   files: number
-  bytes: number
+  chars: number
   errors: number
   lastError?: string
 }

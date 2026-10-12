@@ -188,7 +188,7 @@ Rabe reads these files:
 - The output files of background shells and monitors in this session’s `/tmp/claude-<uid>/<project>/<session>/tasks/` folder.
 - The Codex plugin's job files under `~/.claude/plugins/data/codex-openai-codex/`, and `~/.claude/plugins/installed_plugins.json`.
 - Codex session files under `~/.codex/sessions/` (or `CODEX_HOME`).
-- Its own price table `data/prices.csv`, and the file the option `pricesFile` names.
+- Its own price table `data/prices.csv`, its `.claude-plugin/plugin.json` (for the Rabe version in `/rabe-diag`), and the file the option `pricesFile` names.
 - The size and modification time of the files a shell command names, before and after the command, to see which ones it wrote. Rabe does not read their content.
 
 For script edits, Rabe also takes changed file paths and known deletions from Claude Code's Bash result. It keeps no diff hunks or file content.
@@ -203,7 +203,7 @@ Rabe polls its sources in one loop. A slow poll makes the loop skip ticks. Start
 
 Rabe runs `tail` and `grep` to read files over 4 MiB. It runs `git worktree list` every 10 seconds in the session's folder to know the worktrees. When you stop a Codex job, it runs the Codex plugin's own cancel script. A refusal sends fixed text to Claude. The pane toast can show the first error line.
 
-`/rabe-diag` prints versions, option values (`pricesFile` only as set or not set), item counts and per-source poll counts with error text cut and paths shortened to file names. `/rabe:report-bug` asks you to run it and include its text. It includes the details you provide, reproduction steps, Rabe and Claude Code versions, your operating system and any error lines you give it. Both report commands ask Claude Code to leave out home paths, user or project names, prompts, tokens and email addresses; `/rabe:report-bug` also asks it to leave out transcript text. These are instructions, not automatic redaction filters. Review the full draft before approving it. See [SECURITY.md](SECURITY.md) to report a vulnerability privately.
+`/rabe-diag` prints versions, option values (`pricesFile` only as set or not set), item counts and per-source poll counts (files and characters read) with error text cut and paths shortened to file names or `…`. Counts describe returned data, event reads can overlap a poll, and a clean poll does not prove that discovery found everything. `/rabe:report-bug` asks you to run it and include its text. It includes the details you provide, reproduction steps, Rabe and Claude Code versions, your operating system and any error lines you give it. Both report commands ask Claude Code to leave out home paths, user or project names, prompts, tokens and email addresses; `/rabe:report-bug` also asks it to leave out transcript text. These are instructions, not automatic redaction filters. Review the full draft before approving it. See [SECURITY.md](SECURITY.md) to report a vulnerability privately.
 
 ## Requirements
 

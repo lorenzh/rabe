@@ -15,7 +15,7 @@ Each poll receives staged items and returns `Change | undefined`. The loop compo
 
 The loop collects the final list and its changes. Its local `write` and `forget` helpers use the registry's pure `commit` and `prune` rules. When the state version matches, the write compares the collected list with the original snapshot. Each source reuses its staged result for its own start list, so collection does not replay its changes. This avoids replaying a large agent list or writing unchanged items. If an event changed state, the write replays poll changes against the latest items. A version conflict retries the write. Dropped items lose their lines and turns.
 
-Each named poll also leaves a record of its last run (duration, files and bytes read, failures) in `rabe.diag`; see [Diagnostics](diagnostics.md).
+Each named poll also leaves a record of its last run (duration, files and characters read, failures) in `rabe.diag`; see [Diagnostics](diagnostics.md).
 
 A repeated session start cancels the old timer. The loop clears the poll list before sources bind new callbacks. Each pass uses a snapshot of that list. A generation check prevents an old pass from publishing items after another start.
 
