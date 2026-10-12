@@ -1,7 +1,7 @@
 import type { EngineInterface, On } from 'claude-code'
 
 import type { RabeWorktree } from '../../types'
-import type { Pollers } from '../loop'
+import { fault, type Pollers, tally } from '../loop'
 import { isAbsolute } from '../model'
 
 const TIMEOUT_MS = 5000
@@ -36,7 +36,8 @@ async function pollWorktrees($: EngineInterface): Promise<void> {
   const run = await $.process.run(['git', 'worktree', 'list', '--porcelain'], {
     timeoutMs: TIMEOUT_MS,
   })
-  if (run.exitCode !== 0 || run.isStdoutTruncated) return
+  tally(run.stdout)
+  if (run.exitCode !== 0 || run.isStdoutTruncated) return fault(`git exited ${run.exitCode}`)
   const list = parseWorktrees(run.stdout)
   if (list.length === 0) return
   const { value, version } = await $.state.get({ plugin: 'rabe', key: 'worktrees' })
@@ -49,6 +50,7 @@ async function pollWorktrees($: EngineInterface): Promise<void> {
 export function worktrees(on: On, pollers: Pollers): void {
   on('session.start', { isInteractive: true }, async ($, e, next) => {
     pollers.push({
+      name: 'worktrees',
       run: async () => {
         await pollWorktrees($)
         return undefined

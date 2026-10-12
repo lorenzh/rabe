@@ -445,8 +445,8 @@ function world(on: On, files: Record<string, string | object>, mtimeMs = 5000): 
 
 function watchItems(on: On): RabeItem[][] {
   const writes: RabeItem[][] = []
-  on('state.set', async (_$, e, next) => {
-    if (e.plugin === 'rabe' && e.key === 'items') writes.push(e.value as RabeItem[])
+  on('state.set', { plugin: 'rabe', key: 'items' }, async (_$, e, next) => {
+    writes.push(e.value as RabeItem[])
     return next(e)
   })
   return writes
@@ -642,6 +642,7 @@ test('small rollouts are read only when changed if inode lookup is unavailable',
   w.calls.length = 0
   await w.clock.advance(4000)
   expect(w.calls.filter(call => call === `read ${ROLLOUT_PATH}`)).toEqual([])
+  expect(w.calls.filter(call => call.startsWith('ls '))).toEqual([])
   expect(w.calls.filter(call => call === 'stat /work/in.md')).toEqual([])
   expect(writes).toHaveLength(1)
   w.files.set(ROLLOUT_PATH, {
@@ -914,6 +915,7 @@ test('incremental rollout parsing keeps totals and matches pending calls across 
 
 test('unchanged job and state files are cached while only appended rollout bytes are parsed', async ($, on) => {
   const writes = watchItems(on)
+  const state = memoryState(on)
   prices(on)
   const first = ROLLOUT.slice(0, ROLLOUT.lastIndexOf('\n') + 1)
   const w = world(on, {
@@ -928,6 +930,9 @@ test('unchanged job and state files are cached while only appended rollout bytes
   await w.clock.advance(2000)
   expect(w.calls.filter(call => /^(read|tail|ls) /.test(call))).toEqual([])
   expect(writes).toHaveLength(written)
+  expect(state['rabe.diag']?.value).toMatchObject({
+    codex: { files: 0, bytes: 0, skipped: 3, errors: 0 },
+  })
   const fresh = `${[
     line('response_item', { type: 'custom_tool_call_output', call_id: 'c2' }),
     line('event_msg', {
@@ -953,6 +958,17 @@ test('unchanged job and state files are cached while only appended rollout bytes
   expect(w.calls.filter(call => call.startsWith('tail '))).toEqual([
     `tail +${first.length + 1} ${ROLLOUT_PATH}`,
   ])
+
+  expect(state['rabe.diag']?.value).toMatchObject({
+    codex: {
+      files: 2,
+      bytes:
+        fresh.length +
+        'provider,model,input,output,cache_read\nopenai,gpt-6.1-sol,2,10,0.1\n'.length,
+      skipped: 2,
+      errors: 0,
+    },
+  })
   const item = writes.at(-1)?.[0]
   expect(item?.tokens).toEqual({ input: 26000, output: 3100, cached: 18000 })
   expect(Math.round((item?.costUsd ?? 0) * 1e6)).toBe(48800)

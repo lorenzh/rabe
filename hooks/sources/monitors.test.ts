@@ -268,18 +268,34 @@ test('monitor cursors skip idle output, repair UTF-8 partial lines and detect re
   await $.tool.call({ tool: 'Bash', command: 'sleep 10', run_in_background: true })
   await arm($)
   await clock.advance(2000)
+
+  expect(state['rabe.diag']?.value).toMatchObject({
+    monitors: { files: 1, chars: 8, bytes: 9, skipped: 0, errors: 0 },
+  })
   const versions = Object.fromEntries(
-    Object.entries(state).map(([key, value]) => [key, value.version]),
+    Object.entries(state)
+      .filter(([key]) => key !== 'rabe.diag')
+      .map(([key, value]) => [key, value.version]),
   )
   reads.length = 0
   await clock.advance(2000)
   expect(reads).toEqual([])
+  expect(state['rabe.diag']?.value).toMatchObject({
+    monitors: { files: 0, bytes: 0, skipped: 1, errors: 0 },
+  })
   expect(
-    Object.fromEntries(Object.entries(state).map(([key, value]) => [key, value.version])),
+    Object.fromEntries(
+      Object.entries(state)
+        .filter(([key]) => key !== 'rabe.diag')
+        .map(([key, value]) => [key, value.version]),
+    ),
   ).toEqual(versions)
   held[OUT] += 'tial\n'
   await clock.advance(2000)
   expect(tails).toEqual([['tail', '-c', '+7', '--', OUT]])
+  expect(state['rabe.diag']?.value).toMatchObject({
+    monitors: { files: 1, bytes: 8, skipped: 0, errors: 0 },
+  })
   expect(state['rabe.lines']?.value).toMatchObject({
     'monitor:m1': {
       seen: 2,

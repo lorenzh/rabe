@@ -15,7 +15,7 @@ Shell and monitor cursors live inside each item’s `rabe.lines` entry. One vers
 
 A cursor holds file size, modification time and the next byte offset. `ls -diL -- <path>` supplies the inode. The mod API has no inode field. A different inode or a smaller file starts a new read. A changed modification time at the same size also starts a new read. Readers compare size and modification time before running `ls`. With a completed cursor, unchanged files cause no process spawn, content read or state write. An unread backlog still advances.
 
-The first read uses `$.fs.read` for files up to 4 MiB. Later reads use `tail -c +N -- <path>`. Each command has a five-second timeout. Output readers still check the resolved task folder and file before every read. Without an inode command, small files use whole reads. When the rollout's modification time matches the item’s last read, Codex skips these reads. Larger files stay unavailable.
+The first read uses `$.fs.read` for files up to 4 MiB. Later reads use `tail -c +N -- <path>`. Each command has a five-second timeout. Output readers still check the resolved task folder and file before every read. Without an inode command, small files use whole reads. When no rollout cursor exists and its modification time matches the item’s last read, Codex skips the inode lookup and content read. Larger files stay unavailable.
 
 A command returns at most 4 MiB of text. A cut result advances through complete lines only. Later polls continue from that offset. Ended items finish their unread backlog without changing their end time. The reader skips a record larger than the command limit through its newline. A Codex rollout with a skipped record stays partial and has no cost estimate.
 
@@ -30,5 +30,7 @@ The Codex parser carries model settings and token totals between reads. It retai
 Each chunk prices only its new requests. Session state keeps the sum rather than every request. An unpriced request makes the sum unknown. If the parser already consumed later records, a completion cutoff resets it. A changed job start also resets it.
 
 Agent metadata uses `rabe.agentFiles`. Codex job and workspace JSON use `rabe.codexFiles`. These files are rewritten rather than appended. Unchanged size and modification time reuse their metadata. The source reads a changed file whole. These caches use no inode lookup and also work without a process host. Each poll prunes the Codex JSON cache against retained jobs and their workspace files. Removed jobs and vanished workspaces leave no cached documents.
+
+The [diagnostics](diagnostics.md) record counts each returned content chunk and its UTF-8 bytes. Unchanged files increase `skipped` without increasing reads or bytes. Inode command output does not count as file content. Failed reads and process calls increase `errors`.
 
 See [source behavior](sources.md) and the [reader benchmark](../feasibility.md#incremental-reader-benchmark).

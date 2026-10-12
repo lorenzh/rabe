@@ -24,6 +24,7 @@ hooks/
   sources/crons.ts    cron jobs and /loop wakeups
   sources/worktrees.ts  the repository's git worktrees, for the Effects tab
   reading.ts          pure byte cursors and output chunks
+  diag.ts             /rabe-diag: the last poll of each source, without private data
   tasks.ts            pure: task notifications, task output files, port guess
   writes.ts           pure: the files a shell command line may write, and whether a path changed
   prices.ts           pure: the price table, its lookup and the dollars of a request

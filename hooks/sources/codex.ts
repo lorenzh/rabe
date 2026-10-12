@@ -2,7 +2,7 @@ import type { EngineInterface, FsStat, On } from 'claude-code'
 
 import type { RabeCodexStep, RabeEdit, RabeRollout, RabeRolloutCursor } from '../../types'
 import { linkForwarders } from '../forwarders'
-import type { Pollers } from '../loop'
+import { fault, type Pollers, skipped, tally } from '../loop'
 import {
   clip,
   type EndStatus,
@@ -405,7 +405,7 @@ async function findRollout(
   for (const offset of [0, -DAY, DAY]) {
     const day = new Date(startedAt + offset).toISOString().slice(0, 10).replaceAll('-', '/')
     const dir = `${codexHome}/sessions/${day}`
-    const entries = await $.fs.list(dir).catch(() => [])
+    const entries = await $.fs.list(dir).catch(e => fault(e, []))
     const found = entries.find(entry => entry.name.endsWith(`-${threadId}.jsonl`))
     if (found) return `${dir}/${found.name}`
   }
@@ -457,11 +457,11 @@ async function confirmed($: EngineInterface, rollout: Rollout, looks: Looks): Pr
 // The built-in table, or with the user's file (`pricesFile`) its rows first. A
 // file that is set but cannot be read gives no prices: costs show n/a.
 async function prices($: EngineInterface, file: string): Promise<Prices> {
-  const read = (path: string) => $.fs.read(path).then(text => parsePrices(String(text)))
-  const built = await read(`${$.plugin.root}/data/prices.csv`).catch(() => [])
+  const read = (path: string) => $.fs.read(path).then(text => parsePrices(String(tally(text))))
+  const built = await read(`${$.plugin.root}/data/prices.csv`).catch(e => fault(e, []))
   if (!file) return built
   const home = file.startsWith('~/') && (await $.env.get('HOME').catch(() => undefined))
-  const own = await read(home ? `${home}${file.slice(1)}` : file).catch(() => undefined)
+  const own = await read(home ? `${home}${file.slice(1)}` : file).catch(fault)
 
   return own ? withOverride(built, own) : []
 }
@@ -479,7 +479,7 @@ async function readSession(
   const path =
     held?.detail.sessionPath ??
     (await findRollout($, codexHome, threadId, jobStart(job) ?? (await $.clock.now())))
-  const stat = path ? await $.fs.stat(path).catch(() => undefined) : undefined
+  const stat = path ? await $.fs.stat(path).catch(fault) : undefined
   if (!path || !stat) {
     if (jobEnd(job.status)) return { isMissing: true }
 
@@ -499,18 +499,26 @@ async function readSession(
       ? saved
       : undefined
   const same = previous && unchanged(stat, previous.cursor)
-  if (same && (previous.cursor.offset >= previous.cursor.size || previous.cursor.partial))
+  if (
+    (same && (previous.cursor.offset >= previous.cursor.size || previous.cursor.partial)) ||
+    (!saved && updatedAt === held?.detail.sessionUpdatedAt)
+  ) {
+    skipped()
     return { path, updatedAt }
+  }
   const identity = same
     ? previous.cursor.identity
     : await $.process
         .run(['ls', '-diL', '--', path], { timeoutMs: RUN_MS })
-        .then(result => (result.exitCode === 0 ? inodeOf(result.stdout) : undefined))
-        .catch(() => undefined)
-  if (!identity && updatedAt === held?.detail.sessionUpdatedAt) return { path, updatedAt }
+        .then(result =>
+          result.exitCode === 0
+            ? inodeOf(result.stdout)
+            : fault(`inode lookup exited with code ${result.exitCode}`),
+        )
+        .catch(fault)
   if (!identity) {
     if (stat.size > MAX_READ) return { path }
-    const text = await $.fs.read(path).catch(() => undefined)
+    const text = await $.fs.read(path).then(tally, fault)
     if (text === undefined) return { path }
     const rollout = await confirmed(
       $,
@@ -521,21 +529,28 @@ async function readSession(
   }
   const stamp = { size: stat.size, mtimeMs: stat.mtimeMs, identity }
   const plan = readPlan(stamp, previous?.cursor, MAX_READ)
-  if (!plan) return { path, updatedAt }
+  if (!plan) {
+    skipped()
+    return { path, updatedAt }
+  }
   const { offset, reset, whole } = plan
   const home = await $.env.get('HOME')
   let text: string
   let truncated = false
   if (whole) {
-    const read = await $.fs.read(path).catch(() => undefined)
+    const read = await $.fs.read(path).then(tally, fault)
     if (read === undefined) return { path }
     text = String(read)
   } else {
     const result = await $.process
       .run(['tail', '-c', `+${offset + 1}`, '--', path], { timeoutMs: RUN_MS })
-      .catch(() => undefined)
-    if (result?.exitCode !== 0) return { path }
-    text = result.stdout
+      .catch(fault)
+    if (!result) return { path }
+    text = tally(result.stdout)
+    if (result.exitCode !== 0) {
+      fault(`tail exited with code ${result.exitCode}`)
+      return { path }
+    }
     truncated = result.isStdoutTruncated
   }
   const chunk = readChunk(text, truncated, true, previous?.cursor.isDiscarding)
@@ -583,12 +598,15 @@ async function readJson(
   path: string,
   known?: FsStat,
 ): Promise<Rec | undefined> {
-  const stat = known ?? (await $.fs.stat(path).catch(() => undefined))
+  const stat = known ?? (await $.fs.stat(path).catch(fault))
   if (stat?.kind !== 'file') return undefined
   const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'codexFiles' })
   const held = value[path]
-  if (unchanged(stat, held)) return held?.data
-  const read = await $.fs.read(path).catch(() => undefined)
+  if (unchanged(stat, held)) {
+    skipped()
+    return held?.data
+  }
+  const read = await $.fs.read(path).then(tally, fault)
   const text = typeof read === 'string' ? read : ''
   const parsed = parseJson(text)
   if (!parsed) return undefined
@@ -685,10 +703,10 @@ async function pollCodex($: EngineInterface, file: string, items: RabeItem[]): P
   const { startedAt: since } = await $.session.usage()
   const looks: Looks = { asked: new Map(), known: new Map(), stop: new AbortController() }
   // ponytail: one stat per workspace folder per poll; keep a folder list in $.state if there are hundreds
-  for (const dir of await $.fs.list(stateRoot).catch(() => [])) {
+  for (const dir of await $.fs.list(stateRoot).catch(e => fault(e, []))) {
     if (dir.kind !== 'dir') continue
     const statePath = `${stateRoot}/${dir.name}/state.json`
-    const stat = await $.fs.stat(statePath).catch(() => undefined)
+    const stat = await $.fs.stat(statePath).catch(fault)
     if (!stat || stat.mtimeMs < since) continue
     workspaces.add(statePath)
     const state = await readJson($, statePath, stat)
@@ -712,7 +730,7 @@ async function pollCodex($: EngineInterface, file: string, items: RabeItem[]): P
         looks,
         file,
         poll,
-      ).catch(() => undefined)
+      ).catch(fault)
     }
   }
   looks.stop.abort()
@@ -731,7 +749,9 @@ async function cancel($: EngineInterface, id: string): Promise<{ text: string }>
   if (item?.status !== 'running') return { text: `No running Codex job ${id}.` }
   const { claude } = await homes($)
   const installed = parseJson(
-    String(await $.fs.read(`${claude}/plugins/installed_plugins.json`).catch(() => '')),
+    String(
+      await $.fs.read(`${claude}/plugins/installed_plugins.json`).then(tally, e => fault(e, '')),
+    ),
   )
   const root = str(rec(list(rec(installed?.plugins)[CODEX_PLUGIN])[0]).installPath)
   if (!root) return { text: 'Stop refused: the Codex plugin is not installed.' }
@@ -774,7 +794,7 @@ async function cancel($: EngineInterface, id: string): Promise<{ text: string }>
 
 export function codex(on: On, file: string, pollers: Pollers): void {
   on('session.start', { isInteractive: true }, async ($, e, next) => {
-    pollers.push({ run: items => pollCodex($, file, items), initial: false })
+    pollers.push({ name: 'codex', run: items => pollCodex($, file, items), initial: false })
     const started = await next(e)
     await $.command.register({
       name: 'rabe-stop',

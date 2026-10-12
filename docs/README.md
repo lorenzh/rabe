@@ -24,6 +24,7 @@ Use this index to find the guide that matches your question.
 - [Incremental file reads](architecture/reading.md): atomic output cursors, UTF-8 limits, stat-only idle polls, bounded parsing, desktop rollout reads, and metadata caches without process access.
 - [Shared poll loop](architecture/loop.md): scheduling rules, source changes, repeated starts, and one completed write.
 - [State and items](architecture/state.md): item model, idle teammates, registry, state writes, and turns.
+- [Diagnostics](architecture/diagnostics.md): per-source poll records in `rabe.diag`, incremental bytes and unchanged-file skips, `/rabe-diag` and its redaction.
 - [Sources](architecture/sources.md): poll callbacks that return changes, source modules, and source tests.
 - [Price estimate](architecture/prices.md): price lookup and cost estimates.
 - [UI rendering](architecture/ui.md): view contract, renderer, palette, cells, sizing, and band.

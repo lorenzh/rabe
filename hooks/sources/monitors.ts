@@ -1,6 +1,6 @@
 import type { EngineInterface, On } from 'claude-code'
 import type { RabeFileCursor } from '../../types'
-import type { Pollers } from '../loop'
+import { fault, type Pollers, skipped, tally } from '../loop'
 import { itemId, type RabeItem } from '../model'
 import { inodeOf, outputUpdate, readChunk, readPlan, unchanged } from '../reading'
 import {
@@ -83,33 +83,46 @@ async function readFile($: EngineInterface, path: string, id: string): Promise<{
     const { value = {} } = await $.state.get({ plugin: 'rabe', key: 'lines' })
     const held = value[id]?.cursor
     const same = held?.identity?.startsWith(`${path}:`) && unchanged(stat, held)
-    if (same && held && (held.offset >= held.size || held.partial)) return {}
+    if (same && held && (held.offset >= held.size || held.partial)) {
+      skipped()
+      return {}
+    }
     const identity = same
       ? held?.identity?.slice(path.length + 1)
       : await $.process
           .run(['ls', '-diL', '--', path], { timeoutMs: 5000 })
-          .then(result => (result.exitCode === 0 ? inodeOf(result.stdout) : undefined))
-          .catch(() => undefined)
+          .then(result =>
+            result.exitCode === 0
+              ? inodeOf(result.stdout)
+              : fault(`inode lookup exited with code ${result.exitCode}`),
+          )
+          .catch(fault)
     if (!identity) {
       if (stat.size > MAX_READ) return {}
-      const text = String(await $.fs.read(path))
+      const text = String(tally(await $.fs.read(path)))
       const parsed = parseOutput(text)
       await keepLines($, id, parsed.lines, false, false, parsed.ended !== undefined)
       return { text }
     }
     const stamp = { size: stat.size, mtimeMs: stat.mtimeMs, identity: `${path}:${identity}` }
     const plan = readPlan(stamp, held, MAX_READ)
-    if (!plan) return {}
+    if (!plan) {
+      skipped()
+      return {}
+    }
     const { offset, reset, whole } = plan
     let text: string
     let truncated = false
-    if (whole) text = String(await $.fs.read(path))
+    if (whole) text = String(tally(await $.fs.read(path)))
     else {
       const result = await $.process.run(['tail', '-c', `+${offset + 1}`, '--', path], {
         timeoutMs: 5000,
       })
-      if (result.exitCode !== 0) return {}
-      text = result.stdout
+      text = tally(result.stdout)
+      if (result.exitCode !== 0) {
+        fault(`tail exited with code ${result.exitCode}`)
+        return {}
+      }
       truncated = result.isStdoutTruncated
     }
     const chunk = readChunk(text, truncated, false, held?.isDiscarding)
@@ -130,7 +143,8 @@ async function readFile($: EngineInterface, path: string, id: string): Promise<{
       },
     )
     return { text: chunk.text }
-  } catch {
+  } catch (error) {
+    fault(error)
     return {}
   }
 }
@@ -249,7 +263,7 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
 
 export function monitors(on: On, pollers: Pollers): void {
   on('session.start', { isInteractive: [true, false] }, async ($, e, next) => {
-    pollers.push({ run: items => pollMonitors($, items), initial: false })
+    pollers.push({ name: 'monitors', run: items => pollMonitors($, items), initial: false })
     return next(e)
   })
   on('tool.call', { tool: 'Monitor' }, async ($, e, next) => {

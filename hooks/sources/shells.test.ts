@@ -417,15 +417,24 @@ test('an unchanged output reads nothing and an append reads only the new bytes',
   await $.tool.call({ tool: 'Bash', command: 'bun run dev', run_in_background: true })
   await clock.advance(2000)
   expect(log).toEqual([`read ${path}`])
+  expect(state['rabe.diag']?.value).toMatchObject({
+    shells: { files: 1, bytes: 6, skipped: 0, errors: 0 },
+  })
   log.length = 0
   const first = state['rabe.lines']
   await clock.advance(2000)
   expect(log).toEqual([])
+  expect(state['rabe.diag']?.value).toMatchObject({
+    shells: { files: 0, bytes: 0, skipped: 1, errors: 0 },
+  })
   expect(spawns).toBe(1)
   expect(state['rabe.lines']).toBe(first)
   held[path] += 'more\n'
   await clock.advance(2000)
   expect(log).toEqual([`tail +7 ${path}`])
+  expect(state['rabe.diag']?.value).toMatchObject({
+    shells: { files: 1, bytes: 5, skipped: 0, errors: 0 },
+  })
   expect(state['rabe.lines']?.value).toMatchObject({
     'shell:b1': {
       seen: 2,

@@ -11,7 +11,7 @@ import type {
 
 import type { RabeCodexCall, RabeEdit, RabeToolUse, RabeTurn } from '../../types'
 import { companionCall, companionOutput } from '../forwarders'
-import type { Pollers } from '../loop'
+import { fault, type Pollers, skipped, tally } from '../loop'
 import {
   clip,
   type EndStatus,
@@ -493,12 +493,15 @@ async function readMeta(
   const item = asAgent(items, id)
   const path = item && metaPath(item, items)
   if (!path) return
-  const stat = await $.fs.stat(path).catch(() => undefined)
+  const stat = await $.fs.stat(path).catch(fault)
   if (stat?.kind !== 'file') return
   const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'agentFiles' })
   const held = value[id]
-  if (held?.path === path && unchanged(stat, held)) return
-  const text = await $.fs.read(path).catch(() => undefined)
+  if (held?.path === path && unchanged(stat, held)) {
+    skipped()
+    return
+  }
+  const text = await $.fs.read(path).then(tally, fault)
   const patch = typeof text === 'string' ? metaPatch(text) : undefined
   if (!patch) return
   await $.state.set(
@@ -552,11 +555,11 @@ async function pollAgents($: EngineInterface, items: RabeItem[]): Promise<Change
 // The built-in table, or with the user's file (`pricesFile`) its rows first. A
 // file that is set but cannot be read gives no prices: costs show n/a.
 async function prices($: EngineInterface, file: string): Promise<Prices> {
-  const read = (path: string) => $.fs.read(path).then(text => parsePrices(String(text)))
-  const built = await read(`${$.plugin.root}/data/prices.csv`).catch(() => [])
+  const read = (path: string) => $.fs.read(path).then(text => parsePrices(String(tally(text))))
+  const built = await read(`${$.plugin.root}/data/prices.csv`).catch(e => fault(e, []))
   if (!file) return built
   const home = file.startsWith('~/') && (await $.env.get('HOME').catch(() => undefined))
-  const own = await read(home ? `${home}${file.slice(1)}` : file).catch(() => undefined)
+  const own = await read(home ? `${home}${file.slice(1)}` : file).catch(fault)
 
   return own ? withOverride(built, own) : []
 }
@@ -586,7 +589,7 @@ async function recordStep(
 
 export function agents(on: On, file: string, pollers: Pollers): void {
   on('session.start', { cwd: /^/ }, async ($, e, next) => {
-    pollers.push({ run: items => pollAgents($, items), every: 3000 })
+    pollers.push({ name: 'agents', run: items => pollAgents($, items), every: 3000 })
     return next(e)
   })
 

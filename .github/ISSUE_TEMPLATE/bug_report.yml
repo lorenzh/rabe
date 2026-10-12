@@ -55,3 +55,9 @@ body:
       label: Error lines
       description: Error lines from the /rabe pane or from `claude --debug`, if any.
       render: text
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Output of `/rabe-diag` in the session, if you can run it.
+      render: text

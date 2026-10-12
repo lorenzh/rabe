@@ -1536,10 +1536,16 @@ for (const available of [true, false]) {
     expect(reads).toBe(1)
     expect(spawns).toBe(0)
     expect(state['rabe.agentFiles']).toBe(first)
+    expect(state['rabe.diag']?.value).toMatchObject({
+      agents: { files: 0, bytes: 0, skipped: 1, errors: 0 },
+    })
     text = '{"cwd":"/work/b"}'
     mtimeMs++
     await clock.advance(4000)
     expect(reads).toBe(2)
+    expect(state['rabe.diag']?.value).toMatchObject({
+      agents: { files: 1, bytes: text.length, skipped: 0, errors: 0 },
+    })
     expect(spawns).toBe(0)
     expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.detail).toMatchObject({
       cwd: '/work/b',
