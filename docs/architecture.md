@@ -19,7 +19,8 @@ hooks/
   sources/agents.ts   Claude subagent hooks and polling
   sources/agent-items.ts  pure agent metadata, transcripts, turns and item updates
   sources/workflows.ts  workflow runs: items, phases and their end
-  sources/codex.ts    Codex plugin jobs: items, steps and /rabe-stop
+  sources/codex.ts    Codex job polling and /rabe-stop
+  sources/codex-data.ts  pure Codex job and incremental rollout parsing
   sources/shells.ts   background shells: items, exit code, port
   sources/monitors.ts monitors: items and their output lines
   sources/crons.ts    cron jobs and /loop wakeups
@@ -73,7 +74,7 @@ These splits move pure helpers. Hooks and helpers that receive `$` stay in their
 Behaviour stays the same. Only legacy test imports keep re-exports at the old paths.
 Line counts include imports and re-exports after review.
 Review each split in a separate pull request for [#75](https://github.com/lorenzh/rabe/issues/75).
-None of the splits depends on another.
+The Codex split imports the shared edit limit from `agent-items.ts`.
 
 | Original module | Before | After | New module | Lines | Reason |
 |---|---:|---:|---|---:|---|
@@ -81,3 +82,4 @@ None of the splits depends on another.
 | `lists.ts` | 696 | 506 | [touched files](architecture/touched.md) | 196 | File edits, conflicts and worktree rows |
 | `writes.ts` | 660 | 401 | [shell-words](architecture/shell-words.md) | 261 | Shell words, quoting and here-doc bodies |
 | `agents.ts` | 731 | 491 | [agent-items](architecture/agent-items.md) | 264 | Agent metadata, transcripts, turns and item updates |
+| `codex.ts` | 812 | 504 | [codex-data](architecture/codex-data.md) | 324 | Codex job and incremental rollout parsing |

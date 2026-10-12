@@ -75,6 +75,8 @@ The run's agents come from `agents.ts`; they point to the run with `parentId` an
 
 ### Codex jobs: `hooks/sources/codex.ts`
 
+[`codex-data.ts`](codex-data.md) holds pure job and rollout parsing (`parseRollout`, `advanceRollout`) and item construction (`codexItem`). `codex.ts` keeps polling, file reads, stat confirmation and cancellation.
+
 Tracks the jobs that the Codex plugin (`codex@openai-codex`) starts for this session. Data sources and their limits are in [Codex job feasibility](../feasibility/background-work.md#codex-jobs).
 
 - **Poll.** `session.start` (interactive only) binds the Codex poll for the shared loop. The loop skips ticks while a pass runs. Each poll lists the plugin's state folders, skips each whose `state.json` was not changed since the session started (`$.session.usage().startedAt`), and reads the rest. It keeps the jobs whose `sessionId` is this session's (`$.session.id()`), and checks that again in the job file, because `state.json` can hold a bare status patch without it. An ended job is read again only while its cursor has a backlog. For a finished job Rabe holds no item for, the poll first asks `commit` whether the item would change the list; when the cap would drop it again (it ended before every ended item held, so the cap dropped it before), its session file is not read and nothing is written. The other polls add only work in flight (`background_tasks`, `session_crons`), which the cap never drops.

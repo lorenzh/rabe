@@ -26,6 +26,7 @@ Use this index to find the guide that matches your question.
 - [State and items](architecture/state.md): item model, idle teammates, registry, state writes, and turns.
 - [Diagnostics](architecture/diagnostics.md): per-source poll records in `rabe.diag`, incremental bytes and unchanged-file skips, `/rabe-diag` and its redaction.
 - [Sources](architecture/sources.md): poll callbacks that return changes, source modules, and source tests.
+- [Codex data](architecture/codex-data.md): Codex job and incremental rollout parsing, with hooks kept in the source.
 - [Agent items](architecture/agent-items.md): agent metadata, transcripts, turns, item updates and legacy test imports.
 - [Price estimate](architecture/prices.md): price lookup and cost estimates.
 - [UI rendering](architecture/ui.md): view contract, renderer, palette, cells, sizing, and band.

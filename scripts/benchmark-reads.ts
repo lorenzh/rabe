@@ -3,7 +3,7 @@ import { appendFileSync, mkdtempSync, rmSync, statSync, truncateSync, writeFileS
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { byteLength, inodeOf, readChunk, readPlan, unchanged } from '../hooks/reading'
-import { advanceRollout, type RolloutCursor } from '../hooks/sources/codex'
+import { advanceRollout, type RolloutCursor } from '../hooks/sources/codex-data'
 import type { RabeFileCursor } from '../types'
 
 // Sparse history isolates warm reads without writing 10 GiB of old records.

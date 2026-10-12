@@ -16,6 +16,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Changed
 
+- Separate Codex parsing from polling and cancellation, with no behaviour change (refs [#75](https://github.com/lorenzh/rabe/issues/75))
 - Separate pure agent updates from hooks and polling, with no behaviour change ([#137](https://github.com/lorenzh/rabe/pull/137), refs [#75](https://github.com/lorenzh/rabe/issues/75))
 - Separate shell tokenization from write candidate detection, with no behaviour change ([#136](https://github.com/lorenzh/rabe/pull/136), refs [#75](https://github.com/lorenzh/rabe/issues/75))
 - Separate touched-file data from item list ordering, with no behaviour change ([#135](https://github.com/lorenzh/rabe/pull/135), refs [#75](https://github.com/lorenzh/rabe/issues/75))
