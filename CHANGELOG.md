@@ -6,7 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Added
 
-- `/rabe-diag` shows what each source read in its last poll, with versions and options and without private data; `/rabe:report-bug` asks for it ([#129](https://github.com/lorenzh/rabe/pull/129), fixes [#73](https://github.com/lorenzh/rabe/issues/73))
+- `/rabe-diag` shows what each source read in its last poll, with versions and options and without private data; `/rabe:report-bug` asks for it ([#131](https://github.com/lorenzh/rabe/pull/131), fixes [#73](https://github.com/lorenzh/rabe/issues/73))
 
 ### Fixed
 
