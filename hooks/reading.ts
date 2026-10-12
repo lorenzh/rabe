@@ -1,7 +1,36 @@
 import type { RabeFileCursor, RabeLines } from '../types'
-import { MAX_LINES } from './tasks'
+import { appendLines, MAX_LINES } from './tasks'
 
 export type FileStamp = { size: number; mtimeMs: number; identity?: string }
+
+export function inodeOf(stdout: string): string | undefined {
+  return /^\s*(\d+)/.exec(stdout)?.[1]
+}
+
+export function unchanged(stat: FileStamp, held?: Pick<FileStamp, 'size' | 'mtimeMs'>): boolean {
+  return held !== undefined && stat.size === held.size && stat.mtimeMs === held.mtimeMs
+}
+
+export function readPlan(stat: FileStamp, held: RabeFileCursor | undefined, max: number) {
+  const offset = fileOffset(stat, held)
+  if (offset === undefined) return
+  return { offset, reset: fileReset(stat, held), whole: offset === 0 && stat.size <= max }
+}
+
+export function outputUpdate(
+  held: RabeLines | undefined,
+  lines: string[],
+  now: number,
+  reset: boolean,
+  partial: boolean,
+  ended: boolean,
+  cursor?: RabeFileCursor,
+): RabeLines | undefined {
+  const next = cursor
+    ? { ...outputLines(held, lines, now, reset, partial, ended), cursor }
+    : appendLines(held, lines, now)
+  return JSON.stringify(next) === JSON.stringify(held) ? undefined : next
+}
 
 export function fileOffset(stat: FileStamp, held?: RabeFileCursor): number | undefined {
   if (fileReset(stat, held)) return 0

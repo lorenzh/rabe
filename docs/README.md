@@ -21,7 +21,7 @@ Use this index to find the guide that matches your question.
 ## Architecture
 
 - [Architecture overview](architecture.md): module map, the shared poll loop, pure scheduling rules, repeated starts, idle backoff, and links to detailed behavior.
-- [Incremental file reads](architecture/reading.md): session cursors, UTF-8 offsets, replacement checks, bounded parsing, and metadata caches.
+- [Incremental file reads](architecture/reading.md): atomic output cursors, UTF-8 limits, stat-only idle polls, bounded parsing, and pruned metadata caches.
 - [Shared poll loop](architecture/loop.md): scheduling rules, source changes, repeated starts, and one completed write.
 - [State and items](architecture/state.md): item model, idle teammates, registry, state writes, and turns.
 - [Sources](architecture/sources.md): poll callbacks that return changes, source modules, and source tests.
@@ -36,7 +36,7 @@ Use this index to find the guide that matches your question.
 
 ## Feasibility
 
-- [Feasibility overview](feasibility.md): overview, incremental reader benchmark, and links to the source limits.
+- [Feasibility overview](feasibility.md): overview, stat-only idle reader benchmark, and links to the source limits.
 - [Claude agents and workflows](feasibility/agents.md): agent and teammate identity, worktree, and workflow data with script path limits.
 - [Codex and background work](feasibility/background-work.md): Codex jobs, shells, monitors, cron jobs, polling intervals, and task output path limits.
 - [User interface limits](feasibility/ui.md): API limits for rendering and input.

@@ -40,9 +40,9 @@ Measured on Linux with Bun 1.4.0 on 2026-10-12. These are medians of three passe
 
 | History per file | Unchanged poll | Append poll | Unchanged bytes read | Append bytes read |
 |---|---:|---:|---:|---:|
-| 1 MiB | 594.2 ms | 1272.9 ms | 0 | 74,800 |
-| 50 MiB | 604.2 ms | 1123.7 ms | 0 | 74,800 |
+| 1 MiB | 1.0 ms | 2835.1 ms | 0 | 74,800 |
+| 50 MiB | 0.6 ms | 3572.9 ms | 0 | 74,800 |
 
-Read volume depends on appended data rather than consumed history. Timing shows no growth with history size. VM load and subprocess startup affect these numbers. The benchmark includes file stats and the same inode and tail commands as the readers. It excludes engine state calls and the other poll sources. Sparse history avoids writing 10 GiB of old records. It does not measure the first read or large backlogs.
+Read volume depends on appended data rather than consumed history. VM load and subprocess startup affect these numbers. Unchanged polls use file stats only. Changed files use the same inode and tail commands as the readers. It excludes engine state calls and the other poll sources. Sparse history avoids writing 10 GiB of old records. It does not measure the first read or large backlogs.
 
-The hook tests also check unchanged polls without content reads or state writes. They check appended output and rollout bytes through the shared timer. See [incremental file reads](architecture/reading.md) for cursor rules and limits.
+The hook tests also check unchanged polls without process spawns, content reads or state writes. They check appended output and rollout bytes through the shared timer. See [incremental file reads](architecture/reading.md) for cursor rules and limits.

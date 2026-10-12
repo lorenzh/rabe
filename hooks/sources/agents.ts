@@ -24,6 +24,7 @@ import {
   type RabeTokens,
 } from '../model'
 import { claudeUsd, type Prices, parsePrices, withOverride } from '../prices'
+import { inodeOf, unchanged } from '../reading'
 import {
   addItem,
   type Change,
@@ -496,18 +497,11 @@ async function readMeta(
   if (stat?.kind !== 'file') return
   const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'agentFiles' })
   const held = value[id]
+  if (held?.path === path && unchanged(stat, held)) return
   const identity = await $.process
     .run(['ls', '-diL', '--', path], { timeoutMs: 5000 })
-    .then(result => (result.exitCode === 0 ? /^\s*(\d+)/.exec(result.stdout)?.[1] : undefined))
+    .then(result => (result.exitCode === 0 ? inodeOf(result.stdout) : undefined))
     .catch(() => undefined)
-  if (
-    identity &&
-    held?.identity === identity &&
-    held.path === path &&
-    held.size === stat.size &&
-    held.mtimeMs === stat.mtimeMs
-  )
-    return
   const text = await $.fs.read(path).catch(() => undefined)
   const patch = typeof text === 'string' ? metaPatch(text) : undefined
   if (!patch) return

@@ -78,7 +78,7 @@ test('the poll records new lines with the time received and ends on the exit lin
   await clock.advance(2000)
   held[OUT] += 'build success\n'
   await clock.advance(2000)
-  expect(state['rabe.lines']?.value).toEqual({
+  expect(state['rabe.lines']?.value).toMatchObject({
     'monitor:m1': {
       seen: 2,
       lines: [
@@ -120,7 +120,7 @@ test('a task notification ends the monitor and reads its last lines', async ($, 
       detail: { ...watching.detail, outputPath: OUT },
     },
   ])
-  expect(state['rabe.lines']?.value).toEqual({
+  expect(state['rabe.lines']?.value).toMatchObject({
     'monitor:m1': {
       seen: 2,
       lines: [
@@ -289,11 +289,86 @@ test('monitor cursors skip idle output, repair UTF-8 partial lines and detect re
       ],
     },
   })
-  // Same size and mtime as the file the cursor just consumed.
-  held[OUT] = 'new file line\n'
+  // A changed stat triggers the inode check before reading the replacement.
+  held[OUT] = 'new file lines\n'
   inode++
   await clock.advance(2000)
   expect(state['rabe.lines']?.value).toMatchObject({
-    'monitor:m1': { seen: 1, lines: [{ at: 9000, text: 'new file line' }] },
+    'monitor:m1': { seen: 1, lines: [{ at: 9000, text: 'new file lines' }] },
+  })
+})
+
+test('a shrinking output resets its lines and byte cursor', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const path = OUT
+  const held = { [path]: 'old history\n' }
+  const log: string[] = []
+  files(on, held, log)
+  tools(on)
+  core(on)
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'build', run_in_background: true })
+  await arm($)
+  await clock.advance(2000)
+  log.length = 0
+  held[path] = 'new\n'
+  await clock.advance(2000)
+  expect(log).toEqual([`read ${path}`])
+  expect(state['rabe.lines']?.value).toMatchObject({
+    'monitor:m1': { seen: 1, lines: [{ at: 5000, text: 'new' }], cursor: { offset: 4 } },
+  })
+})
+
+test('output and cursor commit together after a competing state write', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  let reject = false
+  let retries = 0
+  on('state.set', { plugin: 'rabe' }, async (_$, e, next) => {
+    if (
+      reject &&
+      e.key === 'lines' &&
+      (e.value as Record<string, { cursor?: unknown }>)['monitor:m1']?.cursor
+    ) {
+      reject = false
+      retries++
+      const entry = state['rabe.lines']
+      if (entry)
+        state['rabe.lines'] = {
+          value: { ...(entry.value as object), other: { seen: 0, lines: [] } },
+          version: entry.version + 1,
+        }
+      return { value: { isSet: false, version: (e.ifVersion ?? 0) + 1 } } as never
+    }
+    return next(e)
+  })
+  const state = memoryState(on)
+  const path = OUT
+  const held = { [path]: 'one\n' }
+  const log: string[] = []
+  files(on, held, log)
+  tools(on)
+  core(on)
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'build', run_in_background: true })
+  await arm($)
+  await clock.advance(2000)
+  held[path] += 'two\n'
+  reject = true
+  await clock.advance(2000)
+  log.length = 0
+  await clock.advance(2000)
+  expect(retries).toBe(1)
+  expect(log).toEqual([])
+  expect(state['rabe.lines']?.value).toMatchObject({
+    other: { seen: 0, lines: [] },
+    'monitor:m1': {
+      seen: 2,
+      lines: [
+        { at: 3000, text: 'one' },
+        { at: 5000, text: 'two' },
+      ],
+      cursor: { offset: 8 },
+    },
   })
 })

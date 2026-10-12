@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { appendFileSync, mkdtempSync, rmSync, statSync, truncateSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { byteLength, fileOffset, readChunk } from '../hooks/reading'
+import { byteLength, inodeOf, readChunk, readPlan, unchanged } from '../hooks/reading'
 import { advanceRollout, type RolloutCursor } from '../hooks/sources/codex'
 import type { RabeFileCursor } from '../types'
 
@@ -40,7 +40,7 @@ try {
       writeFileSync(path, '')
       truncateSync(path, mib * 1024 * 1024)
       const stat = statSync(path)
-      const identity = /^\s*(\d+)/.exec(await run(['ls', '-diL', '--', path]))?.[1]
+      const identity = inodeOf(await run(['ls', '-diL', '--', path]))
       cursors.set(path, {
         size: stat.size,
         mtimeMs: stat.mtimeMs,
@@ -59,10 +59,13 @@ try {
         const start = performance.now()
         for (const path of paths) {
           const stat = statSync(path)
-          const identity = /^\s*(\d+)/.exec(await run(['ls', '-diL', '--', path]))?.[1]
+          const held = cursors.get(path)
+          if (unchanged(stat, held) && held && (held.offset >= held.size || held.partial)) continue
+          const identity = inodeOf(await run(['ls', '-diL', '--', path]))
           const stamp = { size: stat.size, mtimeMs: stat.mtimeMs, identity }
-          const offset = fileOffset(stamp, cursors.get(path))
-          if (offset === undefined) continue
+          const plan = readPlan(stamp, held, 4 * 1024 * 1024)
+          if (!plan) continue
+          const { offset } = plan
           const text = await run(['tail', '-c', `+${offset + 1}`, '--', path])
           bytes += byteLength(text)
           const chunk = readChunk(text, false, true)

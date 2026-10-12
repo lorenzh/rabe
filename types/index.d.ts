@@ -145,7 +145,7 @@ export type RabeTab = 'items' | 'cost' | 'effects' | 'timeline'
 
 export type RabeLine = { at: number; text: string }
 
-export type RabeLines = { seen: number; lines: RabeLine[] }
+export type RabeLines = { seen: number; lines: RabeLine[]; cursor?: RabeFileCursor }
 
 // Item ids per list (a group of the Items tab, `cost`, `timeline`) in the
 // order the pane showed them when it opened.
@@ -212,8 +212,6 @@ declare module 'claude-code' {
   interface PluginState {
     rabe: {
       items: RabeItem[]
-      shellFiles: Record<string, RabeFileCursor>
-      monitorFiles: Record<string, RabeFileCursor>
       agentFiles: Record<string, { path: string; size: number; mtimeMs: number; identity?: string }>
       codexFiles: Record<
         string,

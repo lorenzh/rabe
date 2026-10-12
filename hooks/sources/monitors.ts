@@ -1,7 +1,8 @@
 import type { EngineInterface, On } from 'claude-code'
+import type { RabeFileCursor } from '../../types'
 import type { Pollers } from '../loop'
 import { itemId, type RabeItem } from '../model'
-import { fileOffset, fileReset, outputLines, readChunk } from '../reading'
+import { inodeOf, outputUpdate, readChunk, readPlan, unchanged } from '../reading'
 import {
   addItem,
   type Change,
@@ -13,14 +14,7 @@ import {
   stage,
   updateItem,
 } from '../registry'
-import {
-  appendLines,
-  endStatus,
-  parseNotifications,
-  parseOutput,
-  taskFolder,
-  taskOutput,
-} from '../tasks'
+import { endStatus, parseNotifications, parseOutput, taskFolder, taskOutput } from '../tasks'
 
 const MAX_READ = 4 * 1024 * 1024
 
@@ -86,25 +80,30 @@ async function readFile($: EngineInterface, path: string, id: string): Promise<{
     )
       return {}
     path = stat.realPath
-    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'monitorFiles' })
-    const held = value[id]
-    const identity = await $.process
-      .run(['ls', '-diL', '--', path], { timeoutMs: 5000 })
-      .then(result => (result.exitCode === 0 ? /^\s*(\d+)/.exec(result.stdout)?.[1] : undefined))
-      .catch(() => undefined)
+    const { value = {} } = await $.state.get({ plugin: 'rabe', key: 'lines' })
+    const held = value[id]?.cursor
+    const same = held?.identity?.startsWith(`${path}:`) && unchanged(stat, held)
+    if (same && held && (held.offset >= held.size || held.partial)) return {}
+    const identity = same
+      ? held?.identity?.slice(path.length + 1)
+      : await $.process
+          .run(['ls', '-diL', '--', path], { timeoutMs: 5000 })
+          .then(result => (result.exitCode === 0 ? inodeOf(result.stdout) : undefined))
+          .catch(() => undefined)
     if (!identity) {
       if (stat.size > MAX_READ) return {}
       const text = String(await $.fs.read(path))
       const parsed = parseOutput(text)
-      await keepLines($, id, parsed.lines, false, false, parsed.ended !== undefined, true)
+      await keepLines($, id, parsed.lines, false, false, parsed.ended !== undefined)
       return { text }
     }
     const stamp = { size: stat.size, mtimeMs: stat.mtimeMs, identity: `${path}:${identity}` }
-    const offset = fileOffset(stamp, held)
-    if (offset === undefined) return {}
+    const plan = readPlan(stamp, held, MAX_READ)
+    if (!plan) return {}
+    const { offset, reset, whole } = plan
     let text: string
     let truncated = false
-    if (offset === 0 && stat.size <= MAX_READ) text = String(await $.fs.read(path))
+    if (whole) text = String(await $.fs.read(path))
     else {
       const result = await $.process.run(['tail', '-c', `+${offset + 1}`, '--', path], {
         timeoutMs: 5000,
@@ -120,22 +119,15 @@ async function readFile($: EngineInterface, path: string, id: string): Promise<{
       $,
       id,
       parsed.lines,
-      fileReset(stamp, held),
-      !fileReset(stamp, held) && held?.partial === true,
+      reset,
+      !reset && held?.partial === true,
       parsed.ended !== undefined,
-    )
-    await $.state.set(
-      { plugin: 'rabe', key: 'monitorFiles' },
       {
-        ...value,
-        [id]: {
-          ...stamp,
-          offset: offset + chunk.bytes,
-          partial: chunk.partial,
-          isDiscarding: chunk.isDiscarding,
-        },
+        ...stamp,
+        offset: offset + chunk.bytes,
+        partial: chunk.partial,
+        isDiscarding: chunk.isDiscarding,
       },
-      { ifVersion: version },
     )
     return { text: chunk.text }
   } catch {
@@ -150,16 +142,13 @@ async function keepLines(
   reset: boolean,
   partial: boolean,
   ended: boolean,
-  whole = false,
+  cursor?: RabeFileCursor,
 ): Promise<void> {
   const now = await $.clock.now()
   for (;;) {
     const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
-    const next = whole
-      ? appendLines(value[id], lines, now)
-      : outputLines(value[id], lines, now, reset, partial, ended)
+    const next = outputUpdate(value[id], lines, now, reset, partial, ended, cursor)
     if (!next) return
-    if (JSON.stringify(next) === JSON.stringify(value[id])) return
     const { isSet } = await $.state.set(
       { plugin: 'rabe', key: 'lines' },
       { ...value, [id]: next },
@@ -173,20 +162,12 @@ function runningMonitors(items: RabeItem[]) {
   return items.flatMap(item => (item.kind === 'monitor' && item.status === 'running' ? [item] : []))
 }
 
-async function cleanFiles($: EngineInterface, items: RabeItem[]): Promise<void> {
-  const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'monitorFiles' })
-  const { value: current = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
-  const next = prune(value, Object.keys(value), [...items, ...current])
-  if (next !== value)
-    await $.state.set({ plugin: 'rabe', key: 'monitorFiles' }, next, { ifVersion: version })
-}
-
 async function pollMonitors($: EngineInterface, items: RabeItem[]): Promise<Change> {
   const poll: Poll = { items, changes: [] }
-  const { value: cursors = {} } = await $.state.get({ plugin: 'rabe', key: 'monitorFiles' })
+  const { value: cursors = {} } = await $.state.get({ plugin: 'rabe', key: 'lines' })
   try {
     for (const item of items.filter((item): item is RabeItem & { kind: 'monitor' } => {
-      const cursor = cursors[item.id]
+      const cursor = cursors[item.id]?.cursor
       return (
         item.kind === 'monitor' &&
         (item.status === 'running' ||
@@ -205,7 +186,6 @@ async function pollMonitors($: EngineInterface, items: RabeItem[]): Promise<Chan
       })
     }
   } catch {}
-  await cleanFiles($, poll.items)
   return changeOf(poll, items)
 }
 

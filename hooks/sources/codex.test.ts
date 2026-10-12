@@ -429,8 +429,10 @@ function world(on: On, files: Record<string, string | object>, mtimeMs = 5000): 
     const path = e.argv.at(-1) ?? ''
     const file = held.files.get(path)
     if (!file) return next(e)
-    if (e.argv[0] === 'ls')
+    if (e.argv[0] === 'ls') {
+      held.calls.push(`ls ${path}`)
       return { value: { exitCode: 0, stdout: '1 file\n', stderr: '' } } as never
+    }
     if (e.argv[0] !== 'tail' || file.size !== undefined) return next(e)
     held.calls.push(`tail ${e.argv[2]} ${path}`)
     const start = Number(String(e.argv[2]).slice(1)) - 1
@@ -896,7 +898,7 @@ test('unchanged job and state files are cached while only appended rollout bytes
   w.calls.length = 0
   const written = writes.length
   await w.clock.advance(2000)
-  expect(w.calls.filter(call => call.startsWith('read ') || call.startsWith('tail '))).toEqual([])
+  expect(w.calls.filter(call => /^(read|tail|ls) /.test(call))).toEqual([])
   expect(writes).toHaveLength(written)
   const fresh = `${[
     line('response_item', { type: 'custom_tool_call_output', call_id: 'c2' }),
@@ -979,4 +981,35 @@ test('a normal completion keeps the consumed rollout without rereading its histo
     [],
   )
   expect(writes.at(-1)?.[0]?.status).toBe('done')
+})
+
+test('the JSON cache drops job files for removed items and vanished workspaces', async ($, on) => {
+  const state = memoryState(on)
+  const second = job({ id: 'task-2' })
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job(), second] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [`${WS}/jobs/task-2.json`]: second,
+    [ROLLOUT_PATH]: ROLLOUT,
+  })
+  await startAndTick($, w)
+  expect(Object.keys(state['rabe.codexFiles']?.value as object).sort()).toEqual([
+    `${WS}/jobs/task-1.json`,
+    `${WS}/jobs/task-2.json`,
+    `${WS}/state.json`,
+  ])
+  const items = state['rabe.items']
+  state['rabe.items'] = {
+    value: ((items?.value ?? []) as RabeItem[]).filter(item => item.id !== 'codex:task-1'),
+    version: (items?.version ?? 0) + 1,
+  }
+  w.files.set(`${WS}/state.json`, { text: JSON.stringify({ jobs: [second] }), mtimeMs: 6000 })
+  await w.clock.advance(2000)
+  expect(Object.keys(state['rabe.codexFiles']?.value as object).sort()).toEqual([
+    `${WS}/jobs/task-2.json`,
+    `${WS}/state.json`,
+  ])
+  w.files.delete(`${WS}/state.json`)
+  await w.clock.advance(2000)
+  expect(state['rabe.codexFiles']?.value).toEqual({})
 })

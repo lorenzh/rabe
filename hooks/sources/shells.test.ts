@@ -287,7 +287,8 @@ test('the poll keeps the output lines in rabe.lines; an end that pushes a shell 
   held[`${DIR}/b1.output`] += 'boom\n\n[exited with code 1]\n'
   // The poll's timer ends b1, so the cap pushes out the oldest ended shell.
   await clock.advance(2000)
-  expect(state['rabe.lines']?.value).toEqual({
+  expect(Object.keys(state['rabe.lines']?.value as object)).toEqual(['shell:old1', 'shell:b1'])
+  expect(state['rabe.lines']?.value).toMatchObject({
     'shell:old1': gone,
     'shell:b1': {
       seen: 2,
@@ -311,7 +312,7 @@ test('a task notification keeps the last lines of a shell the poll did not read'
     origin: { kind: 'task-notification' },
     wait: false,
   })
-  expect(state['rabe.lines']?.value).toEqual({
+  expect(state['rabe.lines']?.value).toMatchObject({
     'shell:b1': { seen: 1, lines: [{ at: 1000, text: 'done fast' }] },
   })
 })
@@ -403,38 +404,29 @@ test('an unchanged output reads nothing and an append reads only the new bytes',
   const state = memoryState(on)
   const path = `${DIR}/b1.output`
   const held = { [path]: 'ready\n' }
-  const reads: string[] = []
-  const tails: string[][] = []
-  on('fs.read', async (_$, e, next) => {
-    reads.push(e.path)
+  const log: string[] = []
+  let spawns = 0
+  on('process.run', { argv: 'ls' }, async (_$, e, next) => {
+    spawns++
     return next(e)
   })
-  on('process.run', async (_$, e, next) => {
-    if (e.argv[0] !== 'tail') return next(e)
-    tails.push([...e.argv])
-    const start = Number(String(e.argv[2]).slice(1)) - 1
-    return { value: { exitCode: 0, stdout: held[path].slice(start), stderr: '' } } as never
-  })
-  files(on, held)
+  files(on, held, log)
   bash(on)
   core(on)
   await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
   await $.tool.call({ tool: 'Bash', command: 'bun run dev', run_in_background: true })
   await clock.advance(2000)
-  const versions = Object.fromEntries(
-    Object.entries(state).map(([key, value]) => [key, value.version]),
-  )
-  reads.length = 0
+  expect(log).toEqual([`read ${path}`])
+  log.length = 0
+  const first = state['rabe.lines']
   await clock.advance(2000)
-  expect(reads).toEqual([])
-  expect(tails).toEqual([])
-  expect(
-    Object.fromEntries(Object.entries(state).map(([key, value]) => [key, value.version])),
-  ).toEqual(versions)
+  expect(log).toEqual([])
+  expect(spawns).toBe(1)
+  expect(state['rabe.lines']).toBe(first)
   held[path] += 'more\n'
   await clock.advance(2000)
-  expect(tails).toEqual([['tail', '-c', '+7', '--', path]])
-  expect(state['rabe.lines']?.value).toEqual({
+  expect(log).toEqual([`tail +7 ${path}`])
+  expect(state['rabe.lines']?.value).toMatchObject({
     'shell:b1': {
       seen: 2,
       lines: [
@@ -459,22 +451,26 @@ test('an ended shell finishes reading its backlog without changing its end time'
       isLink: false,
     },
   }))
-  on(
-    'process.run',
-    async (_$, e) =>
-      ({
-        value: {
-          exitCode: 0,
-          stdout: e.argv[0] === 'ls' ? '1 file\n' : '[killed]\n',
-          stderr: '',
-          isStdoutTruncated: false,
-        },
-      }) as never,
-  )
+  let spawns = 0
+  on('process.run', async (_$, e) => {
+    if (e.argv[0] === 'ls') spawns++
+    return {
+      value: {
+        exitCode: 0,
+        stdout: e.argv[0] === 'ls' ? '1 file\n' : '[killed]\n',
+        stderr: '',
+        isStdoutTruncated: false,
+      },
+    } as never
+  })
   state['rabe.items'] = { value: [{ ...running, status: 'stopped', endedAt: 500 }], version: 1 }
-  state['rabe.shellFiles'] = {
+  state['rabe.lines'] = {
     value: {
-      'shell:b1': { size: offset + 9, mtimeMs: 1, identity: `${path}:1`, offset, partial: false },
+      'shell:b1': {
+        seen: 0,
+        lines: [],
+        cursor: { size: offset + 9, mtimeMs: 1, identity: `${path}:1`, offset, partial: false },
+      },
     },
     version: 1,
   }
@@ -483,9 +479,11 @@ test('an ended shell finishes reading its backlog without changing its end time'
   await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
   await clock.advance(2000)
   expect(
-    ((state['rabe.shellFiles']?.value ?? {}) as Record<string, { offset: number }>)['shell:b1']
-      ?.offset,
+    ((state['rabe.lines']?.value ?? {}) as Record<string, { cursor: { offset: number } }>)[
+      'shell:b1'
+    ]?.cursor.offset,
   ).toBe(offset + 9)
+  expect(spawns).toBe(0)
   expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.endedAt).toBe(500)
 })
 
@@ -506,13 +504,86 @@ test('small output still follows when inode lookup is unavailable', async ($, on
   expect(state['rabe.lines']).toBe(first)
   held[path] += 'done\n\n[exited with code 0]\n'
   await clock.advance(2000)
-  expect(state['rabe.lines']?.value).toEqual({
+  expect(state['rabe.lines']?.value).toMatchObject({
     'shell:b1': {
       seen: 2,
       lines: [
         { at: 3000, text: 'ready' },
         { at: 7000, text: 'done' },
       ],
+    },
+  })
+})
+
+test('a shrinking output resets its lines and byte cursor', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const path = `${DIR}/b1.output`
+  const held = { [path]: 'old history\n' }
+  const log: string[] = []
+  files(on, held, log)
+  bash(on)
+  core(on)
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'build', run_in_background: true })
+  await clock.advance(2000)
+  log.length = 0
+  held[path] = 'new\n'
+  await clock.advance(2000)
+  expect(log).toEqual([`read ${path}`])
+  expect(state['rabe.lines']?.value).toMatchObject({
+    'shell:b1': { seen: 1, lines: [{ at: 5000, text: 'new' }], cursor: { offset: 4 } },
+  })
+})
+
+test('output and cursor commit together after a competing state write', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  let reject = false
+  let retries = 0
+  on('state.set', { plugin: 'rabe' }, async (_$, e, next) => {
+    if (
+      reject &&
+      e.key === 'lines' &&
+      (e.value as Record<string, { cursor?: unknown }>)['shell:b1']?.cursor
+    ) {
+      reject = false
+      retries++
+      const entry = state['rabe.lines']
+      if (entry)
+        state['rabe.lines'] = {
+          value: { ...(entry.value as object), other: { seen: 0, lines: [] } },
+          version: entry.version + 1,
+        }
+      return { value: { isSet: false, version: (e.ifVersion ?? 0) + 1 } } as never
+    }
+    return next(e)
+  })
+  const state = memoryState(on)
+  const path = `${DIR}/b1.output`
+  const held = { [path]: 'one\n' }
+  const log: string[] = []
+  files(on, held, log)
+  bash(on)
+  core(on)
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'build', run_in_background: true })
+  await clock.advance(2000)
+  held[path] += 'two\n'
+  reject = true
+  await clock.advance(2000)
+  log.length = 0
+  await clock.advance(2000)
+  expect(retries).toBe(1)
+  expect(log).toEqual([])
+  expect(state['rabe.lines']?.value).toMatchObject({
+    other: { seen: 0, lines: [] },
+    'shell:b1': {
+      seen: 2,
+      lines: [
+        { at: 3000, text: 'one' },
+        { at: 5000, text: 'two' },
+      ],
+      cursor: { offset: 8 },
     },
   })
 })

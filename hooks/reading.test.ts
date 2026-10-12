@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { byteLength, fileOffset, outputLines, readChunk } from './reading'
+import { byteLength, fileOffset, inodeOf, outputLines, readChunk, readPlan } from './reading'
 
 const stat = { size: 6, mtimeMs: 1, identity: '1' }
 const held = { ...stat, offset: 6, partial: false }
@@ -68,4 +68,17 @@ test('an exit chunk removes the separator left by the preceding output chunk', (
     seen: 1,
     lines: [{ at: 1, text: 'ready' }],
   })
+})
+
+test('read plans use whole small files and byte tails for appends or large resets', () => {
+  expect(inodeOf('  123 file\n')).toBe('123')
+  expect(inodeOf('unavailable')).toBeUndefined()
+  expect(readPlan(stat, undefined, 8)).toEqual({ offset: 0, reset: true, whole: true })
+  expect(readPlan({ ...stat, size: 9 }, held, 8)).toEqual({ offset: 6, reset: false, whole: false })
+  expect(readPlan({ ...stat, size: 9 }, undefined, 8)).toEqual({
+    offset: 0,
+    reset: true,
+    whole: false,
+  })
+  expect(readPlan(stat, held, 8)).toBeUndefined()
 })

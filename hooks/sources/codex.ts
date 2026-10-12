@@ -12,7 +12,7 @@ import {
   type RabeItemOf,
 } from '../model'
 import { type CodexRequest, codexUsd, type Prices, parsePrices, withOverride } from '../prices'
-import { byteLength, fileOffset, fileReset, readChunk } from '../reading'
+import { byteLength, inodeOf, readChunk, readPlan, unchanged } from '../reading'
 import {
   addItem,
   type Change,
@@ -498,10 +498,15 @@ async function readSession(
     (saved.until === until || (until !== undefined && (saved.parser.at ?? 0) <= until))
       ? saved
       : undefined
-  const identity = await $.process
-    .run(['ls', '-diL', '--', path], { timeoutMs: RUN_MS })
-    .then(result => (result.exitCode === 0 ? /^\s*(\d+)/.exec(result.stdout)?.[1] : undefined))
-    .catch(() => undefined)
+  const same = previous && unchanged(stat, previous.cursor)
+  if (same && (previous.cursor.offset >= previous.cursor.size || previous.cursor.partial))
+    return { path, updatedAt }
+  const identity = same
+    ? previous.cursor.identity
+    : await $.process
+        .run(['ls', '-diL', '--', path], { timeoutMs: RUN_MS })
+        .then(result => (result.exitCode === 0 ? inodeOf(result.stdout) : undefined))
+        .catch(() => undefined)
   if (!identity) {
     if (stat.size > MAX_READ) return { path }
     const text = await $.fs.read(path).catch(() => undefined)
@@ -514,12 +519,13 @@ async function readSession(
     return { path, updatedAt, rollout, usd: codexUsd(await prices($, file), rollout.requests) }
   }
   const stamp = { size: stat.size, mtimeMs: stat.mtimeMs, identity }
-  const offset = fileOffset(stamp, previous?.cursor)
-  if (offset === undefined) return { path, updatedAt }
+  const plan = readPlan(stamp, previous?.cursor, MAX_READ)
+  if (!plan) return { path, updatedAt }
+  const { offset, reset, whole } = plan
   const home = await $.env.get('HOME')
   let text: string
   let truncated = false
-  if (offset === 0 && stat.size <= MAX_READ) {
+  if (whole) {
     const read = await $.fs.read(path).catch(() => undefined)
     if (read === undefined) return { path }
     text = String(read)
@@ -535,14 +541,13 @@ async function readSession(
   if (truncated && chunk.bytes === 0) return { path }
   const parser = advanceRollout(
     chunk.text,
-    fileReset(stamp, previous?.cursor) ? undefined : previous?.parser,
+    reset ? undefined : previous?.parser,
     home,
     jobStart(job),
     until,
   )
   const rollout = await confirmed($, parser.out, looks)
   parser.out = { ...rollout, requests: [] }
-  const reset = fileReset(stamp, previous?.cursor)
   const cost = rollout.requests.length ? codexUsd(await prices($, file), rollout.requests) : 0
   const isUnpriced = (!reset && previous?.isUnpriced === true) || cost === undefined
   const hasRequests = (!reset && previous?.hasRequests === true) || rollout.requests.length > 0
@@ -572,35 +577,29 @@ async function readSession(
   }
 }
 
-async function readJson($: EngineInterface, path: string): Promise<Rec | undefined> {
-  const stat = await $.fs.stat(path).catch(() => undefined)
+async function readJson(
+  $: EngineInterface,
+  path: string,
+  known?: FsStat,
+): Promise<Rec | undefined> {
+  const stat = known ?? (await $.fs.stat(path).catch(() => undefined))
   if (stat?.kind !== 'file') return undefined
   const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'codexFiles' })
   const held = value[path]
+  if (unchanged(stat, held)) return held?.data
   const identity = await $.process
     .run(['ls', '-diL', '--', path], { timeoutMs: RUN_MS })
-    .then(result => (result.exitCode === 0 ? /^\s*(\d+)/.exec(result.stdout)?.[1] : undefined))
+    .then(result => (result.exitCode === 0 ? inodeOf(result.stdout) : undefined))
     .catch(() => undefined)
-  if (
-    identity &&
-    held?.identity === identity &&
-    held.size === stat.size &&
-    held.mtimeMs === stat.mtimeMs
-  )
-    return held.data
   const read = await $.fs.read(path).catch(() => undefined)
   const text = typeof read === 'string' ? read : ''
   const parsed = parseJson(text)
   if (!parsed) return undefined
   if (!identity) return parsed
-  // shortcut: retain 512 small JSON files, raise this if sessions span more workspaces.
-  const entries = Object.entries(value)
-    .filter(([key]) => key !== path)
-    .slice(-511)
   await $.state.set(
     { plugin: 'rabe', key: 'codexFiles' },
     {
-      ...Object.fromEntries(entries),
+      ...value,
       [path]: { size: stat.size, mtimeMs: stat.mtimeMs, data: parsed, identity },
     },
     { ifVersion: version },
@@ -623,7 +622,11 @@ async function refresh(
   const job: CodexJob = { ...entry, ...saved, id: entry.id }
   if (job.sessionId !== sessionId) return
   const held = items.find((one): one is RabeItemOf<'codex'> => one.id === itemId('codex', job.id))
-  const end = jobEnd(job.status) ?? (held?.status !== 'running' ? held?.status : undefined)
+  const end =
+    jobEnd(job.status) ??
+    (held?.status === 'done' || held?.status === 'failed' || held?.status === 'stopped'
+      ? held.status
+      : undefined)
   const now = await $.clock.now()
   const endedAt = Date.parse(str(job.completedAt) ?? '') || held?.endedAt || now
   const change = (item: NewItem) => (list: RabeItem[]) => {
@@ -637,18 +640,50 @@ async function refresh(
   stage(poll, change(codexItem(job, session)))
 }
 
-async function cleanFiles($: EngineInterface, items: RabeItem[]): Promise<void> {
-  const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'rollouts' })
-  const { value: current = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
-  const next = prune(value, Object.keys(value), [...items, ...current])
-  if (next !== value)
-    await $.state.set({ plugin: 'rabe', key: 'rollouts' }, next, { ifVersion: version })
+async function cleanFiles(
+  $: EngineInterface,
+  items: RabeItem[],
+  workspaces: Set<string>,
+): Promise<void> {
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'rollouts' })
+    const { value: current = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, Object.keys(value), [...items, ...current])
+    if (next === value) break
+    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'rollouts' }, next, {
+      ifVersion: version,
+    })
+    if (isSet) break
+  }
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'codexFiles' })
+    const { value: current = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const ids = new Set(
+      [...items, ...current].filter(item => item.kind === 'codex').map(item => item.id),
+    )
+    const entries = Object.entries(value).filter(([path, entry]) => {
+      const jobId = /\/jobs\/([^/]+)\.json$/.exec(path)?.[1]
+      return jobId
+        ? ids.has(itemId('codex', jobId)) &&
+            workspaces.has(path.replace(/\/jobs\/[^/]+\.json$/, '/state.json'))
+        : workspaces.has(path) &&
+            list(entry.data.jobs).some(job => ids.has(itemId('codex', str(rec(job).id) ?? '')))
+    })
+    if (entries.length === Object.keys(value).length) return
+    const { isSet } = await $.state.set(
+      { plugin: 'rabe', key: 'codexFiles' },
+      Object.fromEntries(entries),
+      { ifVersion: version },
+    )
+    if (isSet) return
+  }
 }
 
 async function pollCodex($: EngineInterface, file: string, items: RabeItem[]): Promise<Change> {
   const poll: Poll = { items, changes: [] }
   const { claude, codex } = await homes($)
   const { value: cursors = {} } = await $.state.get({ plugin: 'rabe', key: 'rollouts' })
+  const workspaces = new Set<string>()
   const stateRoot = `${claude}/${CODEX_DATA}/state`
   const sessionId = await $.session.id()
   const { startedAt: since } = await $.session.usage()
@@ -659,7 +694,8 @@ async function pollCodex($: EngineInterface, file: string, items: RabeItem[]): P
     const statePath = `${stateRoot}/${dir.name}/state.json`
     const stat = await $.fs.stat(statePath).catch(() => undefined)
     if (!stat || stat.mtimeMs < since) continue
-    const state = await readJson($, statePath)
+    workspaces.add(statePath)
+    const state = await readJson($, statePath, stat)
     for (const entry of list(state?.jobs).map(rec)) {
       const id = str(entry.id)
       // the plugin's state.json can hold a bare status patch; its job file has the session
@@ -685,7 +721,7 @@ async function pollCodex($: EngineInterface, file: string, items: RabeItem[]): P
   }
   looks.stop.abort()
   stage(poll, linkForwarders)
-  await cleanFiles($, poll.items)
+  await cleanFiles($, poll.items, workspaces)
   return changeOf(poll, items)
 }
 
