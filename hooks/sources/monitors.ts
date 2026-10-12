@@ -1,7 +1,18 @@
 import type { EngineInterface, On } from 'claude-code'
 
+import type { Pollers } from '../loop'
 import { type EndStatus, itemId, type RabeItem } from '../model'
-import { addItem, type Change, commit, endItem, prune, updateItem } from '../registry'
+import {
+  addItem,
+  type Change,
+  changeOf,
+  commit,
+  endItem,
+  type Poll,
+  prune,
+  stage,
+  updateItem,
+} from '../registry'
 import {
   appendLines,
   endStatus,
@@ -11,11 +22,9 @@ import {
   taskOutput,
 } from '../tasks'
 
-const POLL_MS = 2000
 const MAX_READ = 4 * 1024 * 1024
 
 // Each event takes one hook without a matcher per plugin; these match every event.
-const ANY_START = { isInteractive: [true, false] }
 const ANY_STOP = { stop_hook_active: [true, false] }
 
 type BackgroundTask = { id: string; type: string; description: string; command?: string }
@@ -97,22 +106,23 @@ function runningMonitors(items: RabeItem[]) {
   return items.flatMap(item => (item.kind === 'monitor' && item.status === 'running' ? [item] : []))
 }
 
-async function poll($: EngineInterface): Promise<void> {
+async function pollMonitors($: EngineInterface, items: RabeItem[]): Promise<Change> {
+  const poll: Poll = { items, changes: [] }
   try {
-    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     for (const item of runningMonitors(items)) {
       const path =
         item.detail.outputPath ?? (item.detail.taskId && taskOutput(items, item.detail.taskId))
       if (!path) continue
       const ended = await follow($, item.id, path)
       const now = await $.clock.now()
-      await write($, held => {
+      stage(poll, held => {
         const next = updateItem(held, item.id, { detail: { outputPath: path } })
 
         return ended ? endItem(next, item.id, ended, now) : next
       })
     }
   } catch {}
+  return changeOf(poll, items)
 }
 
 async function onNotifications($: EngineInterface, text: string): Promise<void> {
@@ -171,7 +181,11 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
   )
 }
 
-export function monitors(on: On): void {
+export function monitors(on: On, pollers: Pollers): void {
+  on('session.start', { isInteractive: [true, false] }, async ($, e, next) => {
+    pollers.push({ run: items => pollMonitors($, items), initial: false })
+    return next(e)
+  })
   on('tool.call', { tool: 'Monitor' }, async ($, e, next) => {
     const answer = await next(e)
     try {
@@ -223,12 +237,6 @@ export function monitors(on: On): void {
     try {
       if (e.background_tasks) await correct($, e.background_tasks)
     } catch {}
-
-    return next(e)
-  })
-
-  on('session.start', ANY_START, async ($, e, next) => {
-    $.clock.every(POLL_MS, () => void poll($))
 
     return next(e)
   })

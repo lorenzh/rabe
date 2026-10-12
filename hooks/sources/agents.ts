@@ -11,6 +11,7 @@ import type {
 
 import type { RabeCodexCall, RabeEdit, RabeToolUse, RabeTurn } from '../../types'
 import { companionCall, companionOutput } from '../forwarders'
+import type { Pollers } from '../loop'
 import {
   clip,
   type EndStatus,
@@ -22,13 +23,23 @@ import {
   type RabeTokens,
 } from '../model'
 import { claudeUsd, type Prices, parsePrices, withOverride } from '../prices'
-import { addItem, type Change, commit, endItem, pastEnd, prune, updateItem } from '../registry'
+import {
+  addItem,
+  type Change,
+  changeOf,
+  commit,
+  endItem,
+  type Poll,
+  pastEnd,
+  prune,
+  stage,
+  updateItem,
+} from '../registry'
 import { changed, type Seen, shellWrites } from '../writes'
 
 type Turns = Record<string, RabeTurn[]>
 type AgentItem = RabeItemOf<'agent'>
 
-const POLL_MS = 3000
 const MAX_TURNS = 30
 const MAX_ANSWER = 16000
 const MAX_EDITS = 100
@@ -460,36 +471,44 @@ async function afterBash(
   await record($, agentId, changes)
 }
 
-async function readMeta($: EngineInterface, id: string): Promise<void> {
-  const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+async function readMeta(
+  $: EngineInterface,
+  id: string,
+  items: RabeItem[],
+): Promise<Change | undefined> {
   const item = asAgent(items, id)
   const path = item && metaPath(item, items)
   if (!path) return
   const text = await $.fs.read(path).catch(() => undefined)
   const patch = typeof text === 'string' ? metaPatch(text) : undefined
-  if (patch) await write($, list => updateItem(list, id, { detail: patch }))
+  return patch ? list => updateItem(list, id, { detail: patch }) : undefined
 }
 
-async function refresh($: EngineInterface): Promise<void> {
+async function pollAgents($: EngineInterface, items: RabeItem[]): Promise<Change> {
+  const poll: Poll = { items, changes: [] }
   const agents = await $.agent.list().catch(() => [])
   const now = await $.clock.now()
-  await write($, items => {
+  stage(poll, items => {
     const end = pastEnd(items, now)
 
     return agents.reduce((list, info) => listed(list, info, now, end), items)
   })
-  const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
-  for (const item of items) {
+  for (const item of poll.items) {
     if (item.kind !== 'agent') continue
-    const workflow = items.find(parent => parent.id === item.parentId && parent.kind === 'workflow')
+    const workflow = poll.items.find(
+      parent => parent.id === item.parentId && parent.kind === 'workflow',
+    )
     if (
       item.status === 'running' ||
       (workflow?.kind === 'workflow' &&
         workflow.detail.phases?.length &&
         item.detail.workflowPhase === undefined)
-    )
-      await readMeta($, item.id)
+    ) {
+      const change = await readMeta($, item.id, poll.items)
+      if (change) stage(poll, change)
+    }
   }
+  return changeOf(poll, items)
 }
 
 // The built-in table, or with the user's file (`pricesFile`) its rows first. A
@@ -527,11 +546,9 @@ async function recordStep(
   })
 }
 
-export function agents(on: On, file: string): void {
+export function agents(on: On, file: string, pollers: Pollers): void {
   on('session.start', { cwd: /^/ }, async ($, e, next) => {
-    $.clock.every(POLL_MS, () => refresh($))
-    await refresh($)
-
+    pollers.push({ run: items => pollAgents($, items), every: 3000 })
     return next(e)
   })
 
@@ -650,7 +667,9 @@ export function agents(on: On, file: string): void {
     if (!agentId) return result
     const now = await $.clock.now()
     await write($, items => endItem(items, itemId('agent', agentId), ENDED[e.reason], now))
-    await readMeta($, itemId('agent', agentId))
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const change = await readMeta($, itemId('agent', agentId), items)
+    if (change) await write($, change)
 
     return result
   })

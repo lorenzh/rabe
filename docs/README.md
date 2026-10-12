@@ -20,9 +20,10 @@ Use this index to find the guide that matches your question.
 
 ## Architecture
 
-- [Architecture overview](architecture.md): module map and links to detailed behavior.
+- [Architecture overview](architecture.md): module map, the shared poll loop, pure scheduling rules, repeated starts, idle backoff, and links to detailed behavior.
+- [Shared poll loop](architecture/loop.md): scheduling rules, source changes, repeated starts, and one completed write.
 - [State and items](architecture/state.md): item model, registry, state writes, and turns.
-- [Sources](architecture/sources.md): source contract, source modules, and source tests.
+- [Sources](architecture/sources.md): poll callbacks that return changes, source modules, and source tests.
 - [Price estimate](architecture/prices.md): price lookup and cost estimates.
 - [UI rendering](architecture/ui.md): view contract, renderer, palette, cells, sizing, and band.
 - [Pane interaction state](architecture/interaction.md): pure transitions for focus, held order, regain, opening, closing and arming.
@@ -34,7 +35,7 @@ Use this index to find the guide that matches your question.
 
 - [Feasibility overview](feasibility.md): overview and links to the source limits.
 - [Claude agents and workflows](feasibility/agents.md): agent, worktree, and workflow data with script path limits.
-- [Codex and background work](feasibility/background-work.md): Codex jobs, shells, monitors, cron jobs and task output path limits.
+- [Codex and background work](feasibility/background-work.md): Codex jobs, shells, monitors, cron jobs, polling intervals, and task output path limits.
 - [User interface limits](feasibility/ui.md): API limits for rendering and input.
 - [Price data](feasibility/prices.md): price inputs and view data.
 - [Files and runtime limits](feasibility/files.md): script edits from Bash diffs, confirmed shell writes, coverage settings, and open runtime questions.

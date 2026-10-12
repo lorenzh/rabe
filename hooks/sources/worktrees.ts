@@ -1,9 +1,9 @@
 import type { EngineInterface, On } from 'claude-code'
 
 import type { RabeWorktree } from '../../types'
+import type { Pollers } from '../loop'
 import { isAbsolute } from '../model'
 
-const POLL_MS = 10_000
 const TIMEOUT_MS = 5000
 const MAX = 100
 
@@ -32,7 +32,7 @@ export function parseWorktrees(text: string): RabeWorktree[] {
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 // A failed, cut or empty answer keeps what Rabe knew; only a change is written.
-async function poll($: EngineInterface): Promise<void> {
+async function pollWorktrees($: EngineInterface): Promise<void> {
   const run = await $.process.run(['git', 'worktree', 'list', '--porcelain'], {
     timeoutMs: TIMEOUT_MS,
   })
@@ -46,22 +46,15 @@ async function poll($: EngineInterface): Promise<void> {
 
 // The repository's worktrees, so the Effects tab can place each changed file
 // in the worktree that holds it. Without git nothing is written.
-export function worktrees(on: On): void {
+export function worktrees(on: On, pollers: Pollers): void {
   on('session.start', { isInteractive: true }, async ($, e, next) => {
-    const started = await next(e)
-    let isPolling = false
-    const tick = () => {
-      if (isPolling) return
-      isPolling = true
-      poll($)
-        .catch(() => undefined)
-        .finally(() => {
-          isPolling = false
-        })
-    }
-    tick()
-    $.clock.every(POLL_MS, tick)
-
-    return started
+    pollers.push({
+      run: async () => {
+        await pollWorktrees($)
+        return undefined
+      },
+      every: 10000,
+    })
+    return next(e)
   })
 }
