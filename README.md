@@ -27,7 +27,7 @@ Status: early development. See [releases](https://github.com/lorenzh/rabe/releas
 
 The band is one line of counts, one chip per kind with failures from the last 10 minutes first (`✗ 1 shell failed`), then the cost, under an empty row so the status line above does not touch it. Its cost label says `session`; its token label says `bg` and includes the cached share when known. It shows the session cost Claude Code reports, or `session n/a` when that cost is unknown; it does not replace it with a sum of worker estimates or show a top-agent suffix. It shortens readable chip labels only when the full labels and cost do not fit; when needed, it puts the dollar amount first and drops the token part. When Claude Code gives the band only one row, the empty row goes. The names are in the pane. When nothing runs, it draws nothing.
 
-Cron detail uses exact task and fire ids from the session transcript. Ambiguous matches show no fire details. `Turn ended` says answered, stopped, error or refused. It does not report job success. End words cover turns Rabe observed. Wakeups have no matching job id and show no fire details.
+A cron detail can show `last fired 10:55 · 3 fires · turn answered`. The end word describes a turn Rabe observed, not job success. When Rabe cannot confirm a fire, it shows no fire details. Wakeups show none.
 
 When the readable form repeats the cron expression, cron detail shows the schedule once. Workflow detail says `1 agent` for one child in both the run facts and cost panel.
 
@@ -185,7 +185,7 @@ Rabe runs on your computer and makes no runtime network requests. Successful sto
 
 Rabe reads these files:
 
-- The main session transcript for cron fire metadata. Large transcripts use `jq` to return metadata only.
+- The main session transcript for cron fire metadata, at the path from the Claude Code hook event. `grep` filters it to cron fire and scheduled user rows.
 - The meta files of subagents, next to the session transcript in `~/.claude/projects/`.
 - The script of a workflow run in this session’s `workflows/scripts/` folder under `~/.claude/projects/` (or `CLAUDE_CONFIG_DIR`).
 - The output files of background shells and monitors in this session’s `/tmp/claude-<uid>/<project>/<session>/tasks/` folder.

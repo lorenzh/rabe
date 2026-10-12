@@ -51,8 +51,8 @@ The hook tests also check unchanged polls without process spawns, content reads 
 
 Checked against real local main-session transcripts on 2026-10-12 for issue [#84](https://github.com/lorenzh/rabe/issues/84).
 The records came from Claude Code 2.1.295 and 2.1.296 sessions.
-The file is `<claude dir>/projects/<encoded project>/<session id>.jsonl`.
-`CLAUDE_CONFIG_DIR` selects the Claude folder. The default is `~/.claude`.
+The main `classic.Stop` hook supplies the file path in `transcript_path`.
+Rabe keeps it in `rabe.cronTranscript` only when changed and ignores events with `agent_id`.
 
 The mod API comes first. `prompt.submit` reports `scheduled-trigger` without a job id.
 `session.append` supplies the user row's UUID but omits its scheduled task fields.
@@ -82,7 +82,9 @@ Previous turn-end reasons are unavailable from these confirmed disk fields.
 Rabe shows an end word only for a turn it observed, including state kept across a plugin reload.
 ScheduleWakeup has no API job id, so synthetic wakeup items receive no fire details.
 
-The disk format is undocumented. Rabe checks the resolved session file against its project folder before reading.
+The disk format is undocumented. Rabe accepts only absolute paths ending in `.jsonl`.
 It reads at session start, the first main step and main turn completion while cron jobs are tracked.
-For files above 4 MiB, `jq` returns only record metadata with a five-second limit.
+For every read, `grep -F` selects lines containing `"scheduled_task_fire"` or `"scheduledFireId"` with a five-second limit.
+Exit code 1 means no matches and supplies empty fire data.
+Ordinary prompts can be absent from these lines. The prompt UUID kept by `session.append` must still match the fire user UUID.
 A failed or truncated read supplies no new details. This reader does not poll or keep prompt text.

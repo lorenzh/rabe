@@ -132,33 +132,13 @@ async function readFires($: EngineInterface): Promise<Fires | undefined> {
   try {
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     if (!items.some(item => item.kind === 'cron' && item.detail.scheduledFor === undefined)) return
-    const config = await $.env.get('CLAUDE_CONFIG_DIR')
-    const home = config ? undefined : await $.env.get('HOME')
-    const claude = config || (home && `${home}/.claude`)
-    const session = await $.session.id()
-    if (!claude || !/^[\w][\w.-]*$/.test(session) || session.includes('..')) return
-    const folder = `${claude.replace(/\/+$/, '')}/projects/${(await $.session.root()).replace(/[^a-zA-Z0-9]/g, '-')}`
-    const path = `${folder}/${session}.jsonl`
-    const root = await $.fs.stat(folder, { resolve: true })
-    const stat = await $.fs.stat(path, { resolve: true })
-    if (
-      !root.realPath ||
-      stat.realPath !== `${root.realPath}/${session}.jsonl` ||
-      stat.kind !== 'file'
-    )
-      return
-    if (stat.size <= 4 * 1024 * 1024) return cronFires(String(await $.fs.read(stat.realPath)))
+    const { value: path } = await $.state.get({ plugin: 'rabe', key: 'cronTranscript' })
+    if (!path?.startsWith('/') || !path.endsWith('.jsonl')) return
     const result = await $.process.run(
-      [
-        'jq',
-        '-Rc',
-        'fromjson? | select(.type == "user" or (.type == "system" and .subtype == "scheduled_task_fire")) | {type, subtype, uuid, parentUuid, timestamp, taskId, scheduledTaskId, scheduledFireId, isSidechain, isToolResult: (if (.message.content | type) == "array" then any(.message.content[]; .type == "tool_result") else false end)}',
-        '--',
-        stat.realPath,
-      ],
+      ['grep', '-F', '-e', '"scheduled_task_fire"', '-e', '"scheduledFireId"', '--', path],
       { timeoutMs: 5000 },
     )
-    if (result.exitCode !== 0 || result.isStdoutTruncated) return
+    if ((result.exitCode !== 0 && result.exitCode !== 1) || result.isStdoutTruncated) return
     return cronFires(result.stdout)
   } catch {
     return undefined
@@ -368,6 +348,12 @@ export function crons(on: On): void {
 
   on('classic.Stop', ANY_STOP, async ($, e, next) => {
     try {
+      if (!e.agent_id) {
+        const { value } = await $.state.get({ plugin: 'rabe', key: 'cronTranscript' })
+        if (value !== e.transcript_path) {
+          await $.state.set({ plugin: 'rabe', key: 'cronTranscript' }, e.transcript_path)
+        }
+      }
       if (e.session_crons) {
         const jobs = e.session_crons.map(job => ({
           id: job.id,
