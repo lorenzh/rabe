@@ -4,16 +4,18 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-12
+
 ### Added
 
 - `/rabe-diag` shows what each source read in its last poll, with versions and options and without private data; `/rabe:report-bug` asks for it ([#131](https://github.com/lorenzh/rabe/pull/131), fixes [#73](https://github.com/lorenzh/rabe/issues/73))
 
 ### Fixed
 
-- `/rabe-diag` and the bug report show errors only as fixed categories such as `not found` or `exit code 1`, never error text or file names. A poll whose item update was dropped no longer loses a shell's or monitor's end or an agent's details; a file replaced while a too-long line was skipped is read from its start; damaged reader state in a session is rebuilt; and a failing `/rabe-diag` answers `diagnostics unavailable` instead of throwing ([#139](https://github.com/lorenzh/rabe/pull/139))
-- Keep idle teammates with live items in list order, detail activity and the Timeline window. Add coverage for plain subagent completion after an idle poll ([#130](https://github.com/lorenzh/rabe/pull/130), fixes [#118](https://github.com/lorenzh/rabe/issues/118))
-- Show teammates as idle between turns without counting them as running or ended; keep plain subagent behavior unchanged ([#130](https://github.com/lorenzh/rabe/pull/130), fixes [#118](https://github.com/lorenzh/rabe/issues/118))
+- Teammates show as idle between turns instead of done or running. An idle teammate keeps its place in the list, its activity in the detail and its bar in the Timeline, and does not count as running or ended. Plain subagents are unchanged. ([#130](https://github.com/lorenzh/rabe/pull/130), fixes [#118](https://github.com/lorenzh/rabe/issues/118))
+- Fast arrow bursts after a tab change keep their order, also where all rows fit and the arrows wrap, and arrows that arrive during a second press. ([#128](https://github.com/lorenzh/rabe/pull/128), fixes [#123](https://github.com/lorenzh/rabe/issues/123))
 - A removed or gone row leaves the Items list and the Effects tab at once instead of staying as a dim `gone` slot; tabs and buttons keep their places, Enter on a row waits until the focus is back on the row you chose, and closing the pane clears the `gone` slots of an open item and the Cost and Timeline tabs ([#125](https://github.com/lorenzh/rabe/pull/125), fixes [#122](https://github.com/lorenzh/rabe/issues/122))
+- `/rabe-diag` and the bug report show errors only as fixed categories such as `not found` or `exit code 1`, never error text or file names. A poll whose item update was dropped no longer loses a shell's or monitor's end or an agent's details; a file replaced while a too-long line was skipped is read from its start; damaged reader state in a session is rebuilt; and a failing `/rabe-diag` answers `diagnostics unavailable` instead of throwing ([#139](https://github.com/lorenzh/rabe/pull/139))
 
 ### Changed
 
@@ -24,9 +26,6 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - Separate pane data validation from API calls, with no behaviour change ([#134](https://github.com/lorenzh/rabe/pull/134), refs [#75](https://github.com/lorenzh/rabe/issues/75))
 - Read appended bytes, bound large-file parsing, cache metadata without process access, and skip unchanged desktop rollouts ([#132](https://github.com/lorenzh/rabe/pull/132), fixes [#71](https://github.com/lorenzh/rabe/issues/71))
 - Refresh background work together without overlapping polls, and reduce polling while idle. ([#127](https://github.com/lorenzh/rabe/pull/127), fixes [#72](https://github.com/lorenzh/rabe/issues/72))
-- Keep fast all-fit arrow bursts in order after queued tab changes, including wraparound (fixes #123)
-- Keep fast arrow bursts in order after tab changes, including arrows received during a second press ([fixes #123](https://github.com/lorenzh/rabe/issues/123))
-- Keep fast arrow bursts in order after tab changes, including arrows received during a second press ([#128](https://github.com/lorenzh/rabe/pull/128), [fixes #123](https://github.com/lorenzh/rabe/issues/123))
 
 ## [0.6.0] - 2026-10-11
 
@@ -194,7 +193,8 @@ The first public version.
 
 - Workflow agents no longer offer stop and message, which Claude Code does not support for a single workflow agent; their detail offers stopping the run. ([#8](https://github.com/lorenzh/rabe/pull/8))
 
-[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/lorenzh/rabe/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/lorenzh/rabe/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/lorenzh/rabe/compare/v0.4.4...v0.5.0
 [0.4.4]: https://github.com/lorenzh/rabe/compare/v0.4.3...v0.4.4
