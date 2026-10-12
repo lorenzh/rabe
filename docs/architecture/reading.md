@@ -25,7 +25,7 @@ Polls and final task notifications share one read queue per output source. This 
 
 ## Parser summaries
 
-The Codex parser carries model settings and token totals between reads. It retains the total at the job's start for resumed threads. Pending tool calls survive until their matching output arrives. Steps keep the last 50 entries. Edits and shell checks keep the last 100 entries.
+The Codex parser (`advanceRollout` in `hooks/sources/codex-data.ts`) carries model settings and token totals between reads. It retains the total at the job's start for resumed threads. Pending tool calls survive until their matching output arrives. Steps keep the last 50 entries. Edits and shell checks keep the last 100 entries.
 
 Each chunk prices only its new requests. Session state keeps the sum rather than every request. An unpriced request makes the sum unknown. If the parser already consumed later records, a completion cutoff resets it. A changed job start also resets it.
 

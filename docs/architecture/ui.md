@@ -14,6 +14,9 @@ The band and the pane read the sources' session values and draw. Neither writes 
 Agent metadata, transcript paths, turns and item updates come from `hooks/sources/agent-items.ts`.
 `agents.ts` records the returned data in session state. Views read that state only.
 
+Codex job and rollout parsing and item construction come from `hooks/sources/codex-data.ts`.
+`codex.ts` records the returned data in session state. Views read that state only.
+
 Shell write candidates come from `hooks/writes.ts`. Its lexer `lex` lives in `hooks/shell-words.ts`. Views read the recorded edits only.
 
 The shared timer in `register.tsx` also calls `$.ui.invalidate('ui.render')`. It requests one redraw after the whole item pass commits. Between passes it redraws once per second while items run, so durations stay current. Keeping this request beside the scheduler avoids a second timer or a state write just for redraws. The band and pane still own rendering and read only published state.
