@@ -50,3 +50,7 @@ Tested: `$.fs.stat` and `$.fs.read` read files under `~/.codex/sessions` and `/t
 - Does a live `codex:codex-rescue` run fold into its job within one poll, in the foreground, in the background and after the Bash timeout? Does `$.ui.copy` reach the clipboard over SSH (OSC 52) in the terminals people use?
 - Does the pane's `x: stop` on a Codex job act during a turn? It runs `/rabe-stop` through `$.command.run`, which the API says is "queued and run once the session is idle" (d.ts `command.run`); the command is registered with `immediate: true`, which may or may not apply to a plugin's call.
 - How much does a band redraw every second cost while the user types?
+
+## Diagnostic versions
+
+`/rabe-diag` prints the Claude Code version from `$.session.version()` and the Rabe version from `version` in `${plugin.root}/.claude-plugin/plugin.json`. Either shows `n/a` when the call or the file fails.

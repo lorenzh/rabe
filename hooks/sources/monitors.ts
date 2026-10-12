@@ -1,6 +1,6 @@
 import type { EngineInterface, On } from 'claude-code'
 
-import type { Pollers } from '../loop'
+import { fault, type Pollers, tally } from '../loop'
 import { type EndStatus, itemId, type RabeItem } from '../model'
 import {
   addItem,
@@ -82,7 +82,7 @@ async function follow(
     path = stat.realPath
     const { size } = stat
     if (size > MAX_READ) return undefined
-    const { lines, ended } = parseOutput(String(await $.fs.read(path)))
+    const { lines, ended } = parseOutput(String(tally(await $.fs.read(path))))
     const now = await $.clock.now()
     for (;;) {
       const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
@@ -97,7 +97,9 @@ async function follow(
     }
 
     return ended
-  } catch {
+  } catch (error) {
+    fault(error)
+
     return undefined
   }
 }
@@ -183,7 +185,7 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
 
 export function monitors(on: On, pollers: Pollers): void {
   on('session.start', { isInteractive: [true, false] }, async ($, e, next) => {
-    pollers.push({ run: items => pollMonitors($, items), initial: false })
+    pollers.push({ name: 'monitors', run: items => pollMonitors($, items), initial: false })
     return next(e)
   })
   on('tool.call', { tool: 'Monitor' }, async ($, e, next) => {

@@ -177,6 +177,19 @@ export type RabeWorktree = {
 // open, so no row folds away under the focus.
 export type RabeWindow = { base: number; hours: number; since: number }
 
+// The last poll of one source (`agents`, `codex`, `shells`, `monitors`,
+// `worktrees`): when it ran, how long it took (rounded to 100 ms), the files
+// and chars it read, its failures, and the last failure's text with paths
+// shortened. Written only when a value changes.
+export type RabeDiag = {
+  at: number
+  ms: number
+  files: number
+  chars: number
+  errors: number
+  lastError?: string
+}
+
 declare module 'claude-code' {
   interface PluginState {
     rabe: {
@@ -196,6 +209,8 @@ declare module 'claude-code' {
       // The repository's git worktrees; absent without git.
       worktrees: RabeWorktree[]
       window: RabeWindow
+      // The last poll of each source, by source name, for `/rabe-diag`.
+      diag: Record<string, RabeDiag>
       // Successful actions from the pane, for the next main-session prompt.
       actions: string[]
     }
