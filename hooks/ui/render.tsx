@@ -173,6 +173,7 @@ export function render(
   drawn: Drawn | Piece[],
   act: Act,
   key = 'cells',
+  pin?: { split: number; rows: number; top: number },
 ) {
   const { Box, Button, Input, Raster, Text } = ui
   const color = (rgb: number | undefined) => paint(rgb, surface)
@@ -248,53 +249,73 @@ export function render(
   // Controls side by side wrap as one row.
   const list = Array.isArray(drawn) ? drawn : layout(drawn)
   const runs: (Piece | ViewButton[])[] = []
-  for (const piece of list) {
+  const starts: number[] = []
+  list.forEach((piece, at) => {
     const last = runs.at(-1)
-    if (!('button' in piece)) runs.push(piece)
-    else if (Array.isArray(last)) last.push(piece.button)
-    else runs.push([piece.button])
-  }
+    if (!('button' in piece)) {
+      runs.push(piece)
+      starts.push(at)
+    } else if (Array.isArray(last)) last.push(piece.button)
+    else {
+      runs.push([piece.button])
+      starts.push(at)
+    }
+  })
   let rows = 0
+
+  const cells = runs.map(one => {
+    if (Array.isArray(one)) {
+      rows += 1
+      return [
+        <Box
+          key={rows > 1 ? `controls-${rows}` : 'controls'}
+          flexDirection="row"
+          flexWrap="wrap"
+          columnGap={1}
+        >
+          {one.map(control)}
+        </Box>,
+      ]
+    }
+    if ('input' in one) {
+      const { input } = one
+      return Input
+        ? [
+            <Input
+              key={input.key}
+              label={input.label}
+              placeholder={input.placeholder}
+              value={input.value}
+              submitLabel={input.submitLabel}
+              onInput={input.isLive ? (text, at) => act(input.action(text), at) : undefined}
+              onSubmit={(text, at) => act(input.action(text, at.kind), at)}
+            />,
+          ]
+        : []
+    }
+    if ('spans' in one) return [row(one)]
+    if (!('chart' in one)) return []
+    const cut = clamp(one.chart)
+    return surface === 'terminal' && Raster
+      ? [<Raster key={key} columns={cut.columns} rows={cut.rows} cells={encode(cut)} />]
+      : lines(one.chart).map(text => <Text wrap="truncate">{text || ' '}</Text>)
+  })
+
+  if (!pin) return <Box flexDirection="column">{cells.flat()}</Box>
+  // Tabs and toolbar stay; a clipped box shows `rows` of the list moved up by
+  // `top`; the hint stays under it.
+  const head = starts.filter(at => at < pin.split).length
+  const tail = Math.max(head, cells.length - 1)
 
   return (
     <Box flexDirection="column">
-      {runs.flatMap(one => {
-        if (Array.isArray(one)) {
-          rows += 1
-          return [
-            <Box
-              key={rows > 1 ? `controls-${rows}` : 'controls'}
-              flexDirection="row"
-              flexWrap="wrap"
-              columnGap={1}
-            >
-              {one.map(control)}
-            </Box>,
-          ]
-        }
-        if ('input' in one) {
-          const { input } = one
-          return Input
-            ? [
-                <Input
-                  key={input.key}
-                  label={input.label}
-                  placeholder={input.placeholder}
-                  value={input.value}
-                  submitLabel={input.submitLabel}
-                  onInput={input.isLive ? (text, at) => act(input.action(text), at) : undefined}
-                  onSubmit={(text, at) => act(input.action(text, at.kind), at)}
-                />,
-              ]
-            : []
-        }
-        if ('spans' in one) return [row(one)]
-        if (!('chart' in one)) return []
-        const cut = clamp(one.chart)
-        return surface === 'terminal' && Raster
-          ? [<Raster key={key} columns={cut.columns} rows={cut.rows} cells={encode(cut)} />]
-          : lines(one.chart).map(text => <Text wrap="truncate">{text || ' '}</Text>)
-      })}
+      {cells.slice(0, head).flat()}
+      <Box key="body" flexDirection="column" height={pin.rows} overflow="hidden">
+        <Box flexDirection="column" marginTop={-pin.top}>
+          {cells.slice(head, tail).flat()}
+        </Box>
+      </Box>
+      {cells.slice(tail).flat()}
     </Box>
   )
 }

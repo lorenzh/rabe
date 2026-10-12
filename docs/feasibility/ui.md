@@ -2,7 +2,7 @@
 title: User interface limits
 description: What the mod API exposes for Rabe’s band and pane, buttons, focus, and desktop app.
 tags: [feasibility, ui, limits]
-keywords: [user interface, raster, buttons, focus, desktop app, next.trace, TraceEntry, focus rewrite, swallowed focus, tier builtin, own focus call, append-only, view change, landing, dock, inline, state.set in ui.render, plain Button, dimColor, hover, ui.scroll, ui.focus, ui.press, pointer, arrow keys, mouse, fullscreen, ansi256, xterm-256, combining mark, Hangul Jamo, cells, bodyColumns, autoFocus, closeOnEscape, PromptHint, TurnDuration, disableAgentView, OSC 52]
+keywords: [user interface, raster, buttons, focus, desktop app, next.trace, TraceEntry, focus rewrite, swallowed focus, tier builtin, own focus call, append-only, view change, landing, dock, inline, state.set in ui.render, plain Button, dimColor, hover, ui.scroll, ui.focus, ui.press, pointer, arrow keys, mouse, fullscreen, ansi256, xterm-256, combining mark, Hangul Jamo, cells, bodyColumns, autoFocus, closeOnEscape, PromptHint, TurnDuration, disableAgentView, OSC 52, pinned header, sticky header, clipping, overflow, marginTop, #83]
 ---
 
 # User interface limits
@@ -58,6 +58,16 @@ Where the window stands comes from the Pane's `scroll.offset` (d.ts `SiteScroll`
 
 The test kit cannot answer a plugin's `$.ui.focus` (nothing beneath the plugins answers it, and a test hook on `ui.focus` is not reached), so engine focus landings need live verification; `landing` names the keys in a pure function with its own test. On 2026-10-10, Claude Code 2.1.296 reproduced the lost `Down` after `b` in one baseline trial at 120 columns: focus remained on `sleep 32` instead of moving to `sleep 31`. In another trial, `b` then `Down` moved from `sleep 31` to `sleep 30`, but a later trial from `sleep 30` stayed on that row. That run did not verify the scrolling arrow path or Enter after a tab change. It used three temporary shell rows and was stopped.
 
+
+### A pinned header
+
+Spike for [#83](https://github.com/lorenzh/rabe/issues/83), tested live on Claude Code 2.1.296 under tmux (100 columns, inline pane, 2026-10-12) with a probe mod and then with Rabe: a `Box` with `overflow="hidden"` and a fixed `height`, holding a `Box` with a negative `marginTop` that holds the rows, clips the rows. It works on the terminal.
+
+1. The header (tabs, rule, buttons, Input) and the hint stay where they are; the rows are cut at the box, in paint and in the focus order.
+2. A tree that fits the body is never scrolled by the engine. PageDown, PageUp, Home and End still raise `ui.scroll` (`by` is plus or minus `bodyRows` for every one of them, so End and PageDown cannot be told apart); `offset` stays 0 and `contentRows` equals `bodyRows`. A hook that answers `{}` and draws a new `marginTop` scrolls the rows.
+3. ↓, ↑ and Tab reach the clipped rows and raise `ui.focus` (origin person) with the row's key, also when the row is outside the box. They do not raise `ui.scroll`, so the mod must bring the row into view itself: a redraw after the focus event with a new `marginTop` does it.
+4. Not verified, a short live checklist: the wheel (needs `/tui fullscreen` and mouse reporting; the `ui.scroll` hook handles a `pointer` the same way); clicks above and below the box, which must not press hidden rows; and a resize or a view change, which must keep the focus order and the action arming. The desktop is not changed.
+5. Not tested: whether ↑ and ↓ raise `ui.scroll` in a clipped view with no focusable rows. So Rabe pins only a body that has rows, and a text view keeps the engine's scroll.
 
 ### Queued view changes
 

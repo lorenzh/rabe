@@ -31,7 +31,7 @@ export const TABS: { tab: RabeTab; label: string; hotkey: string; view: View }[]
   { tab: 'timeline', label: 'Timeline', hotkey: '4', view: timelineView },
 ]
 
-const HINT = 1
+export const HINT = 1
 
 const hasRows = (nodes: Node[]) =>
   nodes.some(
@@ -60,7 +60,7 @@ function hint(sel: Selection, isOpen: boolean, inner: Drawn, rows: number): stri
   return [...move, ...keys, 'esc close'].join(' · ')
 }
 
-const rowsOf = (nodes: Node[]) =>
+export const rowsOf = (nodes: Node[]) =>
   nodes.reduce((n, node) => n + ('chart' in node ? node.chart.rows : 1), 0)
 
 // A plain Button with a hotkey is drawn `1: label`.

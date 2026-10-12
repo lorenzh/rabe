@@ -12,9 +12,11 @@ import {
   movedFocus,
   REGAIN_MS,
   type Shift,
+  scopeOf,
 } from './interaction'
 import { KIND_LABEL, kept, matches, orderOf, previousOf, rowOf } from './lists'
 import { asPrevious, clipText, nameOf, toastText } from './pane-data'
+import { follow, geometry, NO_PIN, type Pin } from './pin'
 import { type At, hold, render } from './render'
 import { reserve, sequence } from './sequence'
 import {
@@ -39,6 +41,11 @@ const MAX_ACTIONS = 20
 // The option `timelineHours`, set by `pane(on, hours)`: the Timeline's window
 // when the pane opens.
 let baseHours = 4
+
+// The list under the pinned header (see `geometry`): where it stands, and
+// whether the last drawing clipped it, so a scroll moves it, not the engine.
+let pinned: Pin = NO_PIN
+let isPinned = false
 
 // Reasons come from files and tools.
 function toast($: EngineInterface, text: string): void {
@@ -562,6 +569,7 @@ export function pane(on: On, hours = baseHours): void {
     await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(items, edits))
     await $.state.set({ plugin: 'rabe', key: 'window' }, windowOf(baseHours, await $.clock.now()))
     feed($, { type: 'opened' })
+    pinned = NO_PIN
     await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })
 
     return { text: 'Rabe opened.' }
@@ -570,7 +578,10 @@ export function pane(on: On, hours = baseHours): void {
   // A close the host carries out clears every hold; a canceled one keeps it.
   on('ui.close', { id: PANE }, async ($, e, next) => {
     const result = await next(e)
-    if (!(await $.ui.panes()).some(one => one.id === PANE)) feed($, { type: 'closed' })
+    if (!(await $.ui.panes()).some(one => one.id === PANE)) {
+      feed($, { type: 'closed' })
+      isPinned = false
+    }
     return result
   }).catch((_$, e, next) => next(e))
 
@@ -635,6 +646,14 @@ export function pane(on: On, hours = baseHours): void {
   )
 
   on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
+    // The pane fits its body: the list scrolls under the header, by our own offset.
+    if (isPinned && e.contentRows <= e.bodyRows) {
+      if (e.by !== 0) {
+        pinned = { ...pinned, top: Math.max(0, pinned.top + e.by) }
+        $.ui.invalidate('ui.render')
+      }
+      return {}
+    }
     if (e.pointer || e.by === 0 || Math.abs(e.by) >= e.bodyRows) return next(e)
     const remaining = await sequence(() => arrow($, e.by, e.bodyRows)).catch(() => false)
     if (remaining === 0) return {}
@@ -661,14 +680,25 @@ export function pane(on: On, hours = baseHours): void {
       }),
     })
 
+    // On the terminal a body taller than its room scrolls under the header.
+    const geo = e.surface === 'terminal' && e.props.scroll ? geometry(model, size, seen) : undefined
+    isPinned = !!geo
+    if (geo) pinned = follow(pinned, geo, scopeOf(seen), seen.selected)
+
     const { list = [] } = feed($, {
       type: 'render',
       model,
-      size,
+      size: geo ? { ...size, window: { top: geo.above + pinned.top, rows: geo.rows } } : size,
       selection: seen,
       placement: e.props.placement,
     })
+    if (!geo) return render(ui, e.surface, list, leave)
+    const lastTool = list.findLastIndex(one => 'button' in one || 'input' in one)
 
-    return render(ui, e.surface, list, leave)
+    return render(ui, e.surface, list, leave, 'cells', {
+      split: Math.max(geo.heads, lastTool + 1),
+      rows: geo.rows,
+      top: pinned.top,
+    })
   })
 }

@@ -29,7 +29,7 @@ Use this index to find the guide that matches your question.
 - [Codex data](architecture/codex-data.md): Codex job parsing and incremental rollout parsing with restored step checks.
 - [Agent items](architecture/agent-items.md): metadata cache recovery that preserves newer event fields, transcripts and turns.
 - [Price estimate](architecture/prices.md): price lookup and cost estimates.
-- [UI rendering](architecture/ui.md): view contract, renderer, palette, cells, sizing, and band.
+- [UI rendering](architecture/ui.md): view contract, renderer, palette, cells, sizing, band, and the pinned list header (`hooks/ui/pin.ts`).
 - [Pane interaction state](architecture/interaction.md): pure transitions for focus, nested presses, queued arrow bursts and wraparound, refused moves, held order, regain, opening and arming.
 - [Focus and keys](architecture/focus-and-keys.md): pane behavior, key controls, split-list copy, message and delete actions, and focus moves.
 - [Focus order and arming](architecture/focus-order.md): held order, append-only slots, gone rows that leave the lists, target-bound keys, and arming.
@@ -43,6 +43,6 @@ Use this index to find the guide that matches your question.
 - [Feasibility overview](feasibility.md): overview, confirmed cron fire identity and turn-end limits, stat-only idle reader benchmark, and links to the source limits.
 - [Claude agents and workflows](feasibility/agents.md): agent and teammate identity, worktree, and workflow data with script path limits.
 - [Codex and background work](feasibility/background-work.md): Codex jobs, shells, monitors, cron jobs, polling intervals, and task output path limits.
-- [User interface limits](feasibility/ui.md): API limits for rendering and input.
+- [User interface limits](feasibility/ui.md): API limits for rendering and input, and the pinned header spike (overflow clipping with a negative `marginTop`).
 - [Price data](feasibility/prices.md): price inputs and view data.
 - [Files and runtime limits](feasibility/files.md): script edits from Bash diffs, confirmed shell writes, coverage settings, and open runtime questions.
