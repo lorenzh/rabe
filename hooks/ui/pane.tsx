@@ -14,6 +14,7 @@ import {
   type Shift,
 } from './interaction'
 import { KIND_LABEL, kept, matches, orderOf, previousOf, rowOf } from './lists'
+import { asPrevious, clipText, nameOf, toastText } from './pane-data'
 import { type At, hold, render } from './render'
 import { reserve, sequence } from './sequence'
 import {
@@ -39,23 +40,9 @@ const MAX_ACTIONS = 20
 // when the pane opens.
 let baseHours = 4
 
-function toastText(text: string): string {
-  return text.replace(/\s+/g, ' ').replace(/[\p{Cc}\p{Cf}]/gu, '?')
-}
-
 // Reasons come from files and tools.
 function toast($: EngineInterface, text: string): void {
   $.ui.toast(toastText(text))
-}
-
-// Tabs and line breaks stay; an escape could end a bracketed paste.
-function clipText(text: string): string {
-  return text.replace(/(?![\t\n\r])[\p{Cc}\p{Cf}]/gu, '?')
-}
-
-// Titles and agent names can contain prompts or file text.
-function nameOf(item: RabeItem): string {
-  return item.id.slice(item.kind.length + 1)
 }
 
 // Esc may have closed the pane before the delayed focus call.
@@ -66,29 +53,6 @@ async function refocus($: EngineInterface): Promise<void> {
     shown = (await $.ui.panes()).find(one => one.id === PANE)
   }
   feed($, { type: 'refocused', isOpen: !!shown, isFocused: !!shown?.isFocused })
-}
-
-// The store is the plugin's own JSON; an older Rabe may have written another
-// shape, and a summary before 0.4 has no session id.
-function asPrevious(value: unknown): RabePrevious | undefined {
-  const prev = value as (RabePrevious & { failed?: unknown }) | undefined
-  if (
-    typeof prev?.endedAt !== 'number' ||
-    (!Array.isArray(prev.failedIds) && !Array.isArray(prev.failed)) ||
-    !prev.counts
-  ) {
-    return undefined
-  }
-
-  return {
-    ...(typeof prev.sessionId === 'string' && prev.sessionId && { sessionId: prev.sessionId }),
-    endedAt: prev.endedAt,
-    startedAt: prev.startedAt,
-    counts: prev.counts,
-    tokens: prev.tokens,
-    usd: prev.usd,
-    failedIds: Array.isArray(prev.failedIds) ? prev.failedIds : [],
-  }
 }
 
 async function previous($: EngineInterface): Promise<RabePrevious | undefined> {

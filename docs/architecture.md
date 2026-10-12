@@ -33,6 +33,7 @@ hooks/
   testing.ts          test helpers: state in memory, files, core stubs
   ui/band.tsx         the band above the prompt
   ui/pane.tsx         the /rabe command, its pane and actions
+  ui/pane-data.ts     clipboard and toast text filtering; stored-summary validation
   ui/interaction.ts   pure state transitions for focus, held order, regain and arming
   ui/sequence.ts      serializes reserved press landings and focus moves
   ui/builtin.tsx      hides Claude Code's own count of background work
@@ -62,3 +63,15 @@ The band and pane read the same published item list. They cannot see a partial i
 While items run, the loop polls every two seconds. Agents keep a minimum three-second gap. The same timer redraws the views each second. After five unchanged passes with no running items, the loop polls every ten seconds. A new running item wakes polling on the next tick. Worktrees refresh at most once every ten seconds. A failed source does not stop the remaining sources.
 
 See [shared poll loop](architecture/loop.md) for scheduling rules, repeated starts and the write path. [Incremental file reads](architecture/reading.md) describes the session cursors and parser summaries.
+
+## Module splits
+
+These splits move pure helpers. Hooks and helpers that receive `$` stay in their original files.
+Behaviour stays the same. Only legacy test imports keep re-exports at the old paths.
+Line counts include imports and re-exports after review.
+Review each split in a separate pull request for [#75](https://github.com/lorenzh/rabe/issues/75).
+None of the splits depends on another.
+
+| Original module | Before | After | New module | Lines | Reason |
+|---|---:|---:|---|---:|---|
+| `pane.tsx` | 710 | 674 | [pane-data](architecture/pane-data.md) | 38 | Clipboard and toast security boundary (`clipText`/`toastText`); stored-summary validation |
