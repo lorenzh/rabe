@@ -4,6 +4,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+- `/rabe-stop` shows usage for empty arguments or arguments without `codex:`, and its hint shows `codex:<job id>` ([#141](https://github.com/lorenzh/rabe/issues/141)).
+
 ## [0.7.0] - 2026-10-12
 
 ### Added

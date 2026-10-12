@@ -528,15 +528,19 @@ export function codex(on: On, file: string, pollers: Pollers): void {
     const started = await next(e)
     await $.command.register({
       name: 'rabe-stop',
-      description: 'Stop a background item that Rabe shows, by its id',
-      argumentHint: '<item id>',
+      description: 'Stop a running Codex job that Rabe shows, by its job id',
+      argumentHint: 'codex:<job id>',
       immediate: true,
     })
 
     return started
   })
 
-  on('command.run', { command: 'rabe-stop', args: /^\s*codex:/ }, async ($, e) =>
-    cancel($, e.args.trim()),
+  on('command.run', { command: 'rabe-stop' }, async ($, e) =>
+    /^\s*codex:/.test(e.args)
+      ? cancel($, e.args.trim())
+      : {
+          text: 'Usage: /rabe-stop codex:<job id>. Use the Codex job id shown in Rabe, not the thread id. To stop other items, use x in the pane.',
+        },
   )
 }
