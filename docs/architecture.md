@@ -26,6 +26,7 @@ hooks/
   reading.ts          pure byte cursors and output chunks
   diag.ts             /rabe-diag: the last poll of each source, without private data
   tasks.ts            pure: task notifications, task output files, port guess
+  shell-words.ts      pure shell words and here-doc tokenization
   writes.ts           pure: the files a shell command line may write, and whether a path changed
   prices.ts           pure: the price table, its lookup and the dollars of a request
   forwarders.ts       pure: the Codex companion calls of agents, and the jobs they started
@@ -77,3 +78,4 @@ None of the splits depends on another.
 |---|---:|---:|---|---:|---|
 | `pane.tsx` | 710 | 674 | [pane-data](architecture/pane-data.md) | 38 | Clipboard and toast security boundary (`clipText`/`toastText`); stored-summary validation |
 | `lists.ts` | 696 | 506 | [touched files](architecture/touched.md) | 196 | File edits, conflicts and worktree rows |
+| `writes.ts` | 660 | 401 | [shell-words](architecture/shell-words.md) | 261 | Shell words, quoting and here-doc bodies |
