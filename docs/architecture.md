@@ -16,7 +16,8 @@ hooks/
   model.ts            item types (re-exported from the contract), itemId, mergeItem
   registry.ts         pure list changes: addItem, updateItem, endItem, capEnded, commit, pastEnd, prune
   sources/index.ts    sources(on, file, pollers), which calls each source
-  sources/agents.ts   Claude subagents: items, live tokens, turns and workflow phases
+  sources/agents.ts   Claude subagent hooks and polling
+  sources/agent-items.ts  pure agent metadata, transcripts, turns and item updates
   sources/workflows.ts  workflow runs: items, phases and their end
   sources/codex.ts    Codex plugin jobs: items, steps and /rabe-stop
   sources/shells.ts   background shells: items, exit code, port
@@ -79,3 +80,4 @@ None of the splits depends on another.
 | `pane.tsx` | 710 | 674 | [pane-data](architecture/pane-data.md) | 38 | Clipboard and toast security boundary (`clipText`/`toastText`); stored-summary validation |
 | `lists.ts` | 696 | 506 | [touched files](architecture/touched.md) | 196 | File edits, conflicts and worktree rows |
 | `writes.ts` | 660 | 401 | [shell-words](architecture/shell-words.md) | 261 | Shell words, quoting and here-doc bodies |
+| `agents.ts` | 731 | 491 | [agent-items](architecture/agent-items.md) | 264 | Agent metadata, transcripts, turns and item updates |

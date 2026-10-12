@@ -7,6 +7,8 @@ keywords: [shell writes, script, bashEditDiff, changedFiles, bashEditDiffEnabled
 
 # Files and runtime limits
 
+`changedFile` and `ranBash` in `hooks/sources/agent-items.ts` check tool results before the hooks record edits.
+
 ## Files written outside Edit and Write
 
 An agent can write files through Bash (`cat > ~/.agents/skills/x/SKILL.md <<'EOF'`), and Codex through its own patch tool. Neither is an `Edit` or `Write` call, so the Effects tab once missed them (issue #9).

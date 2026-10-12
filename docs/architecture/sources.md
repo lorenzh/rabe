@@ -37,6 +37,8 @@ The pane stops agents, shells, monitors and workflows itself: it calls `TaskStop
 
 ### Claude subagents: `hooks/sources/agents.ts`
 
+Pure metadata, transcript, turn and item helpers live in [`agent-items.ts`](agent-items.md). Hooks and `$` helpers stay in `agents.ts`.
+
 One `agent` item per subagent, id `agent:<agentId>`. It covers agents the model starts, agents of workflows and teammates.
 
 The agent-list poll stores an API-provided `name` and uses it for the title. Message toasts use the agent id. Without a name, the title uses the task description or agent type. Turn tool paths stay whole in `rabe.turns`; the detail shows project-relative paths when it can, with a middle ellipsis for long paths.
