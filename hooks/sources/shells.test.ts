@@ -596,3 +596,111 @@ test('output and cursor commit together after a competing state write', async ($
     },
   })
 })
+
+test('a discarded shell pass replays the exit result from an unchanged file', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  let restart = true
+  on('state.set', { key: 'lines' }, async (_$, e, next) => {
+    const result = await next(e)
+    if (restart) {
+      restart = false
+      await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+    }
+    return result
+  })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  const log: string[] = []
+  files(on, { [`${DIR}/b1.output`]: 'ready\n\n[exited with code 0]\n' }, log)
+  state['rabe.items'] = { value: [running], version: 1 }
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  await clock.advance(2000)
+  expect((state['rabe.items']?.value as RabeItem[])?.[0]?.status).toBe('running')
+  expect(restart).toBe(false)
+  log.length = 0
+  await clock.advance(2000)
+  expect((state['rabe.items']?.value as RabeItem[])?.[0]?.status).toBe('done')
+  expect(log).toEqual([])
+})
+
+for (const rotation of ['truncation', 'inode replacement']) {
+  test(`a shell resets discard mode after ${rotation}`, async ($, on) => {
+    const clock = mock.clock(on, { now: 1000 })
+    const state = memoryState(on)
+    bash(on)
+    core(on)
+    const path = `${DIR}/b1.output`
+    files(on, { [path]: 'fresh\n\n[exited with code 0]\n' })
+    state['rabe.items'] = { value: [running], version: 1 }
+    state['rabe.lines'] = {
+      value: {
+        'shell:b1': {
+          seen: 0,
+          lines: [],
+          cursor: {
+            size: rotation === 'truncation' ? 100 : 1,
+            offset: 1,
+            mtimeMs: 1,
+            identity: `${path}:old`,
+            partial: false,
+            isDiscarding: true,
+          },
+        },
+      },
+      version: 1,
+    }
+    await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+    await clock.advance(2000)
+    expect(state['rabe.lines']?.value).toMatchObject({
+      'shell:b1': { seen: 1, lines: [{ text: 'fresh' }] },
+    })
+  })
+}
+
+for (const broken of [
+  null,
+  { cursor: { identity: 42 }, lines: null },
+  { seen: 0, lines: [], cursor: { size: 6, offset: 'bad', mtimeMs: 0, partial: false } },
+]) {
+  test(`a shell rebuilds malformed restored output ${JSON.stringify(broken)}`, async ($, on) => {
+    const clock = mock.clock(on, { now: 1000 })
+    const state = memoryState(on)
+    bash(on)
+    core(on)
+    files(on, { [`${DIR}/b1.output`]: 'fresh\n' })
+    state['rabe.items'] = { value: [running], version: 1 }
+    state['rabe.lines'] = { value: broken === null ? null : { 'shell:b1': broken }, version: 1 }
+    await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+    await clock.advance(2000)
+    expect(state['rabe.lines']?.value).toMatchObject({
+      'shell:b1': { seen: 1, lines: [{ text: 'fresh' }] },
+    })
+  })
+}
+
+test('the task list replays a cached shell exit after a discarded item write', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  let reject = true
+  on('state.set', { key: 'items' }, async (_$, e, next) => {
+    if (reject) {
+      reject = false
+      return { deny: 'item write failed' }
+    }
+    return next(e)
+  })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  files(on, { [`${DIR}/b1.output`]: 'ready\n\n[exited with code 0]\n' })
+  state['rabe.items'] = { value: [running], version: 1 }
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  await clock.advance(2000)
+  expect((state['rabe.items']?.value as RabeItem[])?.[0]?.status).toBe('running')
+  await $.classic.Stop({
+    session_id: '5f1c',
+    stop_hook_active: false,
+    background_tasks: [],
+  } as never)
+  expect((state['rabe.items']?.value as RabeItem[])?.[0]?.status).toBe('done')
+})

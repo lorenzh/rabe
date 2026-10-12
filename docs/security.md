@@ -74,6 +74,8 @@ Rabe sends nothing anywhere. It does not call `$.http.fetch`, and it does not ru
 - A previous-session summary stores failed item ids in `failedIds`, never titles. When reading an older summary, remove its `failed` field and save the cleaned record. Do this at an empty session’s end too.
 - `$.store` lasts across sessions. Keep in it only what the README lists under Privacy.
 - Bug reports and feedback replace home paths, user and project names, ids and tokens with placeholders before the person sees the draft.
+- Diagnostics store fixed error categories only. Never keep or print raw errors or file names in `rabe.diag`. `/rabe-diag` and the `Rabe diagnostics:` report context contain only fixed words, numbers and numeric versions. Check restored values before formatting them. A failed report returns `diagnostics unavailable`.
+- Readers check restored cache maps and cursor/parser entries before using them. Invalid entries are rebuilt. Derived fields stay with reader state so a discarded item write cannot lose an exit or metadata update.
 - Test fixtures and docs use invented paths, ids and names.
 
 ### Destructive actions

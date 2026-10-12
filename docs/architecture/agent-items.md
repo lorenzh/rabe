@@ -16,7 +16,7 @@ The shared `LISTED` table also serves `turn.complete` in `agents.ts`.
 `MAX_EDITS` defines the limit of 100 once for agents and Codex.
 `codex.ts` and `codex-data.ts` import it from this module.
 
-`agents.ts` keeps hooks, polling, disk checks, price reads and state writes. The pure helpers return updated data only.
+`agents.ts` keeps hooks, polling, disk checks, price reads and state writes. The pure helpers return updated data only. The metadata cache keeps parsed fields alongside its file stamp. A cached poll applies these fields again after a discarded or failed item write. Malformed restored maps and cache entries are rebuilt.
 
 See [Sources](sources.md) for behaviour and [the module map](../architecture.md) for sizes.
 

@@ -3,7 +3,7 @@ import type { RabeItem } from './model'
 import { byteLength } from './reading'
 import { type Change, capEnded } from './registry'
 
-// Read results and unchanged files in one poll; lastError has its paths shortened.
+// Read results and unchanged files in one poll; lastError is a fixed category.
 export type Probe = {
   files: number
   chars: number
@@ -41,19 +41,20 @@ export function pollDue(
   return (!initial || poll.initial !== false) && now >= (poll.due ?? 0)
 }
 
-// An error's text without private parts: every absolute path (`/x`, `~/x`,
-// `C:\x`) becomes its file name when it has an extension and `…` otherwise,
-// and the text is cut. Free text around a path stays: it is cut, not read.
+// Classify failures without retaining any message text or file names.
 export function shorten(error: unknown): string {
-  const text = error instanceof Error ? error.message : String(error)
-
-  return text
-    .replace(/(?<![\w.~])(?:[A-Za-z]:[\\/]|~[\\/]|[\\/])[^\s'"]*/g, path => {
-      const name = path.split(/[\\/]/).pop() ?? ''
-      return /[^.\\/]\.[A-Za-z0-9]{1,8}$/.test(name) ? name : '…'
-    })
-    .replace(/\s+/g, ' ')
-    .slice(0, 120)
+  const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined
+  const text = error instanceof Error ? error.message : typeof error === 'string' ? error : ''
+  const known = typeof code === 'string' ? code : text
+  if (/\bENOENT\b|no such file|^not found$/i.test(known)) return 'not found'
+  if (/\bEACCES\b|\bEPERM\b|permission denied/i.test(known)) return 'permission denied'
+  if (/\bETIMEDOUT\b|timed? ?out|timeout/i.test(known)) return 'timeout'
+  if (/\bEFBIG\b|too large|exceeds 4 MiB/i.test(known)) return 'too large'
+  const exit = /(?:exit(?:ed)? (?:with )?(?:code )?)(\d+)\b/i.exec(known)
+  if (exit) return `exit code ${Number(exit[1])}`
+  if (error instanceof SyntaxError || /^parse error$/i.test(known)) return 'parse error'
+  if (/refused|denied by policy|^denied$/i.test(known)) return 'refused'
+  return 'other'
 }
 
 function fail(probe: Probe, error: unknown): void {

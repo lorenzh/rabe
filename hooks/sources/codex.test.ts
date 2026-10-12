@@ -1092,3 +1092,135 @@ test('job and workspace JSON stay cached without a process host and refresh on r
     [`${WS}/jobs/task-1.json`]: { data: rewritten },
   })
 })
+
+test('a failed item commit replays cached Codex rollout fields and cost', async ($, on) => {
+  let reject = true
+  on('state.set', { key: 'items' }, async (_$, e, next) => {
+    if (reject) {
+      reject = false
+      return { deny: 'item write failed' }
+    }
+    return next(e)
+  })
+  const state = memoryState(on)
+  prices(on)
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: ROLLOUT,
+  })
+  await startAndTick($, w)
+  expect(state['rabe.items']).toBeUndefined()
+  w.calls.length = 0
+  await w.clock.advance(2000)
+  const item = ((state['rabe.items']?.value ?? []) as RabeItem[])[0]
+  expect(item?.detail).toMatchObject({
+    commandCount: 1,
+    steps: parseRollout(ROLLOUT).steps,
+  })
+  expect(item?.tokens).toBeDefined()
+  expect(item?.costUsd).toBeDefined()
+  expect(w.calls.filter(call => call === `read ${ROLLOUT_PATH}`)).toEqual([])
+})
+
+for (const key of ['codexFiles', 'rollouts']) {
+  for (const broken of [
+    null,
+    [],
+    'bad',
+    ...(key === 'rollouts'
+      ? [
+          null,
+          { out: { steps: null } },
+          {
+            out: { steps: [], requests: [], commandCount: 0 },
+            total: '',
+            isResumed: false,
+            pending: null,
+          },
+        ].map(parser => ({
+          'codex:task-1': {
+            path: ROLLOUT_PATH,
+            cursor: {
+              size: ROLLOUT.length,
+              mtimeMs: 5000,
+              offset: ROLLOUT.length,
+              identity: '1',
+              partial: false,
+            },
+            since: 1000,
+            parser,
+            usd: 0,
+            isUnpriced: false,
+            hasRequests: false,
+            hasSkipped: false,
+          },
+        }))
+      : []),
+    {
+      [key === 'rollouts' ? 'codex:task-1' : `${WS}/jobs/task-1.json`]: {
+        path: ROLLOUT_PATH,
+        cursor: { identity: 1 },
+        parser: { out: { steps: null } },
+        data: null,
+      },
+    },
+  ]) {
+    test(`Codex rebuilds malformed ${key} state ${JSON.stringify(broken)}`, async ($, on) => {
+      const state = memoryState(on)
+      state[`rabe.${key}`] = { value: broken, version: 1 }
+      const w = world(on, {
+        [`${WS}/state.json`]: { jobs: [job()] },
+        [`${WS}/jobs/task-1.json`]: job(),
+        [ROLLOUT_PATH]: ROLLOUT,
+      })
+      await startAndTick($, w)
+      expect((state['rabe.items']?.value as RabeItem[])?.[0]?.detail).toMatchObject({
+        commandCount: 1,
+      })
+    })
+  }
+}
+
+for (const rotation of ['truncation', 'inode replacement']) {
+  test(`Codex resets discard mode after ${rotation}`, async ($, on) => {
+    const state = memoryState(on)
+    const w = world(on, {
+      [`${WS}/state.json`]: { jobs: [job()] },
+      [`${WS}/jobs/task-1.json`]: job(),
+      [ROLLOUT_PATH]: ROLLOUT,
+    })
+    await startAndTick($, w)
+    const maps = state['rabe.rollouts']?.value as Record<
+      string,
+      { cursor: Record<string, unknown> }
+    >
+    const saved = maps['codex:task-1']
+    expect(saved).toBeDefined()
+    if (!saved) return
+    state['rabe.rollouts'] = {
+      value: {
+        ...maps,
+        'codex:task-1': {
+          ...saved,
+          cursor: {
+            ...saved.cursor,
+            isDiscarding: true,
+            size: rotation === 'truncation' ? 10000 : 1,
+            offset: 1,
+            identity: 'old',
+          },
+        },
+      },
+      version: (state['rabe.rollouts']?.version ?? 0) + 1,
+    }
+    w.files.set(ROLLOUT_PATH, {
+      text: `${line('turn_context', { model: 'gpt-6-luna' })}\n`,
+      mtimeMs: 6000,
+    })
+    await w.clock.advance(2000)
+    expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.detail).toMatchObject({
+      model: 'gpt-6-luna',
+    })
+  })
+}

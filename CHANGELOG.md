@@ -10,6 +10,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
+- `/rabe-diag` and the bug report show errors only as fixed categories such as `not found` or `exit code 1`, never error text or file names. A poll whose item update was dropped no longer loses a shell's or monitor's end or an agent's details; a file replaced while a too-long line was skipped is read from its start; damaged reader state in a session is rebuilt; and a failing `/rabe-diag` answers `diagnostics unavailable` instead of throwing (#PR)
 - Keep idle teammates with live items in list order, detail activity and the Timeline window. Add coverage for plain subagent completion after an idle poll ([#130](https://github.com/lorenzh/rabe/pull/130), fixes [#118](https://github.com/lorenzh/rabe/issues/118))
 - Show teammates as idle between turns without counting them as running or ended; keep plain subagent behavior unchanged ([#130](https://github.com/lorenzh/rabe/pull/130), fixes [#118](https://github.com/lorenzh/rabe/issues/118))
 - A removed or gone row leaves the Items list and the Effects tab at once instead of staying as a dim `gone` slot; tabs and buttons keep their places, Enter on a row waits until the focus is back on the row you chose, and closing the pane clears the `gone` slots of an open item and the Cost and Timeline tabs ([#125](https://github.com/lorenzh/rabe/pull/125), fixes [#122](https://github.com/lorenzh/rabe/issues/122))

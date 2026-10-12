@@ -1,6 +1,7 @@
 import type { RabeCodexStep, RabeEdit, RabeRollout, RabeRolloutCursor } from '../../types'
 import { clip, type EndStatus, itemId, type NewItem } from '../model'
 import type { CodexRequest } from '../prices'
+import { isRecord } from '../reading'
 import { shellWrites } from '../writes'
 import { MAX_EDITS } from './agent-items'
 
@@ -30,6 +31,30 @@ export type CodexSession = {
 
 export function rec(value: unknown): Rec {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Rec) : {}
+}
+
+export function rolloutCursor(value: unknown): RabeRolloutCursor | undefined {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.out) ||
+    !Array.isArray(value.out.steps) ||
+    !value.out.steps.every(isRecord) ||
+    !Array.isArray(value.out.requests) ||
+    typeof value.out.commandCount !== 'number' ||
+    !Number.isFinite(value.out.commandCount) ||
+    (value.out.edits !== undefined &&
+      (!Array.isArray(value.out.edits) || !value.out.edits.every(isRecord))) ||
+    typeof value.total !== 'string' ||
+    typeof value.isResumed !== 'boolean' ||
+    !isRecord(value.pending) ||
+    !Object.values(value.pending).every(
+      index => typeof index === 'number' && Number.isInteger(index) && index >= 0,
+    ) ||
+    (value.base !== undefined && !isRecord(value.base)) ||
+    (value.at !== undefined && (typeof value.at !== 'number' || !Number.isFinite(value.at)))
+  )
+    return
+  return value as RabeRolloutCursor
 }
 
 export function list(value: unknown): unknown[] {

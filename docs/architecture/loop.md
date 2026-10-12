@@ -17,6 +17,6 @@ The loop collects the final list and its changes. Its local `write` and `forget`
 
 Each named poll also leaves a record of its last run (duration, content reads, characters and bytes returned, unchanged files skipped, failures) in `rabe.diag`; see [Diagnostics](diagnostics.md).
 
-A repeated session start cancels the old timer. The loop clears the poll list before sources bind new callbacks. Each pass uses a snapshot of that list. A generation check prevents an old pass from publishing items after another start.
+A repeated session start cancels the old timer. The loop clears the poll list before sources bind new callbacks. Each pass uses a snapshot of that list. A generation check prevents an old pass from publishing items after another start. Readers keep the derived fields alongside their cursors and caches. A later poll replays them after a discarded or failed item write. See [Incremental file reads](reading.md).
 
 See [sources](sources.md) for source hooks and [UI rendering](ui.md) for the shared redraw request. `hooks/loop.test.ts` tests scheduling and failed polls. `hooks/register.test.ts` tests repeated starts, publication and event writes during a poll.

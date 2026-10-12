@@ -11,7 +11,7 @@ import { companionCall } from '../forwarders'
 import { fault, type Pollers, skipped, tally } from '../loop'
 import { clip, type EndStatus, isAbsolute, isEnded, itemId, type RabeItem } from '../model'
 import { claudeUsd, type Prices, parsePrices, withOverride } from '../prices'
-import { unchanged } from '../reading'
+import { isRecord, restored, unchanged } from '../reading'
 import {
   addItem,
   type Change,
@@ -255,11 +255,12 @@ async function readMeta(
   if (!path) return
   const stat = await $.fs.stat(path).catch(fault)
   if (stat?.kind !== 'file') return
-  const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'agentFiles' })
+  const { value: saved, version } = await $.state.get({ plugin: 'rabe', key: 'agentFiles' })
+  const value = restored(saved)
   const held = value[id]
-  if (held?.path === path && unchanged(stat, held)) {
+  if (held?.path === path && isRecord(held.data) && unchanged(stat, held)) {
     skipped()
-    return
+    return list => updateItem(list, id, { detail: held.data })
   }
   const text = await $.fs.read(path).then(tally, fault)
   const patch = typeof text === 'string' ? metaPatch(text) : undefined
@@ -268,7 +269,7 @@ async function readMeta(
     { plugin: 'rabe', key: 'agentFiles' },
     {
       ...value,
-      [id]: { path, size: stat.size, mtimeMs: stat.mtimeMs },
+      [id]: { path, size: stat.size, mtimeMs: stat.mtimeMs, data: patch },
     },
     { ifVersion: version },
   )
@@ -276,7 +277,8 @@ async function readMeta(
 }
 
 async function cleanFiles($: EngineInterface, items: RabeItem[]): Promise<void> {
-  const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'agentFiles' })
+  const { value: saved, version } = await $.state.get({ plugin: 'rabe', key: 'agentFiles' })
+  const value = restored(saved)
   const { value: current = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   const next = prune(value, Object.keys(value), [...items, ...current])
   if (next !== value)
@@ -292,6 +294,8 @@ async function pollAgents($: EngineInterface, items: RabeItem[]): Promise<Change
 
     return agents.reduce((list, info) => listed(list, info, now, end), items)
   })
+  const { value: cached } = await $.state.get({ plugin: 'rabe', key: 'agentFiles' })
+  const metadata = restored(cached)
   for (const item of poll.items) {
     if (item.kind !== 'agent') continue
     const workflow = poll.items.find(
@@ -306,6 +310,9 @@ async function pollAgents($: EngineInterface, items: RabeItem[]): Promise<Change
     ) {
       const change = await readMeta($, item.id, poll.items)
       if (change) stage(poll, change)
+    } else {
+      const data = metadata[item.id]?.data
+      if (isRecord(data)) stage(poll, list => updateItem(list, item.id, { detail: data }))
     }
   }
   await cleanFiles($, poll.items)

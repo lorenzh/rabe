@@ -4,22 +4,19 @@ import { diag, diagText } from './diag'
 import { collect, fault, mergeDiag, shorten, skipped, tally } from './loop'
 import { core, files, memoryState } from './testing'
 
-test('shorten keeps the last name of a path and cuts long text', () => {
-  expect(shorten(new Error("ENOENT: no such file, open '/home/lena/secret/a.json'"))).toBe(
-    "ENOENT: no such file, open 'a.json'",
-  )
-  expect(shorten('x'.repeat(500))).toHaveLength(120)
-})
-
-test('shorten rewrites every absolute path, short ones too', () => {
-  expect(shorten('EACCES /home/lena')).toBe('EACCES …')
-  expect(shorten("EACCES: open '/home/lena'")).toBe("EACCES: open '…'")
-  expect(shorten('cannot read ~/x')).toBe('cannot read …')
-  expect(shorten('cannot read ~/x/y.json')).toBe('cannot read y.json')
-  expect(shorten('open C:\\Users\\lena\\a.json')).toBe('open a.json')
-  expect(shorten('open C:\\Users')).toBe('open …')
-  const reason = shorten('Denied by policy: keep out of /home/lena/diary now, see /srv')
-  expect(reason).toBe('Denied by policy: keep out of … now, see …')
+test('diagnostic errors contain fixed categories only', () => {
+  for (const [error, category] of [
+    [new Error("ENOENT: open '/home/lena/private-token.json'"), 'not found'],
+    [{ code: 'EACCES', message: 'private prompt' }, 'permission denied'],
+    ['ETIMEDOUT private token', 'timeout'],
+    ['read exceeds 4 MiB private.json', 'too large'],
+    ['tail exited with code 17: private prompt', 'exit code 17'],
+    [new SyntaxError('secret prompt'), 'parse error'],
+    ['Denied by policy: private prompt', 'refused'],
+    ['private prompt token.json', 'other'],
+    ['not found', 'not found'],
+  ])
+    expect(shorten(error)).toBe(category)
 })
 
 test('collect records duration, reads, UTF-8 bytes, skips and errors per named poll', async () => {
@@ -57,8 +54,8 @@ test('collect records duration, reads, UTF-8 bytes, skips and errors per named p
     skipped: 1,
     errors: 1,
   })
-  expect(stats.one?.lastError).toBe("open 'missing.json'")
-  expect(stats.two).toMatchObject({ errors: 1, lastError: 'failed x.out' })
+  expect(stats.one?.lastError).toBe('other')
+  expect(stats.two).toMatchObject({ errors: 1, lastError: 'other' })
   expect(Object.keys(stats)).toEqual(['one', 'two'])
 })
 
@@ -107,7 +104,7 @@ test('the report has counts and versions and no titles, prompts or full paths', 
   expect(text).toContain('pricesFile: set')
   expect(text).toContain('shell running 1')
   expect(text).toContain(
-    "- shells: 100 ms, 2 files, 90 chars, 94 bytes, 3 skipped, 1 errors, last error: open 'b.out'",
+    '- shells: 100 ms, 2 files, 90 chars, 94 bytes, 3 skipped, 1 errors, last error: other',
   )
   for (const secret of ['lena', 'secret-project', 'rm -rf']) expect(text).not.toContain(secret)
   expect(text).toContain(
@@ -158,4 +155,96 @@ test('/rabe:report-bug keeps its text and context and gets the diagnostics', asy
   expect(answer.text).toBe('draft')
   expect(answer.context?.[0]).toBe('asked')
   expect(answer.context?.[1]).toContain('Rabe diagnostics:\nRabe ')
+})
+
+for (const broken of [
+  null,
+  [],
+  'private prompt',
+  { agents: null },
+  { agents: { ms: 'secret', lastError: 'token.json' } },
+]) {
+  test(`diagnostics ignore malformed restored records ${JSON.stringify(broken)}`, () => {
+    const text = diagText({
+      rabe: '0.7.0',
+      claude: '2.1.296',
+      options: {},
+      items: [],
+      diag: broken as never,
+    })
+    for (const secret of ['private prompt', 'secret', 'token.json', 'undefined', 'null'])
+      expect(text).not.toContain(secret)
+  })
+}
+
+test('diagnostics allow only known option values, item counts and numeric versions', () => {
+  const text = diagText({
+    rabe: 'private-version',
+    claude: 'private-version',
+    options: {
+      timelineHours: 'private-option',
+      hideBuiltinTasks: 'private-option',
+      custom: 'private-option',
+      pricesFile: '/private.csv',
+    },
+    items: [{ kind: 'private-kind', status: 'private-status' }] as never,
+    diag: {},
+  })
+  expect(text).not.toContain('private')
+})
+
+for (const failure of ['refused', 'thrown']) {
+  test(`diagnostics keep the start result when registration is ${failure}`, async ($, on) => {
+    memoryState(on)
+    on('session.start', async (_$, e) => ({ cwd: e.cwd }))
+    on('command.register', async () => {
+      if (failure === 'thrown') throw new Error('private reason')
+      return { deny: 'private reason' }
+    })
+    diag(on, {})
+    expect(
+      await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true } as never),
+    ).toMatchObject({ cwd: '/repo' })
+  })
+}
+
+for (const command of ['rabe-diag', 'rabe:report-bug']) {
+  test(`${command} returns fixed text when the diagnostics read fails`, async ($, on) => {
+    on('state.get', { plugin: 'rabe', key: 'diag' }, async () => ({ deny: 'private reason' }))
+    core(on)
+    on('command.run', async () => ({ text: 'draft', context: ['asked'] }) as never)
+    diag(on, {})
+    const answer = await $.command.run({ command, args: '' } as never)
+    if (command === 'rabe-diag') expect(answer.text).toBe('diagnostics unavailable')
+    else expect(answer.context).toContain('Rabe diagnostics:\ndiagnostics unavailable')
+  })
+}
+
+test('diagnostics catch thrown registration and report calls', async () => {
+  const hooks: Record<string, (...args: unknown[]) => Promise<unknown>> = {}
+  diag(
+    ((
+      event: string,
+      matcher: { command?: string },
+      handler: (...args: unknown[]) => Promise<unknown>,
+    ) => {
+      hooks[matcher.command ?? event] = handler
+    }) as never,
+    {},
+  )
+  const engine = {
+    command: {
+      register: async () => {
+        throw new Error('private reason')
+      },
+    },
+    state: {
+      get: async () => {
+        throw new Error('private reason')
+      },
+    },
+  }
+  const started = { cwd: '/repo' }
+  expect(await hooks['session.start']?.(engine, {}, async () => started)).toBe(started)
+  expect(await hooks['rabe-diag']?.(engine)).toEqual({ text: 'diagnostics unavailable' })
 })
