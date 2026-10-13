@@ -90,3 +90,33 @@ test('env options that run no command, or that Rabe cannot follow, are no launch
   })
   expect(codexExec('env -- --help codex exec -o /tmp/r.txt x &')).toBeUndefined()
 })
+
+test('after env only the allowed options keep a launch', () => {
+  const run = { resultPath: '/tmp/r.txt', isDetached: true }
+  for (const line of [
+    'env -i A=1 codex exec -o /tmp/r.txt x &',
+    'env --ignore-environment codex exec -o /tmp/r.txt x &',
+    'env -u A codex exec -o /tmp/r.txt x &',
+    'env --unset A --unset=B codex exec -o /tmp/r.txt x &',
+    'env -C /x --chdir /y --chdir=/z codex exec -o /tmp/r.txt x &',
+    'env -- codex exec -o /tmp/r.txt x &',
+    'nohup env A=1 codex exec -o /tmp/r.txt x &',
+    'A=1 env B=2 codex exec -o /tmp/r.txt x &',
+  ]) {
+    expect(codexExec(line)).toEqual(run)
+  }
+  for (const line of [
+    'env --null codex exec -o /tmp/never.txt x &',
+    'env -0 codex exec -o /tmp/never.txt x &',
+    'env -v codex exec -o /tmp/never.txt x &',
+    'env --debug codex exec -o /tmp/never.txt x &',
+    'env --help codex exec -o /tmp/never.txt x &',
+    'env --version codex exec -o /tmp/never.txt x &',
+    "env -S 'A=1 codex' exec -o /tmp/never.txt x &",
+    'env -P /bin codex exec -o /tmp/never.txt x &',
+    'env -iu A codex exec -o /tmp/never.txt x &',
+    'env --unknown codex exec -o /tmp/never.txt x &',
+  ]) {
+    expect(codexExec(line)).toBeUndefined()
+  }
+})

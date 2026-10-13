@@ -6,14 +6,15 @@ const isWord = (tok: Tok | undefined): tok is Word => tok !== undefined && 'text
 const STARTS = /^(nohup|setsid|exec|command|time|env)$/
 const ENDS = new Set([';', '&&', '||', '|', '&', 'stop'])
 const SEPARATORS = new Set([';', '&&', '||', '|', '|&', '&', '(', '\n'])
+// The env options a launch may use; any other one (`--null`, `-S`, `--help`,
+// ...) makes the line none, since env may then run no command. Conservative.
+const ENV_FLAG = /^(-i|--ignore-environment|--unset=.+|--chdir=.+)$/
 const ENV_ARG = /^(-[uC]|--unset|--chdir)$/
-// env runs no command after these, or splits a string Rabe does not follow.
-const ENV_NONE = /^(--help|--version|--split-string|-[^-]*S)/
 
 // The index of the first `codex exec` in command position: after the line
 // start or a separator, only unquoted assignments and start words before it;
-// after `env` also its options and quoted assignments; `env --help` and
-// the like are none. One pass, so long lines stay fast.
+// after `env` also the allowed options and quoted assignments; any other
+// env option makes the line none. One pass, so long lines stay fast.
 function commandAt(toks: Tok[]): number {
   let command = true
   let env = false
@@ -39,9 +40,9 @@ function commandAt(toks: Tok[]): number {
       continue
     }
     if (options && tok.text.startsWith('-')) {
-      if (ENV_NONE.test(tok.text)) return -1
-      options = tok.text !== '--'
       skip = ENV_ARG.test(tok.text)
+      if (!skip && tok.text !== '--' && !ENV_FLAG.test(tok.text)) return -1
+      options = tok.text !== '--'
     } else if (STARTS.test(tok.text)) {
       env = tok.text === 'env'
       options = env
