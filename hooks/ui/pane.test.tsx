@@ -443,6 +443,100 @@ test('a long list draws every row, and the selected row takes the focus', async 
   await ui.unmount()
 })
 
+const manyShells = (count: number): RabeItem[] =>
+  Array.from(
+    { length: count },
+    (_, n): RabeItem => ({
+      ...(dev as RabeItemOf<'shell'>),
+      id: `shell:many${n + 1}`,
+      title: `shell ${n + 1}`,
+      detail: { command: `shell ${n + 1}`, taskId: `many${n + 1}` },
+    }),
+  )
+
+type Drawn = { type: string; props?: Record<string, unknown>; children?: Drawn[] }
+
+const boxes = (
+  one: Drawn | undefined,
+  test: (props: Record<string, unknown>) => boolean,
+): Drawn[] =>
+  one && typeof one === 'object'
+    ? [
+        ...(one.type === 'Box' && test(one.props ?? {}) ? [one] : []),
+        ...(one.children ?? []).flatMap(child => boxes(child, test)),
+      ]
+    : []
+
+const keysIn = (one: Drawn): string[] =>
+  [one.props?.key, ...(one.children ?? []).flatMap(keysIn)].filter(
+    (key): key is string => typeof key === 'string',
+  )
+
+const clipped = async (ui: Mounted) =>
+  boxes((await ui.drawn()) as Drawn, props => typeof props.height === 'number')
+
+test('a long list on the terminal scrolls in a clipped box under the tabs', async ($, on) => {
+  hold(on, manyShells(60), { selected: 'shell:many1' })
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  const [clip] = await clipped(ui)
+  expect(clip?.props?.height).toBeLessThan(30)
+  const inside = keysIn(clip as Drawn)
+  expect(inside.some(key => key.startsWith('row:'))).toBe(true)
+  expect(inside.some(key => key.startsWith('tab-'))).toBe(false)
+  const tabs = (await ui.findAll({ type: 'Button' })).filter(one => one.key?.startsWith('tab-'))
+  expect(tabs.length).toBeGreaterThan(0)
+  await ui.unmount()
+})
+
+test('a list that fits the body is not clipped', async ($, on) => {
+  hold(on, ALL, { selected: review.id })
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  expect(await clipped(ui)).toHaveLength(0)
+  await ui.unmount()
+})
+
+test('the desktop draws a long list whole', async ($, on) => {
+  hold(on, manyShells(60), { selected: 'shell:many1' })
+  const ui = await $.ui.mount({ surface: 'desktop', ...PANE } as never)
+  expect(await clipped(ui)).toHaveLength(0)
+  await ui.unmount()
+})
+
+test('moving the focus to a row below the clipped box scrolls the list under the header', async ($, on) => {
+  hold(on, manyShells(60), { selected: 'shell:many1' })
+  on('ui.focus', async () => ({}))
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await $.ui.focus({
+    component: 'Pane',
+    requestId: 'rabe',
+    plugin: 'rabe',
+    element: 'row:shell:many40',
+    origin: { kind: 'person' },
+  })
+  const margins = boxes((await ui.drawn()) as Drawn, props => typeof props.marginTop === 'number')
+  const margin = margins[0]?.props?.marginTop as number
+  expect(margin).toBeLessThan(0)
+  expect(await ui.find({ type: 'Button', key: 'row:shell:many40' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('the wheel and the page keys scroll the clipped list, not the pane', async ($, on) => {
+  hold(on, manyShells(60), { selected: 'shell:many1' })
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  const answer = await $.ui.scroll({
+    ...ARROW,
+    offset: 0,
+    bodyRows: 30,
+    contentRows: 30,
+    by: 7,
+    pointer: { column: 2, row: 4 },
+  })
+  expect(answer).toEqual({})
+  const [inner] = boxes((await ui.drawn()) as Drawn, props => props.marginTop === -7)
+  expect(inner).toBeDefined()
+  await ui.unmount()
+})
+
 test('a wide terminal pane shows the selected item beside the list', async ($, on) => {
   hold(on, ALL, { selected: review.id })
   const ui = await $.ui.mount({ surface: 'terminal', ...WIDE } as never)
