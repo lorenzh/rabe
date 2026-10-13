@@ -17,11 +17,12 @@ import {
 import { KIND_LABEL, kept, matches, orderOf, previousOf, rowOf } from './lists'
 import { asPrevious, clipText, nameOf, toastText } from './pane-data'
 import { follow, geometry, NO_PIN, type Pin } from './pin'
-import { type At, hold, render } from './render'
+import { type At, hold, isRowKey, render } from './render'
 import { reserve, sequence } from './sequence'
 import {
   type Action,
   bounded,
+  isPress,
   landing,
   landingOf,
   layout,
@@ -693,10 +694,17 @@ export function pane(on: On, hours = baseHours): void {
       placement: e.props.placement,
     })
     if (!geo) return render(ui, e.surface, list, leave)
-    const lastTool = list.findLastIndex(one => 'button' in one || 'input' in one)
+    // The header ends at the first row: a control or Input held order put
+    // under the rows is drawn under the clipped box (see `render`).
+    const first = list.findIndex(
+      one => 'spans' in one && one.spans.some(part => isPress(part) && isRowKey(part.key)),
+    )
+    const late = list.filter(
+      (one, at) => first >= 0 && at > first && ('button' in one || 'input' in one),
+    ).length
 
     return render(ui, e.surface, list, leave, 'cells', {
-      split: Math.max(geo.heads, lastTool + 1),
+      split: geo.heads - late,
       rows: geo.rows,
       top: pinned.top,
     })

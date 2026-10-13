@@ -537,6 +537,67 @@ test('the wheel and the page keys scroll the clipped list, not the pane', async 
   await ui.unmount()
 })
 
+const manyAgents = (count: number): RabeItem[] =>
+  Array.from(
+    { length: count },
+    (_, n): RabeItem => ({
+      ...(explore as RabeItemOf<'agent'>),
+      id: `agent:many${n + 1}`,
+      title: `agent ${n + 1}`,
+      startedAt: NOW - 30 * 60_000,
+      tokens: { input: (count - n) * 1000, output: 0 },
+      costUsd: 0.01,
+      detail: { agentId: `many${n + 1}`, type: 'Explore' },
+    }),
+  )
+
+// The lines the clipped box shows: its rows from the scroll, as tall as the box.
+async function inView(ui: Mounted): Promise<string[]> {
+  const [clip] = await clipped(ui)
+  const inner = clip?.children?.[0]
+  const top = -((inner?.props?.marginTop as number | undefined) ?? 0)
+  const shown = await screen({ drawn: async () => inner })
+
+  return shown.slice(top, top + (clip?.props?.height as number))
+}
+
+test('the clipped list scrolls to its last body row, past the last item row', async ($, on) => {
+  hold(on, manyAgents(60), { tab: 'cost' })
+  const props = { ...PROPS, bodyColumns: 100, scroll: { offset: 0, bodyRows: 24 } }
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE, props } as never)
+  expect(await clipped(ui)).toHaveLength(1)
+  await $.ui.scroll({
+    ...ARROW,
+    offset: 0,
+    bodyRows: 24,
+    contentRows: 24,
+    by: 500,
+    pointer: { column: 2, row: 4 },
+  })
+  const shown = await inView(ui)
+  expect(shown.some(line => /⚠ stuck +agent 60 · no step for 30m$/.test(line))).toBe(true)
+  await ui.unmount()
+})
+
+test('a message field gained under held rows keeps the rows in the clipped box', async ($, on) => {
+  hold(on, [explore, ...manyShells(60)], { selected: 'shell:many1' })
+  const props = { ...WIDE.props, scroll: { offset: 0, bodyRows: 24 } }
+  const ui = await $.ui.mount({ surface: 'terminal', ...WIDE, props } as never)
+  await arm($, 'row:shell:many1')
+  await arm($, `row:${explore.id}`)
+  expect(await ui.find({ type: 'Input', key: `message:${explore.id}` })).toBeDefined()
+  const [clip] = await clipped(ui)
+  const all = keysIn((await ui.drawn()) as Drawn).filter(key => key.startsWith('row:'))
+  const inside = new Set(keysIn(clip as Drawn))
+  expect(all).toHaveLength(61)
+  expect(all.filter(key => !inside.has(key))).toEqual([])
+  // Each element beside the clipped box is one row at this width: the tabs, the
+  // rule, the controls, the two Inputs and the hint.
+  const around = ((await ui.drawn()) as Drawn).children?.filter(one => one.props?.key !== 'body')
+  expect((around?.length ?? 0) + (clip?.props?.height as number)).toBeLessThanOrEqual(24)
+  await ui.unmount()
+})
+
 test('a wide terminal pane shows the selected item beside the list', async ($, on) => {
   hold(on, ALL, { selected: review.id })
   const ui = await $.ui.mount({ surface: 'terminal', ...WIDE } as never)

@@ -32,12 +32,10 @@ export function geometry(model: Model, size: Size, sel: Selection): Geometry | u
   const isRow = (node: Node, key?: string) =>
     'spans' in node &&
     node.spans.some(one => isPress(one) && (key ? one.key === key : one.key.startsWith('row:')))
-  // Only a list pins: its rows are focusable, so the arrows move the focus and
-  // the pane follows it. A text view keeps the engine's scroll. What stands
-  // beside or under the last row (a detail) is not scrolled to.
-  const last = body.findLastIndex(node => isRow(node))
-  if (last < 0) return undefined
-  const total = rowsOf(body.slice(0, last + 1))
+  // Only a body with rows pins: its rows are focusable, so the arrows move the
+  // focus and the pane follows it. A text view keeps the engine's scroll.
+  if (!body.some(node => isRow(node))) return undefined
+  const total = rowsOf(body)
   if (total <= rows) return undefined
   const at = body.findIndex(node => isRow(node, `row:${sel.selected}`))
 

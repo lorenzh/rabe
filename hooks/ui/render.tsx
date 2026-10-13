@@ -303,19 +303,30 @@ export function render(
 
   if (!pin) return <Box flexDirection="column">{cells.flat()}</Box>
   // Tabs and toolbar stay; a clipped box shows `rows` of the list moved up by
-  // `top`; the hint stays under it.
+  // `top`; the hint stays under it. A control or Input held order put after
+  // the last focusable line stands under the box, so the focus order is kept.
   const head = starts.filter(at => at < pin.split).length
-  const tail = Math.max(head, cells.length - 1)
+  const end = Math.max(head, cells.length - 1)
+  const isTool = (one: Piece | ViewButton[] | undefined) =>
+    one !== undefined && (Array.isArray(one) || 'input' in one)
+  const last = runs.findLastIndex(one => 'spans' in one && one.spans.some(isPress))
+  const body: number[] = []
+  const tail: number[] = []
+  for (let at = head; at < cells.length; at++) {
+    if (at >= end || (at > last && isTool(runs[at]))) tail.push(at)
+    else body.push(at)
+  }
+  const draw = (ats: number[]) => ats.flatMap(at => cells[at] ?? [])
 
   return (
     <Box flexDirection="column">
       {cells.slice(0, head).flat()}
       <Box key="body" flexDirection="column" height={pin.rows} overflow="hidden">
         <Box flexDirection="column" marginTop={-pin.top}>
-          {cells.slice(head, tail).flat()}
+          {draw(body)}
         </Box>
       </Box>
-      {cells.slice(tail).flat()}
+      {draw(tail)}
     </Box>
   )
 }
