@@ -3,6 +3,7 @@ import type { RabeFileCursor, RabeLines } from '../../types'
 import { codexExec } from '../codex-exec'
 import { fault, type Pollers, skipped, tally } from '../loop'
 import { itemId, type RabeItem } from '../model'
+import { listeningPort, processTree } from '../ports'
 import {
   cursorOf,
   inodeOf,
@@ -94,23 +95,28 @@ function readOutput(
   return result
 }
 
+async function checkedOutput($: EngineInterface, path: string) {
+  const folder = taskFolder(path, await $.session.id(), await $.session.root())
+  if (!folder) return undefined
+  const root = await $.fs.stat(folder, { resolve: true })
+  const stat = await $.fs.stat(path, { resolve: true })
+  return root.realPath &&
+    stat.realPath === `${root.realPath}/${path.slice(path.lastIndexOf('/') + 1)}` &&
+    stat.kind === 'file'
+    ? { path: stat.realPath, stat }
+    : undefined
+}
+
 async function readFile(
   $: EngineInterface,
   path: string,
   id: string,
 ): Promise<Pick<RabeLines, 'ended' | 'exitCode' | 'port'> & { text?: string }> {
   try {
-    const folder = taskFolder(path, await $.session.id(), await $.session.root())
-    if (!folder) return {}
-    const root = await $.fs.stat(folder, { resolve: true })
-    const stat = await $.fs.stat(path, { resolve: true })
-    if (
-      !root.realPath ||
-      stat.realPath !== `${root.realPath}/${path.slice(path.lastIndexOf('/') + 1)}` ||
-      stat.kind !== 'file'
-    )
-      return {}
-    path = stat.realPath
+    const checked = await checkedOutput($, path)
+    if (!checked) return {}
+    path = checked.path
+    const stat = checked.stat
     const { value: saved } = await $.state.get({ plugin: 'rabe', key: 'lines' })
     const value = restored(saved)
     const output = linesOf(value[id])
@@ -288,6 +294,67 @@ async function pollShells($: EngineInterface, items: RabeItem[]): Promise<Change
   return changeOf(poll, items)
 }
 
+async function portCommand(
+  $: EngineInterface,
+  argv: string[],
+  label = '',
+): Promise<string | undefined> {
+  try {
+    const result = await $.process.run(argv, { timeoutMs: 5000 })
+    if (
+      (result.exitCode !== 0 &&
+        !(argv[0] === 'fuser' && result.exitCode === 1 && !result.stdout.trim())) ||
+      result.isStdoutTruncated ||
+      result.isStderrTruncated ||
+      (result.stderr.trim() && result.stderr.trim() !== label)
+    ) {
+      fault('port scan unavailable')
+      return undefined
+    }
+    return result.stdout
+  } catch (error) {
+    return fault(error)
+  }
+}
+
+async function pollPorts($: EngineInterface, items: RabeItem[]): Promise<Change> {
+  const poll: Poll = { items, changes: [] }
+  const paths: { id: string; path: string }[] = []
+  for (const item of runningShells(items)) {
+    if (!item.detail.outputPath || item.detail.port) continue
+    const path = await checkedOutput($, item.detail.outputPath).catch(() => undefined)
+    if (path) paths.push({ id: item.id, path: path.path })
+  }
+  if (!paths.length || (await portCommand($, ['uname', '-s']))?.trim() !== 'Linux')
+    return changeOf(poll, items)
+  const parents = await portCommand($, ['ps', '-A', '-o', 'pid=,ppid='])
+  const sockets = await portCommand($, ['ss', '-ltnpH'])
+  if (parents === undefined || sockets === undefined) return changeOf(poll, items)
+  const live = new Set(
+    parents.split('\n').flatMap(line => {
+      const pid = /^\s*(\d+)\s+\d+\s*$/.exec(line)?.[1]
+      return pid ? [Number(pid)] : []
+    }),
+  )
+  for (const { id, path } of paths) {
+    // fuser has no -- separator; the checked absolute task path cannot be an option.
+    const holders = await portCommand($, ['fuser', path], `${path}:`)
+    if (!holders || !/^\s*\d+(?:\s+\d+)*\s*$/.test(holders)) continue
+    const roots = holders.trim().split(/\s+/).map(Number)
+    if (!roots.every(pid => live.has(pid))) continue
+    const port = listeningPort(sockets, processTree(roots, parents))
+    if (!port) continue
+    const portAt = await $.clock.now()
+    stage(poll, held => {
+      const item = held.find(item => item.id === id)
+      return item?.kind === 'shell' && item.status === 'running' && !item.detail.port
+        ? updateItem(held, id, { detail: { port, portAt } })
+        : held
+    })
+  }
+  return changeOf(poll, items)
+}
+
 async function onNotifications($: EngineInterface, text: string): Promise<void> {
   const notes = parseNotifications(text).filter(one => one.status)
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
@@ -390,6 +457,7 @@ async function foreground(
 export function shells(on: On, pollers: Pollers): void {
   on('session.start', { isInteractive: [true, false] }, async ($, e, next) => {
     pollers.push({ name: 'shells', run: items => pollShells($, items), initial: false })
+    pollers.push({ name: 'ports', run: items => pollPorts($, items), every: 6000, initial: false })
     return next(e)
   })
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {

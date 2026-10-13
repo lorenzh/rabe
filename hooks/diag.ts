@@ -13,7 +13,7 @@ export type DiagFacts = {
   items: RabeItem[]
 }
 
-const POLLED = ['agents', 'codex', 'shells', 'monitors', 'worktrees']
+const POLLED = ['agents', 'codex', 'shells', 'ports', 'monitors', 'worktrees']
 
 // The report `/rabe-diag` prints. It has counts, sizes, versions and option
 // values only: fixed words, numbers and versions.
