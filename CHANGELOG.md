@@ -11,6 +11,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - Selecting a live agent in a long pinned list keeps the item rows in the scrolled box instead of moving them into the header ([#168](https://github.com/lorenzh/rabe/pull/168), fixes [#155](https://github.com/lorenzh/rabe/issues/155))
 - A newer prompt that arrives during the completion scan of a cron turn usually cancels that turn's end word ([#166](https://github.com/lorenzh/rabe/pull/166), fixes [#159](https://github.com/lorenzh/rabe/issues/159)).
 - Deleted and ended crons no longer start transcript scans on unrelated turns ([#166](https://github.com/lorenzh/rabe/pull/166), fixes [#160](https://github.com/lorenzh/rabe/issues/160)).
+- A finished foreground Bash command keeps its row as ended (done, failed or stopped) with its Timeline bar, also when it took under 2 s; the newest 50 are kept, and they never push other ended items out ([#167](https://github.com/lorenzh/rabe/pull/167), fixes [#164](https://github.com/lorenzh/rabe/issues/164)).
+- A refused, failed or interrupted Bash call that would start a detached `codex exec`, or one moved to the background, no longer leaves a running shell ([#167](https://github.com/lorenzh/rabe/pull/167), fixes [#156](https://github.com/lorenzh/rabe/issues/156)).
+- A `codex exec --output-last-message=<path>` whose path holds an expansion is no longer polled as a literal path ([#167](https://github.com/lorenzh/rabe/pull/167), fixes [#157](https://github.com/lorenzh/rabe/issues/157)).
+- `codex exec` given as an argument of another command, such as `printf "value=" codex exec ...`, no longer counts as a Codex launch ([#167](https://github.com/lorenzh/rabe/pull/167), fixes [#158](https://github.com/lorenzh/rabe/issues/158)).
 
 ## [0.8.0] - 2026-10-13
 

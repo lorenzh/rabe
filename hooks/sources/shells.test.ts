@@ -1,7 +1,7 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { RabeItem } from '../model'
-import { MAX_ENDED } from '../registry'
+import { MAX_ENDED, MAX_FOREGROUND } from '../registry'
 import { core, files, memoryState } from '../testing'
 
 const DIR = '/tmp/claude-1000/-home-me-app/5f1c/tasks'
@@ -67,12 +67,24 @@ test('a background Bash row uses its description and keeps the original command'
   })
 })
 
-test('a quick Bash call in the foreground leaves no row', async ($, on) => {
+test('a quick foreground Bash call adds an ended row and never a running one', async ($, on) => {
+  mock.clock(on, { now: 1000 })
   const state = memoryState(on)
   bash(on)
   core(on)
-  await $.tool.call({ tool: 'Bash', command: 'ls' })
-  expect((state['rabe.items']?.value as RabeItem[] | undefined) ?? []).toEqual([])
+  await $.tool.call({ tool: 'Bash', command: 'ls', description: 'List files' })
+  expect(state['rabe.items']?.value).toMatchObject([
+    {
+      kind: 'shell',
+      status: 'done',
+      title: 'List files · foreground',
+      startedAt: 1000,
+      endedAt: 1000,
+      detail: { command: 'ls' },
+    },
+  ])
+  // One write: the row never showed as running.
+  expect(state['rabe.items']?.version).toBe(1)
 })
 
 // A Bash call that holds until `release()`; its result is `result`.
@@ -89,7 +101,7 @@ function slowBash(on: On, result: Record<string, unknown> = {}) {
   return release
 }
 
-test('a foreground Bash call that runs on shows as a running shell and leaves when it returns', async ($, on) => {
+test('a foreground Bash call that runs on shows as a running shell and ends when it returns', async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const state = memoryState(on)
   const release = slowBash(on)
@@ -109,12 +121,16 @@ test('a foreground Bash call that runs on shows as a running shell and leaves wh
       detail: { command: 'timeout 25m gh pr checks 7 --watch' },
     },
   ])
+  await clock.advance(1000)
   release()
   await call
-  expect(state['rabe.items']?.value).toEqual([])
+  expect(state['rabe.items']?.value).toMatchObject([
+    { status: 'done', startedAt: 1000, endedAt: 5000 },
+  ])
+  expect(state['rabe.items']?.value).toHaveLength(1)
 })
 
-test('a foreground call that fails after its row showed leaves no row', async ($, on) => {
+test('a foreground call that fails after its row showed ends as stopped', async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const state = memoryState(on)
   let fail = (_: Error) => {}
@@ -132,7 +148,82 @@ test('a foreground call that fails after its row showed leaves no row', async ($
   expect(state['rabe.items']?.value).toMatchObject([{ kind: 'shell', status: 'running' }])
   fail(new Error('interrupted'))
   expect(await settled).toBe('rejected')
-  expect(state['rabe.items']?.value).toEqual([])
+  expect(state['rabe.items']?.value).toMatchObject([{ status: 'stopped', endedAt: 4000 }])
+})
+
+test('a quick foreground call that is rejected adds a stopped row', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  on('tool.call', { tool: 'Bash' }, async () => {
+    throw new Error('aborted')
+  })
+  core(on)
+  await expect($.tool.call({ tool: 'Bash', command: 'ls' })).rejects.toThrow()
+  expect(state['rabe.items']?.value).toMatchObject([{ status: 'stopped', endedAt: 1000 }])
+})
+
+// A Bash call answered with `answer` right away.
+function answering(on: On, answer: Record<string, unknown>) {
+  on('tool.call', { tool: 'Bash' }, async () => answer as never)
+}
+
+test('a foreground call that answers with an error ends as failed', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  answering(on, { result: { error: 'exit 1' }, isError: true })
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: 'false' })
+  expect(state['rabe.items']?.value).toMatchObject([{ status: 'failed', endedAt: 1000 }])
+})
+
+test('a refused or interrupted foreground call ends as stopped', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  let answer: Record<string, unknown> = { deny: 'User rejected the command' }
+  on('tool.call', { tool: 'Bash' }, async () => answer as never)
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: 'rm -rf /tmp/x' })
+  answer = { result: { stdout: '', stderr: '', interrupted: true }, text: 'ok' }
+  await $.tool.call({ tool: 'Bash', command: 'sleep 9' })
+  expect(state['rabe.items']?.value).toMatchObject([{ status: 'stopped' }, { status: 'stopped' }])
+})
+
+test('a foreground call in a subagent keeps its ended row under the agent', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: 'ls', agentId: 'a1' } as never)
+  expect(state['rabe.items']?.value).toMatchObject([{ status: 'done', parentId: 'agent:a1' }])
+})
+
+test('ended foreground rows have their own cap and leave other ended items alone', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const agent = { id: 'agent:a1', kind: 'agent', title: 'a', status: 'done', seenAt: 1, endedAt: 1 }
+  state['rabe.items'] = { value: [agent], version: 1 }
+  bash(on)
+  core(on)
+  for (let i = 0; i < MAX_FOREGROUND + 5; i++) {
+    await clock.set(1000 + i)
+    await $.tool.call({ tool: 'Bash', command: `echo ${i}` })
+  }
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items[0]).toEqual(agent)
+  expect(items.filter(item => item.id.startsWith('shell:fg-'))).toHaveLength(MAX_FOREGROUND)
+  expect(items[1]?.detail).toMatchObject({ command: 'echo 5' })
+})
+
+test('a refused detached codex exec leaves no running row', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  let answer: Record<string, unknown> = { deny: 'User rejected the command' }
+  on('tool.call', { tool: 'Bash' }, async () => answer as never)
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: 'nohup codex exec -o /tmp/result.txt x &' })
+  answer = { result: { error: 'rejected' }, isError: true }
+  await $.tool.call({ tool: 'Bash', command: 'nohup codex exec -o /tmp/result.txt x &' })
+  expect(state['rabe.items']?.value).toMatchObject([{ status: 'stopped' }, { status: 'failed' }])
 })
 
 test('a foreground call that Claude Code moved to the background leaves only the background row', async ($, on) => {
@@ -947,3 +1038,90 @@ for (const mode of [
       expect(calls).toEqual([])
   })
 }
+
+test('a quick foreground call never pushes an ended agent out of a full cap', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const state = memoryState(on)
+  const agents = Array.from({ length: MAX_ENDED }, (_, n) => ({
+    id: `agent:a${n}`,
+    kind: 'agent',
+    title: `a${n}`,
+    status: 'done',
+    seenAt: 100 + n,
+    endedAt: 100 + n,
+  }))
+  const fg = {
+    id: 'shell:fg-old',
+    kind: 'shell',
+    title: 'ls · foreground',
+    status: 'done',
+    seenAt: 4000,
+    endedAt: 4000,
+    detail: { command: 'ls' },
+  }
+  state['rabe.items'] = { value: [...agents, fg], version: 1 }
+  bash(on)
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items).toEqual(agents)
+})
+
+test('with a frozen clock the newest ended foreground rows stay', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  for (let i = 0; i < MAX_FOREGROUND + 5; i++) {
+    await $.tool.call({ tool: 'Bash', command: `echo ${i}` })
+  }
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items).toHaveLength(MAX_FOREGROUND)
+  expect(items.map(item => (item.detail as { command: string }).command)).toEqual(
+    Array.from({ length: MAX_FOREGROUND }, (_, i) => `echo ${i + 5}`),
+  )
+})
+
+test('detached codex exec rows the poll ends keep the foreground cap', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  let written = false
+  on('fs.stat', async (_$, e, next) =>
+    written && e.path.startsWith('/tmp/r')
+      ? { value: { kind: 'file' as const, size: 4, mtimeMs: 50_000, isLink: false } }
+      : next(e),
+  )
+  bash(on)
+  core(on)
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  for (let i = 0; i <= MAX_FOREGROUND; i++) {
+    await $.tool.call({ tool: 'Bash', command: `nohup codex exec -o /tmp/r${i}.txt x &` })
+  }
+  expect(state['rabe.items']?.value).toHaveLength(MAX_FOREGROUND + 1)
+  written = true
+  await clock.advance(60_000)
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items.map(item => item.status)).toEqual(Array(MAX_FOREGROUND).fill('done'))
+})
+
+test('an interrupted detached codex exec ends as stopped', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  answering(on, { result: { stdout: '', stderr: '', interrupted: true }, text: 'ok' })
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: 'codex exec -o /tmp/r.txt x &' })
+  expect(state['rabe.items']?.value).toMatchObject([{ status: 'stopped', endedAt: 1000 }])
+})
+
+test('a detached codex exec moved to the background leaves only its background row', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  answering(on, {
+    result: { stdout: '', stderr: '', interrupted: false, backgroundTaskId: 'b1' },
+    text: `Command running in background with ID: b1. Output is being written to: ${DIR}/b1.output.`,
+  })
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: 'nohup codex exec -o /tmp/r.txt x &' })
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items.map(item => item.id)).toEqual(['shell:b1'])
+})

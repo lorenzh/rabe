@@ -840,7 +840,11 @@ test('main session writes and shell writes are kept apart from agents', async ($
     { path: '/repo/plan.md', at: 5000, via: 'write' },
     { path: '/tmp/main.md', at: 5000, via: 'shell' },
   ])
-  expect(held.items ?? []).toEqual([])
+  // Only the ended rows of the two foreground calls, no agent.
+  expect(held.items?.map(item => `${item.kind} ${item.status}`)).toEqual([
+    'shell done',
+    'shell done',
+  ])
 })
 
 test('a staged edit or write leaves the file unchanged and is not kept', async ($, on) => {
@@ -1886,4 +1890,29 @@ test('an agent ending after a discarded pass still gets its cached metadata', as
     status: 'done',
     detail: { cwd: '/work/a' },
   })
+})
+
+test('a newly listed completed agent pushes out a foreground row, not itself', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const state = memoryState(on)
+  const fg = Array.from({ length: MAX_ENDED - 150 }, (_, n) => ({
+    id: `shell:fg-${n}`,
+    kind: 'shell',
+    title: `ls ${n} · foreground`,
+    status: 'done',
+    seenAt: 1000 + n,
+    endedAt: 1000 + n,
+    detail: { command: `ls ${n}` },
+  }))
+  state['rabe.items'] = { value: [...ended(150), ...fg], version: 1 }
+  core(on)
+  on('agent.list', async () => ({
+    value: [{ id: 'late', type: 'Explore', description: 'late', status: 'completed' }],
+  }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items).toHaveLength(MAX_ENDED)
+  expect(items.find(item => item.id === 'agent:late')?.status).toBe('done')
+  expect(items.filter(item => item.id.startsWith('agent:'))).toHaveLength(151)
+  expect(items.some(item => item.id === 'shell:fg-0')).toBe(false)
 })

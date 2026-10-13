@@ -8,6 +8,8 @@ import {
 } from './model'
 
 export const MAX_ENDED = 200
+// Ended foreground Bash rows (`shell:fg-…`) kept; they go before any other ended item.
+export const MAX_FOREGROUND = 50
 
 export type Change = (items: RabeItem[]) => RabeItem[]
 
@@ -44,27 +46,37 @@ export function endItem(items: RabeItem[], id: string, status: EndStatus, now: n
   return updateItem(items, id, { status, endedAt: now })
 }
 
-// Of two items that ended at once, the one Rabe saw later goes first.
+const isForeground = (item: RabeItem) => item.id.startsWith('shell:fg-')
+const byEnd = (a: RabeItem, b: RabeItem) => (a.endedAt ?? a.seenAt) - (b.endedAt ?? b.seenAt)
+
+// Ended foreground rows go first, the oldest first, and never more than
+// MAX_FOREGROUND stay. Of two other items that ended at once, the one Rabe saw
+// later goes first.
 export function capEnded(items: RabeItem[], max = MAX_ENDED): RabeItem[] {
   const ended = items.filter(isEnded)
-  if (ended.length <= max) return items
-  const dropped = new Set(
-    ended
+  const foreground = ended.filter(isForeground)
+  const count = Math.max(ended.length - max, foreground.length - MAX_FOREGROUND)
+  if (count <= 0) return items
+  const order = [
+    ...foreground.toSorted(byEnd),
+    ...ended
+      .filter(item => !isForeground(item))
       .toReversed()
-      .toSorted((a, b) => (a.endedAt ?? a.seenAt) - (b.endedAt ?? b.seenAt))
-      .slice(0, ended.length - max),
-  )
+      .toSorted(byEnd),
+  ]
+  const dropped = new Set(order.slice(0, count))
 
   return items.filter(item => !dropped.has(item))
 }
 
 // The end time of an ended item Rabe did not watch end: the oldest end held,
-// so it never pushes out one Rabe watched. `undefined` once the cap is full,
-// since the cap would drop it.
+// so it never pushes out one Rabe watched. `undefined` once ended items other
+// than foreground rows fill the cap, since the cap would drop it.
 export function pastEnd(items: RabeItem[], now: number, max = MAX_ENDED): number | undefined {
-  const ends = items.flatMap(item => (isEnded(item) ? [item.endedAt ?? item.seenAt] : []))
+  const ended = items.filter(isEnded)
+  if (ended.filter(item => !isForeground(item)).length >= max) return undefined
 
-  return ends.length >= max ? undefined : Math.min(now, ...ends)
+  return Math.min(now, ...ended.map(item => item.endedAt ?? item.seenAt))
 }
 
 // The capped list and the ids the write drops (also one it added), or
