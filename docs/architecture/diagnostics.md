@@ -15,7 +15,7 @@ The shared poll loop (see [Shared poll loop](loop.md)) gives each named poll a r
 
 - `at`: when the poll ran.
 - `ms`: how long it took, rounded to 100 ms.
-- `files`: content reads from `tally` calls at the read sites. An appended chunk counts as one read.
+- `files`: content reads from `tally` calls at the read sites. An appended chunk counts as one read. A failed `tail` counts as an error only; its output is not tallied. Where the inode lookup (`ls`) is unavailable, shells and monitors raise no error for it.
 - `chars`: UTF-16 units in the returned text.
 - `bytes`: UTF-8 bytes in the returned text. Incremental reads count only the returned chunk. They include unfinished lines and discarded oversized records.
 - `skipped`: content reads skipped because the file is unchanged. Metadata caches and completed cursors increase this count. Stat and inode checks do not count as content reads.

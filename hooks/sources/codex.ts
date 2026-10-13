@@ -270,11 +270,11 @@ async function readSession(
       .run(['tail', '-c', `+${offset + 1}`, '--', path], { timeoutMs: RUN_MS })
       .catch(fault)
     if (!result) return { path }
-    text = tally(result.stdout)
     if (result.exitCode !== 0) {
       fault(`tail exited with code ${result.exitCode}`)
       return { path }
     }
+    text = tally(result.stdout)
     truncated = result.isStdoutTruncated
   }
   const chunk = readChunk(text, truncated, true, reset ? false : previous?.cursor.isDiscarding)

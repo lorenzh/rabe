@@ -76,10 +76,13 @@ export function outputUpdate(
   ended: boolean,
   cursor?: RabeFileCursor,
   result: Pick<RabeLines, 'ended' | 'exitCode' | 'port'> = {},
+  whole = false,
 ): RabeLines | undefined {
-  const output = cursor
-    ? { ...outputLines(held, lines, now, reset, partial, ended), cursor }
-    : (appendLines(held, lines, now) ?? held ?? { seen: 0, lines: [] })
+  const output = whole
+    ? { ...(appendLines(held, lines, now) ?? held ?? { seen: 0, lines: [] }), cursor }
+    : cursor
+      ? { ...outputLines(held, lines, now, reset, partial, ended), cursor }
+      : (appendLines(held, lines, now) ?? held ?? { seen: 0, lines: [] })
   const { ended: status, exitCode, port } = result
   const before = reset ? undefined : held
   const next = {
