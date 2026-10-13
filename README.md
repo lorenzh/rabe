@@ -108,7 +108,7 @@ Known limit: in a burst such as `2 1 Down Down Down Down` with 30 to 50 ms betwe
 
 | View | Letters caught outside input fields |
 |------|-------------------------------------|
-| Items list | `x g r a`; `s` where search is available |
+| Items list | `x g r a`; `s` where search is available; beside the detail of the selected row also `c` and `d`, and `m` on surfaces that support input fields, dim when the selected row has no such action |
 | Agent detail | `b c x`; `m` on surfaces that support input fields |
 | Workflow agent detail | `b c`; `g` when the parent run is known; no `x` or `m` |
 | Workflow detail | `b g` |
@@ -119,6 +119,8 @@ Known limit: in a burst such as `2 1 Down Down Down Down` with 30 to 50 ms betwe
 | Cost | `c` when the current session id is known |
 | Effects | `c` on the first port's SSH row while that port exists |
 | Timeline | `w` when `timelineHours` is greater than zero; `c` when the previous session id is known |
+
+Beside the detail, `c` copies the selected row's prompt, command, id or resume command, and `d` deletes the selected cron job while it runs.
 
 Other letters still reach the prompt because the mod API has no key hook. The letters above also reach the prompt in views without their control. For example, `x` reaches the prompt on Cost and `w` does so on Timeline with `timelineHours: 0`. A focused input field takes every key.
 

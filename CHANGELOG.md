@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Fixed
+
+- The README lists the `c`, `m` and `d` keys the Items list offers beside the detail (fixes [#161](https://github.com/lorenzh/rabe/issues/161))
+
 ## [0.8.0] - 2026-10-13
 
 ### Added
