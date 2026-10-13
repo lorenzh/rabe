@@ -53,6 +53,7 @@
 - Keys: focusable Buttons and lowercase letter hotkeys only. `X`, `/`, space and `←→` cannot be bindings.
 - UI text: sentence case, plain words, no emoji. Status always has a word, never only a colour. Raster cells take width-1 BMP characters only; `safe()` replaces the rest.
 - Workflows: pin actions to full SHAs, least-privilege `permissions`.
+- Skills a workflow needs live in this repo (`.claude/skills/<name>/`) or come from the public plugin `lorenzh/skills`, installed in the job and pinned to a commit SHA. Never rely on a skill in a home folder; an automatic run follows the limits in `.claude/skills/triaging-rabe-issues`.
 
 ## Documentation
 - Contributor setup and workflow: [CONTRIBUTING.md](CONTRIBUTING.md).
