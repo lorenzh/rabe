@@ -1,9 +1,8 @@
 import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { RabeItem } from '../model'
-import { MAX_ENDED } from '../registry'
+import { MAX_ENDED, MAX_FOREGROUND } from '../registry'
 import { core, files, memoryState } from '../testing'
-import { MAX_FOREGROUND } from './shells'
 
 const DIR = '/tmp/claude-1000/-home-me-app/5f1c/tasks'
 
@@ -1039,3 +1038,90 @@ for (const mode of [
       expect(calls).toEqual([])
   })
 }
+
+test('a quick foreground call never pushes an ended agent out of a full cap', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const state = memoryState(on)
+  const agents = Array.from({ length: MAX_ENDED }, (_, n) => ({
+    id: `agent:a${n}`,
+    kind: 'agent',
+    title: `a${n}`,
+    status: 'done',
+    seenAt: 100 + n,
+    endedAt: 100 + n,
+  }))
+  const fg = {
+    id: 'shell:fg-old',
+    kind: 'shell',
+    title: 'ls · foreground',
+    status: 'done',
+    seenAt: 4000,
+    endedAt: 4000,
+    detail: { command: 'ls' },
+  }
+  state['rabe.items'] = { value: [...agents, fg], version: 1 }
+  bash(on)
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: 'ls' })
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items).toEqual(agents)
+})
+
+test('with a frozen clock the newest ended foreground rows stay', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  for (let i = 0; i < MAX_FOREGROUND + 5; i++) {
+    await $.tool.call({ tool: 'Bash', command: `echo ${i}` })
+  }
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items).toHaveLength(MAX_FOREGROUND)
+  expect(items.map(item => (item.detail as { command: string }).command)).toEqual(
+    Array.from({ length: MAX_FOREGROUND }, (_, i) => `echo ${i + 5}`),
+  )
+})
+
+test('detached codex exec rows the poll ends keep the foreground cap', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  let written = false
+  on('fs.stat', async (_$, e, next) =>
+    written && e.path.startsWith('/tmp/r')
+      ? { value: { kind: 'file' as const, size: 4, mtimeMs: 50_000, isLink: false } }
+      : next(e),
+  )
+  bash(on)
+  core(on)
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  for (let i = 0; i <= MAX_FOREGROUND; i++) {
+    await $.tool.call({ tool: 'Bash', command: `nohup codex exec -o /tmp/r${i}.txt x &` })
+  }
+  expect(state['rabe.items']?.value).toHaveLength(MAX_FOREGROUND + 1)
+  written = true
+  await clock.advance(60_000)
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items.map(item => item.status)).toEqual(Array(MAX_FOREGROUND).fill('done'))
+})
+
+test('an interrupted detached codex exec ends as stopped', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  answering(on, { result: { stdout: '', stderr: '', interrupted: true }, text: 'ok' })
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: 'codex exec -o /tmp/r.txt x &' })
+  expect(state['rabe.items']?.value).toMatchObject([{ status: 'stopped', endedAt: 1000 }])
+})
+
+test('a detached codex exec moved to the background leaves only its background row', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  answering(on, {
+    result: { stdout: '', stderr: '', interrupted: false, backgroundTaskId: 'b1' },
+    text: `Command running in background with ID: b1. Output is being written to: ${DIR}/b1.output.`,
+  })
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: 'nohup codex exec -o /tmp/r.txt x &' })
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items.map(item => item.id)).toEqual(['shell:b1'])
+})

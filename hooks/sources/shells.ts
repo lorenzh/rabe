@@ -17,7 +17,6 @@ import {
 import {
   addItem,
   type Change,
-  capEnded,
   changeOf,
   commit,
   endItem,
@@ -39,17 +38,6 @@ import {
 const MAX_READ = 4 * 1024 * 1024
 // A running foreground call shows only after this long, so quick commands cause no flicker.
 const SLOW_MS = 2000
-// Ended foreground rows kept, apart from MAX_ENDED, so quick commands never push out other ended work.
-export const MAX_FOREGROUND = 50
-
-const isForeground = (item: RabeItem) => item.id.startsWith('shell:fg-')
-
-// The list with at most MAX_FOREGROUND ended foreground rows, the oldest dropped.
-function capForeground(items: RabeItem[]): RabeItem[] {
-  const kept = new Set(capEnded(items.filter(isForeground), MAX_FOREGROUND))
-
-  return items.filter(item => !isForeground(item) || kept.has(item))
-}
 
 // Each event takes one hook without a matcher per plugin; these match every event.
 const ANY_STOP = { stop_hook_active: [true, false] }
@@ -464,7 +452,7 @@ async function foreground(
       now,
     )
 
-    return end ? capForeground(endItem(added, id, end, now)) : added
+    return end ? endItem(added, id, end, now) : added
   })
 }
 
@@ -520,16 +508,14 @@ export function shells(on: On, pollers: Pollers): void {
       const result = answer.result as { backgroundTaskId?: string } | undefined
       const taskId = result?.backgroundTaskId
       const now = await $.clock.now()
-      const ended = answer as Parameters<typeof endOf>[0]
+      const end = endOf(answer as Parameters<typeof endOf>[0])
       // A `codex exec ... &` that ran outlives the call: its result file ends the row.
-      const keep = exec?.isDetached && !ended.deny && !ended.isError ? exec.resultPath : undefined
+      const keep = exec?.isDetached && end === 'done' && !taskId ? exec.resultPath : undefined
       if (keep) await foreground($, e, id, startedAt, { resultPath: keep })
-      else if (!taskId && !e.run_in_background) {
-        await foreground($, e, id, startedAt, { end: endOf(ended) })
-      }
+      else if (!taskId && !e.run_in_background) await foreground($, e, id, startedAt, { end })
       if (taskId) {
         // Claude Code moved the call to the background: the task row replaces it.
-        if (added && !keep) await write($, held => held.filter(item => item.id !== id))
+        if (added) await write($, held => held.filter(item => item.id !== id))
         const outputPath = outputPathOf(answer.text)
         await write($, held =>
           addItem(

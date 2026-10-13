@@ -2,7 +2,7 @@
 title: State and items
 description: How Rabe models items and updates its session registry.
 tags: [architecture, state, items]
-keywords: [item model, registry, write loop, turns, RabeItem, RabeItemKind, RabeItemStatus, NewItem, ItemPatch, RabeCodexCall, codexCalls, itemId, addItem, updateItem, endItem, capEnded, commit, MAX_ENDED, ifVersion, $.state, rabe.edits, rabe.turns, RabeTurn, FileChange, cleanup, forget, prune, pastEnd, timer writes, CronDelete, isDeleted]
+keywords: [item model, registry, write loop, turns, RabeItem, RabeItemKind, RabeItemStatus, NewItem, ItemPatch, RabeCodexCall, codexCalls, itemId, addItem, updateItem, endItem, capEnded, commit, MAX_ENDED, MAX_FOREGROUND, ifVersion, $.state, rabe.edits, rabe.turns, RabeTurn, FileChange, cleanup, forget, prune, pastEnd, timer writes, CronDelete, isDeleted]
 ---
 
 # State and items
@@ -79,7 +79,7 @@ The items live in one session value, `$.state` key `rabe.items`, an array in the
 | `addItem(items, item, now)` | Appends a new item with `seenAt: now`. For a known id it merges the fields and keeps `seenAt`. |
 | `updateItem(items, id, patch)` | Merges a patch into one item. Unknown id: no change. |
 | `endItem(items, id, status, now)` | Sets `status` and `endedAt` on a running or idle item. An item that already ended keeps its end. |
-| `capEnded(items, max = MAX_ENDED)` | Keeps every running and idle item and the newest 200 ended ones, newest by `endedAt`, else `seenAt`. Of two that ended at the same time, the one Rabe saw later goes first. `commit` applies it, so every write loop does. |
+| `capEnded(items, max = MAX_ENDED)` | Keeps every running and idle item and the newest 200 ended ones, newest by `endedAt`, else `seenAt`. Ended foreground Bash rows (`shell:fg-…`) go first, before any other ended item, and never more than `MAX_FOREGROUND` (50) stay; of two that ended at the same time, the one Rabe saw earlier goes. Of two other items that ended at the same time, the one Rabe saw later goes first. `commit`, `stage` and the poll loop apply it, so every write does, also a poll that ends a detached `codex exec` row. |
 | `commit(held, change)` | Applies a change and the cap. Answers `{ items, dropped }`: the capped list to write and the ids the write drops, also one the change added and the cap dropped at once. Answers `undefined` when the capped list is the held list: nothing changed, or the cap drops what the change added (an old ended item a poll finds again), so a poll then writes no state. |
 | `pastEnd(items, now)` | The end time an ended item takes when Rabe did not watch it end (a poll finds it): the oldest end of the ended items held, or `now` when there are none. `undefined` once 200 ended items are held, since the cap would drop it. So such an item never pushes out one Rabe watched. |
 | `prune(record, dropped, items)` | A per-item record (`rabe.lines`, `rabe.turns`) without the entries of the `dropped` ids that are not back in `items`; the same record when nothing goes. Only those ids go: an entry a later write added stays. |

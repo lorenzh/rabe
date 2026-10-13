@@ -6,16 +6,36 @@ const isWord = (tok: Tok | undefined): tok is Word => tok !== undefined && 'text
 const STARTS = /^(nohup|setsid|exec|command|time|env)$/
 const ENDS = new Set([';', '&&', '||', '|', '&', 'stop'])
 const SEPARATORS = new Set([';', '&&', '||', '|', '|&', '&', '(', '\n'])
+const ENV_ARG = /^(-[uC]|--unset|--chdir)$/
 
-// The words before `codex` back to the line start or a separator are only
-// unquoted assignments and start words, so `codex` is the command word.
-function inCommandPosition(toks: Tok[], at: number): boolean {
-  for (let i = at - 1; i >= 0; i--) {
-    const tok = toks[i] as Tok
-    if (!isWord(tok)) return SEPARATORS.has(tok.op)
-    if (!/^[A-Za-z_]\w*=/.test(tok.raw) && !STARTS.test(tok.text)) return false
+// The index of the first `codex exec` in command position: after the line
+// start or a separator, only unquoted assignments and start words before it;
+// after `env` also its options and quoted assignments. One pass, so long
+// lines stay fast.
+function commandAt(toks: Tok[]): number {
+  let command = true
+  let env = false
+  let skip = false
+  for (const [i, tok] of toks.entries()) {
+    if (!isWord(tok)) {
+      command = SEPARATORS.has(tok.op)
+      env = false
+      skip = false
+      continue
+    }
+    if (!command) continue
+    if (skip) {
+      skip = false
+      continue
+    }
+    const next = toks[i + 1]
+    if (/(^|\/)codex$/.test(tok.text) && isWord(next) && next.text === 'exec') return i
+    if (/^[A-Za-z_]\w*=/.test(env ? tok.text : tok.raw)) continue
+    if (env && tok.text.startsWith('-')) skip = ENV_ARG.test(tok.text)
+    else if (STARTS.test(tok.text)) env = tok.text === 'env'
+    else command = false
   }
-  return true
+  return -1
 }
 
 // A `codex exec` call in a command line: the absolute file named by `-o`, and
@@ -24,16 +44,7 @@ function inCommandPosition(toks: Tok[], at: number): boolean {
 export function codexExec(command: string, home?: string): CodexExec | undefined {
   const toks = lex(command, home)
   if (!toks) return undefined
-  const at = toks.findIndex((tok, i) => {
-    const next = toks[i + 1]
-    return (
-      isWord(tok) &&
-      /(^|\/)codex$/.test(tok.text) &&
-      isWord(next) &&
-      next.text === 'exec' &&
-      inCommandPosition(toks, i)
-    )
-  })
+  const at = commandAt(toks)
   if (at < 0) return undefined
   const rest = toks.slice(at + 2)
   const end = rest.findIndex(tok => !isWord(tok) && ENDS.has(tok.op))

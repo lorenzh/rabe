@@ -59,3 +59,22 @@ test('assignments and start words before codex keep it a command', () => {
   expect(codexExec('ls\nnohup codex exec -o /tmp/r.txt x &')).toEqual(run)
   expect(codexExec('(nohup codex exec -o /tmp/r.txt x &)')?.resultPath).toBe('/tmp/r.txt')
 })
+
+test('env with options and quoted assignments before codex keeps it a command', () => {
+  const run = { resultPath: '/tmp/r.txt', isDetached: true }
+  expect(codexExec('env -i A=1 codex exec -o /tmp/r.txt x &')).toEqual(run)
+  expect(codexExec('env "A=1" codex exec -o /tmp/r.txt x &')).toEqual(run)
+  expect(codexExec("env -u HOME -C /x -- 'A=1' codex exec -o /tmp/r.txt x &")).toEqual(run)
+  expect(codexExec('printf "value=" codex exec -o /tmp/r.txt x &')).toBeUndefined()
+  expect(codexExec('"A=1" codex exec -o /tmp/r.txt x &')).toBeUndefined()
+})
+
+test('long runs of assignments, env words and quotes stay fast', () => {
+  for (const unit of ['A=1 ', 'env ', '"A=1" ', 'codex exec ', "env -u 'x' "]) {
+    const line = `${unit.repeat(Math.ceil(100_000 / unit.length))}codex exec -o /tmp/r.txt x &`
+    codexExec(line) // warm-up: the first call also pays for compiling the lexer
+    const started = Date.now()
+    codexExec(line)
+    expect(Date.now() - started).toBeLessThan(200)
+  }
+})
