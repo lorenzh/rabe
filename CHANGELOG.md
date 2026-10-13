@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Fixed
+
+- The tab hotkeys `1` to `4` put the focus on the tab's marked row with one press; Down then goes to the next row (fixes [#174](https://github.com/lorenzh/rabe/issues/174))
+
 ## [0.8.1] - 2026-10-13
 
 ### Fixed

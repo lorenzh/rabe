@@ -6,9 +6,13 @@ import { ALL, ci, dev, explore, NOW } from './fixtures'
 import {
   arm,
   DISARMED,
+  type Drawn,
   isDestructive,
+  isPress,
   landing,
   landingOf,
+  landOn,
+  layout,
   messageLanding,
   NO_SELECTION,
   stepRow,
@@ -90,6 +94,97 @@ test('switching tabs lands on the marked row after the safe tab detour', () => {
   expect(landing({ type: 'tab', tab: 'cost' }, '', { nodes: [], buttons: [] })).toEqual([
     'tab-cost',
   ])
+})
+
+// Stands in for the engine's focus ring as traced live for issue #174:
+// `$.ui.focus` finds its key in the tree on screen and the ring keeps that
+// index; a key that tree lacks waits for a tree that draws it. A tree the
+// render hook returned is on screen only after `show`.
+function engine(first: string[]) {
+  let screen = first
+  let next: string[] | undefined
+  let ring = -1
+  const waits: (() => void)[] = []
+  return {
+    ringOn: () => screen[ring],
+    draw: (tree: string[]) => {
+      next = tree
+    },
+    show: () => {
+      screen = next ?? screen
+      next = undefined
+      for (const go of waits.splice(0)) go()
+    },
+    focus: async (key: string) => {
+      while (!screen.includes(key)) await new Promise<void>(go => waits.push(go))
+      ring = screen.indexOf(key)
+      return true
+    },
+  }
+}
+
+const ringOf = (drawn: Drawn): string[] =>
+  layout(drawn).flatMap(piece =>
+    'button' in piece
+      ? [piece.button.key]
+      : 'input' in piece
+        ? [piece.input.key]
+        : 'spans' in piece
+          ? piece.spans.filter(isPress).map(part => part.key)
+          : [],
+  )
+
+// Issue #174: the tab hotkeys needed two presses. The marked row is drawn by
+// the view the ring leaves too, at another index; focused before the new view
+// is on screen, the ring kept that index and sat on a control of the new view.
+test('a tab hotkey lands on the marked row of the new view with one press, and Down goes to the next row', async () => {
+  const model = { items: [explore, dev, ci], turns: {}, lines: {}, now: NOW }
+  const tabs = ['items', 'cost', 'effects', 'timeline'] as const
+  for (const surface of ['terminal', 'desktop'] as const) {
+    for (const columns of [80, 140]) {
+      for (const from of tabs) {
+        for (const tab of tabs) {
+          const sel = { ...NO_SELECTION, selected: explore.id, isFocused: true }
+          const size = { columns, rows: 24, surface, hasInput: true }
+          const old = paneView(model, size, { ...sel, tab: from })
+          const drawn = paneView(model, size, { ...sel, tab })
+          const keys = landing({ type: 'tab', tab }, '', drawn)
+          const fake = engine(ringOf(old))
+          await fake.focus(`tab-${from}`)
+          await fake.focus(`tab-${tab}`)
+          fake.draw(ringOf(drawn))
+          const shown = async () => fake.show()
+          await Promise.all([landOn(keys, fake.ringOn, fake.focus, shown), fake.show()])
+          const where = [surface, columns, from, tab, fake.ringOn()]
+          expect(where).toEqual([surface, columns, from, tab, keys.at(-1)])
+          // Down: the next stop of the ring is a row or a group, not a control.
+          const ring = ringOf(drawn)
+          const after = ring[ring.indexOf(fake.ringOn() ?? '') + 1] ?? ''
+          if (after)
+            expect([...where, after]).toEqual([...where, expect.stringMatching(/^(row:|group-)/)])
+        }
+      }
+    }
+  }
+})
+
+test('an empty tab keeps the ring on its label', async () => {
+  const model = { items: [], turns: {}, lines: {}, now: NOW }
+  for (const tab of ['items', 'cost', 'effects', 'timeline'] as const) {
+    const drawn = paneView(
+      model,
+      { columns: 80, rows: 24, surface: 'terminal', hasInput: true },
+      { ...NO_SELECTION, tab, isFocused: true },
+    )
+    const keys = landing({ type: 'tab', tab }, '', drawn)
+    const fake = engine(ringOf(drawn))
+    await fake.focus(`tab-${tab}`)
+    let waited = 0
+    await landOn(keys, fake.ringOn, fake.focus, async () => {
+      waited += 1
+    })
+    expect([tab, fake.ringOn(), waited]).toEqual([tab, `tab-${tab}`, 0])
+  }
 })
 
 // Destructive controls act only while the ring is known to sit on a safe

@@ -249,6 +249,22 @@ export function landing(action: Action, open: string, drawn?: Drawn): string[] {
   }
 }
 
+// Moves the ring onto `keys` (a `landing`) one by one and stops at the first
+// move that fails. The active tab stands at the same index in every view; after
+// a change of the view any other key waits until `shown` says it is on screen.
+export async function landOn(
+  keys: string[],
+  ringOn: () => string | undefined,
+  focus: (key: string) => Promise<boolean>,
+  shown?: () => Promise<void>,
+): Promise<void> {
+  for (const key of keys) {
+    if (key.startsWith('tab-') && key === ringOn()) continue
+    if (shown && !key.startsWith('tab-')) await shown()
+    if (!(await focus(key))) return
+  }
+}
+
 export function messageLanding(
   action: Action,
   selection: Pick<Selection, 'tab' | 'open' | 'selected'>,
