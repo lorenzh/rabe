@@ -26,6 +26,7 @@ import {
   NONE,
   rowKeys,
   type Size,
+  targetsOf,
 } from '../view'
 import { itemsView } from './items'
 import { fallbackOf, isLiveRow, paneView } from './pane'
@@ -109,8 +110,20 @@ test('each row is a plain Button keyed by its item that opens it; the selected o
     'g: stop 3',
     'r: remove',
     'a: remove ended',
+    'c: copy id',
+    'm: message',
+    'd: delete job',
   ])
-  expect(drawn.buttons.map(one => one.hotkey)).toEqual(['s', 'x', 'g', undefined, 'a'])
+  expect(drawn.buttons.map(one => one.hotkey)).toEqual([
+    's',
+    'x',
+    'g',
+    undefined,
+    'a',
+    'c',
+    'm',
+    undefined,
+  ])
 })
 
 test('a group header is a Button that folds it; with nothing selected the first row has the focus', () => {
@@ -379,8 +392,11 @@ test('a disarmed pane keeps stop and delete hotkeys bound without an action', ()
   const armed = paneView(model, WIDE, { ...sel, isArmed: true, isListArmed: true })
   const disarmed = paneView(model, WIDE, sel)
   expect(disarmed.buttons.map(one => one.key)).toEqual(armed.buttons.map(one => one.key))
+  const destructive = ['stop', 'stop-group', 'remove', 'clear', 'delete']
   expect(disarmed.buttons.slice(1)).toEqual(
-    armed.buttons.slice(1).map(one => ({ ...one, action: NONE, dim: true })),
+    armed.buttons
+      .slice(1)
+      .map(one => (destructive.includes(one.key) ? { ...one, action: NONE, dim: true } : one)),
   )
   expect(disarmed.buttons[0]).toEqual(armed.buttons[0])
   const cron = paneView(model, WIDE, { ...sel, open: babysit.id })
@@ -396,6 +412,34 @@ test('a disarmed pane keeps stop and delete hotkeys bound without an action', ()
   expect(list.buttons.find(one => one.key === 'clear')?.action).toEqual({ type: 'clear' })
   const detail = paneView(model, WIDE, { ...sel, open: babysit.id, isArmed: true })
   expect(detail.buttons.find(one => one.key.startsWith('delete:'))?.action.type).toBe('delete')
+})
+
+// Issue #70: beside the detail the list offers its c, m and d, one key each.
+test('beside the detail the list offers c, m and d for the selected row, under fixed keys', () => {
+  const tail = (item: RabeItem) =>
+    itemsView(model, WIDE, { ...NO_SELECTION, selected: item.id }).buttons.slice(5)
+  expect(tail(explore)).toMatchObject([
+    { key: 'copy', label: 'c: copy id', action: { type: 'copy', what: 'id' } },
+    {
+      key: 'message',
+      label: 'm: message',
+      action: { type: 'focus', key: `message:${explore.id}` },
+    },
+    { key: 'delete', label: 'd: delete job', action: NONE, dim: true },
+  ])
+  expect(tail(babysit)).toMatchObject([
+    { key: 'copy', label: 'c: copy prompt' },
+    { key: 'message', action: NONE, dim: true },
+    { key: 'delete', action: { type: 'delete', id: babysit.id } },
+  ])
+  const drawn = itemsView(model, WIDE, { ...NO_SELECTION, selected: explore.id })
+  expect(drawn.inputs?.map(one => one.key)).toEqual(['search', `message:${explore.id}`])
+  expect(targetsOf(itemsView(model, WIDE, { ...NO_SELECTION, selected: babysit.id }))).toContain(
+    JSON.stringify(['delete', 'd: delete job', babysit.id]),
+  )
+  const narrow = itemsView(model, NARROW, { ...NO_SELECTION, selected: explore.id })
+  expect(narrow.buttons.map(one => one.key)).not.toContain('copy')
+  expect(narrow.inputs?.map(one => one.key)).toEqual(['search'])
 })
 
 test('a view falls back when its open item or its selected row is gone', () => {
@@ -426,7 +470,7 @@ test('a row is live where the list draws it, not as a gone slot, a header or a c
 // search shows; running items stay. Both keep their slots while they cannot act.
 test('r removes the selected ended row and a every ended row; neither touches a running one', () => {
   const sel = { ...NO_SELECTION, selected: lint.id }
-  const buttons = itemsView(model, WIDE, sel).buttons
+  const buttons = itemsView(model, WIDE, sel).buttons.slice(0, 5)
   expect(buttons.map(one => one.label)).toEqual([
     's: search',
     'x: stop',
