@@ -2159,3 +2159,53 @@ for (const surface of SURFACES) {
     await ui.unmount()
   })
 }
+
+for (const surface of SURFACES) {
+  test(`split list copy and message act without Enter on ${surface}`, async ($, on) => {
+    hold(on, [explore], { selected: explore.id })
+    const copied: string[] = []
+    on('ui.copy', async (_$, e) => {
+      copied.push(e.text)
+      return { value: { isCopied: true as const } }
+    })
+    const sent: string[] = []
+    on('session.send', async (_$, e) => {
+      sent.push(e.text)
+      return { isDelivered: true }
+    })
+    const ui = await $.ui.mount({ surface, ...WIDE } as never)
+    expect((await ui.find({ type: 'Button', key: 'copy' }))?.props.hotkey).toBe('c')
+    expect((await ui.find({ type: 'Button', key: 'message' }))?.props.hotkey).toBe('m')
+    await ui.press({ key: 'copy' })
+    await ui.press({ key: 'message' })
+    await (ui as Mounted<'terminal'>).input({
+      key: `message:${explore.id}`,
+      text: 'hello',
+      kind: 'submit',
+    })
+    expect(copied).toEqual(['a1'])
+    expect(sent).toEqual(['hello'])
+    await ui.unmount()
+  })
+
+  test(`split list delete stays inert until the person chooses the cron on ${surface}`, async ($, on) => {
+    hold(on, [babysit], { selected: babysit.id })
+    const deleted: string[] = []
+    on('tool.call', { tool: 'CronDelete' }, async (_$, e) => {
+      deleted.push(e.id)
+      return { result: { id: e.id } }
+    })
+    on('state.set', { key: 'items' }, async () => ({ value: { isSet: true, version: 2 } }) as never)
+    const ui = await $.ui.mount({ surface, ...WIDE } as never)
+    await ui.press({ key: 'delete' })
+    await arm($)
+    await ui.redraw()
+    await ui.press({ key: 'delete' })
+    expect(deleted).toEqual([])
+    await arm($, `row:${babysit.id}`)
+    await ui.redraw()
+    await ui.press({ key: 'delete' })
+    expect(deleted).toEqual(['c1'])
+    await ui.unmount()
+  })
+}
