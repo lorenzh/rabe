@@ -6,7 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Added
 
-- Cron detail shows the confirmed last fire time, fire count and how an observed turn ended. Ambiguous matches show no fire details. ([#84](https://github.com/lorenzh/rabe/issues/84))
+- Cron detail shows the confirmed last fire time, fire count and how an observed turn ended. Ambiguous matches show no fire details. ([#150](https://github.com/lorenzh/rabe/pull/150), fixes [#84](https://github.com/lorenzh/rabe/issues/84))
 - The list offers `c`, `m` and `d` for the selected row while the detail shows beside it ([#149](https://github.com/lorenzh/rabe/pull/149), fixes [#70](https://github.com/lorenzh/rabe/issues/70))
 
 ## [0.7.0] - 2026-10-12
