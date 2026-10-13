@@ -1529,6 +1529,23 @@ test('a change of the view disarms until the ring lands; a failed landing keeps 
   await ui.unmount()
 })
 
+// Issue #174: `2 1 Down Down`. The kit refuses Rabe's own focus at the tab, so
+// the wait for the new view (`screens` in sequence.ts) is not reached here; the
+// keys must still settle in order and leave the pane disarmed.
+test('two tab keys and two arrows settle in order and leave the pane disarmed', async ($, on) => {
+  hold(on, ALL, { selected: explore.id })
+  await arm($, `row:${explore.id}`)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: 'tab-cost' })
+  await ui.press({ key: 'tab-items' })
+  expect(await $.ui.scroll({ ...ARROW, by: 1 })).toEqual({})
+  expect(await $.ui.scroll({ ...ARROW, by: 1 })).toEqual({})
+  await ui.redraw()
+  const x = await ui.find({ type: 'Button', key: 'stop' })
+  expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, 'x'])
+  await ui.unmount()
+})
+
 // GPT review round 9: a plugin beneath Rabe sends the move onto another row,
 // or refuses it. The selection follows where the ring lands, and x and g stay
 // inert: the person chose neither row.

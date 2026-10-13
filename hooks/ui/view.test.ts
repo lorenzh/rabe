@@ -17,6 +17,7 @@ import {
   NO_SELECTION,
   stepRow,
   targetsOf,
+  waitsForView,
 } from './view'
 import { paneView, selectsOnPress } from './views/pane'
 
@@ -153,7 +154,10 @@ test('a tab hotkey lands on the marked row of the new view with one press, and D
           await fake.focus(`tab-${from}`)
           await fake.focus(`tab-${tab}`)
           fake.draw(ringOf(drawn))
-          const shown = async () => fake.show()
+          const shown = async () => {
+            fake.show()
+            return true
+          }
           await Promise.all([landOn(keys, fake.ringOn, fake.focus, shown), fake.show()])
           const where = [surface, columns, from, tab, fake.ringOn()]
           expect(where).toEqual([surface, columns, from, tab, keys.at(-1)])
@@ -182,9 +186,63 @@ test('an empty tab keeps the ring on its label', async () => {
     let waited = 0
     await landOn(keys, fake.ringOn, fake.focus, async () => {
       waited += 1
+      return true
     })
     expect([tab, fake.ringOn(), waited]).toEqual([tab, `tab-${tab}`, 0])
   }
+})
+
+// Review of #175: a fold and a search edit move their own target too. Folding
+// the group of the selected agent drops its message Input above the headers,
+// and a search with no match drops the list's controls above the search Input.
+test('a fold or a search edit waits for the new view where its target moved', async () => {
+  const model = { items: [explore, dev, ci], turns: {}, lines: {}, now: NOW }
+  const sel = { ...NO_SELECTION, selected: explore.id, isFocused: true }
+  const changes: [Parameters<typeof landing>[0], typeof sel, typeof sel][] = [
+    [{ type: 'fold', group: 'agents' }, sel, { ...sel, folded: ['agents'] }],
+    [{ type: 'query', text: 'zzz' }, sel, { ...sel, query: 'zzz' }],
+  ]
+  for (const [action, before, after] of changes) {
+    for (const surface of ['terminal', 'desktop'] as const) {
+      for (const columns of [80, 140]) {
+        const size = { columns, rows: 24, surface, hasInput: true }
+        const old = ringOf(paneView(model, size, before))
+        const drawn = ringOf(paneView(model, size, after))
+        const keys = landing(action, '')
+        const target = keys.at(-1) ?? ''
+        const fake = engine(old)
+        await fake.focus(keys[0] ?? '')
+        fake.draw(drawn)
+        const shown = async () => {
+          fake.show()
+          return true
+        }
+        const wait = waitsForView(action) ? shown : undefined
+        await Promise.all([landOn(keys, fake.ringOn, fake.focus, wait), fake.show()])
+        const where = [action.type, surface, columns, old.indexOf(target), drawn.indexOf(target)]
+        expect([...where, fake.ringOn()]).toEqual([...where, target])
+      }
+    }
+  }
+  const moved = (columns: number, before: typeof sel, after: typeof sel, key: string) => {
+    const size = { columns, rows: 24, surface: 'terminal', hasInput: true } as const
+    return [
+      ringOf(paneView(model, size, before)).indexOf(key),
+      ringOf(paneView(model, size, after)).indexOf(key),
+    ]
+  }
+  expect(moved(140, sel, { ...sel, folded: ['agents'] }, 'group-agents')).toEqual([14, 13])
+  expect(moved(140, sel, { ...sel, query: 'zzz' }, 'search')).toEqual([12, 9])
+})
+
+test('a landing that keeps the view does not wait; a tab, a fold and a search do', () => {
+  expect(waitsForView({ type: 'tab', tab: 'cost' })).toBe(true)
+  expect(waitsForView({ type: 'fold', group: 'shells' })).toBe(true)
+  expect(waitsForView({ type: 'query', text: 'a' })).toBe(true)
+  expect(waitsForView({ type: 'query', text: 'a', isSubmit: true })).toBe(true)
+  expect(waitsForView({ type: 'open', id: 'shell:a' })).toBe(false)
+  expect(waitsForView({ type: 'window' })).toBe(false)
+  expect(waitsForView({ type: 'message', id: 'agent:a1', text: 'hi' })).toBe(false)
 })
 
 // Destructive controls act only while the ring is known to sit on a safe
