@@ -537,6 +537,120 @@ test('the wheel and the page keys scroll the clipped list, not the pane', async 
   await ui.unmount()
 })
 
+const manyAgents = (count: number): RabeItem[] =>
+  Array.from(
+    { length: count },
+    (_, n): RabeItem => ({
+      ...(explore as RabeItemOf<'agent'>),
+      id: `agent:many${n + 1}`,
+      title: `agent ${n + 1}`,
+      startedAt: NOW - 30 * 60_000,
+      tokens: { input: (count - n) * 1000, output: 0 },
+      costUsd: 0.01,
+      detail: { agentId: `many${n + 1}`, type: 'Explore' },
+    }),
+  )
+
+// The lines the clipped box shows: its rows from the scroll, as tall as the box.
+async function inView(ui: Mounted): Promise<string[]> {
+  const [clip] = await clipped(ui)
+  const inner = clip?.children?.[0]
+  const top = -((inner?.props?.marginTop as number | undefined) ?? 0)
+  const shown = await screen({ drawn: async () => inner })
+
+  return shown.slice(top, top + (clip?.props?.height as number))
+}
+
+test('the clipped list scrolls to its last body row, past the last item row', async ($, on) => {
+  hold(on, manyAgents(60), { tab: 'cost' })
+  const props = { ...PROPS, bodyColumns: 100, scroll: { offset: 0, bodyRows: 24 } }
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE, props } as never)
+  expect(await clipped(ui)).toHaveLength(1)
+  await $.ui.scroll({
+    ...ARROW,
+    offset: 0,
+    bodyRows: 24,
+    contentRows: 24,
+    by: 500,
+    pointer: { column: 2, row: 4 },
+  })
+  const shown = await inView(ui)
+  expect(shown.some(line => /⚠ stuck +agent 60 · no step for 30m$/.test(line))).toBe(true)
+  await ui.unmount()
+})
+
+test('a message field gained under held rows keeps the rows in the clipped box', async ($, on) => {
+  hold(on, [explore, ...manyShells(60)], { selected: 'shell:many1' })
+  const props = { ...WIDE.props, scroll: { offset: 0, bodyRows: 24 } }
+  const ui = await $.ui.mount({ surface: 'terminal', ...WIDE, props } as never)
+  await arm($, 'row:shell:many1')
+  await arm($, `row:${explore.id}`)
+  expect(await ui.find({ type: 'Input', key: `message:${explore.id}` })).toBeDefined()
+  const [clip] = await clipped(ui)
+  const all = keysIn((await ui.drawn()) as Drawn).filter(key => key.startsWith('row:'))
+  const inside = new Set(keysIn(clip as Drawn))
+  expect(all).toHaveLength(61)
+  expect(all.filter(key => !inside.has(key))).toEqual([])
+  // Each element beside the clipped box is one row at this width: the tabs, the
+  // rule, the controls, the two Inputs and the hint.
+  const around = ((await ui.drawn()) as Drawn).children?.filter(one => one.props?.key !== 'body')
+  expect((around?.length ?? 0) + (clip?.props?.height as number)).toBeLessThanOrEqual(24)
+  await ui.unmount()
+})
+
+// Where the element `key` stands: in the header or tail (`out`), or as the
+// index of its row in the clipped list against the rows the box shows.
+async function placeOf(ui: Mounted, key: string) {
+  const drawn = (await ui.drawn()) as Drawn
+  const [clip] = boxes(drawn, props => props.key === 'body')
+  const inner = clip?.children?.[0]
+  const top = -((inner?.props?.marginTop as number | undefined) ?? 0)
+  const height = clip?.props?.height as number
+  const at = (inner?.children ?? []).findIndex(one => keysIn(one).includes(key))
+  const around = drawn.children?.filter(one => one.props?.key !== 'body') ?? []
+
+  return { at, top, height, isOut: around.some(one => keysIn(one).includes(key)), around }
+}
+
+const planner: RabeItem = {
+  ...(explore as RabeItemOf<'agent'>),
+  id: 'agent:b1',
+  title: 'Plan the cache',
+  detail: { agentId: 'b1', type: 'Plan' },
+}
+
+test('selecting two agents and then the last shell keeps it in view and the search in the header', async ($, on) => {
+  hold(on, [explore, planner, ...manyShells(60)], { selected: explore.id })
+  const props = { ...WIDE.props, scroll: { offset: 0, bodyRows: 24 } }
+  const ui = await $.ui.mount({ surface: 'terminal', ...WIDE, props } as never)
+  await arm($, `row:${explore.id}`)
+  await arm($, `row:${planner.id}`)
+  await arm($, 'row:shell:many60')
+  const row = await placeOf(ui, 'row:shell:many60')
+  expect(row.at).toBeGreaterThanOrEqual(row.top)
+  expect(row.at).toBeLessThan(row.top + row.height)
+  expect((await placeOf(ui, 'search')).isOut).toBe(true)
+  expect(row.around.length + row.height).toBeLessThanOrEqual(24)
+  await ui.unmount()
+})
+
+test('a row that arrives under the message field leaves the field reachable', async ($, on) => {
+  const items = [explore, ...manyShells(60)]
+  hold(on, items, { selected: 'shell:many1' })
+  const props = { ...WIDE.props, scroll: { offset: 0, bodyRows: 24 } }
+  const ui = await $.ui.mount({ surface: 'terminal', ...WIDE, props } as never)
+  await arm($, 'row:shell:many1')
+  await arm($, `row:${explore.id}`)
+  expect(await ui.find({ type: 'Input', key: `message:${explore.id}` })).toBeDefined()
+  items.push(...manyShells(61).slice(60))
+  await ui.redraw(props as never)
+  expect(await ui.find({ type: 'Button', key: 'row:shell:many61' })).toBeDefined()
+  await arm($, `message:${explore.id}`)
+  const field = await placeOf(ui, `message:${explore.id}`)
+  expect(field.isOut || (field.at >= field.top && field.at < field.top + field.height)).toBe(true)
+  await ui.unmount()
+})
+
 test('a wide terminal pane shows the selected item beside the list', async ($, on) => {
   hold(on, ALL, { selected: review.id })
   const ui = await $.ui.mount({ surface: 'terminal', ...WIDE } as never)
