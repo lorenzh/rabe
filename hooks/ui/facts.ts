@@ -109,6 +109,12 @@ export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: stri
           d.humanSchedule && d.humanSchedule !== d.schedule ? ` · ${d.humanSchedule}` : ''
         lines.push(`schedule ${na(d.schedule)}${human}`)
       }
+      if (d.lastFiredAt !== undefined && d.fireCount !== undefined) {
+        lines.push(
+          `last fired ${clockTime(d.lastFiredAt)} · ${d.fireCount} ${d.fireCount === 1 ? 'fire' : 'fires'}`,
+        )
+        if (d.turnEnded) lines.push(`turn ended ${d.turnEnded}`)
+      }
       lines.push(`job ${d.jobId}`, `created ${clockTime(item.seenAt)} · ${by}`)
       long = `prompt ${d.prompt}`
       break

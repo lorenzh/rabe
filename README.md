@@ -22,10 +22,12 @@ Status: early development. See [releases](https://github.com/lorenzh/rabe/releas
 | Codex jobs (from the Codex plugin) | Count (`codex`) | Model, effort and sandbox, tokens, the prompt, each message and command with its exit code, the thread id (`c` copies `codex resume <thread id>`) |
 | Background shells | Count (`shell`) | Bash description and task id, output lines, exit code and guessed port; a foreground command running longer than 2 s, and a detached `codex exec -o <file> &`, show as running shells |
 | Monitors | Count (`monitor`) | Each line with the time Rabe received it |
-| Cron jobs and `/loop` wakeups | Count (`cron`) | The next five runs while running; deleted jobs say `deleted` |
+| Cron jobs and `/loop` wakeups | Count (`cron`) | The next five runs while running; confirmed last fire time, fire count and observed turn end; deleted jobs say `deleted` |
 | Cost | Session cost and tokens of the background work | Cost tab: tokens and an estimate in dollars (`≈ $0.16`) per worker, workers that look stuck |
 
 The band is one line of counts, one chip per kind with failures from the last 10 minutes first (`✗ 1 shell failed`), then the cost, under an empty row so the status line above does not touch it. Its cost label says `session`; its token label says `bg` and includes the cached share when known. It shows the session cost Claude Code reports, or `session n/a` when that cost is unknown; it does not replace it with a sum of worker estimates or show a top-agent suffix. It shortens readable chip labels only when the full labels and cost do not fit; when needed, it puts the dollar amount first and drops the token part. When Claude Code gives the band only one row, the empty row goes. The names are in the pane. When nothing runs, it draws nothing.
+
+A cron detail can show `last fired 10:55 · 3 fires · turn answered`. The end word describes a turn Rabe observed, not job success. When Rabe cannot confirm a fire, it shows no fire details. Wakeups show none.
 
 When the readable form repeats the cron expression, cron detail shows the schedule once. Workflow detail says `1 agent` for one child in both the run facts and cost panel.
 
@@ -183,6 +185,7 @@ Rabe runs on your computer and makes no runtime network requests. Successful sto
 
 Rabe reads these files:
 
+- The main session transcript for cron fire metadata, at the path from the Claude Code hook event. `grep` filters it to cron fire and scheduled user rows.
 - The meta files of subagents, next to the session transcript in `~/.claude/projects/`.
 - The script of a workflow run in this session’s `workflows/scripts/` folder under `~/.claude/projects/` (or `CLAUDE_CONFIG_DIR`).
 - The output files of background shells and monitors in this session’s `/tmp/claude-<uid>/<project>/<session>/tasks/` folder.

@@ -84,3 +84,17 @@ test('idle teammate facts say idle and keep the lifetime open', () => {
   expect(facts(idle, NOW, [idle]).status).toBe('◷ idle')
   expect(facts(idle, NOW, [idle]).lines.join(' ')).toContain('→ now')
 })
+
+test('cron facts name the last fire, count and turn end without claiming success', () => {
+  const cron = {
+    ...babysit,
+    detail: { ...babysit.detail, lastFiredAt: NOW, fireCount: 2, turnEnded: 'answered' },
+  } as typeof babysit
+  expect(facts(cron, NOW, [cron]).lines).toContain('last fired 10:52:00 · 2 fires')
+  expect(facts(cron, NOW, [cron]).lines).toContain('turn ended answered')
+  expect(
+    facts(babysit, NOW, ALL).lines.some(
+      line => line.includes('last fired') || line.includes('turn ended'),
+    ),
+  ).toBe(false)
+})

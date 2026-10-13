@@ -112,6 +112,10 @@ export type RabeCronDetail = {
   humanSchedule?: string
   scheduledFor?: number
   isDeleted?: boolean
+  lastFiredAt?: number
+  fireCount?: number
+  fireId?: string
+  turnEnded?: 'answered' | 'stopped' | 'error' | 'refused'
 }
 
 export type RabeItemDetails = {
@@ -236,6 +240,8 @@ declare module 'claude-code' {
   interface PluginState {
     rabe: {
       items: RabeItem[]
+      cronTranscript: string
+      cronTurn: { promptId?: string; turnId?: string; fireId?: string }
       agentFiles: Record<
         string,
         {
