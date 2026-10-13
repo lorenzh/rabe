@@ -251,17 +251,14 @@ export function landing(action: Action, open: string, drawn?: Drawn): string[] {
 
 export function messageLanding(
   action: Action,
-  selection: Pick<Selection, 'tab' | 'open'>,
+  selection: Pick<Selection, 'tab' | 'open' | 'selected'>,
   ringOn: string | undefined,
 ): string[] | undefined {
-  if (
-    action.type !== 'message' ||
-    selection.tab !== 'items' ||
-    selection.open !== action.id ||
-    ringOn !== `message:${action.id}`
-  )
+  if (action.type !== 'message' || selection.tab !== 'items' || ringOn !== `message:${action.id}`)
     return undefined
-  return landing(action, '')
+  if (selection.open === action.id) return landing(action, '')
+  // beside the list's detail: back to the list's `m`
+  return selection.open === '' && selection.selected === action.id ? ['message'] : undefined
 }
 
 // Whether the focus ring is known to sit on a safe element, so that stop and
@@ -377,7 +374,7 @@ export function landingOf(
 }
 
 // The list's x, g and r keep one key each and act on the selection.
-export const LIST_KEYS = ['stop', 'stop-group', 'remove']
+export const LIST_KEYS = ['stop', 'stop-group', 'remove', 'delete']
 
 // What the list's x and g act on in a drawing: one entry per control and item.
 // Fewer entries (a row of the group ended, g can no longer act) stop less
@@ -388,7 +385,9 @@ export const targetsOf = (drawn: Drawn): string[] =>
     .flatMap(({ key, label, action }) =>
       action.type === 'stop' || action.type === 'remove'
         ? action.ids.map(id => JSON.stringify([key, label, id]))
-        : [],
+        : action.type === 'delete'
+          ? [JSON.stringify([key, label, action.id])]
+          : [],
     )
 
 // Rows the toolbar takes: wrapped Buttons ("[ label ]" and a

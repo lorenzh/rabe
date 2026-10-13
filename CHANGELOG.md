@@ -4,11 +4,15 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Added
+
+- The list offers `c`, `m` and `d` for the selected row while the detail shows beside it ([#149](https://github.com/lorenzh/rabe/pull/149), fixes [#70](https://github.com/lorenzh/rabe/issues/70))
+
 ### Fixed
 
-- Without an inode command, shells and monitors skip unchanged output and no longer count that as an error; a failed `tail` no longer counts as a content read ([#146](https://github.com/lorenzh/rabe/pull/146), fixes [#133](https://github.com/lorenzh/rabe/issues/133)).
 - A foreground Bash command that runs longer than 2 s shows as a running shell, and a `codex exec ... -o <file> &` started from a Bash call stays visible until its result file appears ([#145](https://github.com/lorenzh/rabe/pull/145), fixes [#142](https://github.com/lorenzh/rabe/issues/142), [#143](https://github.com/lorenzh/rabe/issues/143)).
 - `/rabe-stop` shows usage for empty arguments or arguments without `codex:`, and its hint shows `codex:<job id>` ([#144](https://github.com/lorenzh/rabe/pull/144), fixes [#141](https://github.com/lorenzh/rabe/issues/141)).
+- Without an inode command, shells and monitors skip unchanged output and no longer count that as an error; a failed `tail` no longer counts as a content read ([#146](https://github.com/lorenzh/rabe/pull/146), fixes [#133](https://github.com/lorenzh/rabe/issues/133)).
 
 ## [0.7.0] - 2026-10-12
 

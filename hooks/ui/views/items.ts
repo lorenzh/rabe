@@ -30,7 +30,7 @@ import {
   type ViewButton,
   type ViewInput,
 } from '../view'
-import { detailLines } from './detail'
+import { detailButtons, detailLines, messageInput } from './detail'
 import { beside, cut, fitLine, focusOn, itemLine, plain } from './lines'
 
 const GROUP_COLOR: Record<Group, number> = {
@@ -260,6 +260,21 @@ function listButtons(
       : { key: 'clear', label: 'a: remove ended', action: NONE, dim: true },
   )
 
+  // Beside the detail the list offers the detail's c, m and d for the
+  // selection, under one key each like x and g. They keep their slots too.
+  if (isSplit(size) && selected) {
+    const own = detailButtons(selected, size.hasInput, model.items)
+    const rekey = (hotkey: string, key: string, label: string): ViewButton => {
+      const one = own.find(button => button.hotkey === hotkey && !button.dim)
+      return one ? { ...one, key } : { key, label, action: NONE, dim: true }
+    }
+    buttons.push(
+      rekey('c', 'copy', 'c: copy'),
+      ...(size.hasInput ? [rekey('m', 'message', 'm: message')] : []),
+      rekey('d', 'delete', 'd: delete job'),
+    )
+  }
+
   return buttons
 }
 
@@ -278,7 +293,7 @@ const search = (sel: Selection): ViewInput => ({
 // The split detail starts at the first row the pane shows, so it stays in
 // view while the focus walks a list longer than the pane.
 export const itemsView: View = (model, size, sel): Drawn => {
-  const inputs = size.hasInput ? [search(sel)] : []
+  const inputs: ViewInput[] = size.hasInput ? [search(sel)] : []
   const note = (value: string, buttons: ViewButton[]): Drawn => ({
     nodes: [fitLine({ spans: [[value, { fg: C.dim }]] }, size.columns)],
     buttons,
@@ -294,6 +309,7 @@ export const itemsView: View = (model, size, sel): Drawn => {
   const { lines, order, shown } = listLines(model, sel, split ? size.rows : size.rows - 2)
   const selected = selectedItem(order, sel)
   const buttons = listButtons(model, size, selected, shown, sel.query)
+  if (selected && isSplit(size)) inputs.push(...messageInput(selected, size.hasInput))
   if (lines.length === 0) return note(` No item matches "${sel.query}".`, buttons)
   if (selected && split) {
     const listWidth = Math.min(48, Math.floor(size.columns * 0.42))
