@@ -78,3 +78,15 @@ test('long runs of assignments, env words and quotes stay fast', () => {
     expect(Date.now() - started).toBeLessThan(200)
   }
 })
+
+test('env options that run no command, or that Rabe cannot follow, are no launch', () => {
+  expect(codexExec('env --help codex exec -o /tmp/never.txt x &')).toBeUndefined()
+  expect(codexExec('env --version codex exec -o /tmp/never.txt x &')).toBeUndefined()
+  expect(codexExec("env -S 'A=1 codex' exec -o /tmp/never.txt x &")).toBeUndefined()
+  expect(codexExec('env --split-string=x codex exec -o /tmp/never.txt x &')).toBeUndefined()
+  expect(codexExec('env -- codex exec -o /tmp/r.txt x &')).toEqual({
+    resultPath: '/tmp/r.txt',
+    isDetached: true,
+  })
+  expect(codexExec('env -- --help codex exec -o /tmp/r.txt x &')).toBeUndefined()
+})

@@ -1891,3 +1891,28 @@ test('an agent ending after a discarded pass still gets its cached metadata', as
     detail: { cwd: '/work/a' },
   })
 })
+
+test('a newly listed completed agent pushes out a foreground row, not itself', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const state = memoryState(on)
+  const fg = Array.from({ length: MAX_ENDED - 150 }, (_, n) => ({
+    id: `shell:fg-${n}`,
+    kind: 'shell',
+    title: `ls ${n} · foreground`,
+    status: 'done',
+    seenAt: 1000 + n,
+    endedAt: 1000 + n,
+    detail: { command: `ls ${n}` },
+  }))
+  state['rabe.items'] = { value: [...ended(150), ...fg], version: 1 }
+  core(on)
+  on('agent.list', async () => ({
+    value: [{ id: 'late', type: 'Explore', description: 'late', status: 'completed' }],
+  }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items).toHaveLength(MAX_ENDED)
+  expect(items.find(item => item.id === 'agent:late')?.status).toBe('done')
+  expect(items.filter(item => item.id.startsWith('agent:'))).toHaveLength(151)
+  expect(items.some(item => item.id === 'shell:fg-0')).toBe(false)
+})

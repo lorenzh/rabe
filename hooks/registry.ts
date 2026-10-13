@@ -70,12 +70,13 @@ export function capEnded(items: RabeItem[], max = MAX_ENDED): RabeItem[] {
 }
 
 // The end time of an ended item Rabe did not watch end: the oldest end held,
-// so it never pushes out one Rabe watched. `undefined` once the cap is full,
-// since the cap would drop it.
+// so it never pushes out one Rabe watched. `undefined` once ended items other
+// than foreground rows fill the cap, since the cap would drop it.
 export function pastEnd(items: RabeItem[], now: number, max = MAX_ENDED): number | undefined {
-  const ends = items.flatMap(item => (isEnded(item) ? [item.endedAt ?? item.seenAt] : []))
+  const ended = items.filter(isEnded)
+  if (ended.filter(item => !isForeground(item)).length >= max) return undefined
 
-  return ends.length >= max ? undefined : Math.min(now, ...ends)
+  return Math.min(now, ...ended.map(item => item.endedAt ?? item.seenAt))
 }
 
 // The capped list and the ids the write drops (also one it added), or
