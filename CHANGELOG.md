@@ -9,6 +9,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - The list offers `c`, `m` and `d` for the selected row while the detail shows beside it ([#149](https://github.com/lorenzh/rabe/pull/149), fixes [#70](https://github.com/lorenzh/rabe/issues/70))
 - Cron detail shows the confirmed last fire time, fire count and how an observed turn ended. Ambiguous matches show no fire details. ([#150](https://github.com/lorenzh/rabe/pull/150), fixes [#84](https://github.com/lorenzh/rabe/issues/84))
 
+### Changed
+
+- Document the lost fast tab key as a Claude Code limit, with a live trace and baseline counts ([#148](https://github.com/lorenzh/rabe/pull/148), fixes [#129](https://github.com/lorenzh/rabe/issues/129))
+
 ### Fixed
 
 - A foreground Bash command that runs longer than 2 s shows as a running shell, and a `codex exec ... -o <file> &` started from a Bash call stays visible until its result file appears ([#145](https://github.com/lorenzh/rabe/pull/145), fixes [#142](https://github.com/lorenzh/rabe/issues/142), [#143](https://github.com/lorenzh/rabe/issues/143)).

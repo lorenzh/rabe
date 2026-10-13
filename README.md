@@ -104,6 +104,8 @@ If a list redraw removes a row or search handler during an event, Rabe drops tha
 
 When all rows fit, fast arrow bursts after a tab switch keep their order and wrap direction. A second tab press keeps arrows received during the first switch. After a refused focus move, later independent arrows go straight to the engine.
 
+Known limit: in a burst such as `2 1 Down Down Down Down` with 30 to 50 ms between keys, Claude Code sometimes drops the tab hotkey (`1`) before it reaches any hook of Rabe, so the pane stays on the Cost tab. A live trace on Claude Code 2.1.296 lost it in 4 of 42 runs (about 1 in 10) on the same machine, and Rabe cannot fix a key it never receives. Keys sent about 100 ms apart or more are not affected in the measurements. See [the measurement](docs/feasibility/ui.md#a-tab-key-lost-after-a-fast-arrow-burst).
+
 | View | Letters caught outside input fields |
 |------|-------------------------------------|
 | Items list | `x g r a`; `s` where search is available |
