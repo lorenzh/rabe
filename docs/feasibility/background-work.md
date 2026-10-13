@@ -2,7 +2,7 @@
 title: Codex and background work
 description: Data available for Codex jobs, foreground Bash calls, direct codex exec runs, shells, monitors, cron jobs, and loops.
 tags: [feasibility, Codex, background-work]
-keywords: [Codex jobs, foreground Bash, codex exec, output-last-message, shells, monitors, cron jobs, loops, resume-last, resumed thread, completedAt, FileChange, move_path, completed_at_ms, started_at_ms, background_tasks, session_crons, ScheduleWakeup, scheduledFor, scheduled-trigger, TaskStop, output-file, backgroundTaskId, task output, rollout, threadId, token_count, model_reasoning_summary, custom_tool_call, CommandExecution, cache_write_input_tokens, last_token_usage, CODEX_HOME, installed_plugins.json, CLAUDE_PLUGIN_DATA, codex-rescue, codex-companion, Thread ready, started in the background, kindLabel]
+keywords: [Codex jobs, foreground Bash, codex exec, output-last-message, shells, monitors, cron jobs, loops, resume-last, resumed thread, completedAt, FileChange, move_path, completed_at_ms, started_at_ms, background_tasks, session_crons, ScheduleWakeup, scheduledFor, scheduled-trigger, TaskStop, output-file, backgroundTaskId, task output, rollout, threadId, token_count, model_reasoning_summary, custom_tool_call, CommandExecution, cache_write_input_tokens, last_token_usage, CODEX_HOME, installed_plugins.json, CLAUDE_PLUGIN_DATA, codex-rescue, codex-companion, Thread ready, started in the background, kindLabel, ports, silent servers, fuser, ps, ss]
 ---
 
 # Codex and background work
@@ -39,10 +39,16 @@ Limits: Codex deletes old session files. Older jobs then show `n/a` for file dat
 | Output, exit code | `/tmp/claude-<uid>/<project>/<session>/tasks/<taskId>.output`. Live output, then an empty line and `[exited with code N]`, or `[killed]` for a stopped task. Tested. Read once with `$.fs` up to 4 MiB. New bytes arrive through `tail -c +N` with a session cursor. Larger output catches up over several polls. |
 | End | `prompt.submit` with `origin.kind` `task-notification`. Its text holds `<task-notification>` blocks with `<task-id>`, `<tool-use-id>`, `<output-file>`, `<status>` (`completed`, `failed`, `killed`) and `<summary>` (`… failed with exit code 3`). Tested. The `UserMessage` row's `task` (d.ts:14467) has the same fields and `durationMs`, but only while the row is drawn. |
 | Still running | `classic.Stop` `background_tasks` lists running work (`type` `shell` with `command`, `monitor`, `subagent`, `workflow`); a finished task is not in it. A Monitor tool task runs as a `local_bash` task, so it is listed as `shell` with a `command`; `monitor` is only an MCP or WebSocket monitor (checked in the 2.1.295 source, `local_bash: "shell"`, `monitor_mcp` and `monitor_ws: "monitor"`). |
-| Port | Not reported. Guessed from the output (`localhost:5173`, `127.0.0.1:8080`, `port 4000`). `ss -ltnp` is not used. |
+| Port | Output first (`localhost:5173`, `127.0.0.1:8080`, `port 4000`). On Linux, a running shell without a port also uses `fuser <checked outputPath>`, `ps -A -o pid=,ppid=` and `ss -ltnpH`. Every socket owner must belong to the file holders or their descendants. |
 | Stop | `TaskStop`. |
 
 Rabe accepts only this temporary task layout with the current `$.session.id()` and the project folder encoded from `$.session.root()`. It checks the resolved file against the resolved task folder before reading. An unexpected path or a symlink outside that folder gives no output. Polls, notifications and Stop correction use this check.
+
+The port scan runs every 6 seconds in the shared loop, after output polling. One `ps` and `ss` snapshot serves all shells in the scan. Each shell gets a fresh `fuser` lookup, so no cached PID can outlive its process. Commands use argument arrays and a 5-second timeout. `uname -s` limits the scan to Linux. Rabe does not read process arguments or environments.
+
+A missing tool, denied call, failed exit or truncated result leaves the port `n/a`. Stderr also rejects a result. This includes an exit-zero `ss` netlink error. If `fuser` exits with code 1 and empty stdout, no process holds the file open. The poll skips that shell without recording a fault. `fuser` alone can print its exact file label on stderr. It does not accept `--`. Its path is a checked absolute task path.
+
+The file-to-process link depends on Claude Code’s output descriptors. Pipe-backed output, daemonized children, containers and other network namespaces can have no matching host listener. Unknown ownership shows no port. The first port found stays until the shell ends, as with output detection. Desktop process access and a real mod session remain unverified for this scan.
 
 ### Foreground Bash calls and direct `codex exec`
 

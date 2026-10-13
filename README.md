@@ -20,7 +20,7 @@ Status: early development. See [releases](https://github.com/lorenzh/rabe/releas
 | Claude subagents | Count (`claude`) | Name when Claude Code provides one, otherwise the task description; tokens, prompt, turns and agent id |
 | Workflows | Count (`workflow`) | Phases and their agents in start order, with tokens and time; select an agent to open it |
 | Codex jobs (from the Codex plugin) | Count (`codex`) | Model, effort and sandbox, tokens, the prompt, each message and command with its exit code, the thread id (`c` copies `codex resume <thread id>`) |
-| Background shells | Count (`shell`) | Bash description and task id, output lines, exit code and guessed port; a foreground command running longer than 2 s, and a detached `codex exec -o <file> &`, show as running shells |
+| Background shells | Count (`shell`) | Bash description and task id, output lines, exit code and port from output or the process tree’s listening sockets on Linux; a foreground command running longer than 2 s, and a detached `codex exec -o <file> &`, show as running shells |
 | Monitors | Count (`monitor`) | Each line with the time Rabe received it |
 | Cron jobs and `/loop` wakeups | Count (`cron`) | The next five runs while running; confirmed last fire time, fire count and observed turn end; deleted jobs say `deleted` |
 | Cost | Session cost and tokens of the background work | Cost tab: tokens and an estimate in dollars (`≈ $0.16`) per worker, workers that look stuck |
@@ -175,7 +175,7 @@ Rabe cannot see some things:
 
 - Dollars per agent or per Codex job. No source gives them; Rabe estimates them from its price table (see [the cost estimate](docs/architecture/prices.md)).
 - Work that started before Rabe loaded shows only what the agent list, `CronList` and the files tell.
-- The port of a shell is a guess from its output.
+- Shell ports come from output first. On Linux, Rabe also checks listening sockets of the task’s process tree, even with empty or redirected output. This needs `fuser`, `ps` and `ss`. Without them the port stays `n/a`.
 - Codex jobs started outside the Codex plugin, and Codex sessions that Codex already deleted.
 - Retries inside a workflow. Rabe can stop a whole workflow run, but not one agent of it.
 
@@ -195,6 +195,8 @@ Rabe reads these files:
 - Codex session files under `~/.codex/sessions/` (or `CODEX_HOME`).
 - Its own price table `data/prices.csv`, its `.claude-plugin/plugin.json` (for the Rabe version in `/rabe-diag`), and the file the option `pricesFile` names.
 - The size and modification time of the files a shell command names, before and after the command, to see which ones it wrote. Rabe does not read their content.
+
+On Linux, Rabe also reads process IDs, parent IDs and TCP listener ownership through `fuser`, `ps` and `ss`. It does not read process arguments or environments.
 
 For script edits, Rabe also takes changed file paths and known deletions from Claude Code's Bash result. It keeps no diff hunks or file content.
 
