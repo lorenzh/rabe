@@ -1,5 +1,6 @@
 import type { EngineInterface, On } from 'claude-code'
 import type { RabeFileCursor, RabeLines } from '../../types'
+import { codexExec } from '../codex-exec'
 import { fault, type Pollers, skipped, tally } from '../loop'
 import { itemId, type RabeItem } from '../model'
 import {
@@ -34,6 +35,8 @@ import {
 } from '../tasks'
 
 const MAX_READ = 4 * 1024 * 1024
+// A foreground call shows as a shell only after this long, so quick commands cause no flicker.
+const SLOW_MS = 2000
 
 // Each event takes one hook without a matcher per plugin; these match every event.
 const ANY_STOP = { stop_hook_active: [true, false] }
@@ -121,21 +124,33 @@ async function readFile(
       ? held?.identity?.slice(path.length + 1)
       : await $.process
           .run(['ls', '-diL', '--', path], { timeoutMs: 5000 })
-          .then(result =>
-            result.exitCode === 0
-              ? inodeOf(result.stdout)
-              : fault(`inode lookup exited with code ${result.exitCode}`),
-          )
-          .catch(fault)
+          .then(result => (result.exitCode === 0 ? inodeOf(result.stdout) : undefined))
+          .catch(() => undefined)
     if (!identity) {
       if (stat.size > MAX_READ) return {}
       const text = String(tally(await $.fs.read(path)))
       const parsed = parseOutput(text)
-      await keepLines($, id, parsed.lines, false, false, parsed.ended !== undefined, undefined, {
-        ended: parsed.ended,
-        exitCode: parsed.exitCode,
-        port: guessPort(text),
-      })
+      await keepLines(
+        $,
+        id,
+        parsed.lines,
+        false,
+        false,
+        parsed.ended !== undefined,
+        {
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+          identity: `${path}:`,
+          offset: stat.size,
+          partial: false,
+        },
+        {
+          ended: parsed.ended,
+          exitCode: parsed.exitCode,
+          port: guessPort(text),
+        },
+        true,
+      )
       return { text, ended: parsed.ended, exitCode: parsed.exitCode, port: guessPort(text) }
     }
     const stamp = { size: stat.size, mtimeMs: stat.mtimeMs, identity: `${path}:${identity}` }
@@ -152,11 +167,11 @@ async function readFile(
       const result = await $.process.run(['tail', '-c', `+${offset + 1}`, '--', path], {
         timeoutMs: 5000,
       })
-      text = tally(result.stdout)
       if (result.exitCode !== 0) {
         fault(`tail exited with code ${result.exitCode}`)
         return {}
       }
+      text = tally(result.stdout)
       truncated = result.isStdoutTruncated
     }
     const chunk = readChunk(text, truncated, false, reset ? false : held?.isDiscarding)
@@ -198,12 +213,23 @@ async function keepLines(
   ended: boolean,
   cursor?: RabeFileCursor,
   result: Pick<RabeLines, 'ended' | 'exitCode' | 'port'> = {},
+  whole = false,
 ): Promise<void> {
   const now = await $.clock.now()
   for (;;) {
     const { value: saved, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
     const value = restored(saved)
-    const next = outputUpdate(linesOf(value[id]), lines, now, reset, partial, ended, cursor, result)
+    const next = outputUpdate(
+      linesOf(value[id]),
+      lines,
+      now,
+      reset,
+      partial,
+      ended,
+      cursor,
+      result,
+      whole,
+    )
     if (!next) return
     const { isSet } = await $.state.set(
       { plugin: 'rabe', key: 'lines' },
@@ -231,6 +257,14 @@ async function pollShells($: EngineInterface, items: RabeItem[]): Promise<Change
           (cursor !== undefined && cursor.offset < cursor.size && !cursor.partial))
       )
     })) {
+      if (item.status === 'running' && item.detail.resultPath) {
+        const stat = await $.fs.stat(item.detail.resultPath).catch(() => undefined)
+        if (stat?.kind === 'file' && stat.mtimeMs >= (item.startedAt ?? 0)) {
+          const now = await $.clock.now()
+          stage(poll, held => endItem(held, item.id, 'done', now))
+        }
+        continue
+      }
       const output = item.detail.outputPath
         ? await readOutput($, item.detail.outputPath, item.id)
         : {}
@@ -325,18 +359,80 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
   )
 }
 
+type BashCall = { tool_use_id: string; command: string; description?: string; agentId?: string }
+
+// The row of a foreground Bash call that is still running.
+async function foreground(
+  $: EngineInterface,
+  e: BashCall,
+  id: string,
+  startedAt: number,
+  resultPath?: string,
+) {
+  const now = await $.clock.now()
+  await write($, held =>
+    addItem(
+      held,
+      {
+        id,
+        kind: 'shell',
+        title: shellTitle(e.description, e.command, 'foreground'),
+        status: 'running',
+        startedAt,
+        ...(e.agentId && { parentId: itemId('agent', e.agentId) }),
+        detail: { command: e.command, ...(resultPath && { resultPath }) },
+      },
+      now,
+    ),
+  )
+}
+
 export function shells(on: On, pollers: Pollers): void {
   on('session.start', { isInteractive: [true, false] }, async ($, e, next) => {
     pollers.push({ name: 'shells', run: items => pollShells($, items), initial: false })
     return next(e)
   })
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
-    const answer = await next(e)
+    if (e.tool !== 'Bash') return next(e)
+    const id = itemId('shell', `fg-${e.tool_use_id}`)
+    const stop = new AbortController()
+    let shown: Promise<void> | undefined
+    let added = false
+    let startedAt = 0
+    let exec: ReturnType<typeof codexExec>
+    if (!e.run_in_background) {
+      try {
+        startedAt = await $.clock.now()
+        exec = codexExec(e.command, await $.env.get('HOME').catch(() => undefined))
+        shown = $.clock
+          .sleep(SLOW_MS, { signal: stop.signal })
+          .then(() => foreground($, e, id, startedAt))
+          .then(() => {
+            added = true
+          })
+          .catch(() => undefined)
+      } catch {}
+    }
+    let answer: Awaited<ReturnType<typeof next>>
+    try {
+      answer = await next(e)
+    } catch (error) {
+      stop.abort()
+      await shown
+      if (added) await write($, held => held.filter(item => item.id !== id)).catch(() => undefined)
+      throw error
+    }
+    stop.abort()
+    await shown
     try {
       const result = answer.result as { backgroundTaskId?: string } | undefined
       const taskId = result?.backgroundTaskId
-      if (e.tool === 'Bash' && taskId) {
-        const now = await $.clock.now()
+      const now = await $.clock.now()
+      // A `codex exec ... &` outlives the call: its result file ends the row.
+      const keep = exec?.isDetached ? exec.resultPath : undefined
+      if (keep) await foreground($, e, id, startedAt, keep)
+      else if (added) await write($, held => held.filter(item => item.id !== id))
+      if (taskId) {
         const outputPath = outputPathOf(answer.text)
         await write($, held =>
           addItem(
@@ -346,7 +442,7 @@ export function shells(on: On, pollers: Pollers): void {
               kind: 'shell',
               title: shellTitle(e.description, e.command, taskId),
               status: 'running',
-              startedAt: now,
+              startedAt: startedAt || now,
               ...(e.agentId && { parentId: itemId('agent', e.agentId) }),
               detail: { command: e.command, taskId, ...(outputPath && { outputPath }) },
             },

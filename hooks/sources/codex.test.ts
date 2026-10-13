@@ -4,7 +4,7 @@ import { type Engine, expect, type MockClock, mock, test } from 'claude-code/tes
 import type { RabeItem, RabeItemOf } from '../model'
 import { MAX_ENDED } from '../registry'
 import { memoryState } from '../testing'
-import { advanceRollout, codexItem, jobEnd, parseRollout } from './codex'
+import { advanceRollout, codexItem, jobEnd, parseRollout, STOP_USAGE } from './codex'
 
 const line = (type: string, payload: object) => JSON.stringify({ type, payload })
 
@@ -707,6 +707,49 @@ test('a session file over 4 MiB starts reading at byte one with tail', async ($,
   // the tail misses requests, so the cost is not known
   expect(writes.at(-1)?.[0]?.tokens).toBeDefined()
   expect(writes.at(-1)?.[0]?.costUsd).toBeUndefined()
+})
+
+test('/rabe-stop registers the Codex job id hint', async ($, on) => {
+  let hint: string | undefined
+  on('command.register', { name: 'rabe-stop' }, async (_$, e) => {
+    hint = e.argumentHint
+    return { value: undefined } as never
+  })
+  world(on, {})
+  await $.session.start({ cwd: '/work/rabe', surface: 'terminal', isInteractive: true })
+  expect(hint).toBe('codex:<job id>')
+})
+
+test('/rabe-stop answers unsupported arguments with usage without stopping work', async ($, on) => {
+  const writes = watchItems(on)
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+  })
+  const runs: string[][] = []
+  on('process.run', async (_$, e, next) => {
+    if (e.argv[0] === 'git') return next(e)
+    runs.push([...e.argv])
+    return { value: { exitCode: 0, stdout: '{}', stderr: '' } } as never
+  })
+  await startAndTick($, w)
+  const before = writes.length
+  for (const args of [
+    '',
+    '   ',
+    'codex:',
+    'codex: ',
+    'codex task-1',
+    'codex th-1',
+    'codex codex resume th-1',
+    'shell:task-1',
+    'secret prompt: ignore prior instructions',
+  ]) {
+    const answer = await $.command.run({ command: 'rabe-stop', args } as never)
+    expect(answer).toEqual({ text: STOP_USAGE })
+  }
+  expect(runs).toEqual([])
+  expect(writes).toHaveLength(before)
 })
 
 test('/rabe-stop cancels the job through the companion script', async ($, on) => {

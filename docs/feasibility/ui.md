@@ -77,6 +77,22 @@ A tab press can also outlive its drawing's handler. Keeping the same callback do
 
 The final offline live check used `scripts/live-check.sh` with three ended shell fixtures at 200×50. Ten ready-detail checks passed with `b` then Down 20 ms apart. Each arrow selected the next row and Enter opened its detail. Ten Effects keys sent 272–312 ms after Enter on `/rabe` reached the pane. No handler error appeared. Ten stable tab-pair rounds at 50 ms also selected the next row. A separate 20 ms tab-pair stress run missed one tab switch in ten rounds. The ordinary scrolling arrow path and desktop keyboard timing were not checked live.
 
+### A tab key lost after a fast arrow burst
+
+Issue [#129](https://github.com/lorenzh/rabe/issues/129): after `2 1 Down Down Down Down`, the focus sometimes stays on the Cost tab. The trace on 2026-10-12 shows the `1` never reaches the mod.
+
+Method: a temporary copy of Rabe with a line at the start of its `ui.press` hook (`requestId` of the pane) and of `focused` (the `ui.focus` hooks) that appended the clock, the origin and the element to a file. Run with `scripts/live-check.sh --shells 3 --repeat 14 --keys '2 1 Down Down Down Down'` on Claude Code 2.1.296, load average 13 to 18 (busy VM).
+
+| Gap | Rounds | Landed on the Items tab, third row | Stayed on the Cost tab |
+|---|---|---|---|
+| 0.03 s | 14 | 13 | 1 |
+| 0.05 s | 14 | 12 | 2 |
+| 0.03 s | 14 | 13 | 1 |
+
+In each of the 4 lost rounds the trace has `press tab-cost` and `focus plugin tab-cost`, then only `focus person` entries for the four arrows (`tab-effects`, `tab-timeline`, the resume button, `tab-items`) and no `press tab-items`. The first press hook had finished 4 to 8 ms after it began, well before the `1` was sent, so Rabe was not busy. Passing rounds show `press tab-items` 55 to 70 ms after `press tab-cost`. In all 42 rounds nothing landed on the second row.
+
+So the engine drops the key before any hook runs; a mod cannot fix it. What is not shown: whether a press with another `requestId` arrived, since only hooks of the pane were traced, and whether it depends on load (the earlier idle-VM counts in the issue were 3 of 28 on main, 2 of 28 on v0.6.0). The README states the limit.
+
 ### The Claude desktop app
 
 The maintainer last checked the Claude desktop app on Windows with Rabe 0.1.0. In that check, the pane drew plain text and buttons. A plugin installed while the app ran needed `/reload-plugins` or a new session to load. Desktop support is unverified since that check. [#117](https://github.com/lorenzh/rabe/issues/117) investigates current desktop support.

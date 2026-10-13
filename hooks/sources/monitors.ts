@@ -110,20 +110,32 @@ async function readFile(
       ? held?.identity?.slice(path.length + 1)
       : await $.process
           .run(['ls', '-diL', '--', path], { timeoutMs: 5000 })
-          .then(result =>
-            result.exitCode === 0
-              ? inodeOf(result.stdout)
-              : fault(`inode lookup exited with code ${result.exitCode}`),
-          )
-          .catch(fault)
+          .then(result => (result.exitCode === 0 ? inodeOf(result.stdout) : undefined))
+          .catch(() => undefined)
     if (!identity) {
       if (stat.size > MAX_READ) return {}
       const text = String(tally(await $.fs.read(path)))
       const parsed = parseOutput(text)
-      await keepLines($, id, parsed.lines, false, false, parsed.ended !== undefined, undefined, {
-        ended: parsed.ended,
-        exitCode: parsed.exitCode,
-      })
+      await keepLines(
+        $,
+        id,
+        parsed.lines,
+        false,
+        false,
+        parsed.ended !== undefined,
+        {
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+          identity: `${path}:`,
+          offset: stat.size,
+          partial: false,
+        },
+        {
+          ended: parsed.ended,
+          exitCode: parsed.exitCode,
+        },
+        true,
+      )
       return { text, ended: parsed.ended, exitCode: parsed.exitCode }
     }
     const stamp = { size: stat.size, mtimeMs: stat.mtimeMs, identity: `${path}:${identity}` }
@@ -140,11 +152,11 @@ async function readFile(
       const result = await $.process.run(['tail', '-c', `+${offset + 1}`, '--', path], {
         timeoutMs: 5000,
       })
-      text = tally(result.stdout)
       if (result.exitCode !== 0) {
         fault(`tail exited with code ${result.exitCode}`)
         return {}
       }
+      text = tally(result.stdout)
       truncated = result.isStdoutTruncated
     }
     const chunk = readChunk(text, truncated, false, reset ? false : held?.isDiscarding)
@@ -181,12 +193,23 @@ async function keepLines(
   ended: boolean,
   cursor?: RabeFileCursor,
   result: Pick<RabeLines, 'ended' | 'exitCode' | 'port'> = {},
+  whole = false,
 ): Promise<void> {
   const now = await $.clock.now()
   for (;;) {
     const { value: saved, version } = await $.state.get({ plugin: 'rabe', key: 'lines' })
     const value = restored(saved)
-    const next = outputUpdate(linesOf(value[id]), lines, now, reset, partial, ended, cursor, result)
+    const next = outputUpdate(
+      linesOf(value[id]),
+      lines,
+      now,
+      reset,
+      partial,
+      ended,
+      cursor,
+      result,
+      whole,
+    )
     if (!next) return
     const { isSet } = await $.state.set(
       { plugin: 'rabe', key: 'lines' },

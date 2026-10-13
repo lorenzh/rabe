@@ -67,12 +67,128 @@ test('a background Bash row uses its description and keeps the original command'
   })
 })
 
-test('a Bash call in the foreground adds nothing', async ($, on) => {
+test('a quick Bash call in the foreground leaves no row', async ($, on) => {
   const state = memoryState(on)
   bash(on)
   core(on)
   await $.tool.call({ tool: 'Bash', command: 'ls' })
-  expect(state['rabe.items']?.value).toBeUndefined()
+  expect((state['rabe.items']?.value as RabeItem[] | undefined) ?? []).toEqual([])
+})
+
+// A Bash call that holds until `release()`; its result is `result`.
+function slowBash(on: On, result: Record<string, unknown> = {}) {
+  let release = () => {}
+  const held = new Promise<void>(resolve => {
+    release = resolve
+  })
+  on('tool.call', { tool: 'Bash' }, async () => {
+    await held
+    return { result: { stdout: '', stderr: '', interrupted: false, ...result }, text: 'ok' }
+  })
+
+  return release
+}
+
+test('a foreground Bash call that runs on shows as a running shell and leaves when it returns', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const release = slowBash(on)
+  core(on)
+  const call = $.tool.call({
+    tool: 'Bash',
+    command: 'timeout 25m gh pr checks 7 --watch',
+    description: 'Watch the checks',
+  })
+  await clock.advance(3000)
+  expect(state['rabe.items']?.value).toMatchObject([
+    {
+      kind: 'shell',
+      status: 'running',
+      title: expect.stringContaining('Watch the checks'),
+      startedAt: 1000,
+      detail: { command: 'timeout 25m gh pr checks 7 --watch' },
+    },
+  ])
+  release()
+  await call
+  expect(state['rabe.items']?.value).toEqual([])
+})
+
+test('a foreground call that fails after its row showed leaves no row', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  let fail = (_: Error) => {}
+  const held = new Promise<never>((_, reject) => {
+    fail = reject
+  })
+  on('tool.call', { tool: 'Bash' }, async () => held)
+  core(on)
+  const call = $.tool.call({ tool: 'Bash', command: 'sleep 900' })
+  const settled = call.then(
+    () => 'ok',
+    () => 'rejected',
+  )
+  await clock.advance(3000)
+  expect(state['rabe.items']?.value).toMatchObject([{ kind: 'shell', status: 'running' }])
+  fail(new Error('interrupted'))
+  expect(await settled).toBe('rejected')
+  expect(state['rabe.items']?.value).toEqual([])
+})
+
+test('a foreground call that Claude Code moved to the background leaves only the background row', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const release = slowBash(on, { backgroundTaskId: 'b9' })
+  core(on)
+  const call = $.tool.call({ tool: 'Bash', command: 'sleep 900' })
+  await clock.advance(3000)
+  release()
+  await call
+  expect(state['rabe.items']?.value).toMatchObject([{ id: 'shell:b9', startedAt: 1000 }])
+})
+
+test('at Stop a foreground row without a task id is left running', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const release = slowBash(on)
+  core(on)
+  const call = $.tool.call({ tool: 'Bash', command: 'codex exec -o /tmp/r.txt - < /tmp/b.md' })
+  await clock.advance(3000)
+  await $.classic.Stop({ stop_hook_active: false, background_tasks: [] })
+  expect(state['rabe.items']?.value).toMatchObject([{ status: 'running' }])
+  release()
+  await call
+})
+
+test('a detached codex exec stays running until its result file appears', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  let mtimeMs: number | undefined
+  on('fs.stat', async (_$, e, next) =>
+    e.path === '/tmp/r.txt' && mtimeMs !== undefined
+      ? { value: { kind: 'file' as const, size: 4, mtimeMs, isLink: false } }
+      : next(e),
+  )
+  on('tool.call', { tool: 'Bash' }, async () => ({
+    result: { stdout: '', stderr: '', interrupted: false },
+    text: 'ok',
+  }))
+  core(on)
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  await $.tool.call({
+    tool: 'Bash',
+    command: 'nohup codex exec -m gpt-5.5 -o /tmp/r.txt - < /tmp/b.md > /tmp/l 2>&1 &',
+  })
+  await clock.advance(2000)
+  expect(state['rabe.items']?.value).toMatchObject([
+    { status: 'running', detail: { resultPath: '/tmp/r.txt' } },
+  ])
+  mtimeMs = 500
+  await clock.advance(2000)
+  expect(state['rabe.items']?.value).toMatchObject([{ status: 'running' }])
+  mtimeMs = 5000
+  await clock.advance(2000)
+  expect(state['rabe.items']?.value).toMatchObject([{ status: 'done', endedAt: 7000 }])
 })
 
 test('a background Bash call in a subagent names the agent as parent', async ($, on) => {
@@ -521,6 +637,30 @@ test('small output still follows when inode lookup is unavailable', async ($, on
         { at: 7000, text: 'done' },
       ],
     },
+  })
+})
+
+test('without an inode lookup an unchanged output is skipped and raises no error', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const path = `${DIR}/b1.output`
+  const held = { [path]: 'ready\n' }
+  const log: string[] = []
+  on('process.run', { argv: 'ls' }, async () => ({ deny: 'No process host' }))
+  files(on, held, log)
+  bash(on)
+  core(on)
+  await $.session.start({ cwd: '/home/me/app', surface: 'terminal', isInteractive: true })
+  await $.tool.call({ tool: 'Bash', command: 'build', run_in_background: true })
+  await clock.advance(2000)
+  expect(state['rabe.diag']?.value).toMatchObject({
+    shells: { files: 1, skipped: 0, errors: 0 },
+  })
+  log.length = 0
+  await clock.advance(2000)
+  expect(log).toEqual([])
+  expect(state['rabe.diag']?.value).toMatchObject({
+    shells: { files: 0, skipped: 1, errors: 0 },
   })
 })
 

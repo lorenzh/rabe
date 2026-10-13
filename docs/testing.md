@@ -162,6 +162,8 @@ for gap in 0.02 0.03 0.05; do
 done
 ```
 
+Baseline for the fast tab key (issue [#129](https://github.com/lorenzh/rabe/issues/129), Claude Code 2.1.296, `--shells 3 --repeat 14 --keys '2 1 Down Down Down Down'`): a pass is the Items tab with the third of three rows selected. Expect about 1 of 10 rounds to stay on the Cost tab, because the engine drops the `1` before the mod sees it (see [the trace](feasibility/ui.md#a-tab-key-lost-after-a-fast-arrow-burst)). On an idle VM: 13/14 at 0.05 s and 11/14 at 0.03 s on main; on a busy VM with a trace copy: 13/14 and 12/14 at 0.03 s and 12/14 at 0.05 s. A change that is correct shows the same range, not 14/14, so compare counts over at least 28 rounds.
+
 The selected row starts with `▌`. Make `--expect` as exact as the case needs, for example the title of the row the focus must reach. Each failed round prints the screen, so you can see where the focus went.
 
 ### Check keys without a model turn
