@@ -6,7 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Added
 
-- `scripts/live-check.sh --sequences` repeats named key sequences for the keyboard and mouse fixes over several rounds in a real session and prints PASS or FAIL for each ([#190](https://github.com/lorenzh/rabe/issues/190))
+- `scripts/live-check.sh --sequences` repeats named key sequences for the keyboard and mouse fixes over several rounds in a real session and prints PASS or FAIL for each ([#208](https://github.com/lorenzh/rabe/pull/208), fixes [#190](https://github.com/lorenzh/rabe/issues/190))
 
 ### Fixed
 
