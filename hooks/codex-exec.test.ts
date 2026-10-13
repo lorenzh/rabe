@@ -120,3 +120,31 @@ test('after env only the allowed options keep a launch', () => {
     expect(codexExec(line)).toBeUndefined()
   }
 })
+
+test('a newline ends the codex exec command', () => {
+  expect(codexExec('codex exec x\necho -o /tmp/fake.txt &')).toEqual({ isDetached: false })
+  expect(codexExec('codex exec -o /tmp/r.txt x\necho y &')).toEqual({
+    resultPath: '/tmp/r.txt',
+    isDetached: false,
+  })
+})
+
+test('|& ends the codex exec command', () => {
+  expect(codexExec('codex exec x |& cat -o /tmp/fake.txt &')).toEqual({ isDetached: false })
+  expect(codexExec('codex exec -o /tmp/r.txt x |& tee l')).toEqual({
+    resultPath: '/tmp/r.txt',
+    isDetached: false,
+  })
+})
+
+test('a closing ) ends the codex exec command and a & after it detaches', () => {
+  expect(codexExec('(codex exec x); echo -o /tmp/fake.txt &')).toEqual({ isDetached: false })
+  expect(codexExec('(codex exec -o /tmp/r.txt x) &')).toEqual({
+    resultPath: '/tmp/r.txt',
+    isDetached: true,
+  })
+  expect(codexExec('(codex exec -o /tmp/r.txt x)')).toEqual({
+    resultPath: '/tmp/r.txt',
+    isDetached: false,
+  })
+})

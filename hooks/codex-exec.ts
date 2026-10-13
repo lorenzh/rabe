@@ -4,7 +4,7 @@ export type CodexExec = { resultPath?: string; isDetached: boolean }
 
 const isWord = (tok: Tok | undefined): tok is Word => tok !== undefined && 'text' in tok
 const STARTS = /^(nohup|setsid|exec|command|time|env)$/
-const ENDS = new Set([';', '&&', '||', '|', '&', 'stop'])
+const ENDS = new Set([';', '&&', '||', '|', '|&', '&', ')', '\n', 'stop'])
 const SEPARATORS = new Set([';', '&&', '||', '|', '|&', '&', '(', '\n'])
 // The env options a launch may use; any other one (`--null`, `-S`, `--help`,
 // ...) makes the line none, since env may then run no command. Conservative.
@@ -71,10 +71,12 @@ export function codexExec(command: string, home?: string): CodexExec | undefined
       typeof word === 'string' ? word : isWord(word) && word.known ? word.text : undefined
     if (path?.startsWith('/')) resultPath = path
   })
+  // A `)` closes a subshell; a `&` right after it detaches the whole group.
   const stop = end < 0 ? undefined : rest[end]
+  const after = stop && 'op' in stop && stop.op === ')' ? rest[end + 1] : stop
 
   return {
     ...(resultPath && { resultPath }),
-    isDetached: stop !== undefined && 'op' in stop && stop.op === '&',
+    isDetached: after !== undefined && 'op' in after && after.op === '&',
   }
 }
