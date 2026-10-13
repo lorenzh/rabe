@@ -416,16 +416,16 @@ export function crons(on: On): void {
         )
         if (read) {
           await write($, items => fireDetails(items, read))
+          // A prompt the transcript does not show yet stays bound without a fire,
+          // so completion reads again once Claude Code has written its rows.
+          const seen = read.promptId === value?.promptId
           await $.state.set(
             { plugin: 'rabe', key: 'cronTurn' },
-            {
-              ...(read.jobId &&
-                read.promptId === value?.promptId && {
-                  promptId: read.promptId,
-                  turnId: e.turnId,
-                  fireId: read.fireId,
-                }),
-            },
+            seen && read.jobId
+              ? { promptId: read.promptId, turnId: e.turnId, fireId: read.fireId }
+              : !seen && value?.promptId
+                ? { promptId: value.promptId, turnId: e.turnId }
+                : {},
             { ifVersion: version },
           )
         }
@@ -461,7 +461,8 @@ export function crons(on: On): void {
           const matches =
             value?.turnId === e.turnId &&
             value.promptId === read.promptId &&
-            value.fireId === read.fireId
+            read.fireId !== undefined &&
+            (value.fireId ?? read.fireId) === read.fireId
           const isCurrent = () => matches && epoch === promptEpoch
           const reason = isCurrent() ? e.reason : undefined
           // The callback is synchronous: no prompt can arrive between this check and the item change.
