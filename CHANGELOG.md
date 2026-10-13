@@ -6,6 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
+- The README lists the `c`, `m` and `d` keys the Items list offers beside the detail ([#165](https://github.com/lorenzh/rabe/pull/165), fixes [#161](https://github.com/lorenzh/rabe/issues/161))
 - A long pinned list scrolls to its last line, so the Cost tab's `LOAD` block, a trailing folded group and the Timeline summaries are reachable ([#168](https://github.com/lorenzh/rabe/pull/168), fixes [#154](https://github.com/lorenzh/rabe/issues/154))
 - Selecting a live agent in a long pinned list keeps the item rows in the scrolled box instead of moving them into the header ([#168](https://github.com/lorenzh/rabe/pull/168), fixes [#155](https://github.com/lorenzh/rabe/issues/155))
 
