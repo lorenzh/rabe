@@ -18,12 +18,13 @@ import { KIND_LABEL, kept, matches, orderOf, previousOf, rowOf } from './lists'
 import { asPrevious, clipText, nameOf, toastText } from './pane-data'
 import { follow, geometry, measure, NO_PIN, type Pin } from './pin'
 import { type At, hold, render } from './render'
-import { reserve, sequence } from './sequence'
+import { reserve, screens, sequence } from './sequence'
 import {
   type Action,
   bounded,
   landing,
   landingOf,
+  landOn,
   layout,
   type Model,
   messageLanding,
@@ -31,6 +32,7 @@ import {
   type Selection,
   stepRow,
   taskIdOf,
+  waitsForView,
 } from './view'
 import { isLiveRow, paneView, seatsRows, selectsOnPress, TABS } from './views/pane'
 import { widen, windowOf } from './views/timeline'
@@ -213,19 +215,36 @@ async function regain($: EngineInterface, want: Shift): Promise<void> {
   feed($, { type: 'regained', want, isMoved: !('deny' in result && result.deny) })
 }
 
+// The landings waiting for a drawing of their new view (`screens`). The next
+// press, Input event, arrow or person's focus move, and a close, end them.
+const screen = screens()
+
+async function onScreen($: EngineInterface, surface: RenderSurface): Promise<boolean> {
+  const ready = screen.ask(surface, (ms, signal) => $.clock.sleep(ms, { signal }))
+  $.ui.invalidate('ui.render')
+  return ready
+}
+
 // A new view starts its hold anew, but the ring keeps its index, where the new
 // view may draw a stop; so the pane disarms and the ring moves (`landing`).
-async function land($: EngineInterface, keys: string[]): Promise<void> {
-  for (const key of keys) {
-    if (key.startsWith('tab-') && key === interaction.ringOn) continue
-    if (!(await focusOn($, key))) return
-  }
+async function land(
+  $: EngineInterface,
+  keys: string[],
+  action?: Action,
+  surface?: RenderSurface,
+): Promise<void> {
+  return landOn(
+    keys,
+    () => interaction.ringOn,
+    key => focusOn($, key),
+    action && surface && waitsForView(action) ? () => onScreen($, surface) : undefined,
+  )
 }
 
 async function landView($: EngineInterface, action: Action, surface: RenderSurface): Promise<void> {
   const { model, selection } = await look($, true)
   const drawn = paneView(model, { columns: 80, rows: 24, surface, hasInput: true }, selection)
-  return land($, landing(action, selection.open, drawn))
+  return land($, landing(action, selection.open, drawn), action, surface)
 }
 
 // A press on a live row of the Items list away from the ring selects it: a
@@ -287,7 +306,7 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
         ? folded.filter(group => group !== action.group)
         : [...folded, action.group]
       await $.state.set({ plugin: 'rabe', key: 'folded' }, next)
-      return land($, landing(action, ''))
+      return land($, landing(action, ''), action, surface)
     }
     case 'open': {
       // Back selects the item that was open: the focus may have moved onto a
@@ -464,6 +483,7 @@ function leave(action: Action, at: At): void {
 async function carry<R>($: EngineInterface, at: At, run: () => Promise<R>): Promise<R> {
   const key = slotOf(at)
   const mine: Slot = {}
+  screen.release()
   const focusTurn = reserve()
   feed($, { type: 'press-start' })
   waiting.set(key, [...(waiting.get(key) ?? []), mine])
@@ -581,6 +601,7 @@ export function pane(on: On, hours = baseHours): void {
   on('ui.close', { id: PANE }, async ($, e, next) => {
     const result = await next(e)
     if (!(await $.ui.panes()).some(one => one.id === PANE)) {
+      screen.release()
       feed($, { type: 'closed' })
       isPinned = false
     }
@@ -607,6 +628,7 @@ export function pane(on: On, hours = baseHours): void {
 
   // A fresh plugin move must reach a different hook than this active person hook.
   on('ui.focus', { requestId: PANE, origin: { kind: 'person' } }, ($, e, next) => {
+    screen.release()
     const keys =
       interaction.holds[interaction.surface ?? 'terminal']?.keys.map(one => one.key) ?? []
     const move = deferredFocus(interaction, keys, e.element)
@@ -657,6 +679,7 @@ export function pane(on: On, hours = baseHours): void {
       return {}
     }
     if (e.pointer || e.by === 0 || Math.abs(e.by) >= e.bodyRows) return next(e)
+    screen.release()
     const remaining = await sequence(() => arrow($, e.by, e.bodyRows)).catch(() => false)
     if (remaining === 0) return {}
     if (typeof remaining === 'number')
@@ -670,6 +693,7 @@ export function pane(on: On, hours = baseHours): void {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const ask = screen.asked()
     const ui = $.ui.resolve(e)
     const { model, selection: seen } = await look($, e.props.isFocused)
     const size = bounded({
@@ -704,6 +728,7 @@ export function pane(on: On, hours = baseHours): void {
     }
 
     const { list = [] } = feed($, drawing(rows))
+    screen.drew(e.surface, ask)
     if (!fresh) return render(ui, e.surface, list, leave)
     const geo = measure(list, fresh.head, size, seen.selected, interaction.ringOn)
     pinned = { ...pinned, top: Math.min(pinned.top, Math.max(0, geo.total - geo.rows)) }
