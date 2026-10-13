@@ -128,20 +128,24 @@ function fireDetails(items: RabeItem[], read: Fires, reason?: TurnCompleteReason
   }, items)
 }
 
-// `live` limits the scan to a session with a running cron job, so deleted and
-// ended jobs cost no transcript read.
-async function readFires($: EngineInterface, live = false): Promise<Fires | undefined> {
+// Counts the ordinary prompts that replaced the turn link. A completion that
+// started its scan earlier compares the count when it builds its write.
+// `$.state.get` reads one moment per dispatch, so a re-read cannot show the
+// replacement. The value lives for one hook call; a reload resetting it is fine.
+let promptEpoch = 0
+
+const hasCron = (items: RabeItem[]) =>
+  items.some(item => item.kind === 'cron' && item.detail.scheduledFor === undefined)
+
+// The scan runs only when `gate` accepts the items, so deleted and ended jobs
+// cost no transcript read on turns that have nothing to do with them.
+async function readFires(
+  $: EngineInterface,
+  gate: (items: RabeItem[]) => boolean = hasCron,
+): Promise<Fires | undefined> {
   try {
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
-    if (
-      !items.some(
-        item =>
-          item.kind === 'cron' &&
-          item.detail.scheduledFor === undefined &&
-          (!live || item.status === 'running'),
-      )
-    )
-      return
+    if (!gate(items)) return
     const { value: path } = await $.state.get({ plugin: 'rabe', key: 'cronTranscript' })
     if (!path?.startsWith('/') || !path.endsWith('.jsonl')) return
     const result = await $.process.run(
@@ -380,6 +384,7 @@ export function crons(on: On): void {
 
   on('session.append', { door: 'prompt' }, async ($, e, next) => {
     if (!e.agentId) {
+      promptEpoch++
       try {
         await $.state.set({ plugin: 'rabe', key: 'cronTurn' }, { promptId: e.uuid })
       } catch {}
@@ -391,7 +396,14 @@ export function crons(on: On): void {
     if (!e.agentId) {
       try {
         const { value, version } = await $.state.get({ plugin: 'rabe', key: 'cronTurn' })
-        const read = await readFires($, true)
+        const read = await readFires($, items =>
+          items.some(
+            item =>
+              item.kind === 'cron' &&
+              item.detail.scheduledFor === undefined &&
+              item.status === 'running',
+          ),
+        )
         if (read) {
           await write($, items => fireDetails(items, read))
           await $.state.set(
@@ -416,18 +428,34 @@ export function crons(on: On): void {
     if (!e.agentId) {
       try {
         const { value, version } = await $.state.get({ plugin: 'rabe', key: 'cronTurn' })
-        // Only this turn's own fire has an outcome to record, even for a cron that ended meanwhile.
-        const read = value?.turnId === e.turnId ? await readFires($) : undefined
+        const epoch = promptEpoch
+        const now = await $.clock.now()
+        const since = now - e.durationMs
+        // The linked turn has an outcome to record, even for a cron that ended meanwhile.
+        // A job that ended during this turn without confirmed fire info is read once more.
+        const read = await readFires(
+          $,
+          items =>
+            value?.turnId === e.turnId ||
+            items.some(
+              item =>
+                item.kind === 'cron' &&
+                item.detail.scheduledFor === undefined &&
+                item.status !== 'running' &&
+                !item.detail.isDeleted &&
+                item.detail.lastFiredAt === undefined &&
+                (item.endedAt ?? 0) >= since,
+            ),
+        )
         if (read) {
-          // A newer prompt may have replaced the link while the scan ran.
-          const { value: now } = await $.state.get({ plugin: 'rabe', key: 'cronTurn' })
           const matches =
-            now?.turnId === e.turnId &&
-            now.promptId === value?.promptId &&
-            now.fireId === value?.fireId &&
-            now.promptId === read.promptId &&
-            now.fireId === read.fireId
-          await write($, items => fireDetails(items, read, matches ? e.reason : undefined))
+            value?.turnId === e.turnId &&
+            value.promptId === read.promptId &&
+            value.fireId === read.fireId
+          // The callback is synchronous: no prompt can arrive between this check and the item change.
+          await write($, items =>
+            fireDetails(items, read, matches && epoch === promptEpoch ? e.reason : undefined),
+          )
         }
         await $.state.set({ plugin: 'rabe', key: 'cronTurn' }, {}, { ifVersion: version })
       } catch {}
