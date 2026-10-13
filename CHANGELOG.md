@@ -6,8 +6,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
-- A cron turn that a newer prompt replaced during the completion scan no longer records an end word, fixes [#159](https://github.com/lorenzh/rabe/issues/159).
-- Deleted and ended crons no longer start transcript scans on every turn, fixes [#160](https://github.com/lorenzh/rabe/issues/160).
+- A cron turn that a newer prompt replaced during the completion scan no longer records an end word ([#166](https://github.com/lorenzh/rabe/pull/166), fixes [#159](https://github.com/lorenzh/rabe/issues/159)).
+- Deleted and ended crons no longer start transcript scans on every turn ([#166](https://github.com/lorenzh/rabe/pull/166), fixes [#160](https://github.com/lorenzh/rabe/issues/160)).
 
 ## [0.8.0] - 2026-10-13
 
