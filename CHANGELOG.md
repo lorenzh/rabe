@@ -4,6 +4,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-13
+
 ### Added
 
 - On Linux, background shells can show their listening port even with empty or redirected output ([#147](https://github.com/lorenzh/rabe/pull/147), fixes [#39](https://github.com/lorenzh/rabe/issues/39)).
@@ -211,7 +213,8 @@ The first public version.
 
 - Workflow agents no longer offer stop and message, which Claude Code does not support for a single workflow agent; their detail offers stopping the run. ([#8](https://github.com/lorenzh/rabe/pull/8))
 
-[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/lorenzh/rabe/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/lorenzh/rabe/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/lorenzh/rabe/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/lorenzh/rabe/compare/v0.4.4...v0.5.0
