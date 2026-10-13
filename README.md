@@ -27,7 +27,7 @@ Status: early development. See [releases](https://github.com/lorenzh/rabe/releas
 
 The band is one line of counts, one chip per kind with failures from the last 10 minutes first (`✗ 1 shell failed`), then the cost, under an empty row so the status line above does not touch it. Its cost label says `session`; its token label says `bg` and includes the cached share when known. It shows the session cost Claude Code reports, or `session n/a` when that cost is unknown; it does not replace it with a sum of worker estimates or show a top-agent suffix. It shortens readable chip labels only when the full labels and cost do not fit; when needed, it puts the dollar amount first and drops the token part. When Claude Code gives the band only one row, the empty row goes. The names are in the pane. When nothing runs, it draws nothing.
 
-A cron detail can show `last fired 10:55 · 3 fires · turn answered`. The end word describes a turn Rabe observed, not job success. When Rabe cannot confirm a fire, it shows no fire details. The fire time and count follow the transcript by the end of the fire's turn. Wakeups show none.
+A cron detail can show `last fired 10:55 · 3 fires · turn answered`. The end word describes a turn Rabe observed, not job success. When Rabe cannot confirm a fire, it shows no fire details. The fire time and count follow the transcript by the end of the fire's turn, when Claude Code has written the fire by then. Wakeups show none.
 
 When the readable form repeats the cron expression, cron detail shows the schedule once. Workflow detail says `1 agent` for one child in both the run facts and cost panel.
 
