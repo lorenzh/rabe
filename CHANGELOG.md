@@ -6,7 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
-- Cron detail shows the latest fire time, fire count and turn end also when Claude Code writes the fire to the transcript after the turn's first step (fixes [#193](https://github.com/lorenzh/rabe/issues/193))
+- Cron detail shows the latest fire time, fire count and turn end also when Claude Code writes the fire to the transcript after the turn's first step ([#196](https://github.com/lorenzh/rabe/pull/196), fixes [#193](https://github.com/lorenzh/rabe/issues/193))
 - The tab hotkeys `1` to `4` put the focus on the tab's marked row with one press, so Down goes to the next row. A fold and a submitted search wait the same way for the new view (usually about 100 to 130 ms, at most about 400 ms); another key in the pane during that wait cancels the move to the row and then works as usual ([#175](https://github.com/lorenzh/rabe/pull/175), fixes [#174](https://github.com/lorenzh/rabe/issues/174))
 
 ## [0.8.1] - 2026-10-13
