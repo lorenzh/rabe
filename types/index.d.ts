@@ -88,6 +88,8 @@ export type RabeShellDetail = {
   command: string
   taskId?: string
   outputPath?: string
+  // The file a detached `codex exec -o` writes when it ends.
+  resultPath?: string
   exitCode?: number
   port?: number
   // When Rabe found the port; orders the Effects tab's ports found since the open.
