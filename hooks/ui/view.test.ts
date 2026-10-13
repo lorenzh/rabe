@@ -7,6 +7,7 @@ import {
   arm,
   DISARMED,
   type Drawn,
+  holdsClose,
   isDestructive,
   isPress,
   landing,
@@ -15,6 +16,7 @@ import {
   layout,
   messageLanding,
   NO_SELECTION,
+  rowKeys,
   stepRow,
   targetsOf,
   waitsForView,
@@ -231,9 +233,9 @@ test('a fold or a submitted search waits for the new view where its target moved
       ringOf(paneView(model, size, after)).indexOf(key),
     ]
   }
-  expect(moved(140, sel, { ...sel, folded: ['agents'] }, 'group-agents')).toEqual([14, 13])
+  expect(moved(140, sel, { ...sel, folded: ['agents'] }, 'group-agents')).toEqual([15, 14])
   // A live edit moves the search Input too; it lands at once (see below).
-  expect(moved(140, sel, { ...sel, query: 'zzz' }, 'search')).toEqual([12, 9])
+  expect(moved(140, sel, { ...sel, query: 'zzz' }, 'search')).toEqual([13, 10])
 })
 
 test('a landing that keeps the view or a live search edit does not wait; a tab, a fold and a submitted search do', () => {
@@ -505,4 +507,23 @@ test('a split delete target gained without a chosen row disarms the pane', () =>
     arm(before, { type: 'drawn', fallback: '', selected: cron.id, targets: targets('running') })
       .isArmed,
   ).toBe(false)
+})
+
+test('a submitted search lands on the first matching row, not the selected one or a button (#187)', () => {
+  const model = { items: [dev, explore], turns: {}, lines: {}, now: NOW }
+  const size = { columns: 80, rows: 24, surface: 'terminal', hasInput: true } as const
+  const sel = { ...NO_SELECTION, selected: explore.id, isFocused: true }
+  const drawn = paneView(model, size, sel)
+  const [first] = rowKeys(drawn)
+  const action = { type: 'query', text: '', isSubmit: true } as const
+  expect(first).toBeDefined()
+  expect(landing(action, '', drawn)).toEqual(['tab-items', first])
+  expect(landing(action, '', { nodes: [], buttons: [] })).toEqual(['tab-items', 'find'])
+})
+
+test('Esc in a filled search field leaves the field instead of closing the pane (#187)', () => {
+  expect(holdsClose('search', 'verify')).toBe(true)
+  expect(holdsClose('search', '')).toBe(false)
+  expect(holdsClose('row:a', 'verify')).toBe(false)
+  expect(holdsClose(undefined, 'verify')).toBe(false)
 })

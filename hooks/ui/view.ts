@@ -75,6 +75,8 @@ export type Selection = {
   isArmed: boolean
   // The list's x and g act only while this holds too (`arm`).
   isListArmed: boolean
+  // The focus ring sits on the search field (#187).
+  isOnSearch?: boolean
   // The Timeline's window; absent: the whole session, no key to widen it.
   window?: RabeWindow
 }
@@ -224,6 +226,7 @@ export function stepRow(keys: string[], selected: string, by: number): string | 
 // change leads to. Search edits keep its Input focused; Enter returns to rows.
 // A sent message returns the keys to the agent's `m: message`.
 export function landing(action: Action, open: string, drawn?: Drawn): string[] {
+  const first = drawn ? rowKeys(drawn)[0] : undefined
   const target =
     drawn?.buttons.find(one => one.autoFocus)?.key ??
     drawn?.nodes
@@ -239,7 +242,7 @@ export function landing(action: Action, open: string, drawn?: Drawn): string[] {
     case 'fold':
       return ['tab-items', `group-${action.group}`]
     case 'query':
-      return action.isSubmit ? ['tab-items', target ?? 'find'] : ['search']
+      return action.isSubmit ? ['tab-items', first ?? target ?? 'find'] : ['search']
     case 'window':
       return ['tab-timeline', 'window']
     case 'message':
@@ -248,6 +251,11 @@ export function landing(action: Action, open: string, drawn?: Drawn): string[] {
       return []
   }
 }
+
+// Esc in a filled search field only leaves the field; a second Esc, or Esc on an
+// empty query, closes the pane (#187).
+export const holdsClose = (ringOn: string | undefined, query: string): boolean =>
+  ringOn === 'search' && query !== ''
 
 // Moves the ring onto `keys` (a `landing`) one by one and stops at the first
 // move that fails. The active tab stands at the same index in every view; any

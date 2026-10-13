@@ -22,6 +22,7 @@ import { reserve, screens, sequence } from './sequence'
 import {
   type Action,
   bounded,
+  holdsClose,
   landing,
   landingOf,
   landOn,
@@ -464,6 +465,7 @@ async function look(
     isFocused,
     isArmed: interaction.arming.isArmed,
     isListArmed: interaction.arming.isListArmed,
+    isOnSearch: interaction.ringOn === 'search',
     window: window ?? windowOf(baseHours, now),
     ...(order && { order }),
   }
@@ -607,6 +609,16 @@ export function pane(on: On, hours = baseHours): void {
   })
 
   // A close the host carries out clears every hold; a canceled one keeps it.
+  // Esc in a filled search field leaves the field to the first row and keeps
+  // the pane open (#187); the next Esc closes it.
+  on('ui.close', { id: PANE, origin: { kind: 'person' } }, async ($, e, next) => {
+    const { value: query = '' } = await $.state.get({ plugin: 'rabe', key: 'query' })
+    if (!holdsClose(interaction.ringOn, query)) return next(e)
+    const surface = interaction.surface === 'desktop' ? 'desktop' : 'terminal'
+    await landView($, { type: 'query', text: query, isSubmit: true }, surface)
+    return { value: undefined }
+  }).catch((_$, e, next) => next(e))
+
   on('ui.close', { id: PANE }, async ($, e, next) => {
     const result = await next(e)
     if (!(await $.ui.panes()).some(one => one.id === PANE)) {

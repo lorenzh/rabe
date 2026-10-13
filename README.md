@@ -81,7 +81,8 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | Tab / Shift+Tab | Move the focus through rows, tabs and buttons |
 | `b` | Go back to the list |
 | `1` to `4` | Switch tab and focus its marked row. An empty tab keeps the focus on its label |
-| `s` | Focus search. Enter returns to the marked row |
+| `s` | Focus search. Enter focuses the first matching row. Esc leaves the field and keeps the pane open when the query is not empty; the next Esc closes the pane |
+| `k` | Clear the filter (dim while there is none) |
 | `x` | Stop the selected item |
 | `g` | Stop the group among rows the search shows (the button shows its count), or the workflow run of the selected run or workflow agent |
 | `r` | Remove the selected row once it is done, failed or stopped |
@@ -138,7 +139,7 @@ A success toast names the copied field and counts its text: `Copied command · 3
 
 Other toasts flatten whitespace and replace Unicode control (`Cc`) and format (`Cf`) characters with `?`. Wide characters, emoji and combining marks stay. Toasts name deleted cron jobs by id. Copy failures show the reason through the same filter. Reasons include `no-clipboard` and `refused`. If the filter leaves the copied text unchanged, the failure toast offers the exact text. Cron prompts never appear in toasts.
 
-The search button shows the active query, cut with `…` when long. The search field keeps the full query at every width. The filter stays visible after Enter and after reopening the pane. To clear it, submit an empty search. Stop group and remove ended act only on the filtered rows.
+The search button shows the active query, cut with `…` when long. The search field keeps the full query at every width. The filter stays visible after Enter and after reopening the pane. To clear it, press `k`, or submit an empty search. The search label shows `▸` while the field has the focus. Stop group and remove ended act only on the filtered rows.
 
 With the mouse, click a row once to select it and again to open it. Click a tab to switch to it, a group name to fold the group, a button to press it, or a row on the other tabs to open it. The wheel scrolls the pane. A click on a row moves the focus ring onto it, so the keys and the arrows continue from there. A click on a tab switches to it and puts the focus on the tab's marked row, as the keys `1` to `4` do: Claude Code does not tell Rabe a click from a hotkey, so the focus cannot rest on the tab label after a click. A click does not give the pane the keys: `ctrl+x tab` does. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
 

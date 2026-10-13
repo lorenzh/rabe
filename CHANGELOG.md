@@ -10,6 +10,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
+- Esc in a filled search field leaves the field and keeps the pane open (a second Esc closes it); Enter focuses the first matching row; the field label shows `▸` while focused; `k` clears the filter (fixes [#187](https://github.com/lorenzh/rabe/issues/187))
 - A click on a row moves the focus ring onto it, so `x`, `r`, `c` and the arrow keys act from the clicked row, as from the keyboard; a click on a tab still lands on the tab's marked row, like the keys `1` to `4` ([#209](https://github.com/lorenzh/rabe/pull/209), fixes [#186](https://github.com/lorenzh/rabe/issues/186))
 - In a short pane (a 100x24 terminal with many shells) the pinned list keeps at least 3 rows and the tab row stays in view: only the tabs stay pinned, and the toolbar and search field scroll with the list; landing on a row scrolls so that 3 list rows show, and a pane whose held pieces leave under 3 rows falls back to the engine's scroll ([#198](https://github.com/lorenzh/rabe/pull/198), fixes [#192](https://github.com/lorenzh/rabe/issues/192))
 - A long pinned Items list draws every row in order and every group header; rows scrolled out are clipped, not squeezed, so the focus never lands on a row that is not drawn ([#195](https://github.com/lorenzh/rabe/pull/195), fixes [#191](https://github.com/lorenzh/rabe/issues/191))

@@ -693,6 +693,7 @@ test('a narrow pane puts a one-line summary under the list and short key labels'
     'g: stop 3',
     'r: remove',
     'a: remove ended',
+    'k',
   ])
   await ui.unmount()
 })

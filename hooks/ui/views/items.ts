@@ -236,6 +236,7 @@ function listButtons(
         },
       ]
     : []
+  // The last button: it takes no slot from the others (#187).
   buttons.push(
     slot(
       'stop',
@@ -275,12 +276,26 @@ function listButtons(
     )
   }
 
+  // Always drawn, so the ring's indexes do not shift when a filter is set.
+  const name = isSplit(size) ? 'k: clear filter' : 'k'
+  if (size.hasInput)
+    buttons.push(
+      query
+        ? {
+            key: 'clear-search',
+            label: name,
+            hotkey: 'k',
+            action: { type: 'query', text: '', isSubmit: true },
+          }
+        : { key: 'clear-search', label: name, action: NONE, dim: true },
+    )
+
   return buttons
 }
 
 const search = (sel: Selection): ViewInput => ({
   key: 'search',
-  label: 'search',
+  label: sel.isOnSearch ? '▸ search' : 'search',
   placeholder: 'title, kind or command',
   submitLabel: 'filter',
   value: sel.query,
