@@ -247,8 +247,9 @@ async function landView($: EngineInterface, action: Action, surface: RenderSurfa
   return land($, landing(action, selection.open, drawn), action, surface)
 }
 
-// The ring follows a click (#186). A refused move leaves the arming as the
-// press set it: the selection still acts.
+// The ring follows a click (#186). A move that the engine refuses leaves the
+// ring where it was; the focus hook then clears the arming (`landed: false`),
+// so `x` stays inert until the person moves the ring.
 async function ringOnto($: EngineInterface, key: string): Promise<void> {
   await $.ui.focus({ requestId: PANE, key }).catch(() => undefined)
 }

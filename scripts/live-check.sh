@@ -502,6 +502,12 @@ seq_click_stop() {
   local before
   before=$(running | wc -l)
   click_running || return 1
+  # The ring follows the click: Enter presses the ring's row, the clicked one.
+  keys Enter
+  snap
+  { pane_has 'b:? back' && pane_has "sleep $clicked"; } ||
+    { why="Enter after the click did not open sleep $clicked: the ring stayed on the old row"; return 1; }
+  k b
   k x
   stopped "$before" "$clicked"
 }
