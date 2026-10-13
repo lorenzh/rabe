@@ -553,22 +553,34 @@ close_pane() {
 # The search keeps its text over rounds, and Esc may have closed the pane
 # with the text still set (#187): reopen it and empty the field.
 clear_search() {
-  local i
-  look
-  if ! opened; then
-    k C-u
-    k -l /rabe
-    k Enter
-    sleep 2
-    for i in $(seq 1 10); do look; opened && break; sleep 1; done
-  fi
-  opened || return 0
-  k s
-  sleep 0.5
-  for i in $(seq 1 16); do k BSpace; sleep 0.1; done
-  look
+  local i j
+  # Esc first: a field that lost keys (#180) is wedged until it is left, and
+  # Esc closes the pane when no field has the focus (#187), so reopen it.
+  for j in 1 2 3; do
+    look
+    if opened; then k Escape; sleep 0.7; fi
+    reopen_pane || return 0
+    k s
+    sleep 0.5
+    for i in $(seq 1 16); do k BSpace; sleep 0.1; done
+    sleep 0.3
+    look
+    pane_has 's:? search "' || break
+  done
   k Escape
   sleep 0.5
+}
+# Types /rabe unless the pane shows; returns 1 when it never shows.
+reopen_pane() {
+  local i
+  look
+  opened && return 0
+  k C-u
+  k -l /rabe
+  k Enter
+  sleep 2
+  for i in $(seq 1 10); do look; opened && return 0; sleep 1; done
+  return 1
 }
 run_seq() {
   case $1 in
