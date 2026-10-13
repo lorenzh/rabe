@@ -22,10 +22,12 @@ Status: early development. See [releases](https://github.com/lorenzh/rabe/releas
 | Codex jobs (from the Codex plugin) | Count (`codex`) | Model, effort and sandbox, tokens, the prompt, each message and command with its exit code, the thread id (`c` copies `codex resume <thread id>`) |
 | Background shells | Count (`shell`) | Bash description and task id, output lines, exit code and port from output or the process tree’s listening sockets on Linux; a foreground command running longer than 2 s, and a detached `codex exec -o <file> &`, show as running shells |
 | Monitors | Count (`monitor`) | Each line with the time Rabe received it |
-| Cron jobs and `/loop` wakeups | Count (`cron`) | The next five runs while running; deleted jobs say `deleted` |
+| Cron jobs and `/loop` wakeups | Count (`cron`) | The next five runs while running; confirmed last fire time, fire count and observed turn end; deleted jobs say `deleted` |
 | Cost | Session cost and tokens of the background work | Cost tab: tokens and an estimate in dollars (`≈ $0.16`) per worker, workers that look stuck |
 
 The band is one line of counts, one chip per kind with failures from the last 10 minutes first (`✗ 1 shell failed`), then the cost, under an empty row so the status line above does not touch it. Its cost label says `session`; its token label says `bg` and includes the cached share when known. It shows the session cost Claude Code reports, or `session n/a` when that cost is unknown; it does not replace it with a sum of worker estimates or show a top-agent suffix. It shortens readable chip labels only when the full labels and cost do not fit; when needed, it puts the dollar amount first and drops the token part. When Claude Code gives the band only one row, the empty row goes. The names are in the pane. When nothing runs, it draws nothing.
+
+A cron detail can show `last fired 10:55 · 3 fires · turn answered`. The end word describes a turn Rabe observed, not job success. When Rabe cannot confirm a fire, it shows no fire details. Wakeups show none.
 
 When the readable form repeats the cron expression, cron detail shows the schedule once. Workflow detail says `1 agent` for one child in both the run facts and cost panel.
 
@@ -35,7 +37,7 @@ The pane has four tabs:
 
   ![The Items tab: agents, shells, a monitor and a cron job grouped by kind; the arrow keys move the focus and the detail beside the list follows; Enter opens a workflow with its agents under the phases Draft and Check, then a running agent with its brief and turns, and b goes back](docs/assets/tab-items.gif)
 
-  All items grouped by kind, with a search field. Stop group and remove ended act only on rows the search shows. The agent, shell, monitor and cron headers show running and ended counts. The agent header also counts idle teammates and shows counts by kind. Shell rows show the Bash description or command, followed by the task id. Rabe collapses command whitespace for the row. A shell with no lines says `No output yet` while it runs and `No output` after it ends. Shells and monitors that an agent started show under the name of that agent. A Codex job shows under the agent that started it, also when it starts while the pane is open. The Codex plugin starts its jobs through a Claude agent that only passes the request on (`codex:codex-rescue`); that agent has no row of its own, and its tokens and cost count toward the job. Rabe links the two only when the evidence fits one job: the agent's command named the job, or the job started while the command ran and has its prompt or its thread. A link made by the prompt is checked again when the command returns: if it names another job or thread, the link moves to that job, and while two jobs fit, neither is linked. In the job's detail, `f` opens the agent, with its turns, id and transcript. If the pane is 90 columns or wider, the selected item shows beside the list. Turns with tools and no text show only their tool lines. Cron forecast times use the same duration format as the rest of the pane. The group-stop button shows how many rows `g` will stop.
+  All items grouped by kind, with a search field. Stop group and remove ended act only on rows the search shows. The agent, shell, monitor and cron headers show running and ended counts. The agent header also counts idle teammates and shows counts by kind. Shell rows show the Bash description or command, followed by the task id. Rabe collapses command whitespace for the row. A shell with no lines says `No output yet` while it runs and `No output` after it ends. Shells and monitors that an agent started show under the name of that agent. A Codex job shows under the agent that started it, also when it starts while the pane is open. The Codex plugin starts its jobs through a Claude agent that only passes the request on (`codex:codex-rescue`); that agent has no row of its own, and its tokens and cost count toward the job. Rabe links the two only when the evidence fits one job: the agent's command named the job, or the job started while the command ran and has its prompt or its thread. A link made by the prompt is checked again when the command returns: if it names another job or thread, the link moves to that job, and while two jobs fit, neither is linked. In the job's detail, `f` opens the agent, with its turns, id and transcript. If the pane is 90 columns or wider, the selected item shows beside the list. Then `c` (copy), `m` (message) and `d` (delete a cron job) act on the selected row from the list, without Enter. Turns with tools and no text show only their tool lines. Cron forecast times use the same duration format as the rest of the pane. The group-stop button shows how many rows `g` will stop.
 
   Idle teammates show `idle` in Items, Cost and Timeline. They count as neither running nor ended. The band excludes them from work counts. Cost never flags them stuck. Remove ended keeps them. Plain subagents keep their existing behavior.
 
@@ -101,6 +103,8 @@ The buttons under the tabs show the actions of the current view. Unavailable con
 If a list redraw removes a row or search handler during an event, Rabe drops that stale action and keeps the pane's keys.
 
 When all rows fit, fast arrow bursts after a tab switch keep their order and wrap direction. A second tab press keeps arrows received during the first switch. After a refused focus move, later independent arrows go straight to the engine.
+
+Known limit: in a burst such as `2 1 Down Down Down Down` with 30 to 50 ms between keys, Claude Code sometimes drops the tab hotkey (`1`) before it reaches any hook of Rabe, so the pane stays on the Cost tab. A live trace on Claude Code 2.1.296 lost it in 4 of 42 runs (about 1 in 10) on the same machine, and Rabe cannot fix a key it never receives. Keys sent about 100 ms apart or more are not affected in the measurements. See [the measurement](docs/feasibility/ui.md#a-tab-key-lost-after-a-fast-arrow-burst).
 
 | View | Letters caught outside input fields |
 |------|-------------------------------------|
@@ -183,6 +187,7 @@ Rabe runs on your computer and makes no runtime network requests. Successful sto
 
 Rabe reads these files:
 
+- The main session transcript for cron fire metadata, at the path from the Claude Code hook event. `grep` filters it to cron fire and scheduled user rows.
 - The meta files of subagents, next to the session transcript in `~/.claude/projects/`.
 - The script of a workflow run in this session’s `workflows/scripts/` folder under `~/.claude/projects/` (or `CLAUDE_CONFIG_DIR`).
 - The output files of background shells and monitors in this session’s `/tmp/claude-<uid>/<project>/<session>/tasks/` folder.

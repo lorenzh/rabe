@@ -31,7 +31,7 @@ Use this index to find the guide that matches your question.
 - [Price estimate](architecture/prices.md): price lookup and cost estimates.
 - [UI rendering](architecture/ui.md): view contract, renderer, palette, cells, sizing, and band.
 - [Pane interaction state](architecture/interaction.md): pure transitions for focus, nested presses, queued arrow bursts and wraparound, refused moves, held order, regain, opening and arming.
-- [Focus and keys](architecture/focus-and-keys.md): pane behavior, key controls, and focus moves.
+- [Focus and keys](architecture/focus-and-keys.md): pane behavior, key controls, split-list copy, message and delete actions, and focus moves.
 - [Focus order and arming](architecture/focus-order.md): held order, append-only slots, gone rows that leave the lists, target-bound keys, and arming.
 - [View behavior](architecture/views.md): tabs, cron schedules, workflow agent counts, inert stop controls, removed items, idle labels, live-item sorting, idle detail activity and Timeline windows, session summaries, full command and prompt details, and copy controls.
 - [Pane data](architecture/pane-data.md): clipboard and toast security checks, plus stored-summary validation.
@@ -40,7 +40,7 @@ Use this index to find the guide that matches your question.
 
 ## Feasibility
 
-- [Feasibility overview](feasibility.md): overview, stat-only idle reader benchmark, and links to the source limits.
+- [Feasibility overview](feasibility.md): overview, confirmed cron fire identity and turn-end limits, stat-only idle reader benchmark, and links to the source limits.
 - [Claude agents and workflows](feasibility/agents.md): agent and teammate identity, worktree, and workflow data with script path limits.
 - [Codex and background work](feasibility/background-work.md): Codex jobs, foreground Bash calls, direct codex exec runs, shells, monitors, cron jobs, polling intervals, silent-server ports on Linux, and task output path limits.
 - [User interface limits](feasibility/ui.md): API limits for rendering and input.

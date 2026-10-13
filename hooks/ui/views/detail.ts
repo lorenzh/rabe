@@ -359,7 +359,7 @@ export function resumeButton(command: string, id: string): ViewButton {
   }
 }
 
-function detailButtons(
+export function detailButtons(
   item: RabeItem,
   hasInput: boolean,
   items: readonly RabeItem[],
@@ -462,6 +462,22 @@ function detailButtons(
   return buttons
 }
 
+// The message field of a live agent a person can message; the list shows it
+// too while the detail stands beside it.
+export function messageInput(item: RabeItem, hasInput: boolean): ViewInput[] {
+  return item.kind === 'agent' && !isEnded(item) && hasInput && !isWorkflowAgent(item)
+    ? [
+        {
+          key: `message:${item.id}`,
+          label: 'message',
+          placeholder: 'text for the agent',
+          submitLabel: 'send',
+          action: value => ({ type: 'message', id: item.id, text: value }),
+        },
+      ]
+    : []
+}
+
 // One item in full, in place of the list.
 export const detailView: View = (model, size, sel): Drawn => {
   const item = model.items.find(one => one.id === sel.open)
@@ -471,18 +487,7 @@ export const detailView: View = (model, size, sel): Drawn => {
     ...topLines(model, item, size.columns),
     ...bodyLines(model, item, size.columns, sel),
   ]
-  const inputs: ViewInput[] =
-    item.kind === 'agent' && !isEnded(item) && size.hasInput && !isWorkflowAgent(item)
-      ? [
-          {
-            key: `message:${item.id}`,
-            label: 'message',
-            placeholder: 'text for the agent',
-            submitLabel: 'send',
-            action: value => ({ type: 'message', id: item.id, text: value }),
-          },
-        ]
-      : []
+  const inputs = messageInput(item, size.hasInput)
 
   return {
     nodes: shown.map(line => fitLine(line, size.columns)),
