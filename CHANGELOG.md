@@ -6,7 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Changed
 
-- Document the lost fast tab key as a Claude Code limit, with a live trace and baseline counts ([#129](https://github.com/lorenzh/rabe/issues/129))
+- Document the lost fast tab key as a Claude Code limit, with a live trace and baseline counts ([#148](https://github.com/lorenzh/rabe/pull/148), fixes [#129](https://github.com/lorenzh/rabe/issues/129))
 
 ## [0.7.0] - 2026-10-12
 
