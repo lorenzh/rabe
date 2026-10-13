@@ -8,6 +8,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 - Document the lost fast tab key as a Claude Code limit, with a live trace and baseline counts ([#148](https://github.com/lorenzh/rabe/pull/148), fixes [#129](https://github.com/lorenzh/rabe/issues/129))
 
+### Fixed
+
+- `/rabe-stop` shows usage for empty arguments or arguments without `codex:`, and its hint shows `codex:<job id>` ([#144](https://github.com/lorenzh/rabe/pull/144), fixes [#141](https://github.com/lorenzh/rabe/issues/141)).
+
 ## [0.7.0] - 2026-10-12
 
 ### Added
