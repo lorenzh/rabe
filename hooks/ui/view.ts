@@ -251,25 +251,31 @@ export function landing(action: Action, open: string, drawn?: Drawn): string[] {
 
 // Moves the ring onto `keys` (a `landing`) one by one and stops at the first
 // move that fails. The active tab stands at the same index in every view; any
-// other key first waits for `shown` (the new view drawn, see `screens`) and
-// stays on the tab when that wait gives up.
+// other key, once the ring is on that tab (where it was, or moved there now),
+// first waits for `shown` (the new view drawn, see `screens`) and stays on the
+// tab when that wait gives up.
 export async function landOn(
   keys: string[],
   ringOn: () => string | undefined,
   focus: (key: string) => Promise<boolean>,
   shown?: () => Promise<boolean>,
 ): Promise<void> {
+  let isOnTab = false
   for (const key of keys) {
-    if (key.startsWith('tab-') && key === ringOn()) continue
-    if (shown && !key.startsWith('tab-') && !(await shown())) return
-    if (!(await focus(key))) return
+    const isTab = key.startsWith('tab-')
+    if (!(isTab && key === ringOn())) {
+      if (shown && !isTab && isOnTab && !(await shown())) return
+      if (!(await focus(key))) return
+    }
+    isOnTab = isTab
   }
 }
 
 // The changes of the view that can move their landing's target: a tab, a fold
-// and a search. Opening and going back did not in the live check (#175).
+// and a submitted search. Opening and going back did not in the live check
+// (#175); a live search edit focuses its Input at once, so Enter never waits.
 export const waitsForView = (action: Action): boolean =>
-  action.type === 'tab' || action.type === 'fold' || action.type === 'query'
+  action.type === 'tab' || action.type === 'fold' || (action.type === 'query' && !!action.isSubmit)
 
 export function messageLanding(
   action: Action,

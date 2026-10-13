@@ -195,12 +195,12 @@ test('an empty tab keeps the ring on its label', async () => {
 // Review of #175: a fold and a search edit move their own target too. Folding
 // the group of the selected agent drops its message Input above the headers,
 // and a search with no match drops the list's controls above the search Input.
-test('a fold or a search edit waits for the new view where its target moved', async () => {
+test('a fold or a submitted search waits for the new view where its target moved', async () => {
   const model = { items: [explore, dev, ci], turns: {}, lines: {}, now: NOW }
   const sel = { ...NO_SELECTION, selected: explore.id, isFocused: true }
   const changes: [Parameters<typeof landing>[0], typeof sel, typeof sel][] = [
     [{ type: 'fold', group: 'agents' }, sel, { ...sel, folded: ['agents'] }],
-    [{ type: 'query', text: 'zzz' }, sel, { ...sel, query: 'zzz' }],
+    [{ type: 'query', text: 'zzz', isSubmit: true }, sel, { ...sel, query: 'zzz' }],
   ]
   for (const [action, before, after] of changes) {
     for (const surface of ['terminal', 'desktop'] as const) {
@@ -208,7 +208,7 @@ test('a fold or a search edit waits for the new view where its target moved', as
         const size = { columns, rows: 24, surface, hasInput: true }
         const old = ringOf(paneView(model, size, before))
         const drawn = ringOf(paneView(model, size, after))
-        const keys = landing(action, '')
+        const keys = landing(action, '', paneView(model, size, after))
         const target = keys.at(-1) ?? ''
         const fake = engine(old)
         await fake.focus(keys[0] ?? '')
@@ -232,17 +232,63 @@ test('a fold or a search edit waits for the new view where its target moved', as
     ]
   }
   expect(moved(140, sel, { ...sel, folded: ['agents'] }, 'group-agents')).toEqual([14, 13])
+  // A live edit moves the search Input too; it lands at once (see below).
   expect(moved(140, sel, { ...sel, query: 'zzz' }, 'search')).toEqual([12, 9])
 })
 
-test('a landing that keeps the view does not wait; a tab, a fold and a search do', () => {
+test('a landing that keeps the view or a live search edit does not wait; a tab, a fold and a submitted search do', () => {
   expect(waitsForView({ type: 'tab', tab: 'cost' })).toBe(true)
   expect(waitsForView({ type: 'fold', group: 'shells' })).toBe(true)
-  expect(waitsForView({ type: 'query', text: 'a' })).toBe(true)
+  expect(waitsForView({ type: 'query', text: 'a' })).toBe(false)
   expect(waitsForView({ type: 'query', text: 'a', isSubmit: true })).toBe(true)
   expect(waitsForView({ type: 'open', id: 'shell:a' })).toBe(false)
   expect(waitsForView({ type: 'window' })).toBe(false)
   expect(waitsForView({ type: 'message', id: 'agent:a1', text: 'hi' })).toBe(false)
+})
+
+// Review of #175: a live search edit focuses its Input at once, as before
+// #175, so no wait leaves a window where Enter presses the control that took
+// the Input's index; a typed key ends any wait anyway (`screens.release`).
+test('a live search edit focuses the search Input at once and never waits', async () => {
+  const action = { type: 'query', text: 'zzz' } as const
+  const fake = engine(['tab-items', 'search', 'copy'])
+  let waited = 0
+  const wait = async () => {
+    waited += 1
+    return true
+  }
+  await landOn(landing(action, ''), fake.ringOn, fake.focus, waitsForView(action) ? wait : wait)
+  expect([fake.ringOn(), waited]).toEqual(['search', 0])
+})
+
+// Review of #175: the wait follows the tab the landing itself put the ring on.
+// A safe step that was refused and a retry that lands still wait; a tab that
+// stays refused ends the landing without a wait (the test kit's case).
+test('a landing waits only after its tab landed, also on a retry', async () => {
+  const keys = ['tab-items', 'row:a']
+  const cases = [
+    ['on the tab', 'tab-items', true, 1, 'row:a'],
+    ['retried tab', undefined, true, 1, 'row:a'],
+    ['refused tab', undefined, false, 0, undefined],
+  ] as const
+  for (const [name, ring, isLanding, waits, end] of cases) {
+    let on: string | undefined = ring
+    let waited = 0
+    await landOn(
+      keys,
+      () => on,
+      async key => {
+        if (key.startsWith('tab-') && !isLanding) return false
+        on = key
+        return true
+      },
+      async () => {
+        waited += 1
+        return true
+      },
+    )
+    expect([name, waited, on === ring && !isLanding ? undefined : on]).toEqual([name, waits, end])
+  }
 })
 
 // Destructive controls act only while the ring is known to sit on a safe

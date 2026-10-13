@@ -237,10 +237,7 @@ async function land(
     keys,
     () => interaction.ringOn,
     key => focusOn($, key),
-    // A ring the safe step did not land (the pane lacks the keys) has no place to keep.
-    interaction.ringOn && action && surface && waitsForView(action)
-      ? () => onScreen($, surface)
-      : undefined,
+    action && surface && waitsForView(action) ? () => onScreen($, surface) : undefined,
   )
 }
 
@@ -328,9 +325,7 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
     }
     case 'query':
       await $.state.set({ plugin: 'rabe', key: 'query' }, action.text)
-      return action.isSubmit
-        ? landView($, action, surface)
-        : land($, landing(action, ''), action, surface)
+      return action.isSubmit ? landView($, action, surface) : land($, landing(action, ''))
     case 'window': {
       const now = await $.clock.now()
       const { value = windowOf(baseHours, now) } = await $.state.get({
