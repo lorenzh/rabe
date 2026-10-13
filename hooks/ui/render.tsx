@@ -10,6 +10,7 @@ import type {
 
 import { clamp, encode, lines } from './cells/grid'
 import { C, paint } from './cells/palette'
+import { tailOf } from './pin'
 import {
   type Action,
   type Drawn,
@@ -303,19 +304,26 @@ export function render(
 
   if (!pin) return <Box flexDirection="column">{cells.flat()}</Box>
   // Tabs and toolbar stay; a clipped box shows `rows` of the list moved up by
-  // `top`; the hint stays under it.
+  // `top`; the hint and the late controls (`tailOf`) stay under it.
   const head = starts.filter(at => at < pin.split).length
-  const tail = Math.max(head, cells.length - 1)
+  const isTail = tailOf(list)
+  const body: number[] = []
+  const tail: number[] = []
+  for (let at = head; at < cells.length; at++) {
+    if (isTail(starts[at] ?? 0)) tail.push(at)
+    else body.push(at)
+  }
+  const draw = (ats: number[]) => ats.flatMap(at => cells[at] ?? [])
 
   return (
     <Box flexDirection="column">
       {cells.slice(0, head).flat()}
       <Box key="body" flexDirection="column" height={pin.rows} overflow="hidden">
         <Box flexDirection="column" marginTop={-pin.top}>
-          {cells.slice(head, tail).flat()}
+          {draw(body)}
         </Box>
       </Box>
-      {cells.slice(tail).flat()}
+      {draw(tail)}
     </Box>
   )
 }

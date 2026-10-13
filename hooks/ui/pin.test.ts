@@ -3,7 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import { dev } from './fixtures'
 import { follow, type Geometry, NO_PIN } from './pin'
 
-const geo: Geometry = { above: 4, rows: 10, total: 50, focus: [0, 1], heads: 5 }
+const geo: Geometry = { above: 4, rows: 10, total: 50, focus: [0, 1], split: 5, key: 'row:x' }
 
 test('a new view starts at the top and brings the selected row into view', () => {
   expect(follow(NO_PIN, geo, 'a', dev.id)).toEqual({ top: 0, scope: 'a', followed: dev.id })
