@@ -1,5 +1,5 @@
 import type { On } from 'claude-code'
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, mock, type TestBody, test } from 'claude-code/testing'
 
 import type { RabeItem } from '../model'
 import { MAX_ENDED } from '../registry'
@@ -552,4 +552,110 @@ test('a main cron turn keeps its API end word and ignores subagent completion', 
   expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.detail).not.toHaveProperty(
     'fireCount',
   )
+})
+
+const PATH = '/home/me/.claude/projects/-home-me-app/session-1.jsonl'
+
+// A session with one cron job, a fake transcript and a grep that can be held.
+async function scanSession($: Parameters<TestBody>[0], on: On, jobs = [JOB]) {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  tools(on, jobs)
+  core(on)
+  const rows = [...fireRows]
+  const run = { reads: 0, hold: undefined as Promise<void> | undefined }
+  on('process.run', async () => {
+    run.reads++
+    const hold = run.hold
+    const stdout = rows.map(row => JSON.stringify(row)).join('\n')
+    await hold
+    return {
+      value: {
+        exitCode: 0,
+        stdout,
+        stderr: '',
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    }
+  })
+  // biome-ignore lint/correctness/useYield: the engine stand-in has no chunks
+  on('turn.step', async function* (_$, e) {
+    return {
+      turnId: e.turnId,
+      index: e.index,
+      answer: '',
+      toolUses: [],
+      stopReason: 'end_turn' as const,
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        model: 'm',
+      },
+    }
+  })
+  on('turn.complete', async () => ({ text: '' }))
+  const append = (uuid: string) =>
+    $.session.append({
+      door: 'prompt',
+      uuid,
+      origin: { kind: 'composer' },
+      message: { type: 'user', role: 'user', content: [{ type: 'text', text: 'tick' }] },
+    })
+  const step = async (turnId: string) => {
+    for await (const _ of $.turn.step({ turnId, index: 0, model: 'm', messageCount: 1 }));
+  }
+  const complete = (turnId: string) =>
+    $.turn.complete({
+      answer: '',
+      durationMs: 1,
+      isAborted: false,
+      turnId,
+      reason: 'answer' as const,
+    })
+  const detail = () => ((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.detail
+  await $.tool.call({ tool: 'CronCreate', cron: JOB.cron, prompt: JOB.prompt })
+  await $.classic.Stop({ stop_hook_active: false, transcript_path: PATH })
+  return { state, run, append, step, complete, detail }
+}
+
+test('a prompt that arrives during the completion scan keeps the turn from recording an end', async ($, on) => {
+  const s = await scanSession($, on)
+  await s.append('u1')
+  await s.step('t1')
+  let release = () => {}
+  s.run.hold = new Promise<void>(resolve => {
+    release = resolve
+  })
+  const done = s.complete('t1')
+  for (let i = 0; i < 20; i++) await Promise.resolve()
+  await s.append('person-1')
+  release()
+  await done
+  expect(s.state['rabe.cronTurn']?.value).toEqual({ promptId: 'person-1' })
+  expect(s.detail()).not.toHaveProperty('turnEnded')
+})
+
+test('a deleted cron stops the transcript scans of later turns', async ($, on) => {
+  const s = await scanSession($, on)
+  await $.tool.call({ tool: 'CronDelete', id: 'c1' })
+  s.run.reads = 0
+  for (let i = 0; i < 5; i++) {
+    await s.append(`person-${i}`)
+    await s.step(`t${i}`)
+    await s.complete(`t${i}`)
+  }
+  expect(s.run.reads).toBe(0)
+})
+
+test('a cron that ends during its own fire turn still records the turn end', async ($, on) => {
+  const s = await scanSession($, on)
+  await s.append('u1')
+  await s.step('t1')
+  await $.classic.Stop({ stop_hook_active: false, transcript_path: PATH, session_crons: [] })
+  expect(((s.state['rabe.items']?.value ?? []) as RabeItem[])[0]?.status).not.toBe('running')
+  await s.complete('t1')
+  expect(s.detail()).toMatchObject({ turnEnded: 'answered' })
 })
