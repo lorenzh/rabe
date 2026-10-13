@@ -522,21 +522,24 @@ async function cancel($: EngineInterface, id: string): Promise<{ text: string }>
   return { text: `Stopped codex ${item.detail.jobId}` }
 }
 
+export const STOP_USAGE =
+  'Usage: /rabe-stop codex:<job id>. Use the Codex job id shown in Rabe, not the thread id. To stop other items, use x in the pane.'
+
 export function codex(on: On, file: string, pollers: Pollers): void {
   on('session.start', { isInteractive: true }, async ($, e, next) => {
     pollers.push({ name: 'codex', run: items => pollCodex($, file, items), initial: false })
     const started = await next(e)
     await $.command.register({
       name: 'rabe-stop',
-      description: 'Stop a background item that Rabe shows, by its id',
-      argumentHint: '<item id>',
+      description: 'Stop a running Codex job that Rabe shows, by its job id',
+      argumentHint: 'codex:<job id>',
       immediate: true,
     })
 
     return started
   })
 
-  on('command.run', { command: 'rabe-stop', args: /^\s*codex:/ }, async ($, e) =>
-    cancel($, e.args.trim()),
+  on('command.run', { command: 'rabe-stop' }, async ($, e) =>
+    /^\s*codex:\S/.test(e.args) ? cancel($, e.args.trim()) : { text: STOP_USAGE },
   )
 }
