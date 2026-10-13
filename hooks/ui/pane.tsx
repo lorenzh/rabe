@@ -16,7 +16,7 @@ import {
 } from './interaction'
 import { KIND_LABEL, kept, matches, orderOf, previousOf, rowOf } from './lists'
 import { asPrevious, clipText, nameOf, toastText } from './pane-data'
-import { follow, geometry, measure, NO_PIN, type Pin } from './pin'
+import { follow, geometry, MIN_ROWS, measure, NO_PIN, type Pin } from './pin'
 import { type At, hold, render } from './render'
 import { reserve, screens, sequence } from './sequence'
 import {
@@ -709,9 +709,7 @@ export function pane(on: On, hours = baseHours): void {
     // On the terminal a body taller than its room scrolls under the header.
     // The scroll is measured on the held pieces the pane draws: a dry run of
     // the drawing finds them for the scroll the view gets.
-    const fresh =
-      e.surface === 'terminal' && e.props.scroll ? geometry(model, size, seen) : undefined
-    isPinned = !!fresh
+    let fresh = e.surface === 'terminal' && e.props.scroll ? geometry(model, size, seen) : undefined
     const drawing = (rows: number): InteractionEvent => ({
       type: 'render',
       model,
@@ -723,9 +721,15 @@ export function pane(on: On, hours = baseHours): void {
     if (fresh) {
       const dry = interact(interaction, drawing(rows)).list ?? []
       const geo = measure(dry, fresh.head, size, seen.selected, interaction.ringOn, fresh.isTight)
-      pinned = follow(pinned, geo, scopeOf(seen), geo.key)
-      rows = geo.rows
+      // Held pieces (gone slots, a message field) can take rows the fresh view
+      // does not count: under the minimum the engine's scroll takes over.
+      if (geo.rows < MIN_ROWS) fresh = undefined
+      else {
+        pinned = follow(pinned, geo, scopeOf(seen), geo.key)
+        rows = geo.rows
+      }
     }
+    isPinned = !!fresh
 
     const { list = [] } = feed($, drawing(rows))
     screen.drew(e.surface, ask)

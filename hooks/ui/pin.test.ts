@@ -2,10 +2,18 @@ import { expect, test } from 'claude-code/testing'
 
 import type { RabeItem } from '../model'
 import { dev, NOW } from './fixtures'
-import { follow, type Geometry, geometry, NO_PIN } from './pin'
+import { follow, type Geometry, geometry, measure, NO_PIN } from './pin'
 import type { Selection } from './view'
 
-const geo: Geometry = { above: 4, rows: 10, total: 50, focus: [0, 1], split: 5, key: 'row:x' }
+const geo: Geometry = {
+  above: 4,
+  rows: 10,
+  total: 50,
+  focus: [0, 1],
+  split: 5,
+  key: 'row:x',
+  floor: 0,
+}
 
 test('a new view starts at the top and brings the selected row into view', () => {
   expect(follow(NO_PIN, geo, 'a', dev.id)).toEqual({ top: 0, scope: 'a', followed: dev.id })
@@ -62,4 +70,34 @@ test('a pane with room for the whole header still pins all of it', () => {
 
 test('a pane that leaves under 3 rows even for the tabs alone drops pinning', () => {
   expect(geometry(model, at(5), sel)).toBeUndefined()
+})
+
+test('a landing on a row of a tight pane leaves 3 list rows in view', () => {
+  // body: 2 toolbar rows, search, group header, then the list from line 4.
+  const tight: Geometry = { ...geo, above: 2, rows: 4, total: 40, focus: [4, 1], floor: 3 }
+  expect(follow(NO_PIN, tight, 'a', 'x').top).toBe(3)
+  // the person's own wheel scroll on a redraw is kept
+  const own = { top: 0, scope: 'a', followed: 'x' }
+  expect(follow(own, tight, 'a', 'x').top).toBe(0)
+  // a toolbar button above the list is still scrolled into view
+  const bar: Geometry = { ...tight, focus: [1, 1], key: 'delete' }
+  expect(follow({ top: 3, scope: 'a', followed: 'y' }, bar, 'a', 'delete').top).toBe(1)
+})
+
+test('a wrapped toolbar button is focused on the row it stands on', () => {
+  const button = (key: string) => ({ button: { key, label: key } }) as never
+  const row = { spans: [{ key: 'row:x', label: 'x', action: { type: 'none' } }] }
+  // a, b and c share the first toolbar row; d wraps onto the second.
+  const list = [
+    { spans: [['tabs', {}]] },
+    button('a'),
+    button('b'),
+    button('c'),
+    button('d'.repeat(30)),
+    row,
+    { spans: [] },
+  ] as never
+  const size = { columns: 40, rows: 7, surface: 'terminal', hasInput: true } as never
+  expect(measure(list, 1, size, 'x', 'c', true).focus).toEqual([0, 1])
+  expect(measure(list, 1, size, 'x', 'd'.repeat(30), true).focus).toEqual([1, 1])
 })

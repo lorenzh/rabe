@@ -607,6 +607,18 @@ test('a message field gained under held rows keeps the rows in the clipped box',
   await ui.unmount()
 })
 
+test('held message-field slots never leave the clipped list under 3 rows', async ($, on) => {
+  const agents = manyAgents(20)
+  hold(on, [...agents, ...manyShells(28)], { selected: 'shell:many1' })
+  const props = { ...PROPS, bodyColumns: 100, scroll: { offset: 0, bodyRows: 7 } }
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE, props } as never)
+  await arm($, 'row:shell:many1')
+  for (const agent of agents) await arm($, `row:${agent.id}`)
+  const boxesNow = await clipped(ui)
+  for (const clip of boxesNow) expect(clip.props?.height as number).toBeGreaterThanOrEqual(3)
+  await ui.unmount()
+})
+
 // Where the element `key` stands: in the header or tail (`out`), or as the
 // index of its row in the clipped list against the rows the box shows.
 async function placeOf(ui: Mounted, key: string) {

@@ -84,13 +84,15 @@ function rowsIn(list: Piece[], size: Size): number {
 // first line stands (`split`), `above` its rows, `rows` the body room between
 // it and the tail, `total` the body rows, `focus` the row span of the piece
 // with `key`: the ring's control or Input where it stands in the body, else the
-// selected row.
+// selected row. `floor` is the least scroll that leaves `MIN_ROWS` list rows in
+// view when the focus lands on a row (0 unless the toolbar scrolls with the body).
 export type Geometry = {
   above: number
   rows: number
   total: number
   split: number
   key: string
+  floor: number
   focus?: [number, number]
 }
 
@@ -126,6 +128,20 @@ export function measure(
   const ringAt = ring ? body.findIndex(piece => isTool(piece) && has(piece, ring)) : -1
   const key = ringAt >= 0 && ring ? ring : `row:${selected}`
   const at = ringAt >= 0 ? ringAt : body.findIndex(piece => has(piece, key))
+  const listAt = body.findIndex(
+    piece =>
+      'spans' in piece && piece.spans.some(one => isPress(one) && one.key.startsWith('row:')),
+  )
+  const floor =
+    isTight && listAt >= 0 ? Math.max(0, rowsIn(body.slice(0, listAt), size) + MIN_ROWS - rows) : 0
+  const piece = at >= 0 ? (body[at] as Piece) : undefined
+  // A control wraps with its run: it stands on the last row of the run up to it.
+  const focus: [number, number] | undefined =
+    at < 0
+      ? undefined
+      : piece && 'button' in piece
+        ? [rowsIn(body.slice(0, at + 1), size) - 1, 1]
+        : [rowsIn(body.slice(0, at), size), rowsIn([piece as Piece], size)]
 
   return {
     above,
@@ -133,12 +149,8 @@ export function measure(
     total: rowsIn(body, size),
     split,
     key,
-    ...(at >= 0 && {
-      focus: [rowsIn(body.slice(0, at), size), rowsIn([body[at] as Piece], size)] as [
-        number,
-        number,
-      ],
-    }),
+    floor,
+    ...(focus && { focus }),
   }
 }
 
@@ -151,6 +163,9 @@ export function follow(pin: Pin, geo: Geometry, scope: string, selected: string)
     const [at, rows] = geo.focus
     if (at < top) top = at
     else if (at + rows > top + geo.rows) top = at + rows - geo.rows
+    // A landing on a row keeps `MIN_ROWS` list rows in view, even where the
+    // toolbar then scrolls away; the ring brings it back when it lands there.
+    if (geo.key.startsWith('row:')) top = Math.min(Math.max(top, geo.floor), geo.total - geo.rows)
   }
 
   return { top, scope, followed: selected }
