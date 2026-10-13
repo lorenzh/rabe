@@ -8,6 +8,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 - The list offers `c`, `m` and `d` for the selected row while the detail shows beside it ([#149](https://github.com/lorenzh/rabe/pull/149), fixes [#70](https://github.com/lorenzh/rabe/issues/70))
 
+### Fixed
+
+- `/rabe-stop` shows usage for empty arguments or arguments without `codex:`, and its hint shows `codex:<job id>` ([#144](https://github.com/lorenzh/rabe/pull/144), fixes [#141](https://github.com/lorenzh/rabe/issues/141)).
+
 ## [0.7.0] - 2026-10-12
 
 ### Added
