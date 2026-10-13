@@ -1,5 +1,5 @@
 import type { On } from 'claude-code'
-import { expect, mock, test } from 'claude-code/testing'
+import { expect, mock, type TestBody, test } from 'claude-code/testing'
 
 import type { RabeItem } from '../model'
 import { MAX_ENDED } from '../registry'
@@ -552,4 +552,226 @@ test('a main cron turn keeps its API end word and ignores subagent completion', 
   expect(((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.detail).not.toHaveProperty(
     'fireCount',
   )
+})
+
+const PATH = '/home/me/.claude/projects/-home-me-app/session-1.jsonl'
+
+// A session with one cron job, a fake transcript and a grep that can be held.
+// `snapshot` makes state.get answer from the moment the grep is held, as the
+// engine does within one dispatch ("every get of one dispatch reads one moment").
+async function scanSession(
+  $: Parameters<TestBody>[0],
+  on: On,
+  jobs = [JOB],
+  snapshot = false,
+  known = true,
+) {
+  const clock = mock.clock(on, { now: 1000 })
+  const state: Record<string, { value: unknown; version: number }> = {}
+  let frozen: typeof state | undefined
+  on('state.get', async (_$, e) => {
+    const value = (snapshot && e.key === 'cronTurn' ? frozen : undefined)?.[
+      `${e.plugin}.${e.key}`
+    ] ??
+      state[`${e.plugin}.${e.key}`] ?? { value: undefined, version: 0 }
+    const hold = e.key === 'cronTurn' ? run.holdGet : undefined
+    if (hold) {
+      run.holdGet = undefined
+      run.getEntered()
+      await hold
+    }
+
+    return { value }
+  })
+  on('state.set', async (_$, e) => {
+    const name = `${e.plugin}.${e.key}`
+    const version = state[name]?.version ?? 0
+    if (e.ifVersion !== undefined && e.ifVersion !== version) {
+      return { value: { isSet: false as const, version } }
+    }
+    state[name] = { value: e.value, version: version + 1 }
+
+    return { value: { isSet: true as const, version: version + 1 } }
+  })
+  tools(on, jobs)
+  core(on)
+  const rows = [...fireRows]
+  const run = {
+    reads: 0,
+    holdGet: undefined as Promise<void> | undefined,
+    getEntered: () => {},
+    hold: undefined as Promise<void> | undefined,
+    entered: () => {},
+    thaw: () => {
+      frozen = undefined
+    },
+  }
+  on('process.run', async () => {
+    run.reads++
+    const hold = run.hold
+    if (hold) {
+      frozen = structuredClone(state)
+      run.entered()
+    }
+    const stdout = rows.map(row => JSON.stringify(row)).join('\n')
+    await hold
+    return {
+      value: {
+        exitCode: 0,
+        stdout,
+        stderr: '',
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
+    }
+  })
+  // biome-ignore lint/correctness/useYield: the engine stand-in has no chunks
+  on('turn.step', async function* (_$, e) {
+    return {
+      turnId: e.turnId,
+      index: e.index,
+      answer: '',
+      toolUses: [],
+      stopReason: 'end_turn' as const,
+      usage: {
+        input_tokens: 0,
+        output_tokens: 0,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        model: 'm',
+      },
+    }
+  })
+  on('turn.complete', async () => ({ text: '' }))
+  const append = (uuid: string) =>
+    $.session.append({
+      door: 'prompt',
+      uuid,
+      origin: { kind: 'composer' },
+      message: { type: 'user', role: 'user', content: [{ type: 'text', text: 'tick' }] },
+    })
+  const step = async (turnId: string) => {
+    for await (const _ of $.turn.step({ turnId, index: 0, model: 'm', messageCount: 1 }));
+  }
+  const complete = (turnId: string, durationMs = 1) =>
+    $.turn.complete({
+      answer: '',
+      durationMs,
+      isAborted: false,
+      turnId,
+      reason: 'answer' as const,
+    })
+  const detail = () => ((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.detail
+  await $.tool.call({ tool: 'CronCreate', cron: JOB.cron, prompt: JOB.prompt })
+  if (known) await $.classic.Stop({ stop_hook_active: false, transcript_path: PATH })
+  return { state, run, append, step, complete, detail, clock }
+}
+
+for (const snapshot of [false, true]) {
+  test(`a prompt that arrives during the completion scan keeps the turn from recording an end (snapshot reads: ${snapshot})`, async ($, on) => {
+    const s = await scanSession($, on, [JOB], snapshot)
+    await s.append('u1')
+    await s.step('t1')
+    let release = () => {}
+    s.run.hold = new Promise<void>(resolve => {
+      release = resolve
+    })
+    const entered = new Promise<void>(resolve => {
+      s.run.entered = resolve
+    })
+    const done = s.complete('t1')
+    await entered
+    await s.append('person-1')
+    release()
+    await done
+    s.run.thaw()
+    expect(s.state['rabe.cronTurn']?.value).toEqual({ promptId: 'person-1' })
+    expect(s.detail()).not.toHaveProperty('turnEnded')
+  })
+}
+
+test('a deleted cron stops the transcript scans of later turns', async ($, on) => {
+  const s = await scanSession($, on)
+  await $.tool.call({ tool: 'CronDelete', id: 'c1' })
+  s.run.reads = 0
+  for (let i = 0; i < 5; i++) {
+    await s.append(`person-${i}`)
+    await s.step(`t${i}`)
+    await s.complete(`t${i}`)
+  }
+  expect(s.run.reads).toBe(0)
+})
+
+test('a cron that ends during its own fire turn still records the turn end', async ($, on) => {
+  const s = await scanSession($, on)
+  await s.append('u1')
+  await s.step('t1')
+  await $.classic.Stop({ stop_hook_active: false, transcript_path: PATH, session_crons: [] })
+  expect(((s.state['rabe.items']?.value ?? []) as RabeItem[])[0]?.status).not.toBe('running')
+  await s.complete('t1')
+  expect(s.detail()).toMatchObject({ turnEnded: 'answered' })
+})
+
+test('a cron that ended before any transcript path was known still gets its fire details', async ($, on) => {
+  const s = await scanSession($, on, [JOB], false, false)
+  await s.append('u1')
+  await s.step('t1')
+  expect(s.run.reads).toBe(0)
+  await $.classic.Stop({ stop_hook_active: false, transcript_path: PATH, session_crons: [] })
+  await s.complete('t1')
+  expect(s.detail()).toMatchObject({ fireCount: 1 })
+})
+
+test('a prompt that arrives while the first completion read is held keeps the turn from recording an end', async ($, on) => {
+  const s = await scanSession($, on)
+  await s.append('u1')
+  await s.step('t1')
+  let release = () => {}
+  s.run.holdGet = new Promise<void>(resolve => {
+    release = resolve
+  })
+  const entered = new Promise<void>(resolve => {
+    s.run.getEntered = resolve
+  })
+  const done = s.complete('t1')
+  await entered
+  await s.append('person-1')
+  release()
+  await done
+  expect(s.detail()).not.toHaveProperty('turnEnded')
+})
+
+test('a running cron whose first turn had no transcript path gets its fire details at completion', async ($, on) => {
+  const s = await scanSession($, on, [JOB], false, false)
+  await s.append('u1')
+  await s.step('t1')
+  expect(s.run.reads).toBe(0)
+  await $.classic.Stop({ stop_hook_active: false, transcript_path: PATH })
+  await s.complete('t1')
+  expect(s.detail()).toMatchObject({ fireCount: 1 })
+  expect(s.detail()).not.toHaveProperty('turnEnded')
+})
+
+test('a cron that ended inside a turn is read even when the turn took longer than the clock suggests', async ($, on) => {
+  const s = await scanSession($, on, [JOB], false, false)
+  await s.append('u1')
+  await s.step('t1')
+  await s.clock.advance(10)
+  await $.classic.Stop({ stop_hook_active: false, transcript_path: PATH, session_crons: [] })
+  await s.clock.advance(110)
+  await s.complete('t1', 100)
+  expect(s.detail()).toMatchObject({ fireCount: 1 })
+})
+
+test('a never-fired ended cron causes no scans on later unrelated turns', async ($, on) => {
+  const s = await scanSession($, on)
+  await $.classic.Stop({ stop_hook_active: false, transcript_path: PATH, session_crons: [] })
+  await s.clock.advance(100)
+  s.run.reads = 0
+  for (let i = 0; i < 3; i++) {
+    await s.append(`person-${i}`)
+    await s.step(`t${i}`)
+    await s.complete(`t${i}`)
+  }
+  expect(s.run.reads).toBe(0)
 })
