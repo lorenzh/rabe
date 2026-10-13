@@ -67,7 +67,7 @@ Spike for [#83](https://github.com/lorenzh/rabe/issues/83), tested live on Claud
 2. A tree that fits the body is never scrolled by the engine. PageDown, PageUp, Home and End still raise `ui.scroll` (`by` is plus or minus `bodyRows` for every one of them, so End and PageDown cannot be told apart); `offset` stays 0 and `contentRows` equals `bodyRows`. A hook that answers `{}` and draws a new `marginTop` scrolls the rows.
 3. ↓, ↑ and Tab reach the clipped rows and raise `ui.focus` (origin person) with the row's key, also when the row is outside the box. They do not raise `ui.scroll`, so the mod must bring the row into view itself: a redraw after the focus event with a new `marginTop` does it.
 4. Not verified, a short live checklist: the wheel (needs `/tui fullscreen` and mouse reporting; the `ui.scroll` hook handles a `pointer` the same way); clicks above and below the box, which must not press hidden rows; and a resize or a view change, which must keep the focus order and the action arming. The desktop is not changed.
-5. Not tested: whether ↑ and ↓ raise `ui.scroll` in a clipped view with no focusable rows. So Rabe pins only a body that has rows, and a text view keeps the engine's scroll.
+5. Not tested: whether ↑ and ↓ raise `ui.scroll` in a clipped view with no focusable rows. So Rabe pins only a body that has rows (Items, Effects, and Cost and Timeline with worker rows), and a text view keeps the engine's scroll.
 
 ### Queued view changes
 
