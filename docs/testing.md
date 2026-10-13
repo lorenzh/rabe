@@ -2,7 +2,7 @@
 title: How to test Rabe
 description: How to test the Rabe mod - unit tests of pure functions, hook and UI tests with claude-code/testing, a failing test first for each bug, live checks in a real Claude Code session through tmux with scripts/live-check.sh, and what CI runs.
 tags: [testing, tdd, ci, live-check, tmux]
-keywords: [idle, agent teams, claude plugin test, ui.close, closer, regain, claude-code/testing, mock.clock, advance, memoryState, files, core, state.set, tool.call, ui.mount, terminal, desktop, find, findAll, press, ui.focus, origin person, arm, arming, disarmed, focus order, append-only, stepRow, fixtures, live-check.sh, live-check.test.sh, test:scripts, tmux socket, send-keys, capture-pane, fake tmux, pane_pid, timeout, background shells, key handling, #37, bun run check, CI]
+keywords: [key sequences, --sequences, idle, agent teams, claude plugin test, ui.close, closer, regain, claude-code/testing, mock.clock, advance, memoryState, files, core, state.set, tool.call, ui.mount, terminal, desktop, find, findAll, press, ui.focus, origin person, arm, arming, disarmed, focus order, append-only, stepRow, fixtures, live-check.sh, live-check.test.sh, test:scripts, tmux socket, send-keys, capture-pane, fake tmux, pane_pid, timeout, background shells, key handling, #37, bun run check, CI]
 ---
 
 # How to test Rabe
@@ -133,6 +133,32 @@ scripts/live-check.sh --shells 3 --keys 'Down Down Enter' --expect 'b: back'
 | `--keys "K ..."` | none | tmux key names, such as `Down`, `Up`, `Enter`, `Tab`, `Escape`, `b`, `2`. |
 | `--gap SECONDS` | `0.3` | Pause between two keys. Short gaps (0.02 to 0.05) find races in key handling. |
 | `--repeat N` | `1` | Rounds. A race shows only in some rounds; use 10 or more. |
+| `--sequences LIST` | none | Named key sequences instead of `--keys`; see below. |
+| `--model NAME` | Claude Code's | The model of the session. A cheap one will do. |
+
+### Key sequences
+
+The test kit refuses Rabe's own `ui.focus` before any hook sees it, so it cannot show a focus or landing bug (#174 and #175 needed a traced live copy). `--sequences` repeats fixed key sequences over `--repeat` rounds and prints one verdict per sequence:
+
+```sh
+scripts/live-check.sh --sequences fixed --repeat 5 --model haiku
+scripts/live-check.sh --sequences pending,ring-2 --repeat 3
+```
+
+Each round starts from the list (step 5 above), runs the sequence and reads only the Rabe pane (plus the processes of this run's shells where a shell must stop). A failed round prints why and the screen. The last lines are `PASS name n/n` or `FAIL name k/n` per sequence, and the exit code is 0 when all pass, 1 when one fails, 2 for a setup error. `--sequences` needs `--shells 3` or more, and it seeds one spare shell per round for a sequence that stops or removes one (and one subagent for `back-cost`).
+
+| Name | Keys | Passes when | Issue |
+|------|------|-------------|-------|
+| `ring-2`, `ring-3`, `ring-4` | tab key, `1`, `Down`, `Down` | the marker moved on to the next rows, not to `s: search` | #174, #175 (fixed) |
+| `click-stop` | click a running shell, `x` | that shell's process stops, no other one | #186 |
+| `search-keys` | `s z z x` | the field reads `zzx` | #180 |
+| `search-esc` | `s`, type, `Esc` | the field takes no more keys and the pane is still open | #187 |
+| `search-enter` | `s`, a duration, `Enter`, `Enter` | one row is left and marked, and `Enter` opens it | #187 |
+| `tab-selection` | `Down`, `2`, `1` | the marked row is the same | #188 |
+| `remove-neighbour` | click, `x`, `r` | one row less and a row marked | #188 |
+| `back-cost`, `back-timeline` | tab key, `Enter`, `b` | back on that tab | #185 |
+
+`fixed` is the set that must pass on `main`. `pending` is the set of issues that are not fixed yet; it may FAIL, and the script reports it and does not hide it. `all` is both. A pending sequence moves to `fixed` in the pull request that fixes its issue. This is not run in CI: it needs a login. Run `fixed` before each release of the 0.9.x line and record the counts in the release PR.
 | `--expect REGEX` | none | Extended regex the pane of each capture must match, line by line, without the border. A failed round prints the whole screen. |
 | `--size COLSxROWS` | `120x40` | Terminal size. Use 140 columns or more for the pane with the detail beside the list. |
 | `--keep` | off | Keep the folder, the captures and the session. Attach with `tmux -L NAME attach -t NAME`. |
@@ -190,7 +216,7 @@ For opening keys, close the pane and run `/rabe` again. Send `3` after a 250 ms 
 
 - The seed prompt costs one short model turn per run. `--shells 0` skips it when the check does not need background work.
 - Claude Code keeps the trust answer for the temporary folder in its own config, as for any folder you trust.
-- CI runs `scripts/live-check.test.sh`. It checks the arguments, and runs the script against a fake `tmux` whose pane starts the seeded shells: setup errors (a busy socket, a pane that never opens), text in the transcript that looks like the pane (tab row, empty state, list lines, `b: back`, a box without the pane's frame), wide and combining characters beside the docked pane, `--expect` on the pane only, the docked and the inline pane, the arguments tmux gets, the seed wait, the cleanup and the reset of each round. The fake's focus wraps like the engine's, so the test fails if the reset passes the first row. Other fake lists are longer than the pane and show only the lines from the selected row's header down, with and without later groups, and one starts with an agent heading. The live run needs tmux, a signed-in Claude Code and a person to read the result.
+- CI runs `scripts/live-check.test.sh`. It checks the arguments, and runs the script against a fake `tmux` whose pane starts the seeded shells: setup errors (a busy socket, a pane that never opens), text in the transcript that looks like the pane (tab row, empty state, list lines, `b: back`, a box without the pane's frame), wide and combining characters beside the docked pane, `--expect` on the pane only, the docked and the inline pane, the arguments tmux gets, the seed wait, the cleanup and the reset of each round. The fake's focus wraps like the engine's, so the test fails if the reset passes the first row. Other fake lists are longer than the pane and show only the lines from the selected row's header down, with and without later groups, and one starts with an agent heading. It also runs the sequences against the same fake, with a switch for each bug (a ring that lands on a stop, a field that loses a key, an Esc that closes the pane, a selection lost over a tab), so each verdict is shown to turn FAIL. The live run needs tmux, a signed-in Claude Code and a person to read the result.
 - For a release, also do the manual live check in [RELEASING.md](../RELEASING.md): band, `/rabe`, arrow keys, Enter, a mouse click on a row, every tab, a detail of each kind, `x` on a shell and Esc.
 
 ## What CI runs

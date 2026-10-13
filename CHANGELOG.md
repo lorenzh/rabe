@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/live-check.sh --sequences` repeats named key sequences for the keyboard and mouse fixes over several rounds in a real session and prints PASS or FAIL for each ([#190](https://github.com/lorenzh/rabe/issues/190))
+
 ### Fixed
 
 - In a short pane (a 100x24 terminal with many shells) the pinned list keeps at least 3 rows and the tab row stays in view: only the tabs stay pinned, and the toolbar and search field scroll with the list; landing on a row scrolls so that 3 list rows show, and a pane whose held pieces leave under 3 rows falls back to the engine's scroll ([#198](https://github.com/lorenzh/rabe/pull/198), fixes [#192](https://github.com/lorenzh/rabe/issues/192))

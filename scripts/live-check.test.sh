@@ -38,6 +38,15 @@ check 'plugin dir must exist' 2 '--plugin-dir' --plugin-dir /nonexistent/rabe
 check 'timeout reaches the plan' 0 'timeout: 30$' --dry-run --timeout 30
 check 'timeout must be a number' 2 '--timeout' --timeout soon
 
+check 'sequences reach the plan' 0 'sequences: ring-2 search-keys$' --dry-run --sequences ring-2,search-keys
+check 'fixed names the sequences of fixed issues' 0 'sequences: ring-2 ring-3 ring-4$' --dry-run --sequences fixed
+check 'pending names the sequences of open issues' 0 'sequences: click-stop search-keys search-esc search-enter tab-selection remove-neighbour back-cost back-timeline$' --dry-run --sequences pending
+check 'an unknown sequence fails' 2 'unknown sequence: nope' --sequences nope
+check 'sequences and --keys exclude each other' 2 '--sequences' --sequences ring-2 --keys Down
+check 'sequences and --expect exclude each other' 2 '--sequences' --sequences ring-2 --expect x
+check 'sequences need three shells' 2 '--shells' --sequences ring-2 --shells 2
+check 'a destructive sequence seeds one spare per round' 0 'seed: 7$' --dry-run --sequences click-stop,remove-neighbour --repeat 2
+
 # A fake tmux: its pane is a loop that starts the shells the seed prompt names,
 # as Claude Code would. Each seed also starts a shell with the same duration
 # outside the pane, as a second run would; cleanup must leave that one alone.
@@ -72,9 +81,14 @@ case $cmd in
   send-keys)
     shift 2
     if [ "$1" = -l ]; then
+      [ "$2" = /rabe ] && rm -f "$FAKE/closed" "$FAKE/field"
+      field=0 text=
+      read -r field text 2>/dev/null <"$FAKE/field"
+      [ "$field" = 1 ] && echo "1 $text$2" >"$FAKE/field"
       printf '%s\n' "$2" >>"$FAKE/screen"
       ds=$(grep -o 'sleep [0-9]*' <<<"$2" | cut -d' ' -f2 | tr '\n' ' ')
       if [ -n "$ds" ]; then
+        echo "$ds" >"$FAKE/durs"
         set -- $ds
         (exec -a sleep "$REAL_SLEEP" "$1") >/dev/null 2>&1 &
         echo $! >"$FAKE/foreign"
@@ -87,16 +101,40 @@ case $cmd in
       # The focus ring walks the rows and FAKE_STOPS other stops (tabs,
       # controls) and wraps, as the engine does when the list fits. The marker
       # moves only when the ring lands on a row.
-      # With FAKE_SCROLL the list is longer than the pane: Up stops on the first
-      # row, and one more Up scrolls the tab row into view (ring -1).
-      if [ "$1" = Up ] && [ -n "${FAKE_LIST:-}" ] && [ "${FAKE_UP:-}" != ignore ]; then
+      # FAKE_TABKEY=ok lands a tab key on the marked row, =stop on a stop (the
+      # bug of #174); FAKE_TABRESET=1 also loses the selection (#188).
+      # The search field: s focuses it, letters fill it, Escape leaves it
+      # (FAKE_ESC=close closes the pane instead, #187), FAKE_FIELD=eat loses
+      # the second letter (#180).
+      field=0 text=
+      read -r field text 2>/dev/null <"$FAKE/field"
+      if [ "$field" = 1 ] && [ ${#1} = 1 ]; then
+        { [ "${FAKE_FIELD:-}" = eat ] && [ ${#text} = 1 ]; } || text+=$1
+        echo "1 $text" >"$FAKE/field"
+      elif [ "$field" = 1 ] && [ "$1" = Escape ]; then
+        if [ "${FAKE_ESC:-}" = close ]; then : >"$FAKE/closed"; else echo "0 $text" >"$FAKE/field"; fi
+      elif [ "$1" = s ]; then
+        echo "1 " >"$FAKE/field"
+      elif [ -n "${FAKE_LIST:-}" ]; then
         rows=$(tr ' ' '\n' <<<"$FAKE_LIST" | grep -Ec '^[ri]$')
         read -r ring sel 2>/dev/null <"$FAKE/ring" || { ring=$FAKE_RING; sel=$FAKE_RING; }
-        if [ -n "${FAKE_SCROLL:-}" ]; then
-          ring=$((ring > 0 ? ring - 1 : -1))
-        else
-          ring=$(((ring - 1 + rows + FAKE_STOPS) % (rows + FAKE_STOPS)))
-        fi
+        case $1 in
+          Up)
+            [ "${FAKE_UP:-}" = ignore ] && exit 0
+            # With FAKE_SCROLL the list is longer than the pane: Up stops on the
+            # first row, and one more Up scrolls the tab row into view (ring -1).
+            if [ -n "${FAKE_SCROLL:-}" ]; then
+              ring=$((ring > 0 ? ring - 1 : -1))
+            else
+              ring=$(((ring - 1 + rows + FAKE_STOPS) % (rows + FAKE_STOPS)))
+            fi ;;
+          Down) ring=$(((ring + 1) % (rows + FAKE_STOPS))) ;;
+          [1-4])
+            [ -n "${FAKE_TABKEY:-}" ] || exit 0
+            [ "$FAKE_TABKEY" = stop ] && ring=$rows || ring=$sel
+            [ -n "${FAKE_TABRESET:-}" ] && { ring=0; sel=0; } ;;
+          *) exit 0 ;;
+        esac
         [ "$ring" -ge 0 ] && [ "$ring" -lt "$rows" ] && sel=$ring
         echo "$ring $sel" >"$FAKE/ring"
       fi
@@ -107,8 +145,12 @@ case $cmd in
     mapfile -t left < <(cat "$FAKE/screen" 2>/dev/null; printf '%s\n' "${FAKE_SCREEN:-}")
     # The pane opens on /rabe; FAKE_PANE=none keeps it closed.
     right=()
-    if grep -qx /rabe "$FAKE/screen" 2>/dev/null && [ "${FAKE_PANE:-}" != none ]; then
+    if grep -qx /rabe "$FAKE/screen" 2>/dev/null && [ "${FAKE_PANE:-}" != none ] && [ ! -e "$FAKE/closed" ]; then
       tabs=(' 1: Items 4    2: Cost    3: Effects    4: Timeline' '─━━━━━━━━━━──────────')
+      field=0 text=
+      read -r field text 2>/dev/null <"$FAKE/field"
+      if [ "$field" = 1 ] || [ -n "$text" ]; then tabs+=("search: $text"); else tabs+=('search: title, kind or command'); fi
+      mapfile -t durs < <(tr ' ' '\n' <"$FAKE/durs" 2>/dev/null)
       [ -n "${FAKE_DETAIL:-}" ] && tabs+=(' b back · esc close')
       if [ -z "${FAKE_LIST:-}" ]; then
         right=("${tabs[@]}")
@@ -125,7 +167,9 @@ case $cmd in
             H:*) line="▾ ${w#H:} 2" ;;
             F:*) line=" ◐ ${w#F:}" ;;
             *) [ "$n" = "$sel" ] && m=▌ || m=' '
-               [ "$w" = i ] && line="$m  ▶ row $n" || line="$m▶ row $n" ;;
+               title="row $n"
+               [ -n "${FAKE_SLEEP:-}" ] && title="sleep ${durs[n]}"
+               [ "$w" = i ] && line="$m  ▶ $title" || line="$m▶ $title" ;;
           esac
           [ "$n" -ge "$from" ] && right+=("$line")
           [[ $w == [ri] ]] && n=$((n + 1))
@@ -264,5 +308,19 @@ stop
 faked FAKE_LIST='H:SHELLS r r r r' FAKE_STOPS=3 FAKE_RING=2 FAKE_UP=ignore 'a first row that never shows is a setup error' 2 \
   'could not select the first row' --shells 0
 stop
+
+seqs=(FAKE_SLEEP=1 "FAKE_LIST=H:SHELLS r r r r" FAKE_STOPS=3 FAKE_RING=0 FAKE_TABKEY=ok)
+sq() { faked "${seqs[@]}" "$@"; stop; }
+sq 'a sequence that passes in every round is PASS' 0 'PASS ring-2 2/2' --shells 3 --timeout 50 --repeat 2 --sequences ring-2
+sq 'ring-3 and ring-4 press their tab key' 0 'PASS ring-4 1/1' --shells 3 --timeout 50 --sequences ring-3,ring-4
+expect 'ring-3 sends its own tab key' grep -qx 3 "$FAKE/keys"
+sq FAKE_TABKEY=stop 'a ring left on a stop after the tab key is FAIL' 1 'FAIL ring-2 0/1' --shells 3 --timeout 50 --sequences ring-2
+sq 'a field that reads what was typed is PASS' 0 'PASS search-keys 1/1' --shells 3 --timeout 50 --sequences search-keys
+sq FAKE_FIELD=eat 'a field that loses a key is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys
+sq 'Esc that leaves the field keeps the pane PASS' 0 'PASS search-esc 1/1' --shells 3 --timeout 50 --sequences search-esc
+sq FAKE_ESC=close 'Esc that closes the pane is FAIL' 1 'FAIL search-esc 0/1' --shells 3 --timeout 50 --sequences search-esc
+sq 'a selection kept over the Cost tab is PASS' 0 'PASS tab-selection 1/1' --shells 3 --timeout 50 --sequences tab-selection
+sq FAKE_TABRESET=1 'a selection lost over the Cost tab is FAIL' 1 'FAIL tab-selection 0/1' --shells 3 --timeout 50 --sequences tab-selection
+sq FAKE_TABKEY=stop 'one failing sequence sets the exit code' 1 'PASS search-keys 1/1' --shells 3 --timeout 50 --sequences ring-2,search-keys
 
 exit $failed
