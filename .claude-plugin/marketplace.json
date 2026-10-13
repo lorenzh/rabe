@@ -1,0 +1,6 @@
+{
+  "name": "rabe-probe",
+  "owner": { "name": "Lorenz Hilpert" },
+  "plugins": [{ "name": "rabe-probe", "source": "./" }],
+  "description": "Diagnostic probe for Rabe in the Claude desktop app and editor extensions."
+}

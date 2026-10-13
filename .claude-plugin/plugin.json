@@ -1,0 +1,9 @@
+{
+  "name": "rabe-probe",
+  "version": "0.0.1",
+  "description": "Diagnostic probe: shows whether the Claude Code mod engine loads a plugin's hooks module, lists its commands and asks it to draw.",
+  "author": {
+    "name": "Lorenz Hilpert"
+  },
+  "license": "MIT"
+}
