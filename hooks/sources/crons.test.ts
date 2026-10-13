@@ -566,13 +566,23 @@ async function scanSession(
   snapshot = false,
   known = true,
 ) {
-  mock.clock(on, { now: 1000 })
+  const clock = mock.clock(on, { now: 1000 })
   const state: Record<string, { value: unknown; version: number }> = {}
   let frozen: typeof state | undefined
-  on('state.get', async (_$, e) => ({
-    value: (snapshot && e.key === 'cronTurn' ? frozen : undefined)?.[`${e.plugin}.${e.key}`] ??
-      state[`${e.plugin}.${e.key}`] ?? { value: undefined, version: 0 },
-  }))
+  on('state.get', async (_$, e) => {
+    const value = (snapshot && e.key === 'cronTurn' ? frozen : undefined)?.[
+      `${e.plugin}.${e.key}`
+    ] ??
+      state[`${e.plugin}.${e.key}`] ?? { value: undefined, version: 0 }
+    const hold = e.key === 'cronTurn' ? run.holdGet : undefined
+    if (hold) {
+      run.holdGet = undefined
+      run.getEntered()
+      await hold
+    }
+
+    return { value }
+  })
   on('state.set', async (_$, e) => {
     const name = `${e.plugin}.${e.key}`
     const version = state[name]?.version ?? 0
@@ -588,6 +598,8 @@ async function scanSession(
   const rows = [...fireRows]
   const run = {
     reads: 0,
+    holdGet: undefined as Promise<void> | undefined,
+    getEntered: () => {},
     hold: undefined as Promise<void> | undefined,
     entered: () => {},
     thaw: () => {
@@ -641,10 +653,10 @@ async function scanSession(
   const step = async (turnId: string) => {
     for await (const _ of $.turn.step({ turnId, index: 0, model: 'm', messageCount: 1 }));
   }
-  const complete = (turnId: string) =>
+  const complete = (turnId: string, durationMs = 1) =>
     $.turn.complete({
       answer: '',
-      durationMs: 1,
+      durationMs,
       isAborted: false,
       turnId,
       reason: 'answer' as const,
@@ -652,7 +664,7 @@ async function scanSession(
   const detail = () => ((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.detail
   await $.tool.call({ tool: 'CronCreate', cron: JOB.cron, prompt: JOB.prompt })
   if (known) await $.classic.Stop({ stop_hook_active: false, transcript_path: PATH })
-  return { state, run, append, step, complete, detail }
+  return { state, run, append, step, complete, detail, clock }
 }
 
 for (const snapshot of [false, true]) {
@@ -708,4 +720,58 @@ test('a cron that ended before any transcript path was known still gets its fire
   await $.classic.Stop({ stop_hook_active: false, transcript_path: PATH, session_crons: [] })
   await s.complete('t1')
   expect(s.detail()).toMatchObject({ fireCount: 1 })
+})
+
+test('a prompt that arrives while the first completion read is held keeps the turn from recording an end', async ($, on) => {
+  const s = await scanSession($, on)
+  await s.append('u1')
+  await s.step('t1')
+  let release = () => {}
+  s.run.holdGet = new Promise<void>(resolve => {
+    release = resolve
+  })
+  const entered = new Promise<void>(resolve => {
+    s.run.getEntered = resolve
+  })
+  const done = s.complete('t1')
+  await entered
+  await s.append('person-1')
+  release()
+  await done
+  expect(s.detail()).not.toHaveProperty('turnEnded')
+})
+
+test('a running cron whose first turn had no transcript path gets its fire details at completion', async ($, on) => {
+  const s = await scanSession($, on, [JOB], false, false)
+  await s.append('u1')
+  await s.step('t1')
+  expect(s.run.reads).toBe(0)
+  await $.classic.Stop({ stop_hook_active: false, transcript_path: PATH })
+  await s.complete('t1')
+  expect(s.detail()).toMatchObject({ fireCount: 1 })
+  expect(s.detail()).not.toHaveProperty('turnEnded')
+})
+
+test('a cron that ended inside a turn is read even when the turn took longer than the clock suggests', async ($, on) => {
+  const s = await scanSession($, on, [JOB], false, false)
+  await s.append('u1')
+  await s.step('t1')
+  await s.clock.advance(10)
+  await $.classic.Stop({ stop_hook_active: false, transcript_path: PATH, session_crons: [] })
+  await s.clock.advance(110)
+  await s.complete('t1', 100)
+  expect(s.detail()).toMatchObject({ fireCount: 1 })
+})
+
+test('a never-fired ended cron causes no scans on later unrelated turns', async ($, on) => {
+  const s = await scanSession($, on)
+  await $.classic.Stop({ stop_hook_active: false, transcript_path: PATH, session_crons: [] })
+  await s.clock.advance(100)
+  s.run.reads = 0
+  for (let i = 0; i < 3; i++) {
+    await s.append(`person-${i}`)
+    await s.step(`t${i}`)
+    await s.complete(`t${i}`)
+  }
+  expect(s.run.reads).toBe(0)
 })

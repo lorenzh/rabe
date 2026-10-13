@@ -128,11 +128,20 @@ function fireDetails(items: RabeItem[], read: Fires, reason?: TurnCompleteReason
   }, items)
 }
 
-// Counts the ordinary prompts that replaced the turn link. A completion that
-// started its scan earlier compares the count when it builds its write.
-// `$.state.get` reads one moment per dispatch, so a re-read cannot show the
-// replacement. The value lives for one hook call; a reload resetting it is fine.
+// Counts the ordinary prompts that replaced the turn link. A completion
+// captures the count before its first await and compares it again just before
+// and inside its item write. `$.state.get` reads one moment per dispatch, so a
+// re-read cannot show the replacement.
+// Known limits: a prompt that arrives after the last comparison but before the
+// `items` write commits is not seen, and a reload during a scan resets the
+// counter, so a stale completion can still pass. Both leave a wrong end word on
+// one cron detail until the next fire.
 let promptEpoch = 0
+
+// When the main turn took its first step, to tell a cron that ended inside the
+// turn from an older one. A reload loses it; completion then falls back to the
+// clock minus the turn duration.
+let turnStart: { turnId: string; at: number } | undefined
 
 const hasCron = (items: RabeItem[]) =>
   items.some(item => item.kind === 'cron' && item.detail.scheduledFor === undefined)
@@ -395,6 +404,7 @@ export function crons(on: On): void {
   on('turn.step', { index: 0 }, async function* ($, e, next) {
     if (!e.agentId) {
       try {
+        turnStart = { turnId: e.turnId, at: await $.clock.now() }
         const { value, version } = await $.state.get({ plugin: 'rabe', key: 'cronTurn' })
         const read = await readFires($, items =>
           items.some(
@@ -426,13 +436,14 @@ export function crons(on: On): void {
 
   on('turn.complete', { reason: ['answer', 'aborted', 'error', 'refusal'] }, async ($, e, next) => {
     if (!e.agentId) {
+      const epoch = promptEpoch
       try {
         const { value, version } = await $.state.get({ plugin: 'rabe', key: 'cronTurn' })
-        const epoch = promptEpoch
-        const now = await $.clock.now()
-        const since = now - e.durationMs
+        const since =
+          turnStart?.turnId === e.turnId ? turnStart.at : (await $.clock.now()) - e.durationMs
         // The linked turn has an outcome to record, even for a cron that ended meanwhile.
-        // A job that ended during this turn without confirmed fire info is read once more.
+        // A job without confirmed fire info is read too: a running one at each
+        // completion until a fire is confirmed, an ended one only when it ended in this turn.
         const read = await readFires(
           $,
           items =>
@@ -441,10 +452,9 @@ export function crons(on: On): void {
               item =>
                 item.kind === 'cron' &&
                 item.detail.scheduledFor === undefined &&
-                item.status !== 'running' &&
                 !item.detail.isDeleted &&
                 item.detail.lastFiredAt === undefined &&
-                (item.endedAt ?? 0) >= since,
+                (item.status === 'running' || (item.endedAt ?? 0) >= since),
             ),
         )
         if (read) {
@@ -452,10 +462,10 @@ export function crons(on: On): void {
             value?.turnId === e.turnId &&
             value.promptId === read.promptId &&
             value.fireId === read.fireId
+          const isCurrent = () => matches && epoch === promptEpoch
+          const reason = isCurrent() ? e.reason : undefined
           // The callback is synchronous: no prompt can arrive between this check and the item change.
-          await write($, items =>
-            fireDetails(items, read, matches && epoch === promptEpoch ? e.reason : undefined),
-          )
+          await write($, items => fireDetails(items, read, isCurrent() ? reason : undefined))
         }
         await $.state.set({ plugin: 'rabe', key: 'cronTurn' }, {}, { ifVersion: version })
       } catch {}
