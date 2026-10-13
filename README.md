@@ -76,7 +76,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | Key | What it does |
 |---|---|
 | ↑ / ↓ | Move to the previous / next row; the detail beside the list follows. In a scrolling pane, arrows and view-changing presses take turns while they move focus; a pending stop, delete or message does not block them |
-| Enter | Open the row that has the focus, also after a click selected another row |
+| Enter | Open the row that has the focus; a click moves the focus onto the clicked row |
 | Click on a row | Select the row; click it again to open it. A click on the row that has the focus opens it at once |
 | Tab / Shift+Tab | Move the focus through rows, tabs and buttons |
 | `b` | Go back to the list |
@@ -140,7 +140,7 @@ Other toasts flatten whitespace and replace Unicode control (`Cc`) and format (`
 
 The search button shows the active query, cut with `…` when long. The search field keeps the full query at every width. The filter stays visible after Enter and after reopening the pane. To clear it, submit an empty search. Stop group and remove ended act only on the filtered rows.
 
-With the mouse, click a row once to select it and again to open it. Click a tab to switch to it, a group name to fold the group, a button to press it, or a row on the other tabs to open it. The wheel scrolls the pane. A click does not move the focus, so Enter still opens the row that has the focus. A click also does not give the pane the keys: `ctrl+x tab` does. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
+With the mouse, click a row once to select it and again to open it. Click a tab to switch to it, a group name to fold the group, a button to press it, or a row on the other tabs to open it. The wheel scrolls the pane. A click on a row moves the focus ring onto it, so the keys and the arrows continue from there. A click does not give the pane the keys: `ctrl+x tab` does. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
 
 On the list, the stop keys `x` and `g` and the remove key `r` work only after you move onto a row yourself, with an arrow, Tab or a click. Until then, and after the view or the selected row changes without you, they are dim, so a key press never stops something you did not pick. If they stay dim after a click, the pane does not have the keys yet: press `ctrl+x tab`, then move onto the row with Tab or an arrow.
 

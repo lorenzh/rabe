@@ -247,14 +247,22 @@ async function landView($: EngineInterface, action: Action, surface: RenderSurfa
   return land($, landing(action, selection.open, drawn), action, surface)
 }
 
-// A press on a live row of the Items list away from the ring selects it: a
-// click moves no ring, so the press is the person's choice of that row. The
-// ring's row and the selected row open.
+// The ring follows a click (#186). A refused move leaves the arming as the
+// press set it: the selection still acts.
+async function ringOnto($: EngineInterface, key: string): Promise<void> {
+  await $.ui.focus({ requestId: PANE, key }).catch(() => undefined)
+}
+
+// A press on a live row of the Items list away from the ring selects it: only
+// a pointer presses a row away from the ring, so the press is the person's
+// choice of that row and the ring follows it (#186). The ring's row and the
+// selected row open.
 async function choose($: EngineInterface, id: string): Promise<boolean> {
   const { model, selection } = await look($, true)
   if (!selectsOnPress(model, selection, id, interaction.ringOn)) return false
   await $.state.set({ plugin: 'rabe', key: 'selected' }, id)
   feed($, { type: 'press' })
+  await ringOnto($, `row:${id}`)
 
   return true
 }

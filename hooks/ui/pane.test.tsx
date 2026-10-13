@@ -1689,8 +1689,8 @@ test(
   },
 )
 
-// A click on a row presses it and moves no ring. The press is the person's
-// choice of that row: it selects the row and arms x and g for it; a press on
+// A click on a row presses it and arms x and g for it: the press is the
+// person's choice of that row (the ring follows it, see ringOnto); a press on
 // the selected row (Enter on the focused one) opens it.
 test('a press on another row selects it and arms x for it; on the selected row it opens', async ($, on) => {
   const state = hold(on, ALL, { selected: dev.id })
