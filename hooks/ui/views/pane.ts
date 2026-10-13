@@ -199,7 +199,7 @@ export const paneView: View = (model, size, sel): Drawn => {
   const room = (rows: number, above: number): Size => ({
     ...size,
     rows: Math.max(1, rows),
-    ...(size.window && { window: { ...size.window, top: size.window.top - above } }),
+    ...(size.window && { window: { ...size.window, top: Math.max(0, size.window.top - above) } }),
   })
   const first = bind(body(model, room(size.rows - head.length - HINT, head.length), sel))
   const tools = controlRows(first, size)

@@ -19,7 +19,11 @@ export const NO_PIN: Pin = { top: 0, scope: '', followed: '' }
 // Where a pinned drawing's view starts: `above` tree rows of tabs, rule and
 // toolbar of the view as drawn fresh, `rows` of body room under them, `head`
 // the lines above the toolbar. `paneView` counts its window from this header.
-export type Fresh = { above: number; rows: number; head: number }
+// `isTight`: the whole header leaves under `MIN_ROWS` list rows, so only the
+// tabs and their rule stay and the toolbar scrolls with the body.
+export type Fresh = { above: number; rows: number; head: number; isTight: boolean }
+
+export const MIN_ROWS = 3
 
 // undefined where the body fits or is no list: the pane then draws as it
 // always did.
@@ -27,17 +31,21 @@ export function geometry(model: Model, size: Size, sel: Selection): Fresh | unde
   const { window: _window, ...bare } = size
   const drawn = paneView(model, bare, sel)
   const head = drawn.toolbar ?? 0
-  const above = head + controlRows(drawn, bare)
+  const tools = controlRows(drawn, bare)
+  const isTight = bare.rows - head - tools - HINT < MIN_ROWS
+  const above = isTight ? head : head + tools
   const rows = Math.max(1, bare.rows - above - HINT)
+  // Not even the tabs leave room for a few rows: the engine's scroll then.
+  if (rows < MIN_ROWS) return undefined
   const body = drawn.nodes.slice(head, -1)
   // Only a body with rows pins: its rows are focusable, so the arrows move the
   // focus and the pane follows it. A text view keeps the engine's scroll.
   const hasRows = body.some(
     node => 'spans' in node && node.spans.some(one => isPress(one) && one.key.startsWith('row:')),
   )
-  if (!hasRows || rowsOf(body) <= rows) return undefined
+  if (!hasRows || rowsOf(body) + (isTight ? tools : 0) <= rows) return undefined
 
-  return { above, rows, head }
+  return { above, rows, head, isTight }
 }
 
 const isTool = (piece?: Piece) => piece !== undefined && ('button' in piece || 'input' in piece)
@@ -92,9 +100,14 @@ export function measure(
   size: Size,
   selected: string,
   ring?: string,
+  isTight = false,
 ): Geometry {
   let lines = 0
-  const first = list.findIndex(piece => !isTool(piece) && lines++ >= head)
+  // Tight: the controls are body rows, so the first piece past the head lines
+  // starts the body, a control or not.
+  const first = list.findIndex(piece =>
+    isTool(piece) ? isTight && lines >= head : lines++ >= head,
+  )
   const split = first < 0 ? list.length : first
   const isTail = tailOf(list)
   const body: Piece[] = []

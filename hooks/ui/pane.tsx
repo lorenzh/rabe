@@ -722,7 +722,7 @@ export function pane(on: On, hours = baseHours): void {
     let rows = fresh?.rows ?? 0
     if (fresh) {
       const dry = interact(interaction, drawing(rows)).list ?? []
-      const geo = measure(dry, fresh.head, size, seen.selected, interaction.ringOn)
+      const geo = measure(dry, fresh.head, size, seen.selected, interaction.ringOn, fresh.isTight)
       pinned = follow(pinned, geo, scopeOf(seen), geo.key)
       rows = geo.rows
     }
@@ -730,7 +730,7 @@ export function pane(on: On, hours = baseHours): void {
     const { list = [] } = feed($, drawing(rows))
     screen.drew(e.surface, ask)
     if (!fresh) return render(ui, e.surface, list, leave)
-    const geo = measure(list, fresh.head, size, seen.selected, interaction.ringOn)
+    const geo = measure(list, fresh.head, size, seen.selected, interaction.ringOn, fresh.isTight)
     pinned = { ...pinned, top: Math.min(pinned.top, Math.max(0, geo.total - geo.rows)) }
 
     return render(ui, e.surface, list, leave, 'cells', {
