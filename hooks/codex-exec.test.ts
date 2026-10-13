@@ -148,3 +148,17 @@ test('a closing ) ends the codex exec command and a & after it detaches', () => 
     isDetached: false,
   })
 })
+
+test('a detached group keeps the call detached and the ) keeps the argument boundary', () => {
+  const run = { resultPath: '/tmp/r.txt', isDetached: true }
+  expect(codexExec('(codex exec -o /tmp/r.txt x) > /tmp/log 2>&1 &')).toEqual(run)
+  expect(codexExec('( (codex exec -o /tmp/r.txt x) ) &')).toEqual(run)
+  expect(codexExec('(codex exec -o /tmp/r.txt x) && echo y &')).toEqual({
+    resultPath: '/tmp/r.txt',
+    isDetached: false,
+  })
+  expect(codexExec('(codex exec -o /tmp/r.txt x) > --output-last-message=/tmp/fake.txt')).toEqual({
+    resultPath: '/tmp/r.txt',
+    isDetached: false,
+  })
+})

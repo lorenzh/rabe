@@ -71,12 +71,17 @@ export function codexExec(command: string, home?: string): CodexExec | undefined
       typeof word === 'string' ? word : isWord(word) && word.known ? word.text : undefined
     if (path?.startsWith('/')) resultPath = path
   })
-  // A `)` closes a subshell; a `&` right after it detaches the whole group.
-  const stop = end < 0 ? undefined : rest[end]
-  const after = stop && 'op' in stop && stop.op === ')' ? rest[end + 1] : stop
+  // A `)` closes a subshell: a `&` after it (past redirects and further `)`)
+  // detaches the whole group; any other end stops the scan.
+  let isDetached = false
+  for (const tok of end < 0 ? [] : rest.slice(end)) {
+    if (isWord(tok) || tok.op === ')' || !ENDS.has(tok.op)) continue
+    isDetached = tok.op === '&'
+    break
+  }
 
   return {
     ...(resultPath && { resultPath }),
-    isDetached: after !== undefined && 'op' in after && after.op === '&',
+    isDetached,
   }
 }
