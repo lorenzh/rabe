@@ -840,7 +840,11 @@ test('main session writes and shell writes are kept apart from agents', async ($
     { path: '/repo/plan.md', at: 5000, via: 'write' },
     { path: '/tmp/main.md', at: 5000, via: 'shell' },
   ])
-  expect(held.items ?? []).toEqual([])
+  // Only the ended rows of the two foreground calls, no agent.
+  expect(held.items?.map(item => `${item.kind} ${item.status}`)).toEqual([
+    'shell done',
+    'shell done',
+  ])
 })
 
 test('a staged edit or write leaves the file unchanged and is not kept', async ($, on) => {

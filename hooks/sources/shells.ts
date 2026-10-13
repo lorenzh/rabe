@@ -2,7 +2,7 @@ import type { EngineInterface, On } from 'claude-code'
 import type { RabeFileCursor, RabeLines } from '../../types'
 import { codexExec } from '../codex-exec'
 import { fault, type Pollers, skipped, tally } from '../loop'
-import { itemId, type RabeItem } from '../model'
+import { type EndStatus, itemId, type RabeItem } from '../model'
 import { listeningPort, processTree } from '../ports'
 import {
   cursorOf,
@@ -17,6 +17,7 @@ import {
 import {
   addItem,
   type Change,
+  capEnded,
   changeOf,
   commit,
   endItem,
@@ -36,8 +37,19 @@ import {
 } from '../tasks'
 
 const MAX_READ = 4 * 1024 * 1024
-// A foreground call shows as a shell only after this long, so quick commands cause no flicker.
+// A running foreground call shows only after this long, so quick commands cause no flicker.
 const SLOW_MS = 2000
+// Ended foreground rows kept, apart from MAX_ENDED, so quick commands never push out other ended work.
+export const MAX_FOREGROUND = 50
+
+const isForeground = (item: RabeItem) => item.id.startsWith('shell:fg-')
+
+// The list with at most MAX_FOREGROUND ended foreground rows, the oldest dropped.
+function capForeground(items: RabeItem[]): RabeItem[] {
+  const kept = new Set(capEnded(items.filter(isForeground), MAX_FOREGROUND))
+
+  return items.filter(item => !isForeground(item) || kept.has(item))
+}
 
 // Each event takes one hook without a matcher per plugin; these match every event.
 const ANY_STOP = { stop_hook_active: [true, false] }
@@ -428,30 +440,40 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
 
 type BashCall = { tool_use_id: string; command: string; description?: string; agentId?: string }
 
-// The row of a foreground Bash call that is still running.
+// The row of a foreground Bash call: running, or ended with `end` in the same write.
 async function foreground(
   $: EngineInterface,
   e: BashCall,
   id: string,
   startedAt: number,
-  resultPath?: string,
+  { resultPath, end }: { resultPath?: string; end?: EndStatus } = {},
 ) {
   const now = await $.clock.now()
-  await write($, held =>
-    addItem(
+  await write($, held => {
+    const added = addItem(
       held,
       {
         id,
         kind: 'shell',
         title: shellTitle(e.description, e.command, 'foreground'),
         status: 'running',
-        startedAt,
+        startedAt: startedAt || now,
         ...(e.agentId && { parentId: itemId('agent', e.agentId) }),
         detail: { command: e.command, ...(resultPath && { resultPath }) },
       },
       now,
-    ),
-  )
+    )
+
+    return end ? capForeground(endItem(added, id, end, now)) : added
+  })
+}
+
+// How a returned foreground call ends: refused or interrupted stops it.
+function endOf(answer: { deny?: string; isError?: boolean; result?: unknown }): EndStatus {
+  const result = answer.result as { interrupted?: unknown } | undefined
+  if (answer.deny || result?.interrupted === true) return 'stopped'
+
+  return answer.isError ? 'failed' : 'done'
 }
 
 export function shells(on: On, pollers: Pollers): void {
@@ -487,7 +509,9 @@ export function shells(on: On, pollers: Pollers): void {
     } catch (error) {
       stop.abort()
       await shown
-      if (added) await write($, held => held.filter(item => item.id !== id)).catch(() => undefined)
+      if (!e.run_in_background) {
+        await foreground($, e, id, startedAt, { end: 'stopped' }).catch(() => undefined)
+      }
       throw error
     }
     stop.abort()
@@ -496,11 +520,16 @@ export function shells(on: On, pollers: Pollers): void {
       const result = answer.result as { backgroundTaskId?: string } | undefined
       const taskId = result?.backgroundTaskId
       const now = await $.clock.now()
-      // A `codex exec ... &` outlives the call: its result file ends the row.
-      const keep = exec?.isDetached ? exec.resultPath : undefined
-      if (keep) await foreground($, e, id, startedAt, keep)
-      else if (added) await write($, held => held.filter(item => item.id !== id))
+      const ended = answer as Parameters<typeof endOf>[0]
+      // A `codex exec ... &` that ran outlives the call: its result file ends the row.
+      const keep = exec?.isDetached && !ended.deny && !ended.isError ? exec.resultPath : undefined
+      if (keep) await foreground($, e, id, startedAt, { resultPath: keep })
+      else if (!taskId && !e.run_in_background) {
+        await foreground($, e, id, startedAt, { end: endOf(ended) })
+      }
       if (taskId) {
+        // Claude Code moved the call to the background: the task row replaces it.
+        if (added && !keep) await write($, held => held.filter(item => item.id !== id))
         const outputPath = outputPathOf(answer.text)
         await write($, held =>
           addItem(

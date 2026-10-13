@@ -33,3 +33,29 @@ test('a detached run without a result file has none', () => {
 test('the home folder expands in a result path', () => {
   expect(codexExec('codex exec -o ~/r.txt x &', '/home/me')?.resultPath).toBe('/home/me/r.txt')
 })
+
+test('an expanded --output-last-message= path is no result path', () => {
+  expect(codexExec('codex exec --output-last-message="/tmp/$RESULT" x &')).toEqual({
+    isDetached: true,
+  })
+  expect(codexExec('codex exec --output-last-message "/tmp/$RESULT" x &')).toEqual({
+    isDetached: true,
+  })
+  expect(codexExec('codex exec -o "/tmp/$RESULT" x &')).toEqual({ isDetached: true })
+})
+
+test('codex as an argument of another command is none', () => {
+  expect(codexExec('printf "value=" codex exec -o /tmp/fake.txt x &')).toBeUndefined()
+  expect(codexExec('echo a=1 codex exec -o /tmp/fake.txt x &')).toBeUndefined()
+  expect(codexExec('echo codex exec -o /tmp/fake.txt x &')).toBeUndefined()
+})
+
+test('assignments and start words before codex keep it a command', () => {
+  const run = { resultPath: '/tmp/r.txt', isDetached: true }
+  expect(codexExec('A=1 codex exec -o /tmp/r.txt x &')).toEqual(run)
+  expect(codexExec('env A=1 codex exec -o /tmp/r.txt x &')).toEqual(run)
+  expect(codexExec('cd /x && A=1 B=2 nohup codex exec -o /tmp/r.txt x &')).toEqual(run)
+  expect(codexExec('true; setsid codex exec -o /tmp/r.txt x &')).toEqual(run)
+  expect(codexExec('ls\nnohup codex exec -o /tmp/r.txt x &')).toEqual(run)
+  expect(codexExec('(nohup codex exec -o /tmp/r.txt x &)')?.resultPath).toBe('/tmp/r.txt')
+})

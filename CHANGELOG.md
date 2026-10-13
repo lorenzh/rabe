@@ -4,6 +4,13 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Fixed
+
+- A finished foreground Bash command keeps its row as ended (done, failed or stopped) with its Timeline bar, also when it took under 2 s; the newest 50 are kept (fixes [#164](https://github.com/lorenzh/rabe/issues/164)).
+- A refused or failed Bash call that would start a detached `codex exec` no longer leaves a running shell (fixes [#156](https://github.com/lorenzh/rabe/issues/156)).
+- A `codex exec --output-last-message=<path>` whose path holds an expansion is no longer polled as a literal path (fixes [#157](https://github.com/lorenzh/rabe/issues/157)).
+- `codex exec` given as an argument of another command, such as `printf "value=" codex exec ...`, no longer counts as a Codex launch (fixes [#158](https://github.com/lorenzh/rabe/issues/158)).
+
 ## [0.8.0] - 2026-10-13
 
 ### Added
