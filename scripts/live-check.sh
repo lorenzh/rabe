@@ -409,47 +409,83 @@ click() {
   k -l "$(printf '\033[<0;%d;%dM\033[<0;%d;%dm' "$x" "$y" "$x" "$y")"
   sleep 0.5
 }
-# Clicks the last row that shows a running shell (▶). The spare shells are
-# alike, so the row needs no name: the processes tell what stopped.
+# The duration of the seeded shell a row shows, empty for any other row.
+shellof() { [[ $1 =~ sleep\ ($durations)($|[^0-9]) ]] && echo "${BASH_REMATCH[1]}"; }
+# What a row is called across screens: its shell's duration, or its text
+# without digits (a timer ticks).
+ident() {
+  local d
+  d=$(shellof "$1")
+  if [ -n "$d" ]; then echo "$d"; else tr -d 0-9 <<<"${1:1}" | tr -s ' '; fi
+}
+# Clicks the last row that shows a running seeded shell (▶) other than the
+# marked one, and sets `clicked` to its duration.
 click_running() {
-  local i last=-1
+  local i last=-1 d
   look
   listscan
+  clicked=
   for i in "${!lrows[@]}"; do
-    [[ ${view[lrows[i]]} =~ ^(▌|\ )\ {0,2}▶\  ]] && last=${lrows[i]}
+    [ "$i" = "$lsel" ] && continue
+    [[ ${view[lrows[i]]} =~ ^(▌|\ )\ {0,2}▶\  ]] || continue
+    d=$(shellof "${view[lrows[i]]}")
+    [ -n "$d" ] && { last=${lrows[i]}; clicked=$d; }
   done
-  [ "$last" -ge 0 ] || { why="no row with a running shell is on screen"; return 1; }
+  [ "$last" -ge 0 ] || { why="no running seeded shell besides the marked row is on screen"; return 1; }
   click "$last"
 }
-# One shell of this run stops within 8 s, and no other one.
+# $2, the clicked shell, stops within 8 s, and no other one: the count of
+# running shells drops from $1 by one.
 stopped() {
-  local i now
+  local i now n
   for i in $(seq 1 16); do
-    now=$(running | wc -l)
-    [ "$now" -le $(($1 - 1)) ] && break
+    now=$(running)
+    n=$(grep -c . <<<"$now")
+    grep -qx "$2" <<<"$now" || break
     sleep 0.5
   done
-  [ "$now" = $(($1 - 1)) ] || { why="$1 shells ran, $now run after x"; return 1; }
+  if [ "$n" != $(($1 - 1)) ] || grep -qx "$2" <<<"$now"; then
+    why="x on the clicked sleep $2: $1 shells ran, $n run after, running: $(tr '\n' ' ' <<<"$now")"
+    return 1
+  fi
 }
 
+# The seeded shell on the marked row, empty for none.
+marked() { [ "$lsel" -ge 0 ] && shellof "${view[lrows[lsel]]}"; }
 seq_ring() { # tab key
-  local from
+  local from a b c mid end
   listscan
   from=$lsel
   [ "$from" -ge 0 ] || { why="no row is selected at the start"; return 1; }
-  keys "$1" 1 Down Down
+  a=$(shellof "${view[lrows[from]]}")
+  b=$(shellof "${view[lrows[from + 1]]:-}")
+  c=$(shellof "${view[lrows[from + 2]]:-}")
+  keys "$1" 1 Down
   snap
   listscan
-  # Down Down is two rows on; a group header between two groups takes one Down.
-  { [ "$lsel" -gt "$from" ] && [ "$lsel" -le $((from + 2)) ]; } ||
-    { why="after $1 1 Down Down the marker is on row $lsel, from row $from (wanted the next rows)"; return 1; }
+  mid=$(marked)
+  keys Down
+  snap
+  listscan
+  end=$(marked)
+  if [ -n "$a" ] && [ -n "$b" ] && [ -n "$c" ]; then
+    # Three shells in a row: each Down lands on the next one.
+    [ "$mid" = "$b" ] ||
+      { why="after $1 1 Down the marker is on ${mid:+sleep }${mid:-no shell}, from sleep $a (wanted sleep $b)"; return 1; }
+    [ "$end" = "$c" ] ||
+      { why="after $1 1 Down Down the marker is on ${end:+sleep }${end:-no shell} (wanted sleep $c)"; return 1; }
+  else
+    # A group header between two groups takes one Down.
+    { [ "$lsel" -gt "$from" ] && [ "$lsel" -le $((from + 2)) ]; } ||
+      { why="after $1 1 Down Down the marker is on row $lsel, from row $from (wanted the next rows)"; return 1; }
+  fi
 }
 seq_click_stop() {
   local before
   before=$(running | wc -l)
   click_running || return 1
   k x
-  stopped "$before"
+  stopped "$before" "$clicked"
 }
 seq_search_keys() {
   keys s z z x
@@ -457,10 +493,14 @@ seq_search_keys() {
   pane_has 'search:? +zzx' || { why="the field does not read zzx"; return 1; }
 }
 seq_search_esc() {
-  keys s z z Escape z
+  keys s z z
+  snap
+  pane_has 'search:? +zz([^z]|$)' || { why="the field does not read zz before Esc"; return 1; }
+  keys Escape z
   snap
   opened || { why="Esc closed the pane"; return 1; }
-  ! pane_has 'search:? +zzz' || { why="the field still takes keys after Esc"; return 1; }
+  # The field keeps its text, so a z after Esc that left it changes nothing.
+  pane_has 'search:? +zz([^z]|$)' || { why="after Esc and z the field does not read zz: the focus stayed in it"; return 1; }
 }
 seq_search_enter() {
   local want
@@ -496,11 +536,12 @@ seq_tab_selection() {
   [ "$before" = "$after" ] || { why="row $before was selected, back on row $after"; return 1; }
 }
 seq_remove_neighbour() {
-  local before rows
+  local before i at=-1 now prev= next=
+  local -a names=()
   before=$(running | wc -l)
   click_running || return 1
   k x
-  stopped "$before" || return 1
+  stopped "$before" "$clicked" || return 1
   # The row is ended once Claude Code reports the stop; a click opened its
   # detail, which has no r.
   sleep 3
@@ -511,12 +552,24 @@ seq_remove_neighbour() {
   fi
   look
   listscan
-  rows=${#lrows[@]}
+  for i in "${!lrows[@]}"; do
+    names+=("$(ident "${view[lrows[i]]}")")
+    [ "${names[i]}" = "$clicked" ] && at=$i
+  done
+  [ "$at" -ge 0 ] || { why="the row of sleep $clicked is not in the list after the stop"; return 1; }
   k r
   snap
   listscan
-  [ "${#lrows[@]}" = $((rows - 1)) ] || { why="r left $rows rows, ${#lrows[@]} remain"; return 1; }
+  for i in "${!lrows[@]}"; do
+    [ "$(ident "${view[lrows[i]]}")" = "$clicked" ] && { why="r left the row of sleep $clicked"; return 1; }
+  done
   [ "$lsel" -ge 0 ] || { why="r left no row selected"; return 1; }
+  # The neighbour on either side, by name: a clipped list shows other rows.
+  now=$(ident "${view[lrows[lsel]]}")
+  [ "$at" -gt 0 ] && prev=${names[at - 1]}
+  [ $((at + 1)) -lt ${#names[@]} ] && next=${names[at + 1]}
+  { [ -n "$now" ] && { [ "$now" = "$prev" ] || [ "$now" = "$next" ]; }; } ||
+    { why="after r on sleep $clicked the marker is on '$now', not on '$prev' or '$next'"; return 1; }
 }
 seq_back() { # tab key
   local i
