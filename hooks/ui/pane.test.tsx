@@ -598,6 +598,59 @@ test('a message field gained under held rows keeps the rows in the clipped box',
   await ui.unmount()
 })
 
+// Where the element `key` stands: in the header or tail (`out`), or as the
+// index of its row in the clipped list against the rows the box shows.
+async function placeOf(ui: Mounted, key: string) {
+  const drawn = (await ui.drawn()) as Drawn
+  const [clip] = boxes(drawn, props => props.key === 'body')
+  const inner = clip?.children?.[0]
+  const top = -((inner?.props?.marginTop as number | undefined) ?? 0)
+  const height = clip?.props?.height as number
+  const at = (inner?.children ?? []).findIndex(one => keysIn(one).includes(key))
+  const around = drawn.children?.filter(one => one.props?.key !== 'body') ?? []
+
+  return { at, top, height, isOut: around.some(one => keysIn(one).includes(key)), around }
+}
+
+const planner: RabeItem = {
+  ...(explore as RabeItemOf<'agent'>),
+  id: 'agent:b1',
+  title: 'Plan the cache',
+  detail: { agentId: 'b1', type: 'Plan' },
+}
+
+test('selecting two agents and then the last shell keeps it in view and the search in the header', async ($, on) => {
+  hold(on, [explore, planner, ...manyShells(60)], { selected: explore.id })
+  const props = { ...WIDE.props, scroll: { offset: 0, bodyRows: 24 } }
+  const ui = await $.ui.mount({ surface: 'terminal', ...WIDE, props } as never)
+  await arm($, `row:${explore.id}`)
+  await arm($, `row:${planner.id}`)
+  await arm($, 'row:shell:many60')
+  const row = await placeOf(ui, 'row:shell:many60')
+  expect(row.at).toBeGreaterThanOrEqual(row.top)
+  expect(row.at).toBeLessThan(row.top + row.height)
+  expect((await placeOf(ui, 'search')).isOut).toBe(true)
+  expect(row.around.length + row.height).toBeLessThanOrEqual(24)
+  await ui.unmount()
+})
+
+test('a row that arrives under the message field leaves the field reachable', async ($, on) => {
+  const items = [explore, ...manyShells(60)]
+  hold(on, items, { selected: 'shell:many1' })
+  const props = { ...WIDE.props, scroll: { offset: 0, bodyRows: 24 } }
+  const ui = await $.ui.mount({ surface: 'terminal', ...WIDE, props } as never)
+  await arm($, 'row:shell:many1')
+  await arm($, `row:${explore.id}`)
+  expect(await ui.find({ type: 'Input', key: `message:${explore.id}` })).toBeDefined()
+  items.push(...manyShells(61).slice(60))
+  await ui.redraw(props as never)
+  expect(await ui.find({ type: 'Button', key: 'row:shell:many61' })).toBeDefined()
+  await arm($, `message:${explore.id}`)
+  const field = await placeOf(ui, `message:${explore.id}`)
+  expect(field.isOut || (field.at >= field.top && field.at < field.top + field.height)).toBe(true)
+  await ui.unmount()
+})
+
 test('a wide terminal pane shows the selected item beside the list', async ($, on) => {
   hold(on, ALL, { selected: review.id })
   const ui = await $.ui.mount({ surface: 'terminal', ...WIDE } as never)

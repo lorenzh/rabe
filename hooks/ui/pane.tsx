@@ -16,13 +16,12 @@ import {
 } from './interaction'
 import { KIND_LABEL, kept, matches, orderOf, previousOf, rowOf } from './lists'
 import { asPrevious, clipText, nameOf, toastText } from './pane-data'
-import { follow, geometry, NO_PIN, type Pin } from './pin'
-import { type At, hold, isRowKey, render } from './render'
+import { follow, geometry, measure, NO_PIN, type Pin } from './pin'
+import { type At, hold, render } from './render'
 import { reserve, sequence } from './sequence'
 import {
   type Action,
   bounded,
-  isPress,
   landing,
   landingOf,
   layout,
@@ -545,6 +544,8 @@ async function focused($: EngineInterface, e: UiFocusInput, next: Next<'ui.focus
       isLiveRow: isLiveRow(model, selection, landed),
       selected: selection.selected,
     })
+    // A control or Input inside the clipped list is scrolled into view.
+    if (isPinned && !landed.startsWith('row:')) $.ui.invalidate('ui.render')
   }
 
   return result
@@ -682,29 +683,33 @@ export function pane(on: On, hours = baseHours): void {
     })
 
     // On the terminal a body taller than its room scrolls under the header.
-    const geo = e.surface === 'terminal' && e.props.scroll ? geometry(model, size, seen) : undefined
-    isPinned = !!geo
-    if (geo) pinned = follow(pinned, geo, scopeOf(seen), seen.selected)
-
-    const { list = [] } = feed($, {
+    // The scroll is measured on the held pieces the pane draws: a dry run of
+    // the drawing finds them for the scroll the view gets.
+    const fresh =
+      e.surface === 'terminal' && e.props.scroll ? geometry(model, size, seen) : undefined
+    isPinned = !!fresh
+    const drawing = (rows: number): InteractionEvent => ({
       type: 'render',
       model,
-      size: geo ? { ...size, window: { top: geo.above + pinned.top, rows: geo.rows } } : size,
+      size: fresh ? { ...size, window: { top: fresh.above + pinned.top, rows } } : size,
       selection: seen,
       placement: e.props.placement,
     })
-    if (!geo) return render(ui, e.surface, list, leave)
-    // The header ends at the first row: a control or Input held order put
-    // under the rows is drawn under the clipped box (see `render`).
-    const first = list.findIndex(
-      one => 'spans' in one && one.spans.some(part => isPress(part) && isRowKey(part.key)),
-    )
-    const late = list.filter(
-      (one, at) => first >= 0 && at > first && ('button' in one || 'input' in one),
-    ).length
+    let rows = fresh?.rows ?? 0
+    if (fresh) {
+      const dry = interact(interaction, drawing(rows)).list ?? []
+      const geo = measure(dry, fresh.head, size, seen.selected, interaction.ringOn)
+      pinned = follow(pinned, geo, scopeOf(seen), geo.key)
+      rows = geo.rows
+    }
+
+    const { list = [] } = feed($, drawing(rows))
+    if (!fresh) return render(ui, e.surface, list, leave)
+    const geo = measure(list, fresh.head, size, seen.selected, interaction.ringOn)
+    pinned = { ...pinned, top: Math.min(pinned.top, Math.max(0, geo.total - geo.rows)) }
 
     return render(ui, e.surface, list, leave, 'cells', {
-      split: geo.heads - late,
+      split: geo.split,
       rows: geo.rows,
       top: pinned.top,
     })

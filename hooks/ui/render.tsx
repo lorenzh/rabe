@@ -10,6 +10,7 @@ import type {
 
 import { clamp, encode, lines } from './cells/grid'
 import { C, paint } from './cells/palette'
+import { tailOf } from './pin'
 import {
   type Action,
   type Drawn,
@@ -303,17 +304,13 @@ export function render(
 
   if (!pin) return <Box flexDirection="column">{cells.flat()}</Box>
   // Tabs and toolbar stay; a clipped box shows `rows` of the list moved up by
-  // `top`; the hint stays under it. A control or Input held order put after
-  // the last focusable line stands under the box, so the focus order is kept.
+  // `top`; the hint and the late controls (`tailOf`) stay under it.
   const head = starts.filter(at => at < pin.split).length
-  const end = Math.max(head, cells.length - 1)
-  const isTool = (one: Piece | ViewButton[] | undefined) =>
-    one !== undefined && (Array.isArray(one) || 'input' in one)
-  const last = runs.findLastIndex(one => 'spans' in one && one.spans.some(isPress))
+  const isTail = tailOf(list)
   const body: number[] = []
   const tail: number[] = []
   for (let at = head; at < cells.length; at++) {
-    if (at >= end || (at > last && isTool(runs[at]))) tail.push(at)
+    if (isTail(starts[at] ?? 0)) tail.push(at)
     else body.push(at)
   }
   const draw = (ats: number[]) => ats.flatMap(at => cells[at] ?? [])
