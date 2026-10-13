@@ -42,7 +42,7 @@ Use this index to find the guide that matches your question.
 
 - [Feasibility overview](feasibility.md): overview, confirmed cron fire identity and turn-end limits, stat-only idle reader benchmark, and links to the source limits.
 - [Claude agents and workflows](feasibility/agents.md): agent and teammate identity, worktree, and workflow data with script path limits.
-- [Codex and background work](feasibility/background-work.md): Codex jobs, shells, monitors, cron jobs, polling intervals, and task output path limits.
+- [Codex and background work](feasibility/background-work.md): Codex jobs, foreground Bash calls, direct codex exec runs, shells, monitors, cron jobs, polling intervals, and task output path limits.
 - [User interface limits](feasibility/ui.md): API limits for rendering and input.
 - [Price data](feasibility/prices.md): price inputs and view data.
 - [Files and runtime limits](feasibility/files.md): script edits from Bash diffs, confirmed shell writes, coverage settings, and open runtime questions.

@@ -20,7 +20,7 @@ Status: early development. See [releases](https://github.com/lorenzh/rabe/releas
 | Claude subagents | Count (`claude`) | Name when Claude Code provides one, otherwise the task description; tokens, prompt, turns and agent id |
 | Workflows | Count (`workflow`) | Phases and their agents in start order, with tokens and time; select an agent to open it |
 | Codex jobs (from the Codex plugin) | Count (`codex`) | Model, effort and sandbox, tokens, the prompt, each message and command with its exit code, the thread id (`c` copies `codex resume <thread id>`) |
-| Background shells | Count (`shell`) | Bash description and task id, output lines, exit code and guessed port |
+| Background shells | Count (`shell`) | Bash description and task id, output lines, exit code and guessed port; a foreground command running longer than 2 s, and a detached `codex exec -o <file> &`, show as running shells |
 | Monitors | Count (`monitor`) | Each line with the time Rabe received it |
 | Cron jobs and `/loop` wakeups | Count (`cron`) | The next five runs while running; confirmed last fire time, fire count and observed turn end; deleted jobs say `deleted` |
 | Cost | Session cost and tokens of the background work | Cost tab: tokens and an estimate in dollars (`≈ $0.16`) per worker, workers that look stuck |
@@ -149,7 +149,7 @@ Ended items keep their stop buttons in place. These buttons stay dim. Pressing t
 Commands:
 
 - `/rabe`: open the pane.
-- `/rabe-stop codex:<job id>`: cancel a running Codex job. `x` in the pane does the same.
+- `/rabe-stop codex:<job id>`: cancel a running Codex job. Use the job id shown in Rabe, not the thread id. Empty arguments or arguments without `codex:` show usage. To stop other items, use `x` in the pane.
 - `/rabe-diag`: show what each source read in its last poll, with versions and options, and no prompts, titles or full paths. Run it when something shows `n/a` or is missing.
 - `/rabe:report-bug`: write a bug report for this repository.
 - `/rabe:feedback`: write an idea or a comment for this repository.
