@@ -4,6 +4,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-13
+
 ### Fixed
 
 - The README lists the `c`, `m` and `d` keys the Items list offers beside the detail ([#165](https://github.com/lorenzh/rabe/pull/165), fixes [#161](https://github.com/lorenzh/rabe/issues/161))
@@ -225,7 +227,8 @@ The first public version.
 
 - Workflow agents no longer offer stop and message, which Claude Code does not support for a single workflow agent; their detail offers stopping the run. ([#8](https://github.com/lorenzh/rabe/pull/8))
 
-[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/lorenzh/rabe/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/lorenzh/rabe/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/lorenzh/rabe/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/lorenzh/rabe/compare/v0.5.0...v0.6.0
