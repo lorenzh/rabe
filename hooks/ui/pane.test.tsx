@@ -488,6 +488,15 @@ test('a long list on the terminal scrolls in a clipped box under the tabs', asyn
   await ui.unmount()
 })
 
+test('the clipped list keeps its rows at full height instead of shrinking them', async ($, on) => {
+  hold(on, manyShells(60), { selected: 'shell:many1' })
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  const [clip] = await clipped(ui)
+  const inner = clip?.children?.[0]
+  expect(inner?.props?.flexShrink).toBe(0)
+  await ui.unmount()
+})
+
 test('a list that fits the body is not clipped', async ($, on) => {
   hold(on, ALL, { selected: review.id })
   const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
