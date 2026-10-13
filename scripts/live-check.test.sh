@@ -59,6 +59,23 @@ cat >"$fake/bin/tmux" <<'EOF'
 shift 2
 cmd=$1
 shift
+# The rows that show: FAKE_LIST rows minus removed ones (gone) and, after a
+# submitted search, those whose duration differs from it. `vis` holds their
+# ids in list order; the ring and the marker count positions in `vis`.
+visible() {
+  local id total g f
+  mapfile -t durs < <(cat "$FAKE/durs" 2>/dev/null | tr ' ' '\n')
+  total=$(tr ' ' '\n' <<<"${FAKE_LIST:-}" | grep -Ec '^[ri]$')
+  g=" $(cat "$FAKE/gone" 2>/dev/null | tr '\n' ' ') "
+  f=$(cat "$FAKE/filter" 2>/dev/null)
+  vis=()
+  for ((id = 0; id < total; id++)); do
+    [[ $g == *" $id "* ]] && continue
+    [ -n "$f" ] && [ "${durs[id]:-}" != "$f" ] && continue
+    vis+=("$id")
+  done
+  rows=${#vis[@]}
+}
 case $cmd in
   has-session) exit 1 ;;
   # FAKE_BUSY: the socket already serves a session of someone else.
@@ -81,7 +98,14 @@ case $cmd in
   send-keys)
     shift 2
     if [ "$1" = -l ]; then
-      [ "$2" = /rabe ] && rm -f "$FAKE/closed" "$FAKE/field"
+      # A left click: the row at that screen line is marked (FAKE_CLICK=ignore
+      # leaves the marker where it was, the bug of #186).
+      if [[ $2 =~ $'\033'\[\<0\;[0-9]+\;([0-9]+)M ]]; then
+        pos=$(awk -v l=$((BASH_REMATCH[1] - 1)) '$1 == l { print $2 }' "$FAKE/rowmap" 2>/dev/null)
+        if [ -n "$pos" ] && [ "${FAKE_CLICK:-}" != ignore ]; then echo "$pos $pos" >"$FAKE/ring"; fi
+        exit 0
+      fi
+      [ "$2" = /rabe ] && rm -f "$FAKE/closed" "$FAKE/field" "$FAKE/opened" "$FAKE/detail"
       field=0 text=
       read -r field text 2>/dev/null <"$FAKE/field"
       [ "$field" = 1 ] && echo "1 $text$2" >"$FAKE/field"
@@ -106,17 +130,39 @@ case $cmd in
       # The search field: s focuses it, letters fill it, Escape leaves it
       # (FAKE_ESC=close closes the pane instead, #187), FAKE_FIELD=eat loses
       # the second letter (#180).
+      # Enter in the field submits the search: the list keeps the rows of that
+      # duration, the first one marked (FAKE_ENTER=nofilter filters nothing).
+      # Enter on the list opens the detail (FAKE_ENTER=nodetail does not), b
+      # closes it (FAKE_BACK=items also goes to the first tab, #185). x stops
+      # the marked shell and r removes it once it ended (FAKE_REMOVE=reset
+      # marks the first row after, =keep removes nothing, #188).
       field=0 text=
       read -r field text 2>/dev/null <"$FAKE/field"
+      [[ $1 == [1-4] ]] && [ "$field" != 1 ] && echo "$1" >"$FAKE/tab"
       if [ "$field" = 1 ] && [ ${#1} = 1 ]; then
         { [ "${FAKE_FIELD:-}" = eat ] && [ ${#text} = 1 ]; } || text+=$1
         echo "1 $text" >"$FAKE/field"
       elif [ "$field" = 1 ] && [ "$1" = Escape ]; then
-        if [ "${FAKE_ESC:-}" = close ]; then : >"$FAKE/closed"; else echo "0 $text" >"$FAKE/field"; fi
+        if [ "${FAKE_ESC:-}" = close ]; then
+          : >"$FAKE/closed"
+        elif [ "${FAKE_ESC:-}" != ignore ]; then
+          echo "0 $text" >"$FAKE/field"
+        fi
+      elif [ "$field" = 1 ] && [ "$1" = Enter ]; then
+        [ "${FAKE_ENTER:-}" = nofilter ] || echo "$text" >"$FAKE/filter"
+        echo "0 $text" >"$FAKE/field"
+        echo "0 0" >"$FAKE/ring"
+      elif [ "$field" = 1 ] && [ "$1" = BSpace ]; then
+        text=${text%?}
+        echo "1 $text" >"$FAKE/field"
+        [ -n "$text" ] || rm -f "$FAKE/filter"
       elif [ "$1" = s ]; then
         echo "1 " >"$FAKE/field"
+      elif [ "$1" = b ]; then
+        rm -f "$FAKE/detail"
+        [ "${FAKE_BACK:-}" = items ] && echo 1 >"$FAKE/tab"
       elif [ -n "${FAKE_LIST:-}" ]; then
-        rows=$(tr ' ' '\n' <<<"$FAKE_LIST" | grep -Ec '^[ri]$')
+        visible
         read -r ring sel 2>/dev/null <"$FAKE/ring" || { ring=$FAKE_RING; sel=$FAKE_RING; }
         case $1 in
           Up)
@@ -129,9 +175,30 @@ case $cmd in
               ring=$(((ring - 1 + rows + FAKE_STOPS) % (rows + FAKE_STOPS)))
             fi ;;
           Down) ring=$(((ring + 1) % (rows + FAKE_STOPS))) ;;
+          Enter)
+            [ "${FAKE_ENTER:-}" = nodetail ] || { [ -e "$FAKE/opened" ] && : >"$FAKE/detail"; }
+            exit 0 ;;
+          x)
+            id=${vis[sel]:-}
+            [ -n "$id" ] || exit 0
+            kill "$(sed -n "$((id + 1))p" "$FAKE/seeded")" 2>/dev/null
+            echo "$id" >>"$FAKE/ended"
+            exit 0 ;;
+          r)
+            id=${vis[sel]:-}
+            [ -n "$id" ] && grep -qx "$id" "$FAKE/ended" 2>/dev/null || exit 0
+            [ "${FAKE_REMOVE:-}" = keep ] || echo "$id" >>"$FAKE/gone"
+            visible
+            [ "$sel" -lt "$rows" ] || sel=$((rows - 1))
+            [ "${FAKE_REMOVE:-}" = reset ] && sel=0
+            ring=$sel ;;
           [1-4])
             [ -n "${FAKE_TABKEY:-}" ] || exit 0
-            [ "$FAKE_TABKEY" = stop ] && ring=$rows || ring=$sel
+            case $FAKE_TABKEY in
+              stop) ring=$rows ;;
+              search) ring=$((rows + FAKE_STOPS - 1)) ;; # the stop just before row 0
+              *) ring=$sel ;;
+            esac
             [ -n "${FAKE_TABRESET:-}" ] && { ring=0; sel=0; } ;;
           *) exit 0 ;;
         esac
@@ -146,12 +213,16 @@ case $cmd in
     # The pane opens on /rabe; FAKE_PANE=none keeps it closed.
     right=()
     if grep -qx /rabe "$FAKE/screen" 2>/dev/null && [ "${FAKE_PANE:-}" != none ] && [ ! -e "$FAKE/closed" ]; then
-      tabs=(' 1: Items 4    2: Cost    3: Effects    4: Timeline' '─━━━━━━━━━━──────────')
+      tab=$(cat "$FAKE/tab" 2>/dev/null || echo 1)
+      at=(0 1 15 26 40)
+      rule=$(printf '─%.0s' $(seq 1 "${at[tab]}"))━━━──────────
+      tabs=(' 1: Items 4    2: Cost    3: Effects    4: Timeline' "$rule")
       field=0 text=
       read -r field text 2>/dev/null <"$FAKE/field"
       if [ "$field" = 1 ] || [ -n "$text" ]; then tabs+=("search: $text"); else tabs+=('search: title, kind or command'); fi
-      mapfile -t durs < <(tr ' ' '\n' <"$FAKE/durs" 2>/dev/null)
-      [ -n "${FAKE_DETAIL:-}" ] && tabs+=(' b back · esc close')
+      visible
+      : >"$FAKE/opened"
+      { [ -n "${FAKE_DETAIL:-}" ] || [ -e "$FAKE/detail" ]; } && tabs+=(' b back · esc close')
       if [ -z "${FAKE_LIST:-}" ]; then
         right=("${tabs[@]}")
       else
@@ -161,18 +232,30 @@ case $cmd in
         # do not.
         from=0
         if [ -n "${FAKE_SCROLL:-}" ] && [ "$ring" != -1 ]; then from=$sel; else right=("${tabs[@]}"); fi
-        n=0
+        n=0 id=0 rowk=()
         for w in $FAKE_LIST; do
+          if [[ $w == [ri] ]] && [[ " ${vis[*]} " != *" $id "* ]]; then
+            id=$((id + 1))
+            continue
+          fi
           case $w in
             H:*) line="▾ ${w#H:} 2" ;;
             F:*) line=" ◐ ${w#F:}" ;;
             *) [ "$n" = "$sel" ] && m=▌ || m=' '
                title="row $n"
-               [ -n "${FAKE_SLEEP:-}" ] && title="sleep ${durs[n]}"
-               [ "$w" = i ] && line="$m  ▶ $title" || line="$m▶ $title" ;;
+               [ -n "${FAKE_SLEEP:-}" ] && title="sleep ${durs[id]:-}"
+               g=▶
+               grep -qx "$id" "$FAKE/ended" 2>/dev/null && g=■
+               [ "$w" = i ] && line="$m  $g $title" || line="$m$g $title" ;;
           esac
-          [ "$n" -ge "$from" ] && right+=("$line")
-          [[ $w == [ri] ]] && n=$((n + 1))
+          if [ "$n" -ge "$from" ]; then
+            [[ $w == [ri] ]] && rowk+=("${#right[@]}:$n")
+            right+=("$line")
+          fi
+          if [[ $w == [ri] ]]; then
+            n=$((n + 1))
+            id=$((id + 1))
+          fi
         done
       fi
     fi
@@ -180,6 +263,7 @@ case $cmd in
       printf '%s\n' "${left[@]}"
     elif [ -n "${FAKE_INLINE:-}" ]; then
       # Inline, as in a narrow terminal: a box under the transcript.
+      for e in "${rowk[@]}"; do echo "$((${e%:*} + ${#left[@]} + 1)) ${e#*:}"; done >"$FAKE/rowmap"
       printf '%s\n' "${left[@]}" '╭──────────────────────'
       printf '│ %s\n' "${right[@]}"
       echo '╰──────────────────────'
@@ -187,6 +271,7 @@ case $cmd in
       # Docked, as at 120 columns: right of a border at cell 24, down from the
       # top line to the rule of the prompt box. The padding counts cells.
       right=('                     ✕' "${right[@]}")
+      for e in "${rowk[@]}"; do echo "$((${e%:*} + 1)) ${e#*:}"; done >"$FAKE/rowmap"
       for ((i = 0; i < (${#left[@]} > ${#right[@]} ? ${#left[@]} : ${#right[@]}); i++)); do
         l=${left[i]:-}
         l=${l:0:23}
@@ -321,6 +406,18 @@ sq 'Esc that leaves the field keeps the pane PASS' 0 'PASS search-esc 1/1' --she
 sq FAKE_ESC=close 'Esc that closes the pane is FAIL' 1 'FAIL search-esc 0/1' --shells 3 --timeout 50 --sequences search-esc
 sq 'a selection kept over the Cost tab is PASS' 0 'PASS tab-selection 1/1' --shells 3 --timeout 50 --sequences tab-selection
 sq FAKE_TABRESET=1 'a selection lost over the Cost tab is FAIL' 1 'FAIL tab-selection 0/1' --shells 3 --timeout 50 --sequences tab-selection
+sq FAKE_TABKEY=search 'a ring that stops on the control before the first row is FAIL' 1 'FAIL ring-2 0/1' --shells 3 --timeout 50 --sequences ring-2
+sq FAKE_FIELD=eat FAKE_ESC=ignore 'an Esc that leaves the focus in a field that lost a key is FAIL' 1 'FAIL search-esc 0/1' --shells 3 --timeout 50 --sequences search-esc
+sq 'a click and x that stop the clicked shell is PASS' 0 'PASS click-stop 1/1' --shells 3 --timeout 50 --sequences click-stop
+sq FAKE_CLICK=ignore 'x that stops another shell than the clicked one is FAIL' 1 'FAIL click-stop 0/1' --shells 3 --timeout 50 --sequences click-stop
+sq 'a search that leaves one marked row that Enter opens is PASS' 0 'PASS search-enter 1/1' --shells 3 --timeout 50 --sequences search-enter
+sq FAKE_ENTER=nofilter 'a search that filters nothing is FAIL' 1 'FAIL search-enter 0/1' --shells 3 --timeout 50 --sequences search-enter
+sq FAKE_ENTER=nodetail 'an Enter that opens no detail is FAIL' 1 'FAIL search-enter 0/1' --shells 3 --timeout 50 --sequences search-enter
+sq 'r that removes the row and marks its neighbour is PASS' 0 'PASS remove-neighbour 1/1' --shells 3 --timeout 50 --sequences remove-neighbour
+sq FAKE_REMOVE=reset 'r that marks the first row instead of the neighbour is FAIL' 1 'FAIL remove-neighbour 0/1' --shells 3 --timeout 50 --sequences remove-neighbour
+sq FAKE_REMOVE=keep 'r that keeps the row is FAIL' 1 'FAIL remove-neighbour 0/1' --shells 3 --timeout 50 --sequences remove-neighbour
+sq 'b back on the Cost and Timeline tabs is PASS' 0 'PASS back-timeline 1/1' --shells 3 --timeout 50 --sequences back-cost,back-timeline
+sq FAKE_BACK=items 'b that goes to the first tab is FAIL on both' 1 'FAIL back-timeline 0/1' --shells 3 --timeout 50 --sequences back-cost,back-timeline
 sq FAKE_TABKEY=stop 'one failing sequence sets the exit code' 1 'PASS search-keys 1/1' --shells 3 --timeout 50 --sequences ring-2,search-keys
 
 exit $failed
