@@ -138,7 +138,8 @@ case $cmd in
       # Enter on the list opens the detail (FAKE_ENTER=nodetail does not), b
       # closes it (FAKE_BACK=items also goes to the first tab, #185). x stops
       # the marked shell and r removes it once it ended (FAKE_REMOVE=reset
-      # marks the first row after, =keep removes nothing, #188).
+      # marks the first row after, =keep removes nothing, #188). FAKE_ARM=1:
+      # the row's end disarms r until an arrow moves the ring, as in Rabe.
       field=0 text=
       read -r field text 2>/dev/null <"$FAKE/field"
       if [[ $1 == [1-4] ]] && [ "$field" != 1 ]; then
@@ -173,6 +174,7 @@ case $cmd in
       elif [ -n "${FAKE_LIST:-}" ]; then
         visible
         read -r ring sel 2>/dev/null <"$FAKE/ring" || { ring=$FAKE_RING; sel=$FAKE_RING; }
+        [[ $1 == Up || $1 == Down ]] && rm -f "$FAKE/disarmed"
         case $1 in
           Up)
             [ "${FAKE_UP:-}" = ignore ] && exit 0
@@ -192,8 +194,10 @@ case $cmd in
             [ -n "$id" ] || exit 0
             kill "$(sed -n "$((id + 1))p" "$FAKE/seeded")" 2>/dev/null
             echo "$id" >>"$FAKE/ended"
+            [ -n "${FAKE_ARM:-}" ] && : >"$FAKE/disarmed"
             exit 0 ;;
           r)
+            [ -e "$FAKE/disarmed" ] && exit 0
             id=${vis[sel]:-}
             [ -n "$id" ] && grep -qx "$id" "$FAKE/ended" 2>/dev/null || exit 0
             [ "${FAKE_REMOVE:-}" = keep ] || echo "$id" >>"$FAKE/gone"
@@ -435,6 +439,7 @@ sq 'a search that leaves one marked row that Enter opens is PASS' 0 'PASS search
 sq FAKE_ENTER=nofilter 'a search that filters nothing is FAIL' 1 'FAIL search-enter 0/1' --shells 3 --timeout 50 --sequences search-enter
 sq FAKE_ENTER=nodetail 'an Enter that opens no detail is FAIL' 1 'FAIL search-enter 0/1' --shells 3 --timeout 50 --sequences search-enter
 sq 'r that removes the row and marks its neighbour is PASS' 0 'PASS remove-neighbour 1/1' --shells 3 --timeout 50 --sequences remove-neighbour
+sq FAKE_ARM=1 'r after the stop disarmed the pane and an arrow armed it is PASS' 0 'PASS remove-neighbour 1/1' --shells 3 --timeout 50 --sequences remove-neighbour
 sq FAKE_REMOVE=reset 'r that marks the first row instead of the neighbour is FAIL' 1 'FAIL remove-neighbour 0/1' --shells 3 --timeout 50 --sequences remove-neighbour
 sq FAKE_REMOVE=keep 'r that keeps the row is FAIL' 1 'FAIL remove-neighbour 0/1' --shells 3 --timeout 50 --sequences remove-neighbour
 sq 'a reopened pane that marks the same row and opens it is PASS' 0 'PASS reopen 1/1' --shells 3 --timeout 50 --sequences reopen

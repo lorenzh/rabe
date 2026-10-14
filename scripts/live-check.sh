@@ -560,9 +560,16 @@ seq_tab_selection() {
   after=$lsel
   [ "$before" = "$after" ] || { why="row $before was selected, back on row $after"; return 1; }
 }
+# The seeded shell the detail beside the list names, empty for none. At 120
+# columns an ended row cuts its title before the duration; the detail does not.
+detailof() {
+  local line
+  for line in "${view[@]}"; do
+    [[ $line =~ [▶■]\ shell\ ·\ .*sleep\ ($durations)($|[^0-9]) ]] && { echo "${BASH_REMATCH[1]}"; return; }
+  done
+}
 seq_remove_neighbour() {
-  local before i at=-1 now prev= next= want
-  local -a names=()
+  local before i at n now want wantat from
   before=$(running | wc -l)
   click_running || return 1
   k x
@@ -575,28 +582,35 @@ seq_remove_neighbour() {
     k b
     sleep 0.7
   fi
-  look
+  # The end gives r a target the person did not choose, which disarms the
+  # pane (Arming in docs/architecture/focus-order.md): the person moves the
+  # ring off the row and back before r.
+  keys Up Down
+  snap
   listscan
-  for i in "${!lrows[@]}"; do
-    names+=("$(ident "${view[lrows[i]]}")")
-    [ "${names[i]}" = "$clicked" ] && at=$i
-  done
-  [ "$at" -ge 0 ] || { why="the row of sleep $clicked is not in the list after the stop"; return 1; }
+  at=$lsel
+  now=$(marked)
+  [ "$at" -ge 0 ] && [ "${now:-$(detailof)}" = "$clicked" ] ||
+    { why="the marked row is not sleep $clicked after the stop and Up Down"; return 1; }
+  # The neighbour is the next row, the previous one only when the removed row
+  # was the last; the list keeps its order while the pane is open.
+  n=${#lrows[@]}
+  [ "$n" -ge 2 ] || { why="the list has $n rows, r needs a neighbour"; return 1; }
+  if [ $((at + 1)) -lt "$n" ]; then wantat=$at from=$((at + 1)); else wantat=$((at - 1)) from=$((at - 1)); fi
+  want=$(shellof "${view[lrows[from]]}")
   k r
   snap
   listscan
   for i in "${!lrows[@]}"; do
-    [ "$(ident "${view[lrows[i]]}")" = "$clicked" ] && { why="r left the row of sleep $clicked"; return 1; }
+    [ "$(shellof "${view[lrows[i]]}")" = "$clicked" ] && { why="r left the row of sleep $clicked"; return 1; }
   done
-  [ "$lsel" -ge 0 ] || { why="r left no row selected"; return 1; }
-  # The next row, by name (a clipped list shows other rows); the previous
-  # one only when the removed row was the last.
-  now=$(ident "${view[lrows[lsel]]}")
-  [ "$at" -gt 0 ] && prev=${names[at - 1]}
-  [ $((at + 1)) -lt ${#names[@]} ] && next=${names[at + 1]}
-  want=${next:-$prev}
-  { [ -n "$now" ] && [ "$now" = "$want" ]; } ||
-    { why="after r on sleep $clicked the marker is on '$now', not on '$want'"; return 1; }
+  [ "$(detailof)" != "$clicked" ] || { why="r left sleep $clicked in the detail"; return 1; }
+  [ "${#lrows[@]}" = $((n - 1)) ] || { why="r left ${#lrows[@]} of $n rows"; return 1; }
+  [ "$lsel" = "$wantat" ] || { why="after r on row $at of $n the marker is on row $lsel, not $wantat"; return 1; }
+  # A neighbour whose title shows its shell is checked by name too.
+  now=$(marked)
+  [ -z "$want" ] || [ "${now:-$(detailof)}" = "$want" ] ||
+    { why="after r on sleep $clicked the marker is on '${now:-$(detailof)}', not on sleep $want"; return 1; }
 }
 # Esc and /rabe again (#188): Enter presses the row that was marked, so the
 # detail it opens is the second row's, not the tab's first stop.

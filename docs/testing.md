@@ -161,7 +161,7 @@ Each round starts from the list (step 5 above), runs the sequence and reads only
 | `search-esc` | `s`, type, `Esc` | the field reads `zz` before `Esc` and after `Esc` and a `z`, and the pane is still open (the keys then go to the prompt) | #187 (fixed) |
 | `search-enter` | `s`, a duration, `Enter`, `Enter` | one row is left and marked, and `Enter` opens it | #187 (fixed) |
 | `tab-selection` | `Down`, `2`, `1` | the marked row is the same | #188 (fixed) |
-| `remove-neighbour` | click, `x`, `r` | the removed row is gone and the marked row is the next one by name, the previous one only when the removed row was the last | #188 (fixed) |
+| `remove-neighbour` | click, `x`, `Up`, `Down`, `r` | the removed row is gone and the marked row is the next one, the previous one only when the removed row was the last (by position, and by name where the row shows its shell; at 120 columns an ended row cuts its title, so the detail names the marked one). The end of the stopped shell gives `r` a target the person did not choose and disarms the pane, so `Up` `Down` moves the ring off the row and back first | #188 (fixed) |
 | `reopen` | `Down`, `Esc`, `/rabe`, `Enter` | the reopened pane marks the same row and Enter opens that row's detail | #188 (pending a live run) |
 | `back-cost`, `back-timeline` | tab key, `Enter`, `b` | back on that tab | #185 |
 
