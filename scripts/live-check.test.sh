@@ -106,6 +106,7 @@ case $cmd in
         if [ -n "$pos" ] && [ "${FAKE_CLICK:-}" != ignore ]; then echo "$pos $pos" >"$FAKE/ring"; fi
         exit 0
       fi
+      [[ $2 == *'# zebra nap'* ]] && : >"$FAKE/zebra"
       [ "$2" = /rabe ] && rm -f "$FAKE/closed" "$FAKE/field" "$FAKE/opened" "$FAKE/detail"
       field=0 text=
       read -r field text 2>/dev/null <"$FAKE/field"
@@ -164,6 +165,11 @@ case $cmd in
         echo "0 $text" >"$FAKE/field"
         echo "0 0" >"$FAKE/ring"
       elif [ "$field" = 1 ] && [ "$1" = BSpace ]; then
+        # FAKE_BACKSPACE=lost drops a Backspace while the text matches the
+        # seeded "zebra nap" row, the bug of #180 and #213.
+        if [ "${FAKE_BACKSPACE:-}" = lost ] && [ -e "$FAKE/zebra" ] && [[ "zebra nap" == *"$text"* ]]; then
+          exit 0
+        fi
         text=${text%?}
         # FAKE_BACKSPACE=blur drops the focus when the field empties and the
         # rows return (#180).
@@ -435,6 +441,7 @@ sq FAKE_TABKEY=stop 'a ring left on a stop after the tab key is FAIL' 1 'FAIL ri
 sq 'a field that reads what was typed is PASS' 0 'PASS search-keys 1/1' --shells 3 --timeout 50 --sequences search-keys
 sq FAKE_FIELD=eat 'a field that loses a key is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys
 sq FAKE_BACKSPACE=blur 'a field that loses the focus when rows return is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys
+sq FAKE_BACKSPACE=lost 'a Backspace lost while a seeded row matches is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys
 sq 'Esc that leaves the field keeps the pane PASS' 0 'PASS search-esc 1/1' --shells 3 --timeout 50 --sequences search-esc
 sq FAKE_ESC=close 'Esc that closes the pane is FAIL' 1 'FAIL search-esc 0/1' --shells 3 --timeout 50 --sequences search-esc
 sq 'a selection kept over the Cost tab is PASS' 0 'PASS tab-selection 1/1' --shells 3 --timeout 50 --sequences tab-selection
