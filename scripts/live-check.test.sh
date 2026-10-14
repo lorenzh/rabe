@@ -154,6 +154,7 @@ case $cmd in
       if [ "$field" = 1 ] && [ ${#1} = 1 ]; then
         { [ "${FAKE_FIELD:-}" = eat ] && [ ${#text} = 1 ]; } || text+=$1
         echo "1 $text" >"$FAKE/field"
+        echo "$text" >"$FAKE/filter"
       elif [ "$field" = 1 ] && [ "$1" = Escape ]; then
         if [ "${FAKE_ESC:-}" = close ]; then
           : >"$FAKE/closed"
@@ -178,7 +179,13 @@ case $cmd in
         else
           echo "1 $text" >"$FAKE/field"
         fi
-        [ -n "$text" ] || rm -f "$FAKE/filter"
+        # FAKE_BACKSPACE=stale drops the change handler of the last
+        # Backspace: the field empties and the filter keeps the last letter.
+        if [ -n "$text" ]; then
+          echo "$text" >"$FAKE/filter"
+        elif [ "${FAKE_BACKSPACE:-}" != stale ]; then
+          rm -f "$FAKE/filter"
+        fi
       elif [ "$1" = s ]; then
         echo "1 " >"$FAKE/field"
       elif [ "$1" = b ]; then
@@ -440,6 +447,7 @@ sq FAKE_TABLATE=2 'a tab that lands late is waited for before Down' 0 'PASS ring
 sq FAKE_TABKEY=stop 'a ring left on a stop after the tab key is FAIL' 1 'FAIL ring-2 0/1' --shells 3 --timeout 50 --sequences ring-2
 sq 'a field that reads what was typed is PASS' 0 'PASS search-keys 1/1' --shells 3 --timeout 50 --sequences search-keys
 sq FAKE_FIELD=eat 'a field that loses a key is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys
+sq FAKE_BACKSPACE=stale 'a filter that stays after the last Backspace is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys
 sq FAKE_BACKSPACE=blur 'a field that loses the focus when rows return is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys
 sq FAKE_BACKSPACE=lost 'a Backspace lost while a seeded row matches is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys
 sq 'Esc that leaves the field keeps the pane PASS' 0 'PASS search-esc 1/1' --shells 3 --timeout 50 --sequences search-esc

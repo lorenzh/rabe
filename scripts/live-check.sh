@@ -519,12 +519,21 @@ seq_click_stop() {
   stopped "$before" "$clicked"
 }
 seq_search_keys() {
+  local all
+  look
+  listscan
+  all=${#lrows[@]}
   keys s z e b
   snap
   pane_has 'search:? +zeb' || { why="the field does not read zeb"; return 1; }
   # Backspace back to rows: the field keeps the focus, so typing goes on in it.
   # zeb matches the seeded "zebra nap" row: a lost Backspace (#180) leaves text.
-  keys BSpace BSpace BSpace l e
+  keys BSpace BSpace BSpace
+  snap
+  listscan
+  # A Backspace that lost its change handler leaves the filter: the rows stay narrowed.
+  [ "${#lrows[@]}" = "$all" ] || { why="after Backspace to empty the list shows ${#lrows[@]} rows, not $all: the filter stayed (#213)"; return 1; }
+  keys l e
   snap
   pane_has 'search:? +le([^e]|$)' || { why="after Backspace to the rows the field does not read le: the focus left it"; return 1; }
 }
