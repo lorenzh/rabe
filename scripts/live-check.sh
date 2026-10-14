@@ -661,10 +661,11 @@ seq_back() { # tab key
   ! pane_has 'b:? back' || { why="b left the detail open"; return 1; }
   [ "$(active_tab)" = "$1" ] || { why="b went back to tab $(active_tab), not $1"; return 1; }
   # One press: the ring is on the row the detail came from, so Enter opens it
-  # again; the marked row is the one that was opened (#185).
+  # again; the marked row is the one that was opened (#185). Only the title
+  # counts: a Timeline bar grows while the row stays the same.
   local marked
   for i in "${!view[@]}"; do
-    [[ ${view[i]} == ▌* ]] && { marked=$(ident "${view[i]}"); break; }
+    [[ ${view[i]} == ▌* ]] && { marked=$(ident "${view[i]%%  *}"); break; }
   done
   keys Enter
   snap
@@ -672,7 +673,7 @@ seq_back() { # tab key
   keys b
   snap
   for i in "${!view[@]}"; do
-    [[ ${view[i]} == ▌* ]] && { [ "$(ident "${view[i]}")" = "$marked" ] && return 0; break; }
+    [[ ${view[i]} == ▌* ]] && { [ "$(ident "${view[i]%%  *}")" = "$marked" ] && return 0; break; }
   done
   why="b did not keep the marked row '$marked'"
   return 1
