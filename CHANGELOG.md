@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Fixed
+
+- `b` (Back) returns to the Items row you opened, not to an older tab, when the item whose detail was open left the list before ([#PR](https://github.com/lorenzh/rabe/pull/PR), fixes [#223](https://github.com/lorenzh/rabe/issues/223))
+
 ## [0.9.0] - 2026-10-14
 
 No migration. Update with `claude plugin update rabe` and `/reload-plugins`; a running session keeps working, and the two new pane values (the selected row per tab and the tab a detail came from) start empty.

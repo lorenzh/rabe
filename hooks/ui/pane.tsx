@@ -379,7 +379,13 @@ async function act(
   pressed?: string,
 ): Promise<void> {
   if (action.type === 'open' && (await choose($, action.id))) return
-  const { value: origin } = await $.state.get({ plugin: 'rabe', key: 'openFrom' })
+  const { value: open = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
+  const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+  // The origin belongs to the open detail: once that item left the list, the
+  // pane shows the Items list, and no detail is open to go back from.
+  const isOpen = open !== '' && items.some(item => item.id === open)
+  const { value: stored } = await $.state.get({ plugin: 'rabe', key: 'openFrom' })
+  const origin = isOpen ? stored : null
   const [safe] = landing(action, '', undefined, origin?.tab)
   if (action.type !== 'message' && safe) {
     feed($, { type: 'reset' })
@@ -401,15 +407,13 @@ async function act(
       // Back selects the item that was open: the focus may have moved onto a
       // row inside its detail (a workflow's agents). A folded forwarder has no
       // row, so back selects its job.
-      const { value: open = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
-      const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
       const was = rowOf(open, items)
       if (action.id) {
         // One level: a detail opened from a list replaces the origin; one
         // opened inside a detail (on the Items tab) keeps it, so back leaves
         // both at once.
         const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
-        const inside = tab === 'items' && open !== ''
+        const inside = tab === 'items' && isOpen
         if (!origin || !inside) {
           // Without a stored origin inside a detail, the open item is the row.
           // An Effects row is a file: the pressed key, not the item's id, is the row.
