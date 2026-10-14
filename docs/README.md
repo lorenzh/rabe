@@ -12,6 +12,7 @@ Use this index to find the guide that matches your question.
 ## Project
 
 - [README](../README.md): what Rabe does, setup, privacy, requirements, and feedback.
+- [User guide](guide.md): options, the price table format, troubleshooting, privacy and platform notes.
 - [Agent instructions](../AGENTS.md): rules for coding agents and project changes.
 - [Release steps](../RELEASING.md): checks and compatibility review before a release.
 - [Changelog](../CHANGELOG.md): changes by version.

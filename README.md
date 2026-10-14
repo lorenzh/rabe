@@ -92,7 +92,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | `c` | Copy the command, the prompt, the `ssh -L` line, an agent's id, or the command that resumes a session or a Codex thread. If the clipboard cannot be reached (for example over SSH in a terminal without OSC 52), a message shows the text to select |
 | `d` | Delete a running cron job |
 | `w` | On the Timeline tab: show more time (4 h, 12 h, the whole session, then 4 h again) |
-| Mouse wheel | Scroll the pane; on the terminal a long list scrolls under the tabs and buttons, which stay in view |
+| Mouse wheel | Scroll the pane; on the terminal a long list scrolls under the tabs and buttons, which stay in view. In a short pane only the tabs stay, and the buttons and the search field scroll with the list |
 | Esc | Close the pane |
 
 A deleted cron job shows no next runs, and its delete button stays dim. The previous-session summary counts only cron jobs still running when the session ends. Delete failures show plain text.
@@ -111,7 +111,7 @@ Known limit: in a burst such as `2 1 Down Down Down Down` with 30 to 50 ms betwe
 
 | View | Letters caught outside input fields |
 |------|-------------------------------------|
-| Items list | `x g r a`; `s` where search is available; beside the detail of the selected row also `c` and `d`, and `m` on surfaces that support input fields, dim when the selected row has no such action |
+| Items list | `x g r a`; `s k` where search is available (`k` stays caught and dim while there is no filter); beside the detail of the selected row also `c` and `d`, and `m` on surfaces that support input fields, dim when the selected row has no such action |
 | Agent detail | `b c x`; `m` on surfaces that support input fields |
 | Workflow agent detail | `b c`; `g` when the parent run is known; no `x` or `m` |
 | Workflow detail | `b g` |

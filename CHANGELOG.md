@@ -4,26 +4,34 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-14
+
+No migration. Update with `claude plugin update rabe` and `/reload-plugins`; a running session keeps working, and the two new pane values (the selected row per tab and the tab a detail came from) start empty.
+
 ### Added
 
+- `k` clears the search filter; the search label shows `▸` while the field has the focus ([#210](https://github.com/lorenzh/rabe/pull/210), fixes [#187](https://github.com/lorenzh/rabe/issues/187))
 - `scripts/live-check.sh --sequences` repeats named key sequences for the keyboard and mouse fixes over several rounds in a real session and prints PASS or FAIL for each; the `ring` sequences wait for each tab to show before the next key ([#208](https://github.com/lorenzh/rabe/pull/208), fixes [#190](https://github.com/lorenzh/rabe/issues/190))
+
+### Changed
+
+- `b` (Back) in a detail returns to the tab and row it was opened from, not always to Items; one level, cleared when the pane closes ([#212](https://github.com/lorenzh/rabe/pull/212), fixes [#185](https://github.com/lorenzh/rabe/issues/185))
+- A click on a row moves the focus ring onto it, so `x`, `r`, `c` and the arrow keys act from the clicked row, as from the keyboard; a click on a tab lands on the tab's marked row, like the keys `1` to `4` ([#209](https://github.com/lorenzh/rabe/pull/209), fixes [#186](https://github.com/lorenzh/rabe/issues/186))
+- Esc in a filled search field keeps the pane and the filter open (Claude Code then gives the keys to the prompt until `ctrl+x tab`), and Enter in the field focuses the first matching row ([#210](https://github.com/lorenzh/rabe/pull/210), fixes [#187](https://github.com/lorenzh/rabe/issues/187))
+- Each tab keeps its own selected row, so a visit to Cost, Effects or Timeline leaves the Items selection as it was. `r` selects the next row (the previous one at the end) without arming `x` for it, and a reopened pane puts the focus on the selected row of the tab you left ([#211](https://github.com/lorenzh/rabe/pull/211), fixes [#188](https://github.com/lorenzh/rabe/issues/188))
+- Removing an ended item hides it from the Items list only: it keeps its row in its workflow's detail, its Cost row (so the rows add up to the totals) and its Timeline bar ([#215](https://github.com/lorenzh/rabe/pull/215), fixes [#206](https://github.com/lorenzh/rabe/issues/206))
 
 ### Fixed
 
-- Cron detail shows the latest fire time, fire count and turn end also when Claude Code writes the fire to the transcript after the turn's first step, when another prompt follows before the turn ends, or when the cron is deleted in that turn ([#196](https://github.com/lorenzh/rabe/pull/196), fixes [#193](https://github.com/lorenzh/rabe/issues/193))
-- Removing an ended item hides it from the Items list only: it keeps its row in its workflow's detail, its Cost row (so the rows add up to the totals) and its Timeline bar ([#215](https://github.com/lorenzh/rabe/pull/215), fixes [#206](https://github.com/lorenzh/rabe/issues/206))
-- A neighbour that ends in a group of three or more running rows no longer disarms `x` and `g` in the Items list: the count in `g`'s label changed, and Rabe took the new label for a new target ([#217](https://github.com/lorenzh/rabe/pull/217))
-- A key typed in the search field while the pane redraws is no longer lost: the filter followed the field one key late, so after a Backspace to an empty field the list could stay filtered ([#213](https://github.com/lorenzh/rabe/pull/213), refs [#180](https://github.com/lorenzh/rabe/issues/180))
-- A search that matches nothing keeps the focus in the search field: the list keeps the slots of `c`, `m` and `d` with no selection, so typed keys no longer go to the prompt and Backspace back to a match keeps the field focused ([#213](https://github.com/lorenzh/rabe/pull/213), fixes [#180](https://github.com/lorenzh/rabe/issues/180))
-- Back from a detail returns to the tab and row it was opened from, not always to Items; one level, cleared when the pane closes ([#212](https://github.com/lorenzh/rabe/pull/212), fixes [#185](https://github.com/lorenzh/rabe/issues/185))
-- Each tab keeps its own selected row, `r` selects the next row (the previous one at the end) without arming `x` for it, and a reopened pane puts the focus on the selected row of the stored tab, asking again while the landing is refused ([#211](https://github.com/lorenzh/rabe/pull/211), fixes [#188](https://github.com/lorenzh/rabe/issues/188))
-- Esc in a filled search field keeps the pane and the filter open; Claude Code releases the keyboard before Rabe sees the close, so the keys go to the prompt until `ctrl+x tab`; Enter focuses the first matching row; the field label shows `▸` while focused; `k` clears the filter ([#210](https://github.com/lorenzh/rabe/pull/210), fixes [#187](https://github.com/lorenzh/rabe/issues/187))
-- A click on a row moves the focus ring onto it, so `x`, `r`, `c` and the arrow keys act from the clicked row, as from the keyboard; a click on a tab still lands on the tab's marked row, like the keys `1` to `4` ([#209](https://github.com/lorenzh/rabe/pull/209), fixes [#186](https://github.com/lorenzh/rabe/issues/186))
-- In a short pane (a 100x24 terminal with many shells) the pinned list keeps at least 3 rows and the tab row stays in view: only the tabs stay pinned, and the toolbar and search field scroll with the list; landing on a row scrolls so that 3 list rows show, and a pane whose held pieces leave under 3 rows falls back to the engine's scroll ([#198](https://github.com/lorenzh/rabe/pull/198), fixes [#192](https://github.com/lorenzh/rabe/issues/192))
-- A long pinned Items list draws every row in order and every group header; rows scrolled out are clipped, not squeezed, so the focus never lands on a row that is not drawn ([#195](https://github.com/lorenzh/rabe/pull/195), fixes [#191](https://github.com/lorenzh/rabe/issues/191))
-- A direct `codex exec` ends at a newline, `|&` or `)`, so a later command's `-o` file or `&` no longer counts as the Codex result file or detach, while a `&` after the closing `)` of a group still detaches it ([#194](https://github.com/lorenzh/rabe/pull/194), fixes [#169](https://github.com/lorenzh/rabe/issues/169))
-- The cron docs name every case where the observed turn start is missing and the fallback can skip a cron's fire recovery ([#197](https://github.com/lorenzh/rabe/pull/197), fixes [#172](https://github.com/lorenzh/rabe/issues/172))
-- The tab hotkeys `1` to `4` put the focus on the tab's marked row with one press, so Down goes to the next row. A fold and a submitted search wait the same way for the new view (usually about 100 to 130 ms, at most about 400 ms); another key in the pane during that wait cancels the move to the row and then works as usual ([#175](https://github.com/lorenzh/rabe/pull/175), fixes [#174](https://github.com/lorenzh/rabe/issues/174))
+- The tab keys `1` to `4` put the focus on the tab's marked row with one press, so Down goes to the next row. A fold and a submitted search wait the same way for the new view (usually about 100 to 130 ms, at most about 400 ms); another key in the pane during that wait cancels the move and then works as usual ([#175](https://github.com/lorenzh/rabe/pull/175), fixes [#174](https://github.com/lorenzh/rabe/issues/174))
+- A long pinned Items list draws every row and every group header; the focus no longer lands on a row that is not drawn ([#195](https://github.com/lorenzh/rabe/pull/195), fixes [#191](https://github.com/lorenzh/rabe/issues/191))
+- In a short pane (a 100x24 terminal with many shells) the list keeps at least 3 rows and the tab row stays in view: only the tabs stay pinned, and the buttons and the search field scroll with the list ([#198](https://github.com/lorenzh/rabe/pull/198), fixes [#192](https://github.com/lorenzh/rabe/issues/192))
+- A key typed in the search field while the pane redraws is no longer lost, and the list no longer stays filtered after a Backspace to an empty field ([#213](https://github.com/lorenzh/rabe/pull/213), refs [#180](https://github.com/lorenzh/rabe/issues/180))
+- A search that matches nothing shows `No item matches` and keeps the focus in the search field, so typed keys no longer go to the prompt ([#213](https://github.com/lorenzh/rabe/pull/213), fixes [#180](https://github.com/lorenzh/rabe/issues/180))
+- `x` and `g` stay armed when a neighbour ends in a group of three or more running rows ([#217](https://github.com/lorenzh/rabe/pull/217))
+- Cron detail shows the latest fire time, fire count and turn end also when Claude Code writes the fire to the transcript late in the turn, when another prompt follows before the turn ends, or when the cron is deleted in that turn ([#196](https://github.com/lorenzh/rabe/pull/196), fixes [#193](https://github.com/lorenzh/rabe/issues/193))
+- A direct `codex exec` ends at a newline, `|&` or `)`, so a later command's `-o` file or `&` no longer counts as the Codex result file or detach ([#194](https://github.com/lorenzh/rabe/pull/194), fixes [#169](https://github.com/lorenzh/rabe/issues/169))
+- The cron docs name every case where the fire recovery can skip a fire because the turn start is missing ([#197](https://github.com/lorenzh/rabe/pull/197), fixes [#172](https://github.com/lorenzh/rabe/issues/172))
 
 ## [0.8.1] - 2026-10-13
 
@@ -248,7 +256,8 @@ The first public version.
 
 - Workflow agents no longer offer stop and message, which Claude Code does not support for a single workflow agent; their detail offers stopping the run. ([#8](https://github.com/lorenzh/rabe/pull/8))
 
-[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/lorenzh/rabe/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/lorenzh/rabe/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/lorenzh/rabe/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/lorenzh/rabe/compare/v0.6.0...v0.7.0

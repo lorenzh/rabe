@@ -44,7 +44,7 @@ The pane catches these letters while it holds the keys outside input fields:
 
 | View | Letters caught outside input fields |
 |------|-------------------------------------|
-| Items list | `x g r a`; `s` where search is available; at 90 columns or more, the selected detail's `c m d` controls |
+| Items list | `x g r a`; `s k` where search is available (`k` stays caught and dim while there is no filter); at 90 columns or more, the selected detail's `c m d` controls |
 | Agent detail | `b c x`; `m` on surfaces that support input fields |
 | Workflow agent detail | `b c`; `g` when the parent run is known; no `x` or `m` |
 | Workflow detail | `b g` |
