@@ -10,6 +10,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
+- Cron detail shows the latest fire time, fire count and turn end also when Claude Code writes the fire to the transcript after the turn's first step, when another prompt follows before the turn ends, or when the cron is deleted in that turn ([#196](https://github.com/lorenzh/rabe/pull/196), fixes [#193](https://github.com/lorenzh/rabe/issues/193))
 - Removing an ended item hides it from the Items list only: it keeps its row in its workflow's detail, its Cost row (so the rows add up to the totals) and its Timeline bar ([#215](https://github.com/lorenzh/rabe/pull/215), fixes [#206](https://github.com/lorenzh/rabe/issues/206))
 - A neighbour that ends in a group of three or more running rows no longer disarms `x` and `g` in the Items list: the count in `g`'s label changed, and Rabe took the new label for a new target ([#217](https://github.com/lorenzh/rabe/pull/217))
 - A key typed in the search field while the pane redraws is no longer lost: the filter followed the field one key late, so after a Backspace to an empty field the list could stay filtered ([#213](https://github.com/lorenzh/rabe/pull/213), refs [#180](https://github.com/lorenzh/rabe/issues/180))

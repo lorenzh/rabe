@@ -416,16 +416,15 @@ export function crons(on: On): void {
         )
         if (read) {
           await write($, items => fireDetails(items, read))
+          // A prompt the transcript does not pair with a fire yet stays bound
+          // without one, so completion reads again once Claude Code has written its rows.
           await $.state.set(
             { plugin: 'rabe', key: 'cronTurn' },
-            {
-              ...(read.jobId &&
-                read.promptId === value?.promptId && {
-                  promptId: read.promptId,
-                  turnId: e.turnId,
-                  fireId: read.fireId,
-                }),
-            },
+            read.jobId && read.promptId === value?.promptId
+              ? { promptId: read.promptId, turnId: e.turnId, fireId: read.fireId }
+              : value?.promptId
+                ? { promptId: value.promptId, turnId: e.turnId }
+                : {},
             { ifVersion: version },
           )
         }
@@ -442,8 +441,8 @@ export function crons(on: On): void {
         const since =
           turnStart?.turnId === e.turnId ? turnStart.at : (await $.clock.now()) - e.durationMs
         // The linked turn has an outcome to record, even for a cron that ended meanwhile.
-        // A job without confirmed fire info is read too: a running one at each
-        // completion until a fire is confirmed, an ended one only when it ended in this turn.
+        // Counts refresh apart from the link: a running cron is read at each
+        // completion, an ended or deleted one only when it ended in this turn.
         const read = await readFires(
           $,
           items =>
@@ -452,8 +451,6 @@ export function crons(on: On): void {
               item =>
                 item.kind === 'cron' &&
                 item.detail.scheduledFor === undefined &&
-                !item.detail.isDeleted &&
-                item.detail.lastFiredAt === undefined &&
                 (item.status === 'running' || (item.endedAt ?? 0) >= since),
             ),
         )
@@ -461,7 +458,8 @@ export function crons(on: On): void {
           const matches =
             value?.turnId === e.turnId &&
             value.promptId === read.promptId &&
-            value.fireId === read.fireId
+            read.fireId !== undefined &&
+            (value.fireId ?? read.fireId) === read.fireId
           const isCurrent = () => matches && epoch === promptEpoch
           const reason = isCurrent() ? e.reason : undefined
           // The callback is synchronous: no prompt can arrive between this check and the item change.

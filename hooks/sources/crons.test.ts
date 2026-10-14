@@ -595,7 +595,7 @@ async function scanSession(
   })
   tools(on, jobs)
   core(on)
-  const rows = [...fireRows]
+  const rows: unknown[] = [...fireRows]
   const run = {
     reads: 0,
     holdGet: undefined as Promise<void> | undefined,
@@ -664,7 +664,7 @@ async function scanSession(
   const detail = () => ((state['rabe.items']?.value ?? []) as RabeItem[])[0]?.detail
   await $.tool.call({ tool: 'CronCreate', cron: JOB.cron, prompt: JOB.prompt })
   if (known) await $.classic.Stop({ stop_hook_active: false, transcript_path: PATH })
-  return { state, run, append, step, complete, detail, clock }
+  return { state, run, rows, append, step, complete, detail, clock }
 }
 
 for (const snapshot of [false, true]) {
@@ -693,6 +693,7 @@ for (const snapshot of [false, true]) {
 test('a deleted cron stops the transcript scans of later turns', async ($, on) => {
   const s = await scanSession($, on)
   await $.tool.call({ tool: 'CronDelete', id: 'c1' })
+  await s.clock.advance(100)
   s.run.reads = 0
   for (let i = 0; i < 5; i++) {
     await s.append(`person-${i}`)
@@ -774,4 +775,71 @@ test('a never-fired ended cron causes no scans on later unrelated turns', async 
     await s.complete(`t${i}`)
   }
   expect(s.run.reads).toBe(0)
+})
+
+// The next fire of job c1, as the transcript holds it once Claude Code wrote it.
+const secondFire = [
+  { ...fireRows[0], uuid: 'f2', timestamp: '2026-10-09T00:25:08.132Z' },
+  { ...fireRows[1], uuid: 'u2', parentUuid: 'f2', scheduledFireId: 'f2' },
+]
+
+test('a fire row that reaches the transcript after the first step still updates the detail and records the turn end', async ($, on) => {
+  const s = await scanSession($, on)
+  await s.append('u1')
+  await s.step('t1')
+  await s.complete('t1')
+  expect(s.detail()).toMatchObject({ fireCount: 1, turnEnded: 'answered' })
+  await s.append('u2')
+  await s.step('t2')
+  expect(s.detail()).toMatchObject({ fireCount: 1 })
+  s.rows.push(...secondFire)
+  await s.complete('t2')
+  expect(s.detail()).toMatchObject({
+    fireCount: 2,
+    fireId: 'f2',
+    lastFiredAt: Date.parse('2026-10-09T00:25:08.132Z'),
+    turnEnded: 'answered',
+  })
+})
+
+test('a late fire row read at the completion of another prompt updates the count but gives no end word', async ($, on) => {
+  const s = await scanSession($, on)
+  await s.append('u1')
+  await s.step('t1')
+  await s.complete('t1')
+  await s.append('person-1')
+  await s.step('t2')
+  s.rows.push(...secondFire)
+  await s.complete('t2')
+  expect(s.detail()).toMatchObject({ fireCount: 2, fireId: 'f2' })
+  expect(s.detail()).not.toHaveProperty('turnEnded')
+})
+
+test('a scheduled prompt whose fire row reaches the transcript after the first step still records the turn end', async ($, on) => {
+  const s = await scanSession($, on)
+  await s.append('u1')
+  await s.step('t1')
+  await s.complete('t1')
+  await s.append('u2')
+  s.rows.push(secondFire[1])
+  await s.step('t2')
+  s.rows.push(secondFire[0])
+  await s.complete('t2')
+  expect(s.detail()).toMatchObject({ fireCount: 2, fireId: 'f2', turnEnded: 'answered' })
+})
+
+test('a late fire pair still updates the count when another prompt replaced the turn link and the cron was deleted', async ($, on) => {
+  const s = await scanSession($, on)
+  await s.append('u1')
+  await s.step('t1')
+  await s.complete('t1')
+  await s.clock.advance(100)
+  await s.append('u2')
+  await s.step('t2')
+  await s.append('person-1')
+  await $.tool.call({ tool: 'CronDelete', id: 'c1' })
+  s.rows.push(...secondFire)
+  await s.complete('t2')
+  expect(s.detail()).toMatchObject({ fireCount: 2, fireId: 'f2' })
+  expect(s.detail()).not.toHaveProperty('turnEnded')
 })

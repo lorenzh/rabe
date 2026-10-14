@@ -77,6 +77,7 @@ The latest confirmed fire supplies the last fire time.
 
 For the end word, Rabe matches the observed `session.append` UUID at the first main `turn.step`.
 It binds that fire to the API turn id. At completion, it checks the latest prompt and fire again.
+Claude Code can write the fire row, or both rows, after the first step. The turn then binds without a fire, and the completion read must pair its prompt UUID with a fire.
 A changed prompt or unmatched turn supplies no end word. Subagent completions supply no end word.
 Previous turn-end reasons are unavailable from these confirmed disk fields.
 Rabe shows an end word only for a turn it observed, including state kept across a plugin reload.
