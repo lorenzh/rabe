@@ -15,7 +15,7 @@ import {
   scopeOf,
 } from './interaction'
 import { KIND_LABEL, kept, matches, orderOf, previousOf, rowOf } from './lists'
-import { asPrevious, clipText, nameOf, toastText } from './pane-data'
+import { asPrevious, clipText, itemsText, nameOf, toastText } from './pane-data'
 import { follow, geometry, MIN_ROWS, measure, NO_PIN, type Pin } from './pin'
 import { type At, hold, render } from './render'
 import { reserve, screens, sequence } from './sequence'
@@ -704,6 +704,9 @@ export function pane(on: On, hours = baseHours): void {
   // Each open sorts the lists once; then they hold their order (see `stable`).
   on('command.run', { command: 'rabe' }, async $ => {
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const surfaces = await $.session.surfaces().catch(() => [])
+    if (surfaces.length > 0 && !surfaces.some(one => one === 'terminal' || one === 'desktop'))
+      return { text: itemsText(items) }
     const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
     await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(items, edits))
     await $.state.set({ plugin: 'rabe', key: 'window' }, windowOf(baseHours, await $.clock.now()))

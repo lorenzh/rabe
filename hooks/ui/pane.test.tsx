@@ -120,6 +120,17 @@ function opening(on: On, isOpen: boolean) {
   return opens
 }
 
+test('/rabe answers in plain text where the pane cannot draw', async ($, on) => {
+  on('state.get', { plugin: 'rabe', key: 'items' }, async () => ({
+    value: { value: [explore], version: 1 },
+  }))
+  on('session.surfaces', async () => ({ value: ['vscode'] }) as never)
+  const opens = opening(on, true)
+  const answer = await $.command.run({ command: 'rabe', args: '' } as never)
+  expect(opens).toHaveLength(0)
+  expect(answer.text).toBe('Rabe: 1 running, 0 ended.\n- agent running: Explore verifyToken')
+})
+
 test('/rabe opens the pane so that Esc closes it', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   const opens = opening(on, true)

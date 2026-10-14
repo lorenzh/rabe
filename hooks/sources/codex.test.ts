@@ -720,6 +720,17 @@ test('/rabe-stop registers the Codex job id hint', async ($, on) => {
   expect(hint).toBe('codex:<job id>')
 })
 
+test('/rabe-stop is registered in a non-interactive session', async ($, on) => {
+  let hint: string | undefined
+  on('command.register', { name: 'rabe-stop' }, async (_$, e) => {
+    hint = e.argumentHint
+    return { value: undefined } as never
+  })
+  world(on, {})
+  await $.session.start({ cwd: '/work/rabe', surface: null, isInteractive: false } as never)
+  expect(hint).toBe('codex:<job id>')
+})
+
 test('/rabe-stop answers unsupported arguments with usage without stopping work', async ($, on) => {
   const writes = watchItems(on)
   const w = world(on, {

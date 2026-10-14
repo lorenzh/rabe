@@ -1,4 +1,5 @@
 import type { RabeItem, RabePrevious } from '../../types'
+import { isEnded } from '../model'
 
 export function toastText(text: string): string {
   return text.replace(/\s+/g, ' ').replace(/[\p{Cc}\p{Cf}]/gu, '?')
@@ -35,4 +36,14 @@ export function asPrevious(value: unknown): RabePrevious | undefined {
     usd: prev.usd,
     failedIds: Array.isArray(prev.failedIds) ? prev.failedIds : [],
   }
+}
+
+// The answer of `/rabe` where the pane cannot draw: counts, then one line per
+// item with its kind, status word and title.
+export function itemsText(items: RabeItem[]): string {
+  if (items.length === 0) return 'Rabe: no background work.'
+  const live = items.filter(one => !isEnded(one)).length
+  const rows = items.map(one => `- ${one.kind} ${one.status}: ${toastText(one.title)}`)
+
+  return [`Rabe: ${live} running, ${items.length - live} ended.`, ...rows].join('\n')
 }
