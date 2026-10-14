@@ -38,12 +38,15 @@ export function asPrevious(value: unknown): RabePrevious | undefined {
   }
 }
 
-// The answer of `/rabe` where the pane cannot draw: counts, then one line per
-// item with its kind, status word and title.
+// The answer of `/rabe` where the pane cannot draw. It enters Claude's
+// transcript, so it holds counts and fixed words only: no title, prompt or
+// file text (docs/security.md).
 export function itemsText(items: RabeItem[]): string {
   if (items.length === 0) return 'Rabe: no background work.'
   const live = items.filter(one => !isEnded(one)).length
-  const rows = items.map(one => `- ${one.kind} ${one.status}: ${toastText(one.title)}`)
+  const kinds = new Map<string, number>()
+  for (const one of items) kinds.set(one.kind, (kinds.get(one.kind) ?? 0) + 1)
+  const rows = [...kinds].map(([kind, count]) => `- ${kind}: ${count}`)
 
   return [`Rabe: ${live} running, ${items.length - live} ended.`, ...rows].join('\n')
 }

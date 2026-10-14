@@ -705,7 +705,8 @@ export function pane(on: On, hours = baseHours): void {
   on('command.run', { command: 'rabe' }, async $ => {
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const surfaces = await $.session.surfaces().catch(() => [])
-    if (surfaces.length > 0 && !surfaces.some(one => one === 'terminal' || one === 'desktop'))
+    // An empty list means nothing draws (a plain -p run), so text is the answer.
+    if (!surfaces.some(one => one === 'terminal' || one === 'desktop'))
       return { text: itemsText(items) }
     const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
     await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(items, edits))
