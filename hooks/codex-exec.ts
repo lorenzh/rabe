@@ -71,13 +71,31 @@ export function codexExec(command: string, home?: string): CodexExec | undefined
       typeof word === 'string' ? word : isWord(word) && word.known ? word.text : undefined
     if (path?.startsWith('/')) resultPath = path
   })
-  // A `)` closes a subshell: a `&` after it (past redirects and further `)`)
-  // detaches the whole group; any other end stops the scan.
+  // A `&` right after the call, or after the `)` of a group around it (past
+  // redirects and further `)`), detaches it. Inside a group the other ends
+  // and newlines do not leave it, so the scan goes on to its `)`.
+  let depth = 0
+  for (const tok of toks.slice(0, at)) {
+    if (!isWord(tok) && tok.op === '(') depth++
+    else if (!isWord(tok) && tok.op === ')') depth = Math.max(0, depth - 1)
+  }
+  let nested = 0
+  let closed = true
   let isDetached = false
   for (const tok of end < 0 ? [] : rest.slice(end)) {
-    if (isWord(tok) || tok.op === ')' || !ENDS.has(tok.op)) continue
-    isDetached = tok.op === '&'
-    break
+    if (isWord(tok)) continue
+    if (tok.op === '(') {
+      nested++
+      closed = false
+    } else if (tok.op === ')') {
+      closed = nested === 0 && depth > 0
+      if (closed) depth--
+      else nested = Math.max(0, nested - 1)
+    } else if (ENDS.has(tok.op)) {
+      if (tok.op === '&' && closed) isDetached = true
+      if (isDetached || depth === 0) break
+      closed = false
+    }
   }
 
   return {
