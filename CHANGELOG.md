@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Changed
+
+- The README demo GIF shows the 0.9.0 pane: search field, per-tab selection and the current Items, Cost and Timeline content ([#225](https://github.com/lorenzh/rabe/pull/225), fixes [#224](https://github.com/lorenzh/rabe/issues/224))
+
 ## [0.9.0] - 2026-10-14
 
 No migration. Update with `claude plugin update rabe` and `/reload-plugins`; a running session keeps working, and the two new pane values (the selected row per tab and the tab a detail came from) start empty.
