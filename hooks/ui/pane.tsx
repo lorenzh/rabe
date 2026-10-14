@@ -60,7 +60,7 @@ function toast($: EngineInterface, text: string): void {
 }
 
 // Esc may have closed the pane before the delayed focus call.
-async function refocus($: EngineInterface): Promise<void> {
+async function refocus($: EngineInterface, tries = 0): Promise<void> {
   let shown = (await $.ui.panes()).find(one => one.id === PANE)
   if (shown && !shown.isFocused) {
     await $.ui.open({ id: PANE, title: 'Rabe', focus: true, closeOnEscape: true })
@@ -71,6 +71,11 @@ async function refocus($: EngineInterface): Promise<void> {
   // Only a pane that holds the keys can take it; a timer's call runs none of
   // Rabe's focus hooks, so a landing is the call's answer, not `landedOn`.
   if (shown?.isFocused && !isRestored) isRestored = await restore($).catch(() => false)
+  // A refused landing (a move abandoned) tries again, as the keys do; a retry
+  // also goes on while the pane lost the keys, since `opening` no longer asks.
+  if (shown && (shown.isFocused || tries > 0) && !isRestored && tries < 40) {
+    $.clock.after(50, () => void refocus($, tries + 1).catch(() => undefined))
+  }
 }
 
 async function restore($: EngineInterface): Promise<boolean> {

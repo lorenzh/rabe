@@ -40,7 +40,7 @@ Options:
 Environment: CLAUDE names the Claude Code binary (default claude).
 Sequences: ring-2 ring-3 ring-4 (fixed: tab key, 1, Down Down lands on the
 third row), search-esc, search-enter, click-stop, tab-selection,
-remove-neighbour (fixed), search-keys, back-cost, back-timeline, reopen
+remove-neighbour, reopen (fixed), search-keys, back-cost, back-timeline
 (pending).
 Exit codes: 0 all rounds passed, 1 a round failed, 2 usage or setup error.
 EOF
@@ -100,8 +100,8 @@ plugin=$(cd "$plugin" && pwd)
 
 # Key sequences. FIXED ones must pass on main; PENDING ones belong to issues
 # that are not fixed yet and may FAIL: the script reports them.
-FIXED="ring-2 ring-3 ring-4 search-esc search-enter click-stop tab-selection remove-neighbour"
-PENDING="search-keys back-cost back-timeline reopen"
+FIXED="ring-2 ring-3 ring-4 search-esc search-enter click-stop tab-selection remove-neighbour reopen"
+PENDING="search-keys back-cost back-timeline"
 seqs=()
 if [ -n "$sequences" ]; then
   [ -z "$keys" ] && [ -z "$expect" ] || fail "--sequences replaces --keys and --expect"

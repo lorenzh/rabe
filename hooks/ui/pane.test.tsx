@@ -158,6 +158,50 @@ test('a pane closed before the focus call stays closed', async ($, on) => {
   expect(opens).toHaveLength(1)
 })
 
+// The kit refuses Rabe's own focus, so every landing fails as an abandoned
+// move does: the pane asks again until the landing holds, at most 40 times.
+test('a reopened pane asks again after a landing that did not hold (#188)', async ($, on) => {
+  hold(on, [dev], { selected: dev.id }, false)
+  on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+  const pane = { id: 'rabe', title: 'Rabe', isShown: true, isFocused: true, isPlaced: true }
+  let asked = 0
+  on('ui.panes', async () => {
+    asked += 1
+    return { value: [pane] }
+  })
+  await $.command.run({ command: 'rabe', args: '' } as never)
+  await held?.advance(60)
+  const first = asked
+  await held?.advance(5000)
+  expect(asked).toBeGreaterThan(first + 5)
+  expect(asked).toBeLessThan(first + 60)
+})
+
+// After a refused landing the pane reports no focus, and `ui.open` does not
+// give it back at once: the retries open it again and go on asking. The kit
+// refuses Rabe's own focus, so every landing fails.
+test('a reopened pane that loses the keys between retries opens again and asks on', async ($, on) => {
+  hold(on, [dev], { selected: dev.id }, false)
+  let opens = 0
+  on('ui.open', async () => {
+    opens += 1
+    return { value: { isPlaced: true as const } }
+  })
+  // The first ask finds the pane focused; the next four, the retry's own and
+  // the one after its `ui.open`, do not.
+  let asked = 0
+  on('ui.panes', async () => {
+    asked += 1
+    const isFocused = asked === 1 || asked > 5
+    return { value: [{ id: 'rabe', title: 'Rabe', isShown: true, isFocused, isPlaced: true }] }
+  })
+  await $.command.run({ command: 'rabe', args: '' } as never)
+  await held?.advance(5000)
+  expect(opens).toBeGreaterThan(2)
+  expect(asked).toBeGreaterThan(20)
+  expect(asked).toBeLessThan(80)
+})
+
 test('a row gone while the pane is open leaves the list at once', async ($, on) => {
   const other = { ...dev, id: 'shell:other', title: 'other' }
   const items = [dev, other]
@@ -2095,6 +2139,25 @@ test('r and a remove ended rows for the session; running rows stay', async ($, o
   expect(shown).not.toContain(lint.title)
   expect(shown).toContain(dev.title)
   await again.unmount()
+})
+
+// A removal that moves the selection is not the person's choice of the
+// neighbour: the stop control stays dim until the ring lands on it.
+test('r moves the selection to a neighbour and leaves x disarmed', async ($, on) => {
+  hold(on, [lint, dev], { selected: lint.id }, false)
+  on('ui.focus', async () => ({}))
+  on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+  const stopped = stops(on)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await arm($, `row:${lint.id}`)
+  await ui.redraw()
+  await ui.press({ key: 'remove' })
+  await ui.press({ key: 'stop' })
+  expect(stopped).toEqual([])
+  await ui.redraw()
+  const x = await ui.find({ type: 'Button', key: 'stop' })
+  expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, 'x'])
+  await ui.unmount()
 })
 
 // Issue #122: the open item and the Cost and Timeline tabs keep a gone row's
