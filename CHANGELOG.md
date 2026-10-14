@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Fixed
+
+- A direct `codex exec` in a subshell group sent to the background with `&` shows as detached also when a newline or another command comes before the closing `)`, as in `(codex exec ... -o f x\n) &` ([#226](https://github.com/lorenzh/rabe/pull/226), fixes [#222](https://github.com/lorenzh/rabe/issues/222))
+
 ## [0.9.0] - 2026-10-14
 
 No migration. Update with `claude plugin update rabe` and `/reload-plugins`; a running session keeps working, and the two new pane values (the selected row per tab and the tab a detail came from) start empty.
