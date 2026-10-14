@@ -163,7 +163,7 @@ Each round starts from the list (step 5 above), runs the sequence and reads only
 | `tab-selection` | `Down`, `2`, `1` | the marked row is the same | #188 (fixed) |
 | `remove-neighbour` | click, `x`, `Up`, `Down`, `r` | the removed row is gone and the marked row is the next one, the previous one only when the removed row was the last (by position, and by name where the row shows its shell; at 120 columns an ended row cuts its title, so the detail names the marked one). The end of the stopped shell gives `r` a target the person did not choose and disarms the pane, so `Up` `Down` moves the ring off the row and back first | #188 (fixed) |
 | `reopen` | `Down`, `Esc`, `/rabe`, `Enter` | the reopened pane marks the same row and Enter opens that row's detail | #188 (fixed) |
-| `back-cost`, `back-timeline` | tab key, `Enter`, `b` | back on that tab | #185 |
+| `back-cost`, `back-timeline` | tab key, `Enter`, `b` | back on that tab, the marked row kept, Enter opens it again | #185 |
 
 `fixed` is the set that must pass on `main`. `pending` is the set of issues that are not fixed yet; it may FAIL, and the script reports it and does not hide it. `all` is both. A pending sequence moves to `fixed` in the pull request that fixes its issue. This is not run in CI: it needs a login. Run `fixed` before each release of the 0.9.x line and record the counts in the release PR.
 

@@ -660,6 +660,22 @@ seq_back() { # tab key
   snap
   ! pane_has 'b:? back' || { why="b left the detail open"; return 1; }
   [ "$(active_tab)" = "$1" ] || { why="b went back to tab $(active_tab), not $1"; return 1; }
+  # One press: the ring is on the row the detail came from, so Enter opens it
+  # again; the marked row is the one that was opened (#185).
+  local marked
+  for i in "${!view[@]}"; do
+    [[ ${view[i]} == ▌* ]] && { marked=$(ident "${view[i]}"); break; }
+  done
+  keys Enter
+  snap
+  pane_has 'b:? back' || { why="Enter after b opened no detail: the ring is not on the row"; return 1; }
+  keys b
+  snap
+  for i in "${!view[@]}"; do
+    [[ ${view[i]} == ▌* ]] && { [ "$(ident "${view[i]}")" = "$marked" ] && return 0; break; }
+  done
+  why="b did not keep the marked row '$marked'"
+  return 1
 }
 # Esc only while the pane shows: in the prompt, a second Esc opens a menu.
 close_pane() {

@@ -370,7 +370,12 @@ async function remove($: EngineInterface, action: Action & { type: 'remove' | 'c
   )
 }
 
-async function act($: EngineInterface, action: Action, surface: RenderSurface): Promise<void> {
+async function act(
+  $: EngineInterface,
+  action: Action,
+  surface: RenderSurface,
+  pressed?: string,
+): Promise<void> {
   if (action.type === 'open' && (await choose($, action.id))) return
   const { value: origin } = await $.state.get({ plugin: 'rabe', key: 'openFrom' })
   const [safe] = landing(action, '', undefined, origin?.tab)
@@ -398,13 +403,19 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
       const was = rowOf(open, items)
       if (action.id) {
-        // One level: only a detail opened from a list stores its origin; one
-        // opened inside a detail keeps it, so back leaves both at once.
-        if (!origin) {
-          const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
-          // An Effects row is a file: its key, not the item's id, is the row.
-          const ring = interaction.ringOn
-          const id = tab === 'effects' && ring?.startsWith('row:') ? ring.slice(4) : action.id
+        // One level: a detail opened from a list replaces the origin; one
+        // opened inside a detail (on the Items tab) keeps it, so back leaves
+        // both at once.
+        const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
+        const inside = tab === 'items' && open !== ''
+        if (!origin || !inside) {
+          // Without a stored origin inside a detail, the open item is the row.
+          // An Effects row is a file: the pressed key, not the item's id, is the row.
+          const id = inside
+            ? was || action.id
+            : tab === 'effects' && pressed?.startsWith('row:')
+              ? pressed.slice(4)
+              : action.id
           await $.state.set({ plugin: 'rabe', key: 'openFrom' }, { tab, id })
         }
         await $.state.set({ plugin: 'rabe', key: 'selected' }, action.id)
@@ -412,12 +423,14 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       } else {
         const tab = origin?.tab ?? 'items'
         if (was) await $.state.set({ plugin: 'rabe', key: 'selected' }, was)
-        if (origin && tab !== 'items') await pick($, tab, origin.id)
+        // The row the detail was opened from: its own pick, or for Items the
+        // selection (a workflow's run, not the agent that was open).
+        if (origin) await pick($, tab, origin.id)
         await $.state.set({ plugin: 'rabe', key: 'tab' }, tab)
         await $.state.set({ plugin: 'rabe', key: 'openFrom' }, null)
       }
       await $.state.set({ plugin: 'rabe', key: 'open' }, action.id)
-      return land($, landing(action, was, undefined, origin?.tab))
+      return land($, landing(action, origin?.id ?? was, undefined, origin?.tab))
     }
     case 'query':
       await $.state.set({ plugin: 'rabe', key: 'query' }, action.text)
@@ -565,14 +578,14 @@ async function look(
 // its element, so an event carries out only an action of its own element.
 // ponytail: two events on one element in flight at once may swap their
 // actions; both are that element's, and each runs exactly once.
-type Slot = { press?: { action: Action; surface: RenderSurface } }
+type Slot = { press?: { action: Action; surface: RenderSurface; element: string } }
 const waiting = new Map<string, Slot[]>()
 
 const slotOf = (at: At) => `${at.surface} ${at.element}`
 
 function leave(action: Action, at: At): void {
   const slot = waiting.get(slotOf(at))?.find(one => !one.press)
-  if (slot) slot.press = { action, surface: at.surface }
+  if (slot) slot.press = { action, surface: at.surface, element: at.element }
 }
 
 // Runs a press or an Input event beneath the hook, then carries out the action
@@ -604,10 +617,10 @@ async function carry<R>($: EngineInterface, at: At, run: () => Promise<R>): Prom
         action.type === 'focus' ||
         (action.type !== 'message' && landing(action, '').length > 0)
       ) {
-        await focusTurn(() => act($, action, press.surface))
+        await focusTurn(() => act($, action, press.surface, press.element))
       } else {
         await focusTurn(async () => undefined)
-        await act($, action, press.surface)
+        await act($, action, press.surface, press.element)
       }
     } else {
       await focusTurn(async () => undefined)

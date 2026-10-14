@@ -2647,3 +2647,57 @@ test('b from a nested detail returns to the tab the first detail came from', asy
   expect(state).toMatchObject({ tab: 'cost', open: '', selected: job.id })
   await ui.unmount()
 })
+
+test('a detail opened after a tab change replaces the origin and b lands on that row', async ($, on) => {
+  const state = hold(on, ALL, { tab: 'cost' }, false)
+  session(on)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: `row:${explore.id}` })
+  await ui.press({ key: 'tab-timeline' })
+  await ui.press({ key: `row:${babysit.id}` })
+  expect(state.openFrom).toEqual({ tab: 'timeline', id: babysit.id })
+  await ui.press({ key: 'back' })
+  expect(state).toMatchObject({ tab: 'timeline', open: '' })
+  expect(state.picked).toMatchObject({ timeline: babysit.id })
+  await ui.unmount()
+})
+
+test('b from a workflow agent opened on the timeline lands on the workflow row', async ($, on) => {
+  const state = hold(on, ALL, { tab: 'timeline' }, false)
+  session(on)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: `row:${flow.id}` })
+  await ui.press({ key: `row:${verify.id}` })
+  expect(state.openFrom).toEqual({ tab: 'timeline', id: flow.id })
+  await ui.press({ key: 'back' })
+  expect(state).toMatchObject({ tab: 'timeline', open: '' })
+  expect(state.picked).toMatchObject({ timeline: flow.id })
+  await ui.unmount()
+})
+
+test('b from the editor of the second effects file lands on that file row', async ($, on) => {
+  const two = {
+    ...edited,
+    detail: {
+      ...(edited as RabeItemOf<'agent'>).detail,
+      edits: [
+        { path: '/repo/src/a.ts', at: NOW },
+        { path: '/repo/src/b.ts', at: NOW },
+      ],
+    },
+  } as RabeItem
+  const state = hold(
+    on,
+    ALL.map(item => (item.id === plan.id ? two : item)),
+    { tab: 'effects' },
+    false,
+  )
+  session(on)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: 'row:file:/repo/src/b.ts' })
+  expect(state.openFrom).toEqual({ tab: 'effects', id: 'file:/repo/src/b.ts' })
+  await ui.press({ key: 'back' })
+  expect(state).toMatchObject({ tab: 'effects', open: '' })
+  expect(state.picked).toMatchObject({ effects: 'file:/repo/src/b.ts' })
+  await ui.unmount()
+})
