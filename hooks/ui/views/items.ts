@@ -17,6 +17,7 @@ import {
   withForwarder,
 } from '../lists'
 import {
+  type Action,
   canStop,
   type Drawn,
   isPress,
@@ -236,6 +237,7 @@ function listButtons(
         },
       ]
     : []
+  // The last button: it takes no slot from the others (#187).
   buttons.push(
     slot(
       'stop',
@@ -261,9 +263,11 @@ function listButtons(
   )
 
   // Beside the detail the list offers the detail's c, m and d for the
-  // selection, under one key each like x and g. They keep their slots too.
-  if (isSplit(size) && selected) {
-    const own = detailButtons(selected, size.hasInput, model.items)
+  // selection, under one key each like x and g. They keep their slots too,
+  // also with no selection: a query with no match must not move the search
+  // field to a lower index, where the engine drops the ring (#180).
+  if (isSplit(size)) {
+    const own = selected ? detailButtons(selected, size.hasInput, model.items) : []
     const rekey = (hotkey: string, key: string, label: string): ViewButton => {
       const one = own.find(button => button.hotkey === hotkey && !button.dim)
       return one ? { ...one, key } : { key, label, action: NONE, dim: true }
@@ -275,17 +279,38 @@ function listButtons(
     )
   }
 
+  // Always drawn, so the ring's indexes do not shift when a filter is set.
+  const name = isSplit(size) ? 'k: clear filter' : 'k'
+  if (size.hasInput)
+    buttons.push(
+      query
+        ? {
+            key: 'clear-search',
+            label: name,
+            hotkey: 'k',
+            action: { type: 'query', text: '', isSubmit: true },
+          }
+        : { key: 'clear-search', label: name, action: NONE, dim: true },
+    )
+
   return buttons
 }
 
+// The search field's action: a change filters, Enter submits the filter.
+export const queryOf = (text: string, kind?: 'change' | 'submit'): Action => ({
+  type: 'query',
+  text,
+  ...(kind === 'submit' && { isSubmit: true }),
+})
+
 const search = (sel: Selection): ViewInput => ({
   key: 'search',
-  label: 'search',
+  label: sel.isOnSearch ? '▸ search' : 'search',
   placeholder: 'title, kind or command',
   submitLabel: 'filter',
   value: sel.query,
   isLive: true,
-  action: (text, kind) => ({ type: 'query', text, ...(kind === 'submit' && { isSubmit: true }) }),
+  action: queryOf,
 })
 
 // The Items tab: the grouped list, and beside it (split) or under it (one

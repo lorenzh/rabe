@@ -76,12 +76,13 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | Key | What it does |
 |---|---|
 | ↑ / ↓ | Move to the previous / next row; the detail beside the list follows. In a scrolling pane, arrows and view-changing presses take turns while they move focus; a pending stop, delete or message does not block them |
-| Enter | Open the row that has the focus, also after a click selected another row |
+| Enter | Open the row that has the focus; a click moves the focus onto the clicked row |
 | Click on a row | Select the row; click it again to open it. A click on the row that has the focus opens it at once |
 | Tab / Shift+Tab | Move the focus through rows, tabs and buttons |
-| `b` | Go back to the list |
+| `b` | Go back to the tab and row the detail was opened from (Items without a stored origin) |
 | `1` to `4` | Switch tab and focus its marked row. An empty tab keeps the focus on its label |
-| `s` | Focus search. Enter returns to the marked row |
+| `s` | Focus search. Enter focuses the first matching row. Esc keeps the pane and the filter open when the query is not empty, but Claude Code then hands the keys to the prompt: press `ctrl+x tab` to return to the pane |
+| `k` | Clear the filter (dim while there is none) |
 | `x` | Stop the selected item |
 | `g` | Stop the group among rows the search shows (the button shows its count), or the workflow run of the selected run or workflow agent |
 | `r` | Remove the selected row once it is done, failed or stopped |
@@ -138,9 +139,9 @@ A success toast names the copied field and counts its text: `Copied command · 3
 
 Other toasts flatten whitespace and replace Unicode control (`Cc`) and format (`Cf`) characters with `?`. Wide characters, emoji and combining marks stay. Toasts name deleted cron jobs by id. Copy failures show the reason through the same filter. Reasons include `no-clipboard` and `refused`. If the filter leaves the copied text unchanged, the failure toast offers the exact text. Cron prompts never appear in toasts.
 
-The search button shows the active query, cut with `…` when long. The search field keeps the full query at every width. The filter stays visible after Enter and after reopening the pane. To clear it, submit an empty search. Stop group and remove ended act only on the filtered rows.
+The search button shows the active query, cut with `…` when long. The search field keeps the full query at every width. The filter stays visible after Enter and after reopening the pane. To clear it, press `k`, or submit an empty search. The search label shows `▸` while the field has the focus. A query that matches nothing shows `No item matches` and keeps the focus in the field. Stop group and remove ended act only on the filtered rows.
 
-With the mouse, click a row once to select it and again to open it. Click a tab to switch to it, a group name to fold the group, a button to press it, or a row on the other tabs to open it. The wheel scrolls the pane. A click does not move the focus, so Enter still opens the row that has the focus. A click also does not give the pane the keys: `ctrl+x tab` does. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
+With the mouse, click a row once to select it and again to open it. Click a tab to switch to it, a group name to fold the group, a button to press it, or a row on the other tabs to open it. The wheel scrolls the pane. A click on a row moves the focus ring onto it, so the keys and the arrows continue from there. A click on a tab switches to it and puts the focus on the tab's marked row, as the keys `1` to `4` do: Claude Code does not tell Rabe a click from a hotkey, so the focus cannot rest on the tab label after a click. A click does not give the pane the keys: `ctrl+x tab` does. The mouse works only in Claude Code's fullscreen layout: type `/tui fullscreen` to turn it on. Without it, use the keys.
 
 On the list, the stop keys `x` and `g` and the remove key `r` work only after you move onto a row yourself, with an arrow, Tab or a click. Until then, and after the view or the selected row changes without you, they are dim, so a key press never stops something you did not pick. If they stay dim after a click, the pane does not have the keys yet: press `ctrl+x tab`, then move onto the row with Tab or an arrow.
 
@@ -148,7 +149,7 @@ On the list, the stop keys `x` and `g` and the remove key `r` work only after yo
 
 While the pane is open, rows and buttons keep their places, so Enter acts on what you see under the focus. An item that starts after you open the pane goes into the group of its kind, after the rows already there; on the Effects tab, a new file or port goes into its section the same way. When it comes above the focused row, Rabe moves the focus back onto that row; until then, Enter on a row does nothing. A row that is gone leaves the Items list and the Effects tab at once, and the same rule applies: when the focused row moves up, Enter on a row does nothing until Rabe moves the focus back; when the focused row itself is gone, Enter on a row does nothing until you move the focus. Buttons and tabs never move. In an open item and on the Cost and Timeline tabs, a row that is gone stays as a dim `gone` slot until you change the view or close the pane. Type `/rabe` again to sort the lists.
 
-Removed rows stay off the list, the Cost and Timeline tabs, a workflow's agent rows and the band's counts for the rest of the session. They still count in a workflow's phases and tokens, in the cost totals and on the Effects tab, so a summary never loses work that ran. Running items are never removed; an item that runs again shows again. Ended items stay hidden even when a poll finds them again. A removed row leaves the list at once, with no `gone` slot; when it was the selected row, the keys go dim until you move onto a row again.
+Removed rows stay off the list, the Cost and Timeline tabs, a workflow's agent rows and the band's counts for the rest of the session. They still count in a workflow's phases and tokens, in the cost totals and on the Effects tab, so a summary never loses work that ran. Running items are never removed; an item that runs again shows again. Ended items stay hidden even when a poll finds them again. A removed row leaves the list at once, with no `gone` slot; when it was the selected row, the selection moves to the next row (the previous one at the end of the list) and the keys go dim until you move onto a row again. Each tab keeps its own selected row: a visit to Cost, Effects or Timeline leaves the Items selection as it was, and a reopened pane puts the focus on the selected row of the tab you left.
 
 Ended items keep their stop buttons in place. These buttons stay dim. Pressing them does nothing.
 
