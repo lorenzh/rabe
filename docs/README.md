@@ -47,3 +47,7 @@ Use this index to find the guide that matches your question.
 - [User interface limits](feasibility/ui.md): API limits for rendering and input, and the pinned header spike (overflow clipping with a negative `marginTop`).
 - [Price data](feasibility/prices.md): price inputs and view data.
 - [Files and runtime limits](feasibility/files.md): script edits from Bash diffs, confirmed shell writes, coverage settings, and open runtime questions.
+
+## Research
+
+- [0.10.0 design decisions](research/0-10-0-decisions.md): research report and recommendations for #199 (main-session tokens per model), #218 (dropped message submit) and #162 (diff in the Effects tab).
