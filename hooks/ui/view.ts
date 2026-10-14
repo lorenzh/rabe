@@ -224,8 +224,9 @@ export function stepRow(keys: string[], selected: string, by: number): string | 
 // Where the focus ring goes, key by key, after `action` changed the view
 // (the item `open` was open): the active tab's Button, then the element the
 // change leads to. Search edits keep its Input focused; Enter returns to rows.
-// A sent message returns the keys to the agent's `m: message`.
-export function landing(action: Action, open: string, drawn?: Drawn): string[] {
+// A sent message returns the keys to the agent's `m: message`. Back lands on
+// the tab `from` that the detail was opened from.
+export function landing(action: Action, open: string, drawn?: Drawn, from = 'items'): string[] {
   const first = drawn ? rowKeys(drawn)[0] : undefined
   const target =
     drawn?.buttons.find(one => one.autoFocus)?.key ??
@@ -237,7 +238,7 @@ export function landing(action: Action, open: string, drawn?: Drawn): string[] {
       return [`tab-${action.tab}`, ...(target ? [target] : [])]
     case 'open': {
       const next = action.id ? 'back' : open && `row:${open}`
-      return ['tab-items', ...(next ? [next] : [])]
+      return [action.id ? 'tab-items' : `tab-${from}`, ...(next ? [next] : [])]
     }
     case 'fold':
       return ['tab-items', `group-${action.group}`]

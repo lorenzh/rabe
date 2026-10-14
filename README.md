@@ -79,7 +79,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | Enter | Open the row that has the focus; a click moves the focus onto the clicked row |
 | Click on a row | Select the row; click it again to open it. A click on the row that has the focus opens it at once |
 | Tab / Shift+Tab | Move the focus through rows, tabs and buttons |
-| `b` | Go back to the list |
+| `b` | Go back to the tab and row the detail was opened from (Items without a stored origin) |
 | `1` to `4` | Switch tab and focus its marked row. An empty tab keeps the focus on its label |
 | `s` | Focus search. Enter focuses the first matching row. Esc keeps the pane and the filter open when the query is not empty, but Claude Code then hands the keys to the prompt: press `ctrl+x tab` to return to the pane |
 | `k` | Clear the filter (dim while there is none) |

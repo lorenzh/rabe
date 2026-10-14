@@ -2594,3 +2594,56 @@ for (const surface of SURFACES) {
     await ui.unmount()
   })
 }
+
+// #185: Back returns to the tab and the row the detail was opened from.
+test('b from a detail opened on the cost tab returns to the cost tab', async ($, on) => {
+  const state = hold(on, ALL, { tab: 'cost' })
+  session(on)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: `row:${explore.id}` })
+  expect(state).toMatchObject({ tab: 'items', open: explore.id })
+  expect(state.openFrom).toEqual({ tab: 'cost', id: explore.id })
+  await ui.press({ key: 'back' })
+  expect(state).toMatchObject({ tab: 'cost', open: '' })
+  expect(state.openFrom).toBeNull()
+  await ui.unmount()
+})
+
+test('b from a detail opened on the timeline returns to the timeline', async ($, on) => {
+  const state = hold(on, ALL)
+  session(on)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: 'tab-timeline' })
+  await ui.press({ key: `row:${babysit.id}` })
+  await ui.press({ key: 'back' })
+  expect(state).toMatchObject({ tab: 'timeline', open: '' })
+  await ui.unmount()
+})
+
+test('b from a detail opened on the items tab returns to the items tab', async ($, on) => {
+  const state = hold(on, ALL, { selected: dev.id })
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: `row:${dev.id}` })
+  await ui.press({ key: 'back' })
+  expect(state).toMatchObject({ tab: 'items', open: '', selected: dev.id })
+  await ui.unmount()
+})
+
+test('b from a nested detail returns to the tab the first detail came from', async ($, on) => {
+  const call = { at: NOW - 60_000, command: 'task' as const, text: 'codex-companion.mjs task' }
+  const forwarder = {
+    ...explore,
+    id: 'agent:f1',
+    title: 'Codex rescue',
+    detail: { agentId: 'f1', toolCount: 1, codexCalls: [call] },
+  } as RabeItem
+  const job = { ...review, parentId: forwarder.id } as RabeItem
+  const state = hold(on, [forwarder, job, dev], { tab: 'cost' })
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: `row:${job.id}` })
+  await ui.press({ key: `forwarder:${forwarder.id}` })
+  expect(state.openFrom).toEqual({ tab: 'cost', id: job.id })
+  await ui.press({ key: 'back' })
+  expect(state).toMatchObject({ tab: 'cost', open: '', selected: job.id })
+  await ui.unmount()
+})

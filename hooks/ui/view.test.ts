@@ -72,6 +72,10 @@ test('a change of the view lands the focus ring on the active tab, then where it
   expect(landing({ type: 'open', id: 'shell:a' }, '')).toEqual(['tab-items', 'back'])
   expect(landing({ type: 'open', id: '' }, 'shell:a')).toEqual(['tab-items', 'row:shell:a'])
   expect(landing({ type: 'open', id: '' }, '')).toEqual(['tab-items'])
+  expect(landing({ type: 'open', id: '' }, 'shell:a', undefined, 'cost')).toEqual([
+    'tab-cost',
+    'row:shell:a',
+  ])
   expect(landing({ type: 'fold', group: 'shells' }, '')).toEqual(['tab-items', 'group-shells'])
   expect(landing({ type: 'query', text: 'dev' }, '')).toEqual(['search'])
   expect(landing({ type: 'stop', ids: ['shell:a'] }, '')).toEqual([])

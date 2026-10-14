@@ -277,6 +277,9 @@ declare module 'claude-code' {
       // tab's first row. Items keeps `selected`, so a tab visit leaves it.
       picked: Record<string, string>
       open: string
+      // The tab and row id the open detail came from, for Back (one level).
+      // Absent: Back goes to Items. Null after Back and when the pane closes.
+      openFrom: { tab: RabeTab; id: string } | null
       order: RabeOrder
       // The files the main session changed (no agent), newest last.
       edits: RabeEdit[]

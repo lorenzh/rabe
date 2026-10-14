@@ -372,7 +372,8 @@ async function remove($: EngineInterface, action: Action & { type: 'remove' | 'c
 
 async function act($: EngineInterface, action: Action, surface: RenderSurface): Promise<void> {
   if (action.type === 'open' && (await choose($, action.id))) return
-  const [safe] = landing(action, '')
+  const { value: origin } = await $.state.get({ plugin: 'rabe', key: 'openFrom' })
+  const [safe] = landing(action, '', undefined, origin?.tab)
   if (action.type !== 'message' && safe) {
     feed($, { type: 'reset' })
     await focusOn($, safe)
@@ -396,13 +397,27 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       const { value: open = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
       const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
       const was = rowOf(open, items)
-      const id = action.id || was
-      if (id) {
-        await $.state.set({ plugin: 'rabe', key: 'selected' }, id)
+      if (action.id) {
+        // One level: only a detail opened from a list stores its origin; one
+        // opened inside a detail keeps it, so back leaves both at once.
+        if (!origin) {
+          const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
+          // An Effects row is a file: its key, not the item's id, is the row.
+          const ring = interaction.ringOn
+          const id = tab === 'effects' && ring?.startsWith('row:') ? ring.slice(4) : action.id
+          await $.state.set({ plugin: 'rabe', key: 'openFrom' }, { tab, id })
+        }
+        await $.state.set({ plugin: 'rabe', key: 'selected' }, action.id)
         await $.state.set({ plugin: 'rabe', key: 'tab' }, 'items')
+      } else {
+        const tab = origin?.tab ?? 'items'
+        if (was) await $.state.set({ plugin: 'rabe', key: 'selected' }, was)
+        if (origin && tab !== 'items') await pick($, tab, origin.id)
+        await $.state.set({ plugin: 'rabe', key: 'tab' }, tab)
+        await $.state.set({ plugin: 'rabe', key: 'openFrom' }, null)
       }
       await $.state.set({ plugin: 'rabe', key: 'open' }, action.id)
-      return land($, landing(action, was))
+      return land($, landing(action, was, undefined, origin?.tab))
     }
     case 'query':
       await $.state.set({ plugin: 'rabe', key: 'query' }, action.text)
@@ -699,6 +714,7 @@ export function pane(on: On, hours = baseHours): void {
       screen.release()
       feed($, { type: 'closed' })
       isPinned = false
+      await $.state.set({ plugin: 'rabe', key: 'openFrom' }, null)
     }
     return result
   }).catch((_$, e, next) => next(e))
