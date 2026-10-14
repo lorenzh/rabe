@@ -111,7 +111,7 @@ Known limit: in a burst such as `2 1 Down Down Down Down` with 30 to 50 ms betwe
 
 | View | Letters caught outside input fields |
 |------|-------------------------------------|
-| Items list | `x g r a`; `s` where search is available; beside the detail of the selected row also `c` and `d`, and `m` on surfaces that support input fields, dim when the selected row has no such action |
+| Items list | `x g r a`; `s k` where search is available (`k` stays caught and dim while there is no filter); beside the detail of the selected row also `c` and `d`, and `m` on surfaces that support input fields, dim when the selected row has no such action |
 | Agent detail | `b c x`; `m` on surfaces that support input fields |
 | Workflow agent detail | `b c`; `g` when the parent run is known; no `x` or `m` |
 | Workflow detail | `b g` |
