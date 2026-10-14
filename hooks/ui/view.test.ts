@@ -7,6 +7,7 @@ import {
   arm,
   DISARMED,
   type Drawn,
+  holdsClose,
   isDestructive,
   isPress,
   landing,
@@ -15,6 +16,7 @@ import {
   layout,
   messageLanding,
   NO_SELECTION,
+  rowKeys,
   stepRow,
   targetsOf,
   waitsForView,
@@ -70,6 +72,10 @@ test('a change of the view lands the focus ring on the active tab, then where it
   expect(landing({ type: 'open', id: 'shell:a' }, '')).toEqual(['tab-items', 'back'])
   expect(landing({ type: 'open', id: '' }, 'shell:a')).toEqual(['tab-items', 'row:shell:a'])
   expect(landing({ type: 'open', id: '' }, '')).toEqual(['tab-items'])
+  expect(landing({ type: 'open', id: '' }, 'shell:a', undefined, 'cost')).toEqual([
+    'tab-cost',
+    'row:shell:a',
+  ])
   expect(landing({ type: 'fold', group: 'shells' }, '')).toEqual(['tab-items', 'group-shells'])
   expect(landing({ type: 'query', text: 'dev' }, '')).toEqual(['search'])
   expect(landing({ type: 'stop', ids: ['shell:a'] }, '')).toEqual([])
@@ -194,7 +200,7 @@ test('an empty tab keeps the ring on its label', async () => {
 
 // Review of #175: a fold and a search edit move their own target too. Folding
 // the group of the selected agent drops its message Input above the headers,
-// and a search with no match drops the list's controls above the search Input.
+// and a submitted search moves the target row.
 test('a fold or a submitted search waits for the new view where its target moved', async () => {
   const model = { items: [explore, dev, ci], turns: {}, lines: {}, now: NOW }
   const sel = { ...NO_SELECTION, selected: explore.id, isFocused: true }
@@ -231,9 +237,9 @@ test('a fold or a submitted search waits for the new view where its target moved
       ringOf(paneView(model, size, after)).indexOf(key),
     ]
   }
-  expect(moved(140, sel, { ...sel, folded: ['agents'] }, 'group-agents')).toEqual([14, 13])
-  // A live edit moves the search Input too; it lands at once (see below).
-  expect(moved(140, sel, { ...sel, query: 'zzz' }, 'search')).toEqual([12, 9])
+  expect(moved(140, sel, { ...sel, folded: ['agents'] }, 'group-agents')).toEqual([15, 14])
+  // A live edit keeps the search Input in place (#180); it lands at once (see below).
+  expect(moved(140, sel, { ...sel, query: 'zzz' }, 'search')).toEqual([13, 13])
 })
 
 test('a landing that keeps the view or a live search edit does not wait; a tab, a fold and a submitted search do', () => {
@@ -481,6 +487,28 @@ test('a press on another live row of the Items list selects it; on the selected 
   expect(selectsOnPress(model, sel, ci.id, `row:${dev.id}`)).toBe(true)
 })
 
+// The group's count is in g's label ("g: stop 3"): a neighbour that ends
+// changes the label, not what g stops, so it keeps the pane armed.
+test('a neighbour that ends in a group of three keeps x and g armed; a new row disarms', () => {
+  const size = { columns: 100, rows: 24, surface: 'terminal', hasInput: true } as const
+  const shell = (id: string, status = 'running') =>
+    ({ ...dev, id: `shell:${id}`, title: `serve ${id}`, status }) as typeof dev
+  const selection = { ...NO_SELECTION, selected: 'shell:a', isArmed: true, isListArmed: true }
+  const drawn = (items: (typeof dev)[]) =>
+    ({
+      type: 'drawn',
+      fallback: '',
+      selected: 'shell:a',
+      targets: targetsOf(paneView({ items, turns: {}, lines: {}, now: NOW }, size, selection)),
+    }) as const
+  const three = [shell('a'), shell('b'), shell('c')]
+  const before = arm({ ...DISARMED, isArmed: true, isListArmed: true }, drawn(three))
+  const ended = arm(before, drawn([shell('a'), shell('b', 'done'), shell('c')]))
+  expect([ended.isArmed, ended.isListArmed]).toEqual([true, true])
+  const joined = arm(before, drawn([...three, shell('d')]))
+  expect([joined.isArmed, joined.isListArmed]).toEqual([false, false])
+})
+
 test('a split delete target gained without a chosen row disarms the pane', () => {
   const size = { columns: 100, rows: 24, surface: 'terminal', hasInput: true } as const
   const cron = {
@@ -500,9 +528,53 @@ test('a split delete target gained without a chosen row disarms the pane', () =>
     { ...DISARMED, isArmed: true, isListArmed: true },
     { type: 'drawn', fallback: '', selected: cron.id, targets: targets('done') },
   )
-  expect(targets('running')).toContain(JSON.stringify(['delete', 'd: delete job', cron.id]))
+  expect(targets('running')).toContain(JSON.stringify(['delete', 'delete', cron.id]))
   expect(
     arm(before, { type: 'drawn', fallback: '', selected: cron.id, targets: targets('running') })
       .isArmed,
   ).toBe(false)
+})
+
+test('a submitted search lands on the first matching row, not the selected one or a button (#187)', () => {
+  const model = { items: [dev, explore], turns: {}, lines: {}, now: NOW }
+  const size = { columns: 80, rows: 24, surface: 'terminal', hasInput: true } as const
+  const sel = { ...NO_SELECTION, selected: explore.id, isFocused: true }
+  const drawn = paneView(model, size, sel)
+  const [first] = rowKeys(drawn)
+  const action = { type: 'query', text: '', isSubmit: true } as const
+  expect(first).toBeDefined()
+  expect(landing(action, '', drawn)).toEqual(['tab-items', first])
+  expect(landing(action, '', { nodes: [], buttons: [] })).toEqual(['tab-items', 'find'])
+})
+
+test('Esc in a filled search field leaves the field instead of closing the pane (#187)', () => {
+  expect(holdsClose('search', 'verify')).toBe(true)
+  expect(holdsClose('search', '')).toBe(false)
+  expect(holdsClose('row:a', 'verify')).toBe(false)
+  expect(holdsClose(undefined, 'verify')).toBe(false)
+})
+
+test('landOn answers whether every key landed', async () => {
+  const ring = () => undefined
+  expect(await landOn(['tab-cost', 'row:a'], ring, async () => true)).toBe(true)
+  expect(await landOn(['tab-cost', 'row:a'], ring, async key => key === 'tab-cost')).toBe(false)
+})
+
+// Issue #180: the engine keeps the ring on its index, and a tree that draws the
+// search field at a lower index drops the ring out of the pane. A query that
+// matches nothing took the list's c, m and d slots with it (index 12 to 10 at
+// 140 columns), so the next typed key left the field.
+test('the search field keeps its index and a stop after the tabs when the query matches nothing', () => {
+  const model = { items: [explore, dev, ci], turns: {}, lines: {}, now: NOW }
+  for (const surface of ['terminal', 'desktop'] as const) {
+    for (const columns of [80, 140]) {
+      const size = { columns, rows: 24, surface, hasInput: true }
+      const at = (query: string) =>
+        ringOf(paneView(model, size, { ...NO_SELECTION, query, isFocused: true })).indexOf('search')
+      const found = at('dev')
+      expect([surface, columns, found > 0]).toEqual([surface, columns, true])
+      expect([surface, columns, at('devx')]).toEqual([surface, columns, found])
+      expect([surface, columns, at('')]).toEqual([surface, columns, found])
+    }
+  }
 })

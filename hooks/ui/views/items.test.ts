@@ -51,7 +51,7 @@ test('Enter in search returns to the filtered row while changes keep the field f
     expect(submit).toEqual({ type: 'query', text: 'verify', isSubmit: true })
     if (!change || !submit) return
     expect(landing(change, '', drawn)).toEqual(['search'])
-    expect(landing(submit, '', drawn)).toEqual(['tab-items', `row:${explore.id}`])
+    expect(landing(submit, '', drawn)).toEqual(['tab-items', rowKeys(drawn)[0]])
     expect(landing(submit, '', paneView(model, size, { ...sel, selected: '' }))).toEqual([
       'tab-items',
       `row:${verify.id}`,
@@ -63,6 +63,26 @@ test('Enter in search returns to the filtered row while changes keep the field f
       'find',
     ])
   }
+})
+
+test('the search field is marked while the ring is on it (#187)', () => {
+  const sel = { ...NO_SELECTION, isFocused: true }
+  const label = (isOnSearch: boolean) =>
+    paneView(model, WIDE, { ...sel, isOnSearch }).inputs?.[0]?.label
+  expect(label(false)).toBe('search')
+  expect(label(true)).toBe('▸ search')
+})
+
+test('a filtered list offers a button that clears the filter (#187)', () => {
+  const sel = { ...NO_SELECTION, query: 'verify', isFocused: true }
+  const clear = paneView(model, WIDE, sel).buttons.find(one => one.key === 'clear-search')
+  expect(clear?.action).toEqual({ type: 'query', text: '', isSubmit: true })
+  const none = paneView(model, WIDE, { ...sel, query: '' }).buttons.find(
+    one => one.key === 'clear-search',
+  )
+  expect(none?.dim).toBe(true)
+  // dim, but still bound: a second `k` must not reach the composer
+  expect(none?.hotkey).toBe('k')
 })
 
 test('at 90 columns and more the list and the selected item sit side by side', () => {
@@ -113,6 +133,7 @@ test('each row is a plain Button keyed by its item that opens it; the selected o
     'c: copy id',
     'm: message',
     'd: delete job',
+    'k: clear filter',
   ])
   expect(drawn.buttons.map(one => one.hotkey)).toEqual([
     's',
@@ -122,6 +143,7 @@ test('each row is a plain Button keyed by its item that opens it; the selected o
     'a',
     'c',
     'm',
+    undefined,
     undefined,
   ])
 })
@@ -153,7 +175,7 @@ test('below 90 columns the list fills the width, drops the gaps and ends with on
   expect(cell(grid, 0, end).slice(1)).toEqual([C.yellow, C.panel])
   expect(cell(grid, 79, end)[2]).toBe(C.panel)
   expect(cell(grid, at(shown, end, '≈'), end)[1]).toBe(C.bright)
-  expect(keys(buttons)).toEqual(['s', 'x: stop', 'g: stop 3', 'r: remove', 'a: remove ended'])
+  expect(keys(buttons)).toEqual(['s', 'x: stop', 'g: stop 3', 'r: remove', 'a: remove ended', 'k'])
 })
 
 test('below 90 columns a list that fits keeps the gaps between groups', () => {
@@ -417,7 +439,7 @@ test('a disarmed pane keeps stop and delete hotkeys bound without an action', ()
 // Issue #70: beside the detail the list offers its c, m and d, one key each.
 test('beside the detail the list offers c, m and d for the selected row, under fixed keys', () => {
   const tail = (item: RabeItem) =>
-    itemsView(model, WIDE, { ...NO_SELECTION, selected: item.id }).buttons.slice(5)
+    itemsView(model, WIDE, { ...NO_SELECTION, selected: item.id }).buttons.slice(5, -1)
   expect(tail(explore)).toMatchObject([
     { key: 'copy', label: 'c: copy id', action: { type: 'copy', what: 'id' } },
     {
@@ -435,7 +457,7 @@ test('beside the detail the list offers c, m and d for the selected row, under f
   const drawn = itemsView(model, WIDE, { ...NO_SELECTION, selected: explore.id })
   expect(drawn.inputs?.map(one => one.key)).toEqual(['search', `message:${explore.id}`])
   expect(targetsOf(itemsView(model, WIDE, { ...NO_SELECTION, selected: babysit.id }))).toContain(
-    JSON.stringify(['delete', 'd: delete job', babysit.id]),
+    JSON.stringify(['delete', 'delete', babysit.id]),
   )
   const narrow = itemsView(model, NARROW, { ...NO_SELECTION, selected: explore.id })
   expect(narrow.buttons.map(one => one.key)).not.toContain('copy')

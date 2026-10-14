@@ -102,8 +102,8 @@ function kindGroupOf(item: RabeItem): Group {
   return 'agents'
 }
 
-// The items the list and the band's chips show: the person removed the others
-// this session (`rabe.removed`). An item that runs again shows, since nothing
+// The items the Items list and the band's chips show: the person removed the
+// others this session (`rabe.removed`). Other views keep them. An item that runs again shows, since nothing
 // running or idle is ever hidden.
 export const kept = (items: RabeItem[], removed: readonly string[] = []): RabeItem[] =>
   removed.length === 0 ? items : items.filter(item => !isEnded(item) || !removed.includes(item.id))

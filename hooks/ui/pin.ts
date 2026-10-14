@@ -19,7 +19,11 @@ export const NO_PIN: Pin = { top: 0, scope: '', followed: '' }
 // Where a pinned drawing's view starts: `above` tree rows of tabs, rule and
 // toolbar of the view as drawn fresh, `rows` of body room under them, `head`
 // the lines above the toolbar. `paneView` counts its window from this header.
-export type Fresh = { above: number; rows: number; head: number }
+// `isTight`: the whole header leaves under `MIN_ROWS` list rows, so only the
+// tabs and their rule stay and the toolbar scrolls with the body.
+export type Fresh = { above: number; rows: number; head: number; isTight: boolean }
+
+export const MIN_ROWS = 3
 
 // undefined where the body fits or is no list: the pane then draws as it
 // always did.
@@ -27,17 +31,21 @@ export function geometry(model: Model, size: Size, sel: Selection): Fresh | unde
   const { window: _window, ...bare } = size
   const drawn = paneView(model, bare, sel)
   const head = drawn.toolbar ?? 0
-  const above = head + controlRows(drawn, bare)
+  const tools = controlRows(drawn, bare)
+  const isTight = bare.rows - head - tools - HINT < MIN_ROWS
+  const above = isTight ? head : head + tools
   const rows = Math.max(1, bare.rows - above - HINT)
+  // Not even the tabs leave room for a few rows: the engine's scroll then.
+  if (rows < MIN_ROWS) return undefined
   const body = drawn.nodes.slice(head, -1)
   // Only a body with rows pins: its rows are focusable, so the arrows move the
   // focus and the pane follows it. A text view keeps the engine's scroll.
   const hasRows = body.some(
     node => 'spans' in node && node.spans.some(one => isPress(one) && one.key.startsWith('row:')),
   )
-  if (!hasRows || rowsOf(body) <= rows) return undefined
+  if (!hasRows || rowsOf(body) + (isTight ? tools : 0) <= rows) return undefined
 
-  return { above, rows, head }
+  return { above, rows, head, isTight }
 }
 
 const isTool = (piece?: Piece) => piece !== undefined && ('button' in piece || 'input' in piece)
@@ -76,13 +84,15 @@ function rowsIn(list: Piece[], size: Size): number {
 // first line stands (`split`), `above` its rows, `rows` the body room between
 // it and the tail, `total` the body rows, `focus` the row span of the piece
 // with `key`: the ring's control or Input where it stands in the body, else the
-// selected row.
+// selected row. `floor` is the least scroll that leaves `MIN_ROWS` list rows in
+// view when the focus lands on a row (0 unless the toolbar scrolls with the body).
 export type Geometry = {
   above: number
   rows: number
   total: number
   split: number
   key: string
+  floor: number
   focus?: [number, number]
 }
 
@@ -92,9 +102,14 @@ export function measure(
   size: Size,
   selected: string,
   ring?: string,
+  isTight = false,
 ): Geometry {
   let lines = 0
-  const first = list.findIndex(piece => !isTool(piece) && lines++ >= head)
+  // Tight: the controls are body rows, so the first piece past the head lines
+  // starts the body, a control or not.
+  const first = list.findIndex(piece =>
+    isTool(piece) ? isTight && lines >= head : lines++ >= head,
+  )
   const split = first < 0 ? list.length : first
   const isTail = tailOf(list)
   const body: Piece[] = []
@@ -113,6 +128,20 @@ export function measure(
   const ringAt = ring ? body.findIndex(piece => isTool(piece) && has(piece, ring)) : -1
   const key = ringAt >= 0 && ring ? ring : `row:${selected}`
   const at = ringAt >= 0 ? ringAt : body.findIndex(piece => has(piece, key))
+  const listAt = body.findIndex(
+    piece =>
+      'spans' in piece && piece.spans.some(one => isPress(one) && one.key.startsWith('row:')),
+  )
+  const floor =
+    isTight && listAt >= 0 ? Math.max(0, rowsIn(body.slice(0, listAt), size) + MIN_ROWS - rows) : 0
+  const piece = at >= 0 ? (body[at] as Piece) : undefined
+  // A control wraps with its run: it stands on the last row of the run up to it.
+  const focus: [number, number] | undefined =
+    at < 0
+      ? undefined
+      : piece && 'button' in piece
+        ? [rowsIn(body.slice(0, at + 1), size) - 1, 1]
+        : [rowsIn(body.slice(0, at), size), rowsIn([piece as Piece], size)]
 
   return {
     above,
@@ -120,12 +149,8 @@ export function measure(
     total: rowsIn(body, size),
     split,
     key,
-    ...(at >= 0 && {
-      focus: [rowsIn(body.slice(0, at), size), rowsIn([body[at] as Piece], size)] as [
-        number,
-        number,
-      ],
-    }),
+    floor,
+    ...(focus && { focus }),
   }
 }
 
@@ -138,6 +163,9 @@ export function follow(pin: Pin, geo: Geometry, scope: string, selected: string)
     const [at, rows] = geo.focus
     if (at < top) top = at
     else if (at + rows > top + geo.rows) top = at + rows - geo.rows
+    // A landing on a row keeps `MIN_ROWS` list rows in view, even where the
+    // toolbar then scrolls away; the ring brings it back when it lands there.
+    if (geo.key.startsWith('row:')) top = Math.min(Math.max(top, geo.floor), geo.total - geo.rows)
   }
 
   return { top, scope, followed: selected }

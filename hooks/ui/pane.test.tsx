@@ -63,7 +63,7 @@ type Ui = Record<string, unknown>
 // The clock of the last `hold`, for a test that waits on the pane's timers.
 let held: ReturnType<typeof mock.clock> | undefined
 
-function hold(on: On, items: RabeItem[], seeds: Ui = {}): Ui {
+function hold(on: On, items: RabeItem[], seeds: Ui = {}, isSwallowing = true): Ui {
   held = mock.clock(on, { now: NOW })
   const fixed: Ui = { items, turns: TURNS, lines: LINES }
   const sets: Ui = {}
@@ -79,9 +79,11 @@ function hold(on: On, items: RabeItem[], seeds: Ui = {}): Ui {
     if (e.plugin === 'rabe') sets[e.key] = e.value
     return next(e)
   })
-  on('ui.focus', { requestId: 'rabe' }, async (_$, e, next) =>
-    e.origin.kind === 'person' ? {} : next(e),
-  )
+  if (isSwallowing) {
+    on('ui.focus', { requestId: 'rabe' }, async (_$, e, next) =>
+      e.origin.kind === 'person' ? {} : next(e),
+    )
+  }
   on('ui.toast', async (_$, e) => {
     sets.toasts = [...((sets.toasts as string[] | undefined) ?? []), e.text]
     return { value: undefined }
@@ -154,6 +156,50 @@ test('a pane closed before the focus call stays closed', async ($, on) => {
   await $.command.run({ command: 'rabe', args: '' } as never)
   await clock.advance(2000)
   expect(opens).toHaveLength(1)
+})
+
+// The kit refuses Rabe's own focus, so every landing fails as an abandoned
+// move does: the pane asks again until the landing holds, at most 40 times.
+test('a reopened pane asks again after a landing that did not hold (#188)', async ($, on) => {
+  hold(on, [dev], { selected: dev.id }, false)
+  on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+  const pane = { id: 'rabe', title: 'Rabe', isShown: true, isFocused: true, isPlaced: true }
+  let asked = 0
+  on('ui.panes', async () => {
+    asked += 1
+    return { value: [pane] }
+  })
+  await $.command.run({ command: 'rabe', args: '' } as never)
+  await held?.advance(60)
+  const first = asked
+  await held?.advance(5000)
+  expect(asked).toBeGreaterThan(first + 5)
+  expect(asked).toBeLessThan(first + 60)
+})
+
+// After a refused landing the pane reports no focus, and `ui.open` does not
+// give it back at once: the retries open it again and go on asking. The kit
+// refuses Rabe's own focus, so every landing fails.
+test('a reopened pane that loses the keys between retries opens again and asks on', async ($, on) => {
+  hold(on, [dev], { selected: dev.id }, false)
+  let opens = 0
+  on('ui.open', async () => {
+    opens += 1
+    return { value: { isPlaced: true as const } }
+  })
+  // The first ask finds the pane focused; the next four, the retry's own and
+  // the one after its `ui.open`, do not.
+  let asked = 0
+  on('ui.panes', async () => {
+    asked += 1
+    const isFocused = asked === 1 || asked > 5
+    return { value: [{ id: 'rabe', title: 'Rabe', isShown: true, isFocused, isPlaced: true }] }
+  })
+  await $.command.run({ command: 'rabe', args: '' } as never)
+  await held?.advance(5000)
+  expect(opens).toBeGreaterThan(2)
+  expect(asked).toBeGreaterThan(20)
+  expect(asked).toBeLessThan(80)
 })
 
 test('a row gone while the pane is open leaves the list at once', async ($, on) => {
@@ -488,6 +534,15 @@ test('a long list on the terminal scrolls in a clipped box under the tabs', asyn
   await ui.unmount()
 })
 
+test('the clipped list keeps its rows at full height instead of shrinking them', async ($, on) => {
+  hold(on, manyShells(60), { selected: 'shell:many1' })
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  const [clip] = await clipped(ui)
+  const inner = clip?.children?.[0]
+  expect(inner?.props?.flexShrink).toBe(0)
+  await ui.unmount()
+})
+
 test('a list that fits the body is not clipped', async ($, on) => {
   hold(on, ALL, { selected: review.id })
   const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
@@ -598,6 +653,18 @@ test('a message field gained under held rows keeps the rows in the clipped box',
   await ui.unmount()
 })
 
+test('held message-field slots never leave the clipped list under 3 rows', async ($, on) => {
+  const agents = manyAgents(20)
+  hold(on, [...agents, ...manyShells(28)], { selected: 'shell:many1' })
+  const props = { ...PROPS, bodyColumns: 100, scroll: { offset: 0, bodyRows: 7 } }
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE, props } as never)
+  await arm($, 'row:shell:many1')
+  for (const agent of agents) await arm($, `row:${agent.id}`)
+  const boxesNow = await clipped(ui)
+  for (const clip of boxesNow) expect(clip.props?.height as number).toBeGreaterThanOrEqual(3)
+  await ui.unmount()
+})
+
 // Where the element `key` stands: in the header or tail (`out`), or as the
 // index of its row in the clipped list against the rows the box shows.
 async function placeOf(ui: Mounted, key: string) {
@@ -672,6 +739,7 @@ test('a narrow pane puts a one-line summary under the list and short key labels'
     'g: stop 3',
     'r: remove',
     'a: remove ended',
+    'k',
   ])
   await ui.unmount()
 })
@@ -863,16 +931,71 @@ test('moving the focus onto a cost or effects row selects it on every surface', 
     const ui = await $.ui.mount({ surface, ...PANE } as never)
     await ui.press({ key: 'tab-cost' })
     await focus(`row:${review.id}`)
-    expect(state.selected).toBe(review.id)
+    expect(state.picked).toMatchObject({ cost: review.id })
     expect((await ui.find({ type: 'Button', key: `row:${review.id}` }))?.props.dimColor).toBeFalsy()
     await ui.press({ key: 'tab-effects' })
     await focus('row:file:/repo/src/a.ts')
-    expect(state.selected).toBe('file:/repo/src/a.ts')
+    expect(state.picked).toMatchObject({ cost: review.id, effects: 'file:/repo/src/a.ts' })
     const row = await ui.find({ type: 'Button', key: 'row:file:/repo/src/a.ts' })
     expect(row?.props).toMatchObject({ autoFocus: true })
     expect(row?.props.dimColor).toBeFalsy()
     await ui.unmount()
   }
+})
+
+test("a tab visit keeps the Items selection: a row picked on Cost or Effects is that tab's own (#188)", async ($, on) => {
+  const state = hold(on, ALL, { selected: dev.id })
+  session(on)
+  on('ui.focus', async () => ({}))
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: 'tab-cost' })
+  await arm($, `row:${review.id}`)
+  await ui.press({ key: 'tab-items' })
+  expect(state.selected ?? dev.id).toBe(dev.id)
+  expect(state.picked).toEqual({ cost: review.id })
+  await ui.unmount()
+})
+
+for (const [name, at] of [
+  ['the next row', 1],
+  ['the previous row at the end of the list', -1],
+] as const) {
+  test(`r selects ${name} (#188)`, async ($, on) => {
+    const ended = ALL.filter(item => item.kind === 'agent' && item.status !== 'running')
+    const rows = orderOf(ended).agents ?? []
+    expect(rows.length).toBeGreaterThan(1)
+    const gone = at === 1 ? rows[0] : rows[rows.length - 1]
+    const state = hold(on, ended, { selected: gone, order: orderOf(ended) })
+    on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+    const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    await arm($, `row:${gone}`)
+    await ui.redraw()
+    await ui.press({ key: 'remove' })
+    expect(state.removed).toEqual([gone])
+    expect(state.selected).toBe(rows[rows.indexOf(gone as string) + at])
+    await ui.unmount()
+  })
+}
+
+test('r disarms: x stops nothing on the neighbour until the person moves the ring (#188)', async ($, on) => {
+  const state = hold(on, [lint, dev], { selected: lint.id, order: orderOf([lint, dev]) })
+  on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+  const stopped = stops(on)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await arm($, `row:${lint.id}`)
+  await ui.redraw()
+  await ui.press({ key: 'remove' })
+  expect(state.selected).toBe(dev.id)
+  await ui.redraw()
+  const x = await ui.find({ type: 'Button', key: 'stop' })
+  expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, 'x'])
+  await ui.press({ key: 'stop' })
+  expect(stopped).toEqual([])
+  await arm($, `row:${dev.id}`)
+  await ui.redraw()
+  await ui.press({ key: 'stop' })
+  expect(stopped).toEqual(['bg_2'])
+  await ui.unmount()
 })
 
 test('the session end keeps a summary for the next session in this project', async ($, on) => {
@@ -1668,8 +1791,8 @@ test(
   },
 )
 
-// A click on a row presses it and moves no ring. The press is the person's
-// choice of that row: it selects the row and arms x and g for it; a press on
+// A click on a row presses it and arms x and g for it: the press is the
+// person's choice of that row (the ring follows it, see ringOnto); a press on
 // the selected row (Enter on the focused one) opens it.
 test('a press on another row selects it and arms x for it; on the selected row it opens', async ($, on) => {
   const state = hold(on, ALL, { selected: dev.id })
@@ -1711,7 +1834,7 @@ test('Enter after a click on another row opens the focused row; a second click o
 })
 
 test(
-  'stale press and input handlers are dropped after a redraw without losing pane keys',
+  'a stale press is dropped and a stale search change still filters after a redraw',
   {
     plugins: [
       {
@@ -1746,14 +1869,18 @@ test(
     releasePress()
     await expect(press).resolves.toBeDefined()
 
-    const input = ui.input({ key: 'search', text: 'changed', kind: 'change' })
+    const input = ui.input({ key: 'search', text: 'dev', kind: 'change' })
     const releaseInput = await gated('search')
     dev.title = 'bun run dev'
     await ui.redraw()
     releaseInput()
     await expect(input).resolves.toBeDefined()
     expect(state.open).toBeUndefined()
-    expect(state.query).toBeUndefined()
+    // The event carries the field's text: a released handler must not leave
+    // the filter a key behind the field (#180).
+    expect(state.query).toBe('dev')
+    // The filter is a new view, which disarms; the person's focus arms again.
+    await arm($, `row:${dev.id}`)
     await ui.press({ key: 'stop' })
     expect(stopped).toEqual(['bg_2'])
     await ui.unmount()
@@ -2018,6 +2145,25 @@ test('r and a remove ended rows for the session; running rows stay', async ($, o
   await again.unmount()
 })
 
+// A removal that moves the selection is not the person's choice of the
+// neighbour: the stop control stays dim until the ring lands on it.
+test('r moves the selection to a neighbour and leaves x disarmed', async ($, on) => {
+  hold(on, [lint, dev], { selected: lint.id }, false)
+  on('ui.focus', async () => ({}))
+  on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+  const stopped = stops(on)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await arm($, `row:${lint.id}`)
+  await ui.redraw()
+  await ui.press({ key: 'remove' })
+  await ui.press({ key: 'stop' })
+  expect(stopped).toEqual([])
+  await ui.redraw()
+  const x = await ui.find({ type: 'Button', key: 'stop' })
+  expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, 'x'])
+  await ui.unmount()
+})
+
 // Issue #122: the open item and the Cost and Timeline tabs keep a gone row's
 // slot while the pane is open. Closing the pane clears every hold; a close
 // the host cancels keeps it. The test's `$` has no `ui.close`, so a fixture
@@ -2076,6 +2222,24 @@ for (const surface of SURFACES) {
   )
 }
 
+// #187: the field label shows `▸` while the ring is on it. The kit stamps every
+// `$.ui.close` as origin plugin, so the person's Esc hook is covered by the live
+// check (`search-esc`), not here.
+test('the search label shows the marker only while the ring is on the field (#187)', async ($, on) => {
+  hold(on, ALL, { order: orderOf(ALL) }, false)
+  on('ui.focus', async (_$, e) => ({ element: e.element }) as never)
+  const ui = await $.ui.mount({ surface: 'desktop', ...PANE } as never)
+  const label = async () => (await ui.find({ type: 'Input', key: 'search' }))?.props.label
+  expect(await label()).toBe('search')
+  await arm($, 'search')
+  await ui.redraw()
+  expect(await label()).toBe('▸ search')
+  await arm($, 'tab-items')
+  await ui.redraw()
+  expect(await label()).toBe('search')
+  await ui.unmount()
+})
+
 // Two removes in flight read the same value: the second write must not drop
 // the id the first one added.
 test('a remove that loses the race to another write keeps both ids', async ($, on) => {
@@ -2098,9 +2262,9 @@ test('a remove that loses the race to another write keeps both ids', async ($, o
   await ui.unmount()
 })
 
-// Removing hides rows only: a removed workflow agent has no row in its run,
-// but still counts in its phases and tokens, and a removed item in the cost.
-test('a removed workflow agent still counts in its run and the cost', async ($, on) => {
+// Removing hides the item from the Items list only (#206): a removed
+// workflow agent keeps its row and counts in its run, and in the cost.
+test('a removed workflow agent still shows in its run and counts in the cost', async ($, on) => {
   const done = { ...reviewed, tokens: { input: 30_000, output: 2_000 } }
   const items = ALL.map(item => (item.id === reviewed.id ? done : item))
   hold(on, items, { removed: [done.id], open: flow.id, order: orderOf(items) })
@@ -2109,7 +2273,7 @@ test('a removed workflow agent still counts in its run and the cost', async ($, 
   expect(detail).toContain('✓ Review → ◐ Verify')
   expect(detail).toContain('in 49k')
   expect(detail).toContain('REVIEW 1 done')
-  expect(detail).not.toContain('review:bugs')
+  expect(detail).toContain('review:bugs')
   await ui.press({ key: 'back' })
   const shown = (await screen(ui)).join('\n')
   expect(shown).toContain(`Items ${items.length - 1}`)
@@ -2434,3 +2598,110 @@ for (const surface of SURFACES) {
     await ui.unmount()
   })
 }
+
+// #185: Back returns to the tab and the row the detail was opened from.
+test('b from a detail opened on the cost tab returns to the cost tab', async ($, on) => {
+  const state = hold(on, ALL, { tab: 'cost' })
+  session(on)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: `row:${explore.id}` })
+  expect(state).toMatchObject({ tab: 'items', open: explore.id })
+  expect(state.openFrom).toEqual({ tab: 'cost', id: explore.id })
+  await ui.press({ key: 'back' })
+  expect(state).toMatchObject({ tab: 'cost', open: '' })
+  expect(state.openFrom).toBeNull()
+  await ui.unmount()
+})
+
+test('b from a detail opened on the timeline returns to the timeline', async ($, on) => {
+  const state = hold(on, ALL)
+  session(on)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: 'tab-timeline' })
+  await ui.press({ key: `row:${babysit.id}` })
+  await ui.press({ key: 'back' })
+  expect(state).toMatchObject({ tab: 'timeline', open: '' })
+  await ui.unmount()
+})
+
+test('b from a detail opened on the items tab returns to the items tab', async ($, on) => {
+  const state = hold(on, ALL, { selected: dev.id })
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: `row:${dev.id}` })
+  await ui.press({ key: 'back' })
+  expect(state).toMatchObject({ tab: 'items', open: '', selected: dev.id })
+  await ui.unmount()
+})
+
+test('b from a nested detail returns to the tab the first detail came from', async ($, on) => {
+  const call = { at: NOW - 60_000, command: 'task' as const, text: 'codex-companion.mjs task' }
+  const forwarder = {
+    ...explore,
+    id: 'agent:f1',
+    title: 'Codex rescue',
+    detail: { agentId: 'f1', toolCount: 1, codexCalls: [call] },
+  } as RabeItem
+  const job = { ...review, parentId: forwarder.id } as RabeItem
+  const state = hold(on, [forwarder, job, dev], { tab: 'cost' })
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: `row:${job.id}` })
+  await ui.press({ key: `forwarder:${forwarder.id}` })
+  expect(state.openFrom).toEqual({ tab: 'cost', id: job.id })
+  await ui.press({ key: 'back' })
+  expect(state).toMatchObject({ tab: 'cost', open: '', selected: job.id })
+  await ui.unmount()
+})
+
+test('a detail opened after a tab change replaces the origin and b lands on that row', async ($, on) => {
+  const state = hold(on, ALL, { tab: 'cost' }, false)
+  session(on)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: `row:${explore.id}` })
+  await ui.press({ key: 'tab-timeline' })
+  await ui.press({ key: `row:${babysit.id}` })
+  expect(state.openFrom).toEqual({ tab: 'timeline', id: babysit.id })
+  await ui.press({ key: 'back' })
+  expect(state).toMatchObject({ tab: 'timeline', open: '' })
+  expect(state.picked).toMatchObject({ timeline: babysit.id })
+  await ui.unmount()
+})
+
+test('b from a workflow agent opened on the timeline lands on the workflow row', async ($, on) => {
+  const state = hold(on, ALL, { tab: 'timeline' }, false)
+  session(on)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: `row:${flow.id}` })
+  await ui.press({ key: `row:${verify.id}` })
+  expect(state.openFrom).toEqual({ tab: 'timeline', id: flow.id })
+  await ui.press({ key: 'back' })
+  expect(state).toMatchObject({ tab: 'timeline', open: '' })
+  expect(state.picked).toMatchObject({ timeline: flow.id })
+  await ui.unmount()
+})
+
+test('b from the editor of the second effects file lands on that file row', async ($, on) => {
+  const two = {
+    ...edited,
+    detail: {
+      ...(edited as RabeItemOf<'agent'>).detail,
+      edits: [
+        { path: '/repo/src/a.ts', at: NOW },
+        { path: '/repo/src/b.ts', at: NOW },
+      ],
+    },
+  } as RabeItem
+  const state = hold(
+    on,
+    ALL.map(item => (item.id === plan.id ? two : item)),
+    { tab: 'effects' },
+    false,
+  )
+  session(on)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: 'row:file:/repo/src/b.ts' })
+  expect(state.openFrom).toEqual({ tab: 'effects', id: 'file:/repo/src/b.ts' })
+  await ui.press({ key: 'back' })
+  expect(state).toMatchObject({ tab: 'effects', open: '' })
+  expect(state.picked).toMatchObject({ effects: 'file:/repo/src/b.ts' })
+  await ui.unmount()
+})
