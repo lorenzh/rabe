@@ -396,6 +396,18 @@ active_tab() {
   done
   echo 0
 }
+# Waits until the tab bar marks tab $1: a key sent before the tab's drawing
+# would give up its landing on the marked row.
+on_tab() {
+  local i
+  for i in $(seq 1 25); do
+    look
+    [ "$(active_tab)" = "$1" ] && return 0
+    sleep 0.2
+  done
+  why="tab $1 is not marked 5 s after its key"
+  return 1
+}
 # Durations of this run's seeded shells that still run, highest first.
 running() {
   local pids
@@ -460,7 +472,13 @@ seq_ring() { # tab key
   a=$(shellof "${view[lrows[from]]}")
   b=$(shellof "${view[lrows[from + 1]]:-}")
   c=$(shellof "${view[lrows[from + 2]]:-}")
-  keys "$1" 1 Down
+  # Each tab key waits for its tab: after 1 the marker must move back from
+  # tab $1, so a stale Items marker is never taken for the landing.
+  keys "$1"
+  on_tab "$1" || return 1
+  keys 1
+  on_tab 1 || return 1
+  keys Down
   snap
   listscan
   mid=$(marked)

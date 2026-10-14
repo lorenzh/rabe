@@ -127,6 +127,9 @@ case $cmd in
       # moves only when the ring lands on a row.
       # FAKE_TABKEY=ok lands a tab key on the marked row, =stop on a stop (the
       # bug of #174); FAKE_TABRESET=1 also loses the selection (#188).
+      # FAKE_TABLATE=N draws a tab key's tab and lands its ring only N captures
+      # later; until then the ring sits off the rows, and another key in the
+      # pane gives the landing up (the tab still changes).
       # The search field: s focuses it, letters fill it, Escape leaves it
       # (FAKE_ESC=close closes the pane instead, #187), FAKE_FIELD=eat loses
       # the second letter (#180).
@@ -138,7 +141,13 @@ case $cmd in
       # marks the first row after, =keep removes nothing, #188).
       field=0 text=
       read -r field text 2>/dev/null <"$FAKE/field"
-      [[ $1 == [1-4] ]] && [ "$field" != 1 ] && echo "$1" >"$FAKE/tab"
+      if [[ $1 == [1-4] ]] && [ "$field" != 1 ]; then
+        if [ -n "${FAKE_TABLATE:-}" ]; then echo "$1 $FAKE_TABLATE" >"$FAKE/late"; else echo "$1" >"$FAKE/tab"; fi
+      elif [ -e "$FAKE/late" ]; then
+        read -r t _ <"$FAKE/late"
+        echo "$t" >"$FAKE/tab"
+        rm -f "$FAKE/late"
+      fi
       if [ "$field" = 1 ] && [ ${#1} = 1 ]; then
         { [ "${FAKE_FIELD:-}" = eat ] && [ ${#text} = 1 ]; } || text+=$1
         echo "1 $text" >"$FAKE/field"
@@ -193,7 +202,8 @@ case $cmd in
             [ "${FAKE_REMOVE:-}" = reset ] && sel=0
             ring=$sel ;;
           [1-4])
-            [ -n "${FAKE_TABKEY:-}" ] || exit 0
+            [ -n "${FAKE_TABLATE:-}" ] && ring=$((rows + FAKE_STOPS - 1))
+            [ -n "${FAKE_TABKEY:-}" ] && [ -z "${FAKE_TABLATE:-}" ] || { echo "$ring $sel" >"$FAKE/ring"; exit 0; }
             case $FAKE_TABKEY in
               stop) ring=$rows ;;
               search) ring=$((rows + FAKE_STOPS - 1)) ;; # the stop just before row 0
@@ -212,6 +222,16 @@ case $cmd in
     mapfile -t left < <(cat "$FAKE/screen" 2>/dev/null; printf '%s\n' "${FAKE_SCREEN:-}")
     # The pane opens on /rabe; FAKE_PANE=none keeps it closed.
     right=()
+    if [ -e "$FAKE/late" ]; then
+      read -r t n <"$FAKE/late"
+      if [ "$n" -gt 1 ]; then
+        echo "$t $((n - 1))" >"$FAKE/late"
+      else
+        echo "$t" >"$FAKE/tab"
+        rm -f "$FAKE/late"
+        read -r ring sel 2>/dev/null <"$FAKE/ring" && echo "$sel $sel" >"$FAKE/ring"
+      fi
+    fi
     if grep -qx /rabe "$FAKE/screen" 2>/dev/null && [ "${FAKE_PANE:-}" != none ] && [ ! -e "$FAKE/closed" ]; then
       tab=$(cat "$FAKE/tab" 2>/dev/null || echo 1)
       at=(0 1 15 26 40)
@@ -399,6 +419,7 @@ sq() { faked "${seqs[@]}" "$@"; stop; }
 sq 'a sequence that passes in every round is PASS' 0 'PASS ring-2 2/2' --shells 3 --timeout 50 --repeat 2 --sequences ring-2
 sq 'ring-3 and ring-4 press their tab key' 0 'PASS ring-4 1/1' --shells 3 --timeout 50 --sequences ring-3,ring-4
 expect 'ring-3 sends its own tab key' grep -qx 3 "$FAKE/keys"
+sq FAKE_TABLATE=2 'a tab that lands late is waited for before Down' 0 'PASS ring-3 2/2' --shells 3 --timeout 50 --repeat 2 --sequences ring-3
 sq FAKE_TABKEY=stop 'a ring left on a stop after the tab key is FAIL' 1 'FAIL ring-2 0/1' --shells 3 --timeout 50 --sequences ring-2
 sq 'a field that reads what was typed is PASS' 0 'PASS search-keys 1/1' --shells 3 --timeout 50 --sequences search-keys
 sq FAKE_FIELD=eat 'a field that loses a key is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys

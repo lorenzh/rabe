@@ -155,7 +155,7 @@ Each round starts from the list (step 5 above), runs the sequence and reads only
 
 | Name | Keys | Passes when | Issue |
 |------|------|-------------|-------|
-| `ring-2`, `ring-3`, `ring-4` | tab key, `1`, `Down`, `Down` | each `Down` after the tab key and `1` lands on the next shell (three shells in a row, checked after each press), not on `s: search` | #174, #175 (fixed) |
+| `ring-2`, `ring-3`, `ring-4` | tab key, `1`, `Down`, `Down` | each `Down` after the tab key and `1` lands on the next shell (three shells in a row, checked after each press), not on `s: search`. After each tab key the script waits until the tab bar marks that tab (at most 5 s): a key sent before the tab is drawn gives up its landing on the marked row, as a person's key does | #174, #175 (fixed) |
 | `click-stop` | click a running shell, `x` | the clicked shell's process stops (found by its duration), no other one | #186 |
 | `search-keys` | `s z z x` | the field reads `zzx` | #180 |
 | `search-esc` | `s`, type, `Esc` | the field reads `zz` before `Esc` and after `Esc` and a `z`, and the pane is still open | #187 |
