@@ -200,7 +200,7 @@ test('an empty tab keeps the ring on its label', async () => {
 
 // Review of #175: a fold and a search edit move their own target too. Folding
 // the group of the selected agent drops its message Input above the headers,
-// and a search with no match drops the list's controls above the search Input.
+// and a submitted search moves the target row.
 test('a fold or a submitted search waits for the new view where its target moved', async () => {
   const model = { items: [explore, dev, ci], turns: {}, lines: {}, now: NOW }
   const sel = { ...NO_SELECTION, selected: explore.id, isFocused: true }
@@ -238,8 +238,8 @@ test('a fold or a submitted search waits for the new view where its target moved
     ]
   }
   expect(moved(140, sel, { ...sel, folded: ['agents'] }, 'group-agents')).toEqual([15, 14])
-  // A live edit moves the search Input too; it lands at once (see below).
-  expect(moved(140, sel, { ...sel, query: 'zzz' }, 'search')).toEqual([13, 10])
+  // A live edit keeps the search Input in place (#180); it lands at once (see below).
+  expect(moved(140, sel, { ...sel, query: 'zzz' }, 'search')).toEqual([13, 13])
 })
 
 test('a landing that keeps the view or a live search edit does not wait; a tab, a fold and a submitted search do', () => {
@@ -536,4 +536,23 @@ test('landOn answers whether every key landed', async () => {
   const ring = () => undefined
   expect(await landOn(['tab-cost', 'row:a'], ring, async () => true)).toBe(true)
   expect(await landOn(['tab-cost', 'row:a'], ring, async key => key === 'tab-cost')).toBe(false)
+})
+
+// Issue #180: the engine keeps the ring on its index, and a tree that draws the
+// search field at a lower index drops the ring out of the pane. A query that
+// matches nothing took the list's c, m and d slots with it (index 12 to 10 at
+// 140 columns), so the next typed key left the field.
+test('the search field keeps its index and a stop after the tabs when the query matches nothing', () => {
+  const model = { items: [explore, dev, ci], turns: {}, lines: {}, now: NOW }
+  for (const surface of ['terminal', 'desktop'] as const) {
+    for (const columns of [80, 140]) {
+      const size = { columns, rows: 24, surface, hasInput: true }
+      const at = (query: string) =>
+        ringOf(paneView(model, size, { ...NO_SELECTION, query, isFocused: true })).indexOf('search')
+      const found = at('dev')
+      expect([surface, columns, found > 0]).toEqual([surface, columns, true])
+      expect([surface, columns, at('devx')]).toEqual([surface, columns, found])
+      expect([surface, columns, at('')]).toEqual([surface, columns, found])
+    }
+  }
 })

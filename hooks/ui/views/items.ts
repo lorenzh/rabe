@@ -262,9 +262,11 @@ function listButtons(
   )
 
   // Beside the detail the list offers the detail's c, m and d for the
-  // selection, under one key each like x and g. They keep their slots too.
-  if (isSplit(size) && selected) {
-    const own = detailButtons(selected, size.hasInput, model.items)
+  // selection, under one key each like x and g. They keep their slots too,
+  // also with no selection: a query with no match must not move the search
+  // field to a lower index, where the engine drops the ring (#180).
+  if (isSplit(size)) {
+    const own = selected ? detailButtons(selected, size.hasInput, model.items) : []
     const rekey = (hotkey: string, key: string, label: string): ViewButton => {
       const one = own.find(button => button.hotkey === hotkey && !button.dim)
       return one ? { ...one, key } : { key, label, action: NONE, dim: true }

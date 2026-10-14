@@ -10,6 +10,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
+- A search that matches nothing keeps the focus in the search field: the list keeps the slots of `c`, `m` and `d` with no selection, so typed keys no longer go to the prompt and Backspace back to a match keeps the field focused ([#180](https://github.com/lorenzh/rabe/issues/180))
 - Back from a detail returns to the tab and row it was opened from, not always to Items; one level, cleared when the pane closes ([#212](https://github.com/lorenzh/rabe/pull/212), fixes [#185](https://github.com/lorenzh/rabe/issues/185))
 - Each tab keeps its own selected row, `r` selects the next row (the previous one at the end) without arming `x` for it, and a reopened pane puts the focus on the selected row of the stored tab, asking again while the landing is refused ([#211](https://github.com/lorenzh/rabe/pull/211), fixes [#188](https://github.com/lorenzh/rabe/issues/188))
 - Esc in a filled search field keeps the pane and the filter open; Claude Code releases the keyboard before Rabe sees the close, so the keys go to the prompt until `ctrl+x tab`; Enter focuses the first matching row; the field label shows `▸` while focused; `k` clears the filter ([#210](https://github.com/lorenzh/rabe/pull/210), fixes [#187](https://github.com/lorenzh/rabe/issues/187))
