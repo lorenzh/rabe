@@ -49,6 +49,8 @@ export type InteractionEvent =
   | { type: 'focus-queued'; key: string | undefined; move: DeferredFocus }
   | { type: 'refocused'; isOpen: boolean; isFocused: boolean }
   | { type: 'regained'; want: Shift; isMoved: boolean }
+  // A timer's focus call on reopen landed on `key`; no focus hook ran.
+  | { type: 'restored'; key: string }
   | {
       type: 'draw'
       surface: string
@@ -166,6 +168,11 @@ export function interact(
               shift: { ...event.want, isAsked: false },
               arming: arm(state.arming, { type: 'landed', isMoved: false }),
             },
+        effects,
+      }
+    case 'restored':
+      return {
+        state: { ...state, ringOn: event.key, landedOn: event.key, shift: undefined },
         effects,
       }
     case 'draw': {

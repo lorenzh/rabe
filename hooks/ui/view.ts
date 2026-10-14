@@ -75,6 +75,8 @@ export type Selection = {
   isArmed: boolean
   // The list's x and g act only while this holds too (`arm`).
   isListArmed: boolean
+  // The focus ring sits on the search field (#187).
+  isOnSearch?: boolean
   // The Timeline's window; absent: the whole session, no key to widen it.
   window?: RabeWindow
 }
@@ -222,8 +224,10 @@ export function stepRow(keys: string[], selected: string, by: number): string | 
 // Where the focus ring goes, key by key, after `action` changed the view
 // (the item `open` was open): the active tab's Button, then the element the
 // change leads to. Search edits keep its Input focused; Enter returns to rows.
-// A sent message returns the keys to the agent's `m: message`.
-export function landing(action: Action, open: string, drawn?: Drawn): string[] {
+// A sent message returns the keys to the agent's `m: message`. Back lands on
+// the tab `from` that the detail was opened from.
+export function landing(action: Action, open: string, drawn?: Drawn, from = 'items'): string[] {
+  const first = drawn ? rowKeys(drawn)[0] : undefined
   const target =
     drawn?.buttons.find(one => one.autoFocus)?.key ??
     drawn?.nodes
@@ -234,12 +238,12 @@ export function landing(action: Action, open: string, drawn?: Drawn): string[] {
       return [`tab-${action.tab}`, ...(target ? [target] : [])]
     case 'open': {
       const next = action.id ? 'back' : open && `row:${open}`
-      return ['tab-items', ...(next ? [next] : [])]
+      return [action.id ? 'tab-items' : `tab-${from}`, ...(next ? [next] : [])]
     }
     case 'fold':
       return ['tab-items', `group-${action.group}`]
     case 'query':
-      return action.isSubmit ? ['tab-items', target ?? 'find'] : ['search']
+      return action.isSubmit ? ['tab-items', first ?? target ?? 'find'] : ['search']
     case 'window':
       return ['tab-timeline', 'window']
     case 'message':
@@ -249,26 +253,33 @@ export function landing(action: Action, open: string, drawn?: Drawn): string[] {
   }
 }
 
+// Esc in a filled search field only leaves the field; a second Esc, or Esc on an
+// empty query, closes the pane (#187).
+export const holdsClose = (ringOn: string | undefined, query: string): boolean =>
+  ringOn === 'search' && query !== ''
+
 // Moves the ring onto `keys` (a `landing`) one by one and stops at the first
 // move that fails. The active tab stands at the same index in every view; any
 // other key, once the ring is on that tab (where it was, or moved there now),
 // first waits for `shown` (the new view drawn, see `screens`) and stays on the
-// tab when that wait gives up.
+// tab when that wait gives up. It answers whether every key landed.
 export async function landOn(
   keys: string[],
   ringOn: () => string | undefined,
   focus: (key: string) => Promise<boolean>,
   shown?: () => Promise<boolean>,
-): Promise<void> {
+): Promise<boolean> {
   let isOnTab = false
   for (const key of keys) {
     const isTab = key.startsWith('tab-')
     if (!(isTab && key === ringOn())) {
-      if (shown && !isTab && isOnTab && !(await shown())) return
-      if (!(await focus(key))) return
+      if (shown && !isTab && isOnTab && !(await shown())) return false
+      if (!(await focus(key))) return false
     }
     isOnTab = isTab
   }
+
+  return true
 }
 
 // The changes of the view that can move their landing's target: a tab, a fold
@@ -404,17 +415,18 @@ export function landingOf(
 // The list's x, g and r keep one key each and act on the selection.
 export const LIST_KEYS = ['stop', 'stop-group', 'remove', 'delete']
 
-// What the list's x and g act on in a drawing: one entry per control and item.
-// Fewer entries (a row of the group ended, g can no longer act) stop less
-// than the person saw; a new entry is a target they did not choose.
+// What the list's x and g act on in a drawing: one entry per control, action
+// and item. Fewer entries (a row of the group ended, g can no longer act) stop
+// less than the person saw; a new entry is a target they did not choose. The
+// label stays out: g's carries the group's count.
 export const targetsOf = (drawn: Drawn): string[] =>
   drawn.buttons
     .filter(one => LIST_KEYS.includes(one.key))
-    .flatMap(({ key, label, action }) =>
+    .flatMap(({ key, action }) =>
       action.type === 'stop' || action.type === 'remove'
-        ? action.ids.map(id => JSON.stringify([key, label, id]))
+        ? action.ids.map(id => JSON.stringify([key, action.type, id]))
         : action.type === 'delete'
-          ? [JSON.stringify([key, label, action.id])]
+          ? [JSON.stringify([key, action.type, action.id])]
           : [],
     )
 

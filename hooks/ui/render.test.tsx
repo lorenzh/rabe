@@ -703,7 +703,7 @@ test('a group that shrinks from two stoppable rows to one keeps x armed', () => 
   const before = arm(arm(arm(DISARMED, drawnEvent([a, b], sel)), live), drawnEvent([a, b], sel))
   const ended = { ...b, status: 'done', endedAt: NOW } as RabeItem
   expect(targetsOf(paneView(model([a, ended]), SIZE, sel))).toEqual([
-    JSON.stringify(['stop', 'x: stop', a.id]),
+    JSON.stringify(['stop', 'stop', a.id]),
   ])
   const after = arm(before, drawnEvent([a, ended], sel))
   expect([after.isArmed, after.isListArmed]).toEqual([true, true])

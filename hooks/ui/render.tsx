@@ -319,7 +319,7 @@ export function render(
     <Box flexDirection="column">
       {cells.slice(0, head).flat()}
       <Box key="body" flexDirection="column" height={pin.rows} overflow="hidden">
-        <Box flexDirection="column" marginTop={-pin.top}>
+        <Box flexDirection="column" flexShrink={0} marginTop={-pin.top}>
           {draw(body)}
         </Box>
       </Box>

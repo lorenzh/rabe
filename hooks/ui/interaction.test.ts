@@ -224,6 +224,17 @@ test('regain success leaves arming unchanged; a resize refocuses only a held pan
   expect(interact(state, draw(false, 'dock')).effects).toEqual([])
 })
 
+test('a restored ring on reopen regains when held rows shift and leaves the arming alone (#188)', () => {
+  let state = interact(interact(IDLE, { type: 'opened' }).state, draw()).state
+  state = interact(state, { type: 'restored', key: 'row:a' }).state
+  expect([state.ringOn, state.landedOn]).toEqual(['row:a', 'row:a'])
+  expect(state.arming).toEqual(IDLE.arming)
+  const shifted = interact(state, draw(true, 'dock', true))
+  expect(shifted.effects).toEqual([{ type: 'regain', want: shifted.state.shift }])
+  expect(shifted.state.shift?.key).toBe('row:a')
+  expect(isHeldBack(shifted.state, { surface: 'terminal', element: 'row:b' })).toBe(true)
+})
+
 test('an all-fit arrow behind back is relative to the landing in the new view', () => {
   let state = interact(IDLE, focus('back', false, false)).state
   state = interact(state, { type: 'press-start' }).state

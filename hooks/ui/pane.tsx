@@ -16,12 +16,13 @@ import {
 } from './interaction'
 import { KIND_LABEL, kept, matches, orderOf, previousOf, rowOf } from './lists'
 import { asPrevious, clipText, nameOf, toastText } from './pane-data'
-import { follow, geometry, measure, NO_PIN, type Pin } from './pin'
+import { follow, geometry, MIN_ROWS, measure, NO_PIN, type Pin } from './pin'
 import { type At, hold, render } from './render'
 import { reserve, screens, sequence } from './sequence'
 import {
   type Action,
   bounded,
+  holdsClose,
   landing,
   landingOf,
   landOn,
@@ -34,11 +35,14 @@ import {
   taskIdOf,
   waitsForView,
 } from './view'
+import { listOrder, queryOf, selectedItem } from './views/items'
 import { isLiveRow, paneView, seatsRows, selectsOnPress, TABS } from './views/pane'
 import { widen, windowOf } from './views/timeline'
 
 const PANE = 'rabe'
 const MAX_ACTIONS = 20
+// The engine's answer to an event whose drawing a redraw released.
+const RELEASED = 'no handler is held under handle'
 
 // The option `timelineHours`, set by `pane(on, hours)`: the Timeline's window
 // when the pane opens.
@@ -49,19 +53,52 @@ let baseHours = 4
 let pinned: Pin = NO_PIN
 let isPinned = false
 
+// Whether this open has put the focus back on the person's row.
+let isRestored = false
+
 // Reasons come from files and tools.
 function toast($: EngineInterface, text: string): void {
   $.ui.toast(toastText(text))
 }
 
 // Esc may have closed the pane before the delayed focus call.
-async function refocus($: EngineInterface): Promise<void> {
+async function refocus($: EngineInterface, tries = 0): Promise<void> {
   let shown = (await $.ui.panes()).find(one => one.id === PANE)
   if (shown && !shown.isFocused) {
     await $.ui.open({ id: PANE, title: 'Rabe', focus: true, closeOnEscape: true })
     shown = (await $.ui.panes()).find(one => one.id === PANE)
   }
   feed($, { type: 'refocused', isOpen: !!shown, isFocused: !!shown?.isFocused })
+  // The reopened pane puts the focus on the tab's selected row (#188), once.
+  // Only a pane that holds the keys can take it; a timer's call runs none of
+  // Rabe's focus hooks, so a landing is the call's answer, not `landedOn`.
+  if (shown?.isFocused && !isRestored) isRestored = await restore($).catch(() => false)
+  // A refused landing (a move abandoned) tries again, as the keys do; a retry
+  // also goes on while the pane lost the keys, since `opening` no longer asks.
+  if (shown && (shown.isFocused || tries > 0) && !isRestored && tries < 40) {
+    $.clock.after(50, () => void refocus($, tries + 1).catch(() => undefined))
+  }
+}
+
+async function restore($: EngineInterface): Promise<boolean> {
+  const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
+  const action: Action = { type: 'tab', tab }
+  const { model, selection } = await look($, true)
+  const drawn = paneView(
+    model,
+    { columns: 80, rows: 24, surface: 'terminal', hasInput: true },
+    selection,
+  )
+  return landOn(
+    landing(action, selection.open, drawn),
+    () => undefined,
+    async key => {
+      const result = await $.ui.focus({ requestId: PANE, key }).catch(() => ({ deny: 'threw' }))
+      const isMoved = !('deny' in result && result.deny)
+      if (isMoved) feed($, { type: 'restored', key })
+      return isMoved
+    },
+  )
 }
 
 async function previous($: EngineInterface): Promise<RabePrevious | undefined> {
@@ -233,7 +270,7 @@ async function land(
   action?: Action,
   surface?: RenderSurface,
 ): Promise<void> {
-  return landOn(
+  await landOn(
     keys,
     () => interaction.ringOn,
     key => focusOn($, key),
@@ -247,16 +284,46 @@ async function landView($: EngineInterface, action: Action, surface: RenderSurfa
   return land($, landing(action, selection.open, drawn), action, surface)
 }
 
-// A press on a live row of the Items list away from the ring selects it: a
-// click moves no ring, so the press is the person's choice of that row. The
-// ring's row and the selected row open.
+// The ring follows a click (#186). A move that the engine refuses leaves the
+// ring where it was; the focus hook then clears the arming (`landed: false`),
+// so `x` stays inert until the person moves the ring.
+async function ringOnto($: EngineInterface, key: string): Promise<void> {
+  await $.ui.focus({ requestId: PANE, key }).catch(() => undefined)
+}
+
+// A press on a live row of the Items list away from the ring selects it: only
+// a pointer presses a row away from the ring, so the press is the person's
+// choice of that row and the ring follows it (#186). The ring's row and the
+// selected row open.
 async function choose($: EngineInterface, id: string): Promise<boolean> {
   const { model, selection } = await look($, true)
   if (!selectsOnPress(model, selection, id, interaction.ringOn)) return false
   await $.state.set({ plugin: 'rabe', key: 'selected' }, id)
   feed($, { type: 'press' })
+  await ringOnto($, `row:${id}`)
 
   return true
+}
+
+// The selected row of a tab. The Items tab keeps `selected`; every other tab
+// keeps its own pick in `picked`, so a visit never moves the Items selection
+// (#188). Absent state is no pick: the view falls back to its first row.
+async function pickedOn($: EngineInterface, tab: string): Promise<string> {
+  if (tab === 'items') {
+    const { value = '' } = await $.state.get({ plugin: 'rabe', key: 'selected' })
+    return value
+  }
+  const { value = {} } = await $.state.get({ plugin: 'rabe', key: 'picked' })
+  return value[tab] ?? ''
+}
+
+async function pick($: EngineInterface, tab: string, id: string): Promise<void> {
+  if (tab === 'items') {
+    await $.state.set({ plugin: 'rabe', key: 'selected' }, id)
+    return
+  }
+  const { value = {} } = await $.state.get({ plugin: 'rabe', key: 'picked' })
+  await $.state.set({ plugin: 'rabe', key: 'picked' }, { ...value, [tab]: id })
 }
 
 // Hides ended items for the session: they stay in `rabe.items`, which polls
@@ -265,6 +332,13 @@ async function choose($: EngineInterface, id: string): Promise<boolean> {
 async function remove($: EngineInterface, action: Action & { type: 'remove' | 'clear' }) {
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   const { value: query = '' } = await $.state.get({ plugin: 'rabe', key: 'query' })
+  // The list as drawn before the removal: the selection moves to a neighbour.
+  const seen = await look($, true)
+  const order =
+    seen.selection.tab === 'items' && seen.selection.open === ''
+      ? listOrder(seen.model, seen.selection).map(item => item.id)
+      : []
+  const was = selectedItem(listOrder(seen.model, seen.selection), seen.selection)?.id
   let gone: RabeItem[] = []
   for (;;) {
     const { value: removed = [], version } = await $.state.get({ plugin: 'rabe', key: 'removed' })
@@ -280,6 +354,15 @@ async function remove($: EngineInterface, action: Action & { type: 'remove' | 'c
     })
     if (isSet) break
   }
+  const at = was ? order.indexOf(was) : -1
+  if (at >= 0 && gone.some(item => item.id === was)) {
+    const left = (id: string) => !gone.some(item => item.id === id)
+    const near = order.slice(at + 1).find(left) ?? order.slice(0, at).reverse().find(left)
+    if (near) {
+      await $.state.set({ plugin: 'rabe', key: 'selected' }, near)
+      feed($, { type: 'landed', isMoved: false })
+    }
+  }
   const [one] = gone
   toast(
     $,
@@ -289,9 +372,15 @@ async function remove($: EngineInterface, action: Action & { type: 'remove' | 'c
   )
 }
 
-async function act($: EngineInterface, action: Action, surface: RenderSurface): Promise<void> {
+async function act(
+  $: EngineInterface,
+  action: Action,
+  surface: RenderSurface,
+  pressed?: string,
+): Promise<void> {
   if (action.type === 'open' && (await choose($, action.id))) return
-  const [safe] = landing(action, '')
+  const { value: origin } = await $.state.get({ plugin: 'rabe', key: 'openFrom' })
+  const [safe] = landing(action, '', undefined, origin?.tab)
   if (action.type !== 'message' && safe) {
     feed($, { type: 'reset' })
     await focusOn($, safe)
@@ -315,13 +404,35 @@ async function act($: EngineInterface, action: Action, surface: RenderSurface): 
       const { value: open = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
       const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
       const was = rowOf(open, items)
-      const id = action.id || was
-      if (id) {
-        await $.state.set({ plugin: 'rabe', key: 'selected' }, id)
+      if (action.id) {
+        // One level: a detail opened from a list replaces the origin; one
+        // opened inside a detail (on the Items tab) keeps it, so back leaves
+        // both at once.
+        const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
+        const inside = tab === 'items' && open !== ''
+        if (!origin || !inside) {
+          // Without a stored origin inside a detail, the open item is the row.
+          // An Effects row is a file: the pressed key, not the item's id, is the row.
+          const id = inside
+            ? was || action.id
+            : tab === 'effects' && pressed?.startsWith('row:')
+              ? pressed.slice(4)
+              : action.id
+          await $.state.set({ plugin: 'rabe', key: 'openFrom' }, { tab, id })
+        }
+        await $.state.set({ plugin: 'rabe', key: 'selected' }, action.id)
         await $.state.set({ plugin: 'rabe', key: 'tab' }, 'items')
+      } else {
+        const tab = origin?.tab ?? 'items'
+        if (was) await $.state.set({ plugin: 'rabe', key: 'selected' }, was)
+        // The row the detail was opened from: its own pick, or for Items the
+        // selection (a workflow's run, not the agent that was open).
+        if (origin) await pick($, tab, origin.id)
+        await $.state.set({ plugin: 'rabe', key: 'tab' }, tab)
+        await $.state.set({ plugin: 'rabe', key: 'openFrom' }, null)
       }
       await $.state.set({ plugin: 'rabe', key: 'open' }, action.id)
-      return land($, landing(action, was))
+      return land($, landing(action, origin?.id ?? was, undefined, origin?.tab))
     }
     case 'query':
       await $.state.set({ plugin: 'rabe', key: 'query' }, action.text)
@@ -425,7 +536,7 @@ async function look(
   const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
   const { value: query = '' } = await $.state.get({ plugin: 'rabe', key: 'query' })
   const { value: folded = [] } = await $.state.get({ plugin: 'rabe', key: 'folded' })
-  const { value: selected = '' } = await $.state.get({ plugin: 'rabe', key: 'selected' })
+  const selected = await pickedOn($, tab)
   const { value: open = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
   const { value: order } = await $.state.get({ plugin: 'rabe', key: 'order' })
   const { value: worktrees } = await $.state.get({ plugin: 'rabe', key: 'worktrees' })
@@ -455,6 +566,7 @@ async function look(
     isFocused,
     isArmed: interaction.arming.isArmed,
     isListArmed: interaction.arming.isListArmed,
+    isOnSearch: interaction.ringOn === 'search',
     window: window ?? windowOf(baseHours, now),
     ...(order && { order }),
   }
@@ -468,14 +580,14 @@ async function look(
 // its element, so an event carries out only an action of its own element.
 // ponytail: two events on one element in flight at once may swap their
 // actions; both are that element's, and each runs exactly once.
-type Slot = { press?: { action: Action; surface: RenderSurface } }
+type Slot = { press?: { action: Action; surface: RenderSurface; element: string } }
 const waiting = new Map<string, Slot[]>()
 
 const slotOf = (at: At) => `${at.surface} ${at.element}`
 
 function leave(action: Action, at: At): void {
   const slot = waiting.get(slotOf(at))?.find(one => !one.press)
-  if (slot) slot.press = { action, surface: at.surface }
+  if (slot) slot.press = { action, surface: at.surface, element: at.element }
 }
 
 // Runs a press or an Input event beneath the hook, then carries out the action
@@ -507,10 +619,10 @@ async function carry<R>($: EngineInterface, at: At, run: () => Promise<R>): Prom
         action.type === 'focus' ||
         (action.type !== 'message' && landing(action, '').length > 0)
       ) {
-        await focusTurn(() => act($, action, press.surface))
+        await focusTurn(() => act($, action, press.surface, press.element))
       } else {
         await focusTurn(async () => undefined)
-        await act($, action, press.surface)
+        await act($, action, press.surface, press.element)
       }
     } else {
       await focusTurn(async () => undefined)
@@ -544,14 +656,15 @@ async function arrow($: EngineInterface, by: number, bodyRows: number): Promise<
 }
 
 async function focused($: EngineInterface, e: UiFocusInput, next: Next<'ui.focus'>) {
-  const { value: before = '' } = await $.state.get({ plugin: 'rabe', key: 'selected' })
+  const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
+  const before = await pickedOn($, tab)
   const asked = e.element?.startsWith('row:') ? e.element.slice(4) : before
-  if (asked !== before) await $.state.set({ plugin: 'rabe', key: 'selected' }, asked)
+  if (asked !== before) await pick($, tab, asked)
   const result = await next(e)
   const landing = landingOf(next.trace, 'deny' in result && !!result.deny)
   const landed = landing?.element
   const selected = landed?.startsWith('row:') ? landed.slice(4) : before
-  if (selected !== asked) await $.state.set({ plugin: 'rabe', key: 'selected' }, selected)
+  if (selected !== asked) await pick($, tab, selected)
   if (landing && !landed) feed($, { type: 'unfocused' })
   if (!landing) feed($, { type: 'landed', isMoved: false })
   else if (landed) {
@@ -591,6 +704,7 @@ export function pane(on: On, hours = baseHours): void {
     await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(items, edits))
     await $.state.set({ plugin: 'rabe', key: 'window' }, windowOf(baseHours, await $.clock.now()))
     feed($, { type: 'opened' })
+    isRestored = false
     pinned = NO_PIN
     await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })
 
@@ -598,12 +712,24 @@ export function pane(on: On, hours = baseHours): void {
   })
 
   // A close the host carries out clears every hold; a canceled one keeps it.
+  // Esc in a filled search field is refused, so the pane and the filter stay
+  // (#187). The engine has released the keyboard before this hook runs, so the
+  // ring cannot be landed anywhere: the keys go to the prompt until the person
+  // presses `ctrl+x tab`. The ring state is dropped with the keyboard.
+  on('ui.close', { id: PANE, origin: { kind: 'person' } }, async ($, e, next) => {
+    const { value: query = '' } = await $.state.get({ plugin: 'rabe', key: 'query' })
+    if (!holdsClose(interaction.ringOn, query)) return next(e)
+    feed($, { type: 'unfocused' })
+    return { value: undefined }
+  }).catch((_$, e, next) => next(e))
+
   on('ui.close', { id: PANE }, async ($, e, next) => {
     const result = await next(e)
     if (!(await $.ui.panes()).some(one => one.id === PANE)) {
       screen.release()
       feed($, { type: 'closed' })
       isPinned = false
+      await $.state.set({ plugin: 'rabe', key: 'openFrom' }, null)
     }
     return result
   }).catch((_$, e, next) => next(e))
@@ -658,15 +784,23 @@ export function pane(on: On, hours = baseHours): void {
       return { element: e.element }
     }),
   ).catch((_$, e, next) =>
-    next.called && next.error.message?.includes('no handler is held under handle')
-      ? { element: e.element }
-      : next(e),
+    next.called && next.error.message?.includes(RELEASED) ? { element: e.element } : next(e),
   )
-  on('ui.input', { requestId: PANE }, ($, e, next) => carry($, e, () => next(e))).catch(
-    (_$, e, next) =>
-      next.called && next.error.message?.includes('no handler is held under handle')
-        ? { element: e.element, value: e.value }
-        : next(e),
+  // A redraw between a key and its closure releases the field's handler. The
+  // search field's event carries the field's whole text, so the filter still
+  // follows the field (#180); any other Input's event is dropped.
+  on('ui.input', { requestId: PANE }, ($, e, next) =>
+    carry($, e, () =>
+      next(e).catch((error: Error) => {
+        if (e.element !== 'search' || !error?.message?.includes(RELEASED)) throw error
+        leave(queryOf(e.value, e.kind), e)
+        return { element: e.element, value: e.value }
+      }),
+    ),
+  ).catch((_$, e, next) =>
+    next.called && next.error.message?.includes(RELEASED)
+      ? { element: e.element, value: e.value }
+      : next(e),
   )
 
   on('ui.scroll', { requestId: PANE }, async ($, e, next) => {
@@ -709,9 +843,7 @@ export function pane(on: On, hours = baseHours): void {
     // On the terminal a body taller than its room scrolls under the header.
     // The scroll is measured on the held pieces the pane draws: a dry run of
     // the drawing finds them for the scroll the view gets.
-    const fresh =
-      e.surface === 'terminal' && e.props.scroll ? geometry(model, size, seen) : undefined
-    isPinned = !!fresh
+    let fresh = e.surface === 'terminal' && e.props.scroll ? geometry(model, size, seen) : undefined
     const drawing = (rows: number): InteractionEvent => ({
       type: 'render',
       model,
@@ -722,15 +854,21 @@ export function pane(on: On, hours = baseHours): void {
     let rows = fresh?.rows ?? 0
     if (fresh) {
       const dry = interact(interaction, drawing(rows)).list ?? []
-      const geo = measure(dry, fresh.head, size, seen.selected, interaction.ringOn)
-      pinned = follow(pinned, geo, scopeOf(seen), geo.key)
-      rows = geo.rows
+      const geo = measure(dry, fresh.head, size, seen.selected, interaction.ringOn, fresh.isTight)
+      // Held pieces (gone slots, a message field) can take rows the fresh view
+      // does not count: under the minimum the engine's scroll takes over.
+      if (geo.rows < MIN_ROWS) fresh = undefined
+      else {
+        pinned = follow(pinned, geo, scopeOf(seen), geo.key)
+        rows = geo.rows
+      }
     }
+    isPinned = !!fresh
 
     const { list = [] } = feed($, drawing(rows))
     screen.drew(e.surface, ask)
     if (!fresh) return render(ui, e.surface, list, leave)
-    const geo = measure(list, fresh.head, size, seen.selected, interaction.ringOn)
+    const geo = measure(list, fresh.head, size, seen.selected, interaction.ringOn, fresh.isTight)
     pinned = { ...pinned, top: Math.min(pinned.top, Math.max(0, geo.total - geo.rows)) }
 
     return render(ui, e.surface, list, leave, 'cells', {
