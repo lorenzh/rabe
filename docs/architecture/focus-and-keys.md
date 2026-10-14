@@ -18,7 +18,8 @@ keywords: [append-only, focus order, target-bound keys, arming, arrow keys, ui.f
 | `rabe.tab` | The selected tab |
 | `rabe.query` | The search text; matches title, kind, command, prompt, description and agent type |
 | `rabe.folded` | The groups folded in the list |
-| `rabe.selected` | The selected row's id (a click can select a row while the keyboard focus stays elsewhere; `ringOn` tracks the focus): set by a `ui.focus` that lands on a row, by a press that selects a row (a click, `selectsOnPress`), and by opening. An item id, or on the Effects tab `file:<path>` or `ssh:<port>`, which the other tabs do not find and so focus their first row |
+| `rabe.selected` | The selected row's id (a click can select a row while the keyboard focus stays elsewhere; `ringOn` tracks the focus): set by a `ui.focus` that lands on a row, by a press that selects a row (a click, `selectsOnPress`), and by opening. An item id; only the Items tab writes it (#188) |
+| `rabe.picked` | The selected row of each other tab, by tab name (an item id on Cost and Timeline, `file:<path>` or `ssh:<port>` on Effects). A focus that lands on a row there writes its own tab's entry, so a visit to Cost, Effects or Timeline never moves the Items selection. Absent: the tab's first row (#188) |
 | `rabe.open` | The item whose full detail shows; `''` shows the list |
 | `rabe.order` | The list order taken when the pane opened (`RabeOrder`, see [The held order](focus-order.md#the-held-order)) |
 | `rabe.removed` | The ids of ended items the person removed this session (see [Removing ended items](views.md#removing-ended-items)) |
@@ -56,3 +57,7 @@ The pane catches these letters while it holds the keys outside input fields:
 | Timeline | `w` when `timelineHours` is greater than zero; `c` when the previous session id is known |
 
 A focused input field takes every key.
+
+## Selection across tabs, remove and reopen (#188)
+
+The Items tab keeps `rabe.selected`; every other tab keeps its own entry in `rabe.picked`. `look` hands the views the active tab's value as `selection.selected`, and the `ui.focus` hook writes to the active tab's key. `r` (and `a`) moves the selection to the next row of the list as drawn, or to the previous one at the end, when the selected row is among the removed ones. When the pane reopens, `refocus` lands the ring once on the stored tab and its selected row, as a tab press does. The test kit refuses Rabe's own `$.ui.focus`, so the landing is covered by the live check only.

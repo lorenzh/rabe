@@ -35,6 +35,7 @@ import {
   taskIdOf,
   waitsForView,
 } from './view'
+import { listOrder, selectedItem } from './views/items'
 import { isLiveRow, paneView, seatsRows, selectsOnPress, TABS } from './views/pane'
 import { widen, windowOf } from './views/timeline'
 
@@ -50,6 +51,9 @@ let baseHours = 4
 let pinned: Pin = NO_PIN
 let isPinned = false
 
+// Whether this open has put the focus back on the person's row.
+let isRestored = false
+
 // Reasons come from files and tools.
 function toast($: EngineInterface, text: string): void {
   $.ui.toast(toastText(text))
@@ -63,6 +67,12 @@ async function refocus($: EngineInterface): Promise<void> {
     shown = (await $.ui.panes()).find(one => one.id === PANE)
   }
   feed($, { type: 'refocused', isOpen: !!shown, isFocused: !!shown?.isFocused })
+  // The reopened pane puts the focus on the tab's selected row (#188), once.
+  if (shown && !isRestored) {
+    isRestored = true
+    const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
+    await landView($, { type: 'tab', tab }, 'terminal')
+  }
 }
 
 async function previous($: EngineInterface): Promise<RabePrevious | undefined> {
@@ -269,12 +279,40 @@ async function choose($: EngineInterface, id: string): Promise<boolean> {
   return true
 }
 
+// The selected row of a tab. The Items tab keeps `selected`; every other tab
+// keeps its own pick in `picked`, so a visit never moves the Items selection
+// (#188). Absent state is no pick: the view falls back to its first row.
+async function pickedOn($: EngineInterface, tab: string): Promise<string> {
+  if (tab === 'items') {
+    const { value = '' } = await $.state.get({ plugin: 'rabe', key: 'selected' })
+    return value
+  }
+  const { value = {} } = await $.state.get({ plugin: 'rabe', key: 'picked' })
+  return value[tab] ?? ''
+}
+
+async function pick($: EngineInterface, tab: string, id: string): Promise<void> {
+  if (tab === 'items') {
+    await $.state.set({ plugin: 'rabe', key: 'selected' }, id)
+    return
+  }
+  const { value = {} } = await $.state.get({ plugin: 'rabe', key: 'picked' })
+  await $.state.set({ plugin: 'rabe', key: 'picked' }, { ...value, [tab]: id })
+}
+
 // Hides ended items for the session: they stay in `rabe.items`, which polls
 // fill again, and only the list leaves them out (`kept`). An id stays even when
 // the cap drops its item, which a poll may find again.
 async function remove($: EngineInterface, action: Action & { type: 'remove' | 'clear' }) {
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   const { value: query = '' } = await $.state.get({ plugin: 'rabe', key: 'query' })
+  // The list as drawn before the removal: the selection moves to a neighbour.
+  const seen = await look($, true)
+  const order =
+    seen.selection.tab === 'items' && seen.selection.open === ''
+      ? listOrder(seen.model, seen.selection).map(item => item.id)
+      : []
+  const was = selectedItem(listOrder(seen.model, seen.selection), seen.selection)?.id
   let gone: RabeItem[] = []
   for (;;) {
     const { value: removed = [], version } = await $.state.get({ plugin: 'rabe', key: 'removed' })
@@ -289,6 +327,12 @@ async function remove($: EngineInterface, action: Action & { type: 'remove' | 'c
       ifVersion: version,
     })
     if (isSet) break
+  }
+  const at = was ? order.indexOf(was) : -1
+  if (at >= 0 && gone.some(item => item.id === was)) {
+    const left = (id: string) => !gone.some(item => item.id === id)
+    const near = order.slice(at + 1).find(left) ?? order.slice(0, at).reverse().find(left)
+    if (near) await $.state.set({ plugin: 'rabe', key: 'selected' }, near)
   }
   const [one] = gone
   toast(
@@ -435,7 +479,7 @@ async function look(
   const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
   const { value: query = '' } = await $.state.get({ plugin: 'rabe', key: 'query' })
   const { value: folded = [] } = await $.state.get({ plugin: 'rabe', key: 'folded' })
-  const { value: selected = '' } = await $.state.get({ plugin: 'rabe', key: 'selected' })
+  const selected = await pickedOn($, tab)
   const { value: open = '' } = await $.state.get({ plugin: 'rabe', key: 'open' })
   const { value: order } = await $.state.get({ plugin: 'rabe', key: 'order' })
   const { value: worktrees } = await $.state.get({ plugin: 'rabe', key: 'worktrees' })
@@ -555,14 +599,15 @@ async function arrow($: EngineInterface, by: number, bodyRows: number): Promise<
 }
 
 async function focused($: EngineInterface, e: UiFocusInput, next: Next<'ui.focus'>) {
-  const { value: before = '' } = await $.state.get({ plugin: 'rabe', key: 'selected' })
+  const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
+  const before = await pickedOn($, tab)
   const asked = e.element?.startsWith('row:') ? e.element.slice(4) : before
-  if (asked !== before) await $.state.set({ plugin: 'rabe', key: 'selected' }, asked)
+  if (asked !== before) await pick($, tab, asked)
   const result = await next(e)
   const landing = landingOf(next.trace, 'deny' in result && !!result.deny)
   const landed = landing?.element
   const selected = landed?.startsWith('row:') ? landed.slice(4) : before
-  if (selected !== asked) await $.state.set({ plugin: 'rabe', key: 'selected' }, selected)
+  if (selected !== asked) await pick($, tab, selected)
   if (landing && !landed) feed($, { type: 'unfocused' })
   if (!landing) feed($, { type: 'landed', isMoved: false })
   else if (landed) {
@@ -602,6 +647,7 @@ export function pane(on: On, hours = baseHours): void {
     await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(items, edits))
     await $.state.set({ plugin: 'rabe', key: 'window' }, windowOf(baseHours, await $.clock.now()))
     feed($, { type: 'opened' })
+    isRestored = false
     pinned = NO_PIN
     await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })
 

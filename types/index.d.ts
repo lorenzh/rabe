@@ -273,6 +273,9 @@ declare module 'claude-code' {
       query: string
       folded: string[]
       selected: string
+      // The selected row of each tab other than Items, by tab; absent: the
+      // tab's first row. Items keeps `selected`, so a tab visit leaves it.
+      picked: Record<string, string>
       open: string
       order: RabeOrder
       // The files the main session changed (no agent), newest last.

@@ -887,16 +887,43 @@ test('moving the focus onto a cost or effects row selects it on every surface', 
     const ui = await $.ui.mount({ surface, ...PANE } as never)
     await ui.press({ key: 'tab-cost' })
     await focus(`row:${review.id}`)
-    expect(state.selected).toBe(review.id)
+    expect(state.picked).toMatchObject({ cost: review.id })
     expect((await ui.find({ type: 'Button', key: `row:${review.id}` }))?.props.dimColor).toBeFalsy()
     await ui.press({ key: 'tab-effects' })
     await focus('row:file:/repo/src/a.ts')
-    expect(state.selected).toBe('file:/repo/src/a.ts')
+    expect(state.picked).toMatchObject({ cost: review.id, effects: 'file:/repo/src/a.ts' })
     const row = await ui.find({ type: 'Button', key: 'row:file:/repo/src/a.ts' })
     expect(row?.props).toMatchObject({ autoFocus: true })
     expect(row?.props.dimColor).toBeFalsy()
     await ui.unmount()
   }
+})
+
+test("a tab visit keeps the Items selection: a row picked on Cost or Effects is that tab's own (#188)", async ($, on) => {
+  const state = hold(on, ALL, { selected: dev.id })
+  session(on)
+  on('ui.focus', async () => ({}))
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: 'tab-cost' })
+  await arm($, `row:${review.id}`)
+  await ui.press({ key: 'tab-items' })
+  expect(state.selected ?? dev.id).toBe(dev.id)
+  expect(state.picked).toEqual({ cost: review.id })
+  await ui.unmount()
+})
+
+test('r selects the next row, and the previous one at the end of the list (#188)', async ($, on) => {
+  const all = orderOf(ALL).agents ?? []
+  const mid = all.find((id, at) => at > 0 && ALL.find(item => item.id === id)?.status !== 'running')
+  const state = hold(on, ALL, { selected: mid, order: orderOf(ALL) })
+  on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await arm($, `row:${mid}`)
+  await ui.redraw()
+  await ui.press({ key: 'remove' })
+  expect(state.removed).toEqual([mid])
+  expect(state.selected).toBe(all[all.indexOf(mid as string) + 1])
+  await ui.unmount()
 })
 
 test('the session end keeps a summary for the next session in this project', async ($, on) => {
