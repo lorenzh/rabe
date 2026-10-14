@@ -2666,6 +2666,27 @@ test('a detail opened after a tab change replaces the origin and b lands on that
   await ui.unmount()
 })
 
+// #223: the origin belongs to the open item; once that item leaves the list,
+// a row opened from the Items list it falls back to sets a new origin.
+test('a row opened after the open item left the list replaces the origin', async ($, on) => {
+  const items = [...ALL]
+  const state = hold(on, items, { tab: 'cost' })
+  session(on)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await ui.press({ key: `row:${explore.id}` })
+  expect(state.openFrom).toEqual({ tab: 'cost', id: explore.id })
+  items.splice(items.indexOf(explore), 1)
+  await ui.redraw()
+  // The first press selects the row (a click away from the ring), the second opens it.
+  await ui.press({ key: `row:${dev.id}` })
+  await ui.press({ key: `row:${dev.id}` })
+  expect(state.open).toBe(dev.id)
+  expect(state.openFrom).toEqual({ tab: 'items', id: dev.id })
+  await ui.press({ key: 'back' })
+  expect(state).toMatchObject({ tab: 'items', open: '', selected: dev.id })
+  await ui.unmount()
+})
+
 test('b from a workflow agent opened on the timeline lands on the workflow row', async ($, on) => {
   const state = hold(on, ALL, { tab: 'timeline' }, false)
   session(on)
