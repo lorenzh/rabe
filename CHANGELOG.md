@@ -7,6 +7,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 ### Fixed
 
 - Cron detail shows the latest fire time, fire count and turn end also when Claude Code writes the fire to the transcript after the turn's first step, when another prompt follows before the turn ends, or when the cron is deleted in that turn ([#196](https://github.com/lorenzh/rabe/pull/196), fixes [#193](https://github.com/lorenzh/rabe/issues/193))
+- A direct `codex exec` ends at a newline, `|&` or `)`, so a later command's `-o` file or `&` no longer counts as the Codex result file or detach, while a `&` after the closing `)` of a group still detaches it ([#194](https://github.com/lorenzh/rabe/pull/194), fixes [#169](https://github.com/lorenzh/rabe/issues/169))
+- The cron docs name every case where the observed turn start is missing and the fallback can skip a cron's fire recovery ([#197](https://github.com/lorenzh/rabe/pull/197), fixes [#172](https://github.com/lorenzh/rabe/issues/172))
 - The tab hotkeys `1` to `4` put the focus on the tab's marked row with one press, so Down goes to the next row. A fold and a submitted search wait the same way for the new view (usually about 100 to 130 ms, at most about 400 ms); another key in the pane during that wait cancels the move to the row and then works as usual ([#175](https://github.com/lorenzh/rabe/pull/175), fixes [#174](https://github.com/lorenzh/rabe/issues/174))
 
 ## [0.8.1] - 2026-10-13
