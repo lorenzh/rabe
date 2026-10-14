@@ -457,7 +457,7 @@ test('beside the detail the list offers c, m and d for the selected row, under f
   const drawn = itemsView(model, WIDE, { ...NO_SELECTION, selected: explore.id })
   expect(drawn.inputs?.map(one => one.key)).toEqual(['search', `message:${explore.id}`])
   expect(targetsOf(itemsView(model, WIDE, { ...NO_SELECTION, selected: babysit.id }))).toContain(
-    JSON.stringify(['delete', 'd: delete job', babysit.id]),
+    JSON.stringify(['delete', 'delete', babysit.id]),
   )
   const narrow = itemsView(model, NARROW, { ...NO_SELECTION, selected: explore.id })
   expect(narrow.buttons.map(one => one.key)).not.toContain('copy')

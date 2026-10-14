@@ -415,17 +415,18 @@ export function landingOf(
 // The list's x, g and r keep one key each and act on the selection.
 export const LIST_KEYS = ['stop', 'stop-group', 'remove', 'delete']
 
-// What the list's x and g act on in a drawing: one entry per control and item.
-// Fewer entries (a row of the group ended, g can no longer act) stop less
-// than the person saw; a new entry is a target they did not choose.
+// What the list's x and g act on in a drawing: one entry per control, action
+// and item. Fewer entries (a row of the group ended, g can no longer act) stop
+// less than the person saw; a new entry is a target they did not choose. The
+// label stays out: g's carries the group's count.
 export const targetsOf = (drawn: Drawn): string[] =>
   drawn.buttons
     .filter(one => LIST_KEYS.includes(one.key))
-    .flatMap(({ key, label, action }) =>
+    .flatMap(({ key, action }) =>
       action.type === 'stop' || action.type === 'remove'
-        ? action.ids.map(id => JSON.stringify([key, label, id]))
+        ? action.ids.map(id => JSON.stringify([key, action.type, id]))
         : action.type === 'delete'
-          ? [JSON.stringify([key, label, action.id])]
+          ? [JSON.stringify([key, action.type, action.id])]
           : [],
     )
 

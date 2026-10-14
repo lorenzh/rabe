@@ -487,6 +487,28 @@ test('a press on another live row of the Items list selects it; on the selected 
   expect(selectsOnPress(model, sel, ci.id, `row:${dev.id}`)).toBe(true)
 })
 
+// The group's count is in g's label ("g: stop 3"): a neighbour that ends
+// changes the label, not what g stops, so it keeps the pane armed.
+test('a neighbour that ends in a group of three keeps x and g armed; a new row disarms', () => {
+  const size = { columns: 100, rows: 24, surface: 'terminal', hasInput: true } as const
+  const shell = (id: string, status = 'running') =>
+    ({ ...dev, id: `shell:${id}`, title: `serve ${id}`, status }) as typeof dev
+  const selection = { ...NO_SELECTION, selected: 'shell:a', isArmed: true, isListArmed: true }
+  const drawn = (items: (typeof dev)[]) =>
+    ({
+      type: 'drawn',
+      fallback: '',
+      selected: 'shell:a',
+      targets: targetsOf(paneView({ items, turns: {}, lines: {}, now: NOW }, size, selection)),
+    }) as const
+  const three = [shell('a'), shell('b'), shell('c')]
+  const before = arm({ ...DISARMED, isArmed: true, isListArmed: true }, drawn(three))
+  const ended = arm(before, drawn([shell('a'), shell('b', 'done'), shell('c')]))
+  expect([ended.isArmed, ended.isListArmed]).toEqual([true, true])
+  const joined = arm(before, drawn([...three, shell('d')]))
+  expect([joined.isArmed, joined.isListArmed]).toEqual([false, false])
+})
+
 test('a split delete target gained without a chosen row disarms the pane', () => {
   const size = { columns: 100, rows: 24, surface: 'terminal', hasInput: true } as const
   const cron = {
@@ -506,7 +528,7 @@ test('a split delete target gained without a chosen row disarms the pane', () =>
     { ...DISARMED, isArmed: true, isListArmed: true },
     { type: 'drawn', fallback: '', selected: cron.id, targets: targets('done') },
   )
-  expect(targets('running')).toContain(JSON.stringify(['delete', 'd: delete job', cron.id]))
+  expect(targets('running')).toContain(JSON.stringify(['delete', 'delete', cron.id]))
   expect(
     arm(before, { type: 'drawn', fallback: '', selected: cron.id, targets: targets('running') })
       .isArmed,
