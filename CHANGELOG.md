@@ -10,7 +10,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
-- A neighbour that ends in a group of three or more running rows no longer disarms `x` and `g` in the Items list: the count in `g`'s label changed, and Rabe took the new label for a new target ([#195](https://github.com/lorenzh/rabe/pull/195))
+- A neighbour that ends in a group of three or more running rows no longer disarms `x` and `g` in the Items list: the count in `g`'s label changed, and Rabe took the new label for a new target ([#217](https://github.com/lorenzh/rabe/pull/217))
 - A key typed in the search field while the pane redraws is no longer lost: the filter followed the field one key late, so after a Backspace to an empty field the list could stay filtered ([#213](https://github.com/lorenzh/rabe/pull/213), refs [#180](https://github.com/lorenzh/rabe/issues/180))
 - A search that matches nothing keeps the focus in the search field: the list keeps the slots of `c`, `m` and `d` with no selection, so typed keys no longer go to the prompt and Backspace back to a match keeps the field focused ([#213](https://github.com/lorenzh/rabe/pull/213), fixes [#180](https://github.com/lorenzh/rabe/issues/180))
 - Back from a detail returns to the tab and row it was opened from, not always to Items; one level, cleared when the pane closes ([#212](https://github.com/lorenzh/rabe/pull/212), fixes [#185](https://github.com/lorenzh/rabe/issues/185))
