@@ -250,12 +250,13 @@ test('the option is a number of hours, 0 for no limit; anything else is 4', () =
   expect([-1, 'x', true, undefined, Number.NaN].map(hoursOf)).toEqual([4, 4, 4, 4, 4])
 })
 
-// Issue #13: a removed item has no row on the timeline.
-test('a removed item has no row on the timeline', () => {
+// Issue #206: removing hides an item from the Items list only; the
+// timeline keeps its bar.
+test('a removed item keeps its row on the timeline', () => {
   const drawn = gridOf(timelineView({ ...MODEL, removed: [plan.id] }, SIZE, NO_SELECTION))
-  expect(rowKeys(drawn)).not.toContain(`row:${plan.id}`)
+  expect(rowKeys(drawn)).toContain(`row:${plan.id}`)
   expect(rowKeys(drawn)).toContain(`row:${dev.id}`)
-  expect(lines(drawn.grid).some(line => line.includes(plan.title))).toBe(false)
+  expect(lines(drawn.grid).some(line => line.includes(plan.title))).toBe(true)
 })
 
 // The rows fold a forwarder into its Codex job, but who started what keeps

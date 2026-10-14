@@ -10,6 +10,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
+- Removing an ended item hides it from the Items list only: it keeps its row in its workflow's detail, its Cost row (so the rows add up to the totals) and its Timeline bar ([#215](https://github.com/lorenzh/rabe/pull/215), fixes [#206](https://github.com/lorenzh/rabe/issues/206))
 - A neighbour that ends in a group of three or more running rows no longer disarms `x` and `g` in the Items list: the count in `g`'s label changed, and Rabe took the new label for a new target ([#217](https://github.com/lorenzh/rabe/pull/217))
 - A key typed in the search field while the pane redraws is no longer lost: the filter followed the field one key late, so after a Backspace to an empty field the list could stay filtered ([#213](https://github.com/lorenzh/rabe/pull/213), refs [#180](https://github.com/lorenzh/rabe/issues/180))
 - A search that matches nothing keeps the focus in the search field: the list keeps the slots of `c`, `m` and `d` with no selection, so typed keys no longer go to the prompt and Backspace back to a match keeps the field focused ([#213](https://github.com/lorenzh/rabe/pull/213), fixes [#180](https://github.com/lorenzh/rabe/issues/180))

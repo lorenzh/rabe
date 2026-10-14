@@ -705,8 +705,8 @@ test('a codex job opens the agent that only forwarded it', () => {
   }
 })
 
-// Issue #13: a removed agent keeps counting in its run, but has no row there.
-test('a workflow counts a removed agent in its phases and tokens but draws no row for it', () => {
+// Issue #206: a removed agent keeps counting in its run and keeps its row.
+test('a workflow counts a removed agent in its phases and tokens and draws its row', () => {
   const done = { ...reviewed, tokens: { input: 30_000, output: 2_000 } }
   const items = ALL.map(item => (item.id === reviewed.id ? done : item))
   const drawn = open(model(items, { removed: [done.id] }), flow.id)
@@ -714,7 +714,7 @@ test('a workflow counts a removed agent in its phases and tokens but draws no ro
   expect(shown).toContain('✓ Review → ◐ Verify → · Report')
   expect(shown.some(line => line.includes('REVIEW 1 done'))).toBe(true)
   expect(shown.some(line => line.startsWith(' cost n/a   in 49k'))).toBe(true)
-  expect(rowKeys(drawn)).not.toContain(`row:${done.id}`)
+  expect(rowKeys(drawn)).toContain(`row:${done.id}`)
   expect(rowKeys(drawn)).toContain(`row:${verify.id}`)
 })
 
