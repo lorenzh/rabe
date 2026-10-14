@@ -162,3 +162,19 @@ test('a detached group keeps the call detached and the ) keeps the argument boun
     isDetached: false,
   })
 })
+
+test('a & after the closing ) detaches the group past newlines and ends inside it', () => {
+  const run = { resultPath: '/tmp/r.txt', isDetached: true }
+  expect(codexExec('(codex exec -o /tmp/r.txt x\n) &')).toEqual(run)
+  expect(codexExec('(codex exec -o /tmp/r.txt x\necho y\n) &')).toEqual(run)
+  expect(codexExec('(codex exec -o /tmp/r.txt x; echo y) &')).toEqual(run)
+  expect(codexExec('(codex exec -o /tmp/r.txt x |& tee l) &')).toEqual(run)
+  expect(codexExec('( (codex exec -o /tmp/r.txt x\n)\n) > /tmp/log 2>&1 &')).toEqual(run)
+  const fg = { resultPath: '/tmp/r.txt', isDetached: false }
+  expect(codexExec('(codex exec -o /tmp/r.txt x\n)')).toEqual(fg)
+  expect(codexExec('(codex exec -o /tmp/r.txt x\necho y &)')).toEqual(fg)
+  expect(codexExec('(codex exec -o /tmp/r.txt x\n(sleep 1) &)')).toEqual(fg)
+  expect(codexExec('(codex exec -o /tmp/r.txt x\n)\necho y &')).toEqual(fg)
+  expect(codexExec('(codex exec -o /tmp/r.txt x |& tee l)')).toEqual(fg)
+  expect(codexExec('(a)\ncodex exec -o /tmp/r.txt x\n) &')).toEqual(fg)
+})
