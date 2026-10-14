@@ -157,7 +157,7 @@ Each round starts from the list (step 5 above), runs the sequence and reads only
 |------|------|-------------|-------|
 | `ring-2`, `ring-3`, `ring-4` | tab key, `1`, `Down`, `Down` | each `Down` after the tab key and `1` lands on the next shell (three shells in a row, checked after each press), not on `s: search`. After each tab key the script waits until the tab bar marks that tab (at most 5 s): a key sent before the tab is drawn gives up its landing on the marked row, as a person's key does | #174, #175 (fixed) |
 | `click-stop` | click a running shell, Enter, `b`, `x` | Enter opens the clicked shell (the ring followed the click); then its process stops (found by its duration), no other one | #186 (fixed) |
-| `search-keys` | `s z z x` | the field reads `zzx` (no item matches, so the list empties after the first `z`) | #180 (fixed; 7 of 8 rounds on the fix, the failure a leftover `z` of the previous round, not a lost key) |
+| `search-keys` | `s z z x`, `Backspace` x3, `l e` | the field reads `zzx` (no item matches, so the list empties after the first `z`), then reads `le` after Backspace brings the rows back (the focus stayed in the field) | #180 (fixed; 7 of 8 rounds on the fix, the failure a leftover `z` of the previous round, not a lost key) |
 | `search-esc` | `s`, type, `Esc` | the field reads `zz` before `Esc` and after `Esc` and a `z`, and the pane is still open (the keys then go to the prompt) | #187 (fixed) |
 | `search-enter` | `s`, a duration, `Enter`, `Enter` | one row is left and marked, and `Enter` opens it | #187 (fixed) |
 | `tab-selection` | `Down`, `2`, `1` | the marked row is the same | #188 (fixed) |
@@ -165,7 +165,7 @@ Each round starts from the list (step 5 above), runs the sequence and reads only
 | `reopen` | `Down`, `Esc`, `/rabe`, `Enter` | the reopened pane marks the same row and Enter opens that row's detail | #188 (fixed) |
 | `back-cost`, `back-timeline` | tab key, `Enter`, `b` | back on that tab, the marked row kept, Enter opens it again | #185 (fixed) |
 
-`fixed` is the set that must pass on `main`. `pending` is the set of issues that are not fixed yet; it may FAIL, and the script reports it and does not hide it. `all` is both. A pending sequence moves to `fixed` in the pull request that fixes its issue. This is not run in CI: it needs a login. Run `fixed` before each release of the 0.9.x line and record the counts in the release PR.
+`fixed` is the set that must pass on `main`. `pending` is the set of issues that are not fixed yet; it may FAIL, and the script reports it and does not hide it. `all` is both. A pending sequence moves to `fixed` in the pull request that fixes its issue. While no sequence is pending, `--sequences pending` alone is a usage error (exit 2). This is not run in CI: it needs a login. Run `fixed` before each release of the 0.9.x line and record the counts in the release PR.
 
 
 ### Issue #118 live check

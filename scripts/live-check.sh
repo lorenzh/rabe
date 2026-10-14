@@ -40,8 +40,8 @@ Options:
 Environment: CLAUDE names the Claude Code binary (default claude).
 Sequences: ring-2 ring-3 ring-4 (fixed: tab key, 1, Down Down lands on the
 third row), search-esc, search-enter, click-stop, tab-selection,
-remove-neighbour, back-cost, back-timeline, reopen (fixed), search-keys
-(pending).
+remove-neighbour, search-keys, back-cost, back-timeline, reopen (fixed); no
+sequence is pending.
 Exit codes: 0 all rounds passed, 1 a round failed, 2 usage or setup error.
 EOF
 }
@@ -100,8 +100,8 @@ plugin=$(cd "$plugin" && pwd)
 
 # Key sequences. FIXED ones must pass on main; PENDING ones belong to issues
 # that are not fixed yet and may FAIL: the script reports them.
-FIXED="ring-2 ring-3 ring-4 search-esc search-enter click-stop tab-selection remove-neighbour back-cost back-timeline reopen"
-PENDING="search-keys"
+FIXED="ring-2 ring-3 ring-4 search-keys search-esc search-enter click-stop tab-selection remove-neighbour back-cost back-timeline reopen"
+PENDING=""
 seqs=()
 if [ -n "$sequences" ]; then
   [ -z "$keys" ] && [ -z "$expect" ] || fail "--sequences replaces --keys and --expect"
@@ -117,6 +117,7 @@ if [ -n "$sequences" ]; then
   done
 fi
 mapfile -t seqs < <(printf '%s\n' "${seqs[@]}" | awk 'NF && !seen[$0]++')
+[ -z "$sequences" ] || [ ${#seqs[@]} -gt 0 ] || fail "--sequences $sequences names no sequence: none is pending"
 # Sequences that stop or remove a shell each take a spare one per round. The
 # Cost tab lists agents and jobs only, so back-cost seeds one subagent.
 allowed='Bash(sleep:*)'
@@ -516,6 +517,10 @@ seq_search_keys() {
   keys s z z x
   snap
   pane_has 'search:? +zzx' || { why="the field does not read zzx"; return 1; }
+  # Backspace back to rows: the field keeps the focus, so typing goes on in it.
+  keys BSpace BSpace BSpace l e
+  snap
+  pane_has 'search:? +le([^e]|$)' || { why="after Backspace to the rows the field does not read le: the focus left it"; return 1; }
 }
 seq_search_esc() {
   keys s z z

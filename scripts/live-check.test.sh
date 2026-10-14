@@ -39,8 +39,9 @@ check 'timeout reaches the plan' 0 'timeout: 30$' --dry-run --timeout 30
 check 'timeout must be a number' 2 '--timeout' --timeout soon
 
 check 'sequences reach the plan' 0 'sequences: ring-2 search-keys$' --dry-run --sequences ring-2,search-keys
-check 'fixed names the sequences of fixed issues' 0 'sequences: ring-2 ring-3 ring-4 search-esc search-enter click-stop tab-selection remove-neighbour back-cost back-timeline reopen$' --dry-run --sequences fixed
-check 'pending names the sequences of open issues' 0 'sequences: search-keys$' --dry-run --sequences pending
+check 'fixed names the sequences of fixed issues' 0 'sequences: ring-2 ring-3 ring-4 search-keys search-esc search-enter click-stop tab-selection remove-neighbour back-cost back-timeline reopen$' --dry-run --sequences fixed
+check 'pending without an open issue is a usage error' 2 'none is pending' --dry-run --sequences pending
+check 'pending beside a name runs that name' 0 'sequences: ring-2$' --dry-run --sequences pending,ring-2
 check 'an unknown sequence fails' 2 'unknown sequence: nope' --sequences nope
 check 'sequences and --keys exclude each other' 2 '--sequences' --sequences ring-2 --keys Down
 check 'sequences and --expect exclude each other' 2 '--sequences' --sequences ring-2 --expect x
@@ -164,7 +165,13 @@ case $cmd in
         echo "0 0" >"$FAKE/ring"
       elif [ "$field" = 1 ] && [ "$1" = BSpace ]; then
         text=${text%?}
-        echo "1 $text" >"$FAKE/field"
+        # FAKE_BACKSPACE=blur drops the focus when the field empties and the
+        # rows return (#180).
+        if [ -z "$text" ] && [ "${FAKE_BACKSPACE:-}" = blur ]; then
+          echo "0 $text" >"$FAKE/field"
+        else
+          echo "1 $text" >"$FAKE/field"
+        fi
         [ -n "$text" ] || rm -f "$FAKE/filter"
       elif [ "$1" = s ]; then
         echo "1 " >"$FAKE/field"
@@ -427,6 +434,7 @@ sq FAKE_TABLATE=2 'a tab that lands late is waited for before Down' 0 'PASS ring
 sq FAKE_TABKEY=stop 'a ring left on a stop after the tab key is FAIL' 1 'FAIL ring-2 0/1' --shells 3 --timeout 50 --sequences ring-2
 sq 'a field that reads what was typed is PASS' 0 'PASS search-keys 1/1' --shells 3 --timeout 50 --sequences search-keys
 sq FAKE_FIELD=eat 'a field that loses a key is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys
+sq FAKE_BACKSPACE=blur 'a field that loses the focus when rows return is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys
 sq 'Esc that leaves the field keeps the pane PASS' 0 'PASS search-esc 1/1' --shells 3 --timeout 50 --sequences search-esc
 sq FAKE_ESC=close 'Esc that closes the pane is FAIL' 1 'FAIL search-esc 0/1' --shells 3 --timeout 50 --sequences search-esc
 sq 'a selection kept over the Cost tab is PASS' 0 'PASS tab-selection 1/1' --shells 3 --timeout 50 --sequences tab-selection
