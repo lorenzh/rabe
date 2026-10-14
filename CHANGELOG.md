@@ -6,7 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
-- `b` (Back) returns to the Items row you opened, not to an older tab, when the item whose detail was open left the list before ([#PR](https://github.com/lorenzh/rabe/pull/PR), fixes [#223](https://github.com/lorenzh/rabe/issues/223))
+- `b` (Back) returns to the Items row you opened, not to an older tab, when the item whose detail was open left the list before ([#227](https://github.com/lorenzh/rabe/pull/227), fixes [#223](https://github.com/lorenzh/rabe/issues/223))
 
 ## [0.9.0] - 2026-10-14
 
