@@ -17,6 +17,7 @@ import {
   withForwarder,
 } from '../lists'
 import {
+  type Action,
   canStop,
   type Drawn,
   isPress,
@@ -295,6 +296,13 @@ function listButtons(
   return buttons
 }
 
+// The search field's action: a change filters, Enter submits the filter.
+export const queryOf = (text: string, kind?: 'change' | 'submit'): Action => ({
+  type: 'query',
+  text,
+  ...(kind === 'submit' && { isSubmit: true }),
+})
+
 const search = (sel: Selection): ViewInput => ({
   key: 'search',
   label: sel.isOnSearch ? '▸ search' : 'search',
@@ -302,7 +310,7 @@ const search = (sel: Selection): ViewInput => ({
   submitLabel: 'filter',
   value: sel.query,
   isLive: true,
-  action: (text, kind) => ({ type: 'query', text, ...(kind === 'submit' && { isSubmit: true }) }),
+  action: queryOf,
 })
 
 // The Items tab: the grouped list, and beside it (split) or under it (one

@@ -35,12 +35,14 @@ import {
   taskIdOf,
   waitsForView,
 } from './view'
-import { listOrder, selectedItem } from './views/items'
+import { listOrder, queryOf, selectedItem } from './views/items'
 import { isLiveRow, paneView, seatsRows, selectsOnPress, TABS } from './views/pane'
 import { widen, windowOf } from './views/timeline'
 
 const PANE = 'rabe'
 const MAX_ACTIONS = 20
+// The engine's answer to an event whose drawing a redraw released.
+const RELEASED = 'no handler is held under handle'
 
 // The option `timelineHours`, set by `pane(on, hours)`: the Timeline's window
 // when the pane opens.
@@ -782,15 +784,23 @@ export function pane(on: On, hours = baseHours): void {
       return { element: e.element }
     }),
   ).catch((_$, e, next) =>
-    next.called && next.error.message?.includes('no handler is held under handle')
-      ? { element: e.element }
-      : next(e),
+    next.called && next.error.message?.includes(RELEASED) ? { element: e.element } : next(e),
   )
-  on('ui.input', { requestId: PANE }, ($, e, next) => carry($, e, () => next(e))).catch(
-    (_$, e, next) =>
-      next.called && next.error.message?.includes('no handler is held under handle')
-        ? { element: e.element, value: e.value }
-        : next(e),
+  // A redraw between a key and its closure releases the field's handler. The
+  // search field's event carries the field's whole text, so the filter still
+  // follows the field (#180); any other Input's event is dropped.
+  on('ui.input', { requestId: PANE }, ($, e, next) =>
+    carry($, e, () =>
+      next(e).catch((error: Error) => {
+        if (e.element !== 'search' || !error?.message?.includes(RELEASED)) throw error
+        leave(queryOf(e.value, e.kind), e)
+        return { element: e.element, value: e.value }
+      }),
+    ),
+  ).catch((_$, e, next) =>
+    next.called && next.error.message?.includes(RELEASED)
+      ? { element: e.element, value: e.value }
+      : next(e),
   )
 
   on('ui.scroll', { requestId: PANE }, async ($, e, next) => {

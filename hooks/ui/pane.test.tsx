@@ -1834,7 +1834,7 @@ test('Enter after a click on another row opens the focused row; a second click o
 })
 
 test(
-  'stale press and input handlers are dropped after a redraw without losing pane keys',
+  'a stale press is dropped and a stale search change still filters after a redraw',
   {
     plugins: [
       {
@@ -1869,14 +1869,18 @@ test(
     releasePress()
     await expect(press).resolves.toBeDefined()
 
-    const input = ui.input({ key: 'search', text: 'changed', kind: 'change' })
+    const input = ui.input({ key: 'search', text: 'dev', kind: 'change' })
     const releaseInput = await gated('search')
     dev.title = 'bun run dev'
     await ui.redraw()
     releaseInput()
     await expect(input).resolves.toBeDefined()
     expect(state.open).toBeUndefined()
-    expect(state.query).toBeUndefined()
+    // The event carries the field's text: a released handler must not leave
+    // the filter a key behind the field (#180).
+    expect(state.query).toBe('dev')
+    // The filter is a new view, which disarms; the person's focus arms again.
+    await arm($, `row:${dev.id}`)
     await ui.press({ key: 'stop' })
     expect(stopped).toEqual(['bg_2'])
     await ui.unmount()
