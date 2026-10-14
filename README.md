@@ -92,7 +92,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | `c` | Copy the command, the prompt, the `ssh -L` line, an agent's id, or the command that resumes a session or a Codex thread. If the clipboard cannot be reached (for example over SSH in a terminal without OSC 52), a message shows the text to select |
 | `d` | Delete a running cron job |
 | `w` | On the Timeline tab: show more time (4 h, 12 h, the whole session, then 4 h again) |
-| Mouse wheel | Scroll the pane; on the terminal a long list scrolls under the tabs and buttons, which stay in view |
+| Mouse wheel | Scroll the pane; on the terminal a long list scrolls under the tabs and buttons, which stay in view. In a short pane only the tabs stay, and the buttons and the search field scroll with the list |
 | Esc | Close the pane |
 
 A deleted cron job shows no next runs, and its delete button stays dim. The previous-session summary counts only cron jobs still running when the session ends. Delete failures show plain text.
