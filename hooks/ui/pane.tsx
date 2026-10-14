@@ -87,7 +87,9 @@ async function restore($: EngineInterface): Promise<boolean> {
     () => undefined,
     async key => {
       const result = await $.ui.focus({ requestId: PANE, key }).catch(() => ({ deny: 'threw' }))
-      return !('deny' in result && result.deny)
+      const isMoved = !('deny' in result && result.deny)
+      if (isMoved) feed($, { type: 'restored', key })
+      return isMoved
     },
   )
 }
@@ -349,7 +351,10 @@ async function remove($: EngineInterface, action: Action & { type: 'remove' | 'c
   if (at >= 0 && gone.some(item => item.id === was)) {
     const left = (id: string) => !gone.some(item => item.id === id)
     const near = order.slice(at + 1).find(left) ?? order.slice(0, at).reverse().find(left)
-    if (near) await $.state.set({ plugin: 'rabe', key: 'selected' }, near)
+    if (near) {
+      await $.state.set({ plugin: 'rabe', key: 'selected' }, near)
+      feed($, { type: 'landed', isMoved: false })
+    }
   }
   const [one] = gone
   toast(

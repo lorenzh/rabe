@@ -933,6 +933,27 @@ for (const [name, at] of [
   })
 }
 
+test('r disarms: x stops nothing on the neighbour until the person moves the ring (#188)', async ($, on) => {
+  const state = hold(on, [lint, dev], { selected: lint.id, order: orderOf([lint, dev]) })
+  on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+  const stopped = stops(on)
+  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+  await arm($, `row:${lint.id}`)
+  await ui.redraw()
+  await ui.press({ key: 'remove' })
+  expect(state.selected).toBe(dev.id)
+  await ui.redraw()
+  const x = await ui.find({ type: 'Button', key: 'stop' })
+  expect([x?.props.dimColor, x?.props.hotkey]).toEqual([true, 'x'])
+  await ui.press({ key: 'stop' })
+  expect(stopped).toEqual([])
+  await arm($, `row:${dev.id}`)
+  await ui.redraw()
+  await ui.press({ key: 'stop' })
+  expect(stopped).toEqual(['bg_2'])
+  await ui.unmount()
+})
+
 test('the session end keeps a summary for the next session in this project', async ($, on) => {
   hold(on, ALL)
   const store = session(on)
