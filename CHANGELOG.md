@@ -10,7 +10,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
-- `/rabe-diag` and `/rabe-stop` are also registered in non-interactive (SDK) sessions, and `/rabe` answers with a plain-text summary where the pane cannot draw ([#228](https://github.com/lorenzh/rabe/pull/228), fixes [#178](https://github.com/lorenzh/rabe/issues/178))
+- `/rabe-diag` and `/rabe-stop` are also registered in non-interactive (SDK) sessions, and `/rabe` answers with a plain-text summary where the pane cannot draw ([#230](https://github.com/lorenzh/rabe/pull/230), fixes [#178](https://github.com/lorenzh/rabe/issues/178))
 - `b` (Back) returns to the Items row you opened, not to an older tab, when the item whose detail was open left the list before ([#227](https://github.com/lorenzh/rabe/pull/227), fixes [#223](https://github.com/lorenzh/rabe/issues/223))
 - A direct `codex exec` in a subshell group sent to the background with `&` shows as detached also when a newline or another command comes before the closing `)`, as in `(codex exec ... -o f x\n) &` ([#226](https://github.com/lorenzh/rabe/pull/226), fixes [#222](https://github.com/lorenzh/rabe/issues/222))
 
