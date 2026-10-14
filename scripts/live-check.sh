@@ -601,13 +601,13 @@ seq_remove_neighbour() {
 # Esc and /rabe again (#188): Enter presses the row that was marked, so the
 # detail it opens is the second row's, not the tab's first stop.
 seq_reopen() {
-  local i before name
+  local i before row
   keys Down
   snap
   listscan
   before=$lsel
   [ "$before" -ge 0 ] || { why="no row is marked after Down"; return 1; }
-  name=$(ident "${view[lrows[before]]}")
+  row=$(ident "${view[lrows[before]]}")
   k Escape
   sleep 1
   reopen_pane || { why="/rabe did not open the pane again"; return 1; }
@@ -618,7 +618,7 @@ seq_reopen() {
   keys Enter
   snap
   pane_has 'b:? back' || { why="Enter after the reopen opened no detail: the ring is not on the row"; return 1; }
-  pane_has "${name%% *}" || { why="the detail is not the one of '$name'"; return 1; }
+  pane_has "${row%% *}" || { why="the detail is not the one of '$row'"; return 1; }
   k b
 }
 seq_back() { # tab key

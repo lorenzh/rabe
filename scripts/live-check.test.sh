@@ -437,6 +437,7 @@ sq FAKE_ENTER=nodetail 'an Enter that opens no detail is FAIL' 1 'FAIL search-en
 sq 'r that removes the row and marks its neighbour is PASS' 0 'PASS remove-neighbour 1/1' --shells 3 --timeout 50 --sequences remove-neighbour
 sq FAKE_REMOVE=reset 'r that marks the first row instead of the neighbour is FAIL' 1 'FAIL remove-neighbour 0/1' --shells 3 --timeout 50 --sequences remove-neighbour
 sq FAKE_REMOVE=keep 'r that keeps the row is FAIL' 1 'FAIL remove-neighbour 0/1' --shells 3 --timeout 50 --sequences remove-neighbour
+sq 'a reopened pane that marks the same row and opens it is PASS' 0 'PASS reopen 1/1' --shells 3 --timeout 50 --sequences reopen
 sq 'b back on the Cost and Timeline tabs is PASS' 0 'PASS back-timeline 1/1' --shells 3 --timeout 50 --sequences back-cost,back-timeline
 sq FAKE_BACK=items 'b that goes to the first tab is FAIL on both' 1 'FAIL back-timeline 0/1' --shells 3 --timeout 50 --sequences back-cost,back-timeline
 sq FAKE_TABKEY=stop 'one failing sequence sets the exit code' 1 'PASS search-keys 1/1' --shells 3 --timeout 50 --sequences ring-2,search-keys
