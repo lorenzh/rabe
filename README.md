@@ -17,8 +17,8 @@ Status: early development. See [releases](https://github.com/lorenzh/rabe/releas
 
 | Kind | In the band | In the pane |
 |---|---|---|
-| Claude subagents | Count (`claude`) | Name when Claude Code provides one, otherwise the task description; tokens, prompt, turns and agent id |
-| Workflows | Count (`workflow`) | Phases and their agents in start order, with tokens and time; select an agent to open it |
+| Claude subagents | Count (`claude`) | Name when Claude Code provides one, otherwise the task description; model and effort (every change, newest six), tokens, prompt, turns and agent id |
+| Workflows | Count (`workflow`) | Phases and their agents in start order, with model and effort, tokens and time (the model chip drops on a narrow pane); select an agent to open it |
 | Codex jobs (from the Codex plugin) | Count (`codex`) | Model, effort and sandbox, tokens, the prompt, each message and command with its exit code, the thread id (`c` copies `codex resume <thread id>`) |
 | Background shells | Count (`shell`) | Bash description and task id, output lines, exit code and port from output or the process tree’s listening sockets on Linux; a foreground command shows as a running shell after 2 s and stays as an ended row (done, failed, or stopped when refused or interrupted) when it returns, also a quick one; the newest 50 ended foreground rows are kept, and they go before other ended items when the list is full. A detached `codex exec -o <file> &` stays running until its result file appears |
 | Monitors | Count (`monitor`) | Each line with the time Rabe received it |

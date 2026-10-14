@@ -106,7 +106,7 @@ test('an agent that changed model or effort shows the pairs in order', () => {
     { model: 'claude-haiku-5' },
   ]
   const changed = { ...explore, detail: { ...explore.detail, models } } as typeof explore
-  expect(facts(changed, NOW, ALL).lines[0]).toBe(
-    'Explore · opus-5-5·high → sonnet-5-5·medium → haiku-5·n/a · worktree pkg-db',
-  )
+  const shown = facts(changed, NOW, ALL).lines
+  expect(shown[0]).toBe('Explore · haiku-5·n/a · worktree pkg-db')
+  expect(shown[1]).toBe('models opus-5-5·high → sonnet-5-5·medium → haiku-5·n/a')
 })

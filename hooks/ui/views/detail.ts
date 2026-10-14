@@ -266,14 +266,14 @@ function workflowLines(model: Model, item: RabeItem, columns: number, sel?: Sele
     })
     for (const agent of stable(p.agents, sel?.order?.timeline, byStart)) {
       const tok = tokenSum(agent)
+      const row = itemLine(agent, model.now, agent.id === sel?.selected)
+      const tail = `${tok < 0 ? 'n/a' : tokens(tok)} · ${timeLabel(agent, model.now)} `
+      const chip = pairText(agent)
+      // The chip goes first when the row is too narrow to keep the name button.
+      const keep = 4 + Math.min(12, [...agent.title].length)
       out.push({
-        ...itemLine(agent, model.now, agent.id === sel?.selected),
-        right: [
-          [
-            `${pairText(agent)}${tok < 0 ? 'n/a' : tokens(tok)} · ${timeLabel(agent, model.now)} `,
-            dim,
-          ],
-        ],
+        ...row,
+        right: [[columns - [...(chip + tail)].length - 1 >= keep ? chip + tail : tail, dim]],
       })
     }
   }

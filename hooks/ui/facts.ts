@@ -44,8 +44,10 @@ export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: stri
         : d.cwd && d.cwd === cwd
           ? 'main tree'
           : 'tree n/a'
-      const model = d.models?.length ? pairsText(d.models) : na(d.model)
+      const last = d.models?.at(-1)
+      const model = last ? pairsText([last]) : na(d.model)
       lines.push(`${na(d.type)} · ${model} · ${tree}`)
+      if (d.models && d.models.length > 1) lines.push(`models ${pairsText(d.models)}`)
       if (d.worktreeBranch) lines.push(`branch ${d.worktreeBranch}`)
       if (d.workflowPhase) lines.push(`phase ${d.workflowPhase}`)
       lines.push(`agent ${validId(d.agentId) ? d.agentId : 'n/a'}`, by, ran(item, now))

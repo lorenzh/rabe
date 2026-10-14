@@ -458,7 +458,7 @@ export function agents(on: On, file: string, pollers: Pollers): void {
   on('turn.step', { agentId: /^/ }, async function* ($, e, next) {
     const result = yield* next(e)
     if (e.agentId)
-      await recordStep($, e.agentId, result, file, pairOf(result.usage?.model ?? e.model, e.effort))
+      await recordStep($, e.agentId, result, file, pairOf(result.usage?.model, e.effort))
 
     return result
   })

@@ -113,15 +113,16 @@ export function itemLine(item: RabeItem, now: number, isSelected = false): Line 
 export function headLines(model: Model, item: RabeItem, columns: number): Line[] {
   const f = facts(item, model.now, model.items, model.cwd)
   const n = Math.max(1, columns)
+  const chunks = (line: string) => {
+    const chars = [...safe(line)]
+    return Array.from({ length: Math.ceil(chars.length / n) }, (_, i) =>
+      chars.slice(i * n, (i + 1) * n).join(''),
+    )
+  }
   const long = (f.long ?? '')
     .replace(/\r\n|\r|\n/g, '↵\n')
     .split('\n')
-    .flatMap(line => {
-      const chars = [...safe(line)]
-      return Array.from({ length: Math.ceil(chars.length / n) }, (_, i) =>
-        chars.slice(i * n, (i + 1) * n).join(''),
-      )
-    })
+    .flatMap(chunks)
 
   return [
     {
@@ -131,7 +132,9 @@ export function headLines(model: Model, item: RabeItem, columns: number): Line[]
       ],
       right: [[f.status.slice(2), { fg: tone(item) }]],
     },
-    ...[...f.lines, ...long].map(line => ({ spans: [[line, { fg: C.dim }]] as Span[] })),
+    ...[...f.lines.flatMap(chunks), ...long].map(line => ({
+      spans: [[line, { fg: C.dim }]] as Span[],
+    })),
     { spans: [] },
   ]
 }
