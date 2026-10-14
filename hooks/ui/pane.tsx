@@ -68,11 +68,28 @@ async function refocus($: EngineInterface): Promise<void> {
   }
   feed($, { type: 'refocused', isOpen: !!shown, isFocused: !!shown?.isFocused })
   // The reopened pane puts the focus on the tab's selected row (#188), once.
-  if (shown && !isRestored) {
-    isRestored = true
-    const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
-    await landView($, { type: 'tab', tab }, 'terminal')
-  }
+  // Only a pane that holds the keys can take it; a timer's call runs none of
+  // Rabe's focus hooks, so a landing is the call's answer, not `landedOn`.
+  if (shown?.isFocused && !isRestored) isRestored = await restore($).catch(() => false)
+}
+
+async function restore($: EngineInterface): Promise<boolean> {
+  const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
+  const action: Action = { type: 'tab', tab }
+  const { model, selection } = await look($, true)
+  const drawn = paneView(
+    model,
+    { columns: 80, rows: 24, surface: 'terminal', hasInput: true },
+    selection,
+  )
+  return landOn(
+    landing(action, selection.open, drawn),
+    () => undefined,
+    async key => {
+      const result = await $.ui.focus({ requestId: PANE, key }).catch(() => ({ deny: 'threw' }))
+      return !('deny' in result && result.deny)
+    },
+  )
 }
 
 async function previous($: EngineInterface): Promise<RabePrevious | undefined> {
@@ -244,7 +261,7 @@ async function land(
   action?: Action,
   surface?: RenderSurface,
 ): Promise<void> {
-  return landOn(
+  await landOn(
     keys,
     () => interaction.ringOn,
     key => focusOn($, key),

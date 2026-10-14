@@ -156,12 +156,13 @@ Each round starts from the list (step 5 above), runs the sequence and reads only
 | Name | Keys | Passes when | Issue |
 |------|------|-------------|-------|
 | `ring-2`, `ring-3`, `ring-4` | tab key, `1`, `Down`, `Down` | each `Down` after the tab key and `1` lands on the next shell (three shells in a row, checked after each press), not on `s: search`. After each tab key the script waits until the tab bar marks that tab (at most 5 s): a key sent before the tab is drawn gives up its landing on the marked row, as a person's key does | #174, #175 (fixed) |
-| `click-stop` | click a running shell, Enter, `b`, `x` | Enter opens the clicked shell (the ring followed the click); then its process stops (found by its duration), no other one | #186 |
+| `click-stop` | click a running shell, Enter, `b`, `x` | Enter opens the clicked shell (the ring followed the click); then its process stops (found by its duration), no other one | #186 (fixed) |
 | `search-keys` | `s z z x` | the field reads `zzx` | #180 |
 | `search-esc` | `s`, type, `Esc` | the field reads `zz` before `Esc` and after `Esc` and a `z`, and the pane is still open (the keys then go to the prompt) | #187 (fixed) |
 | `search-enter` | `s`, a duration, `Enter`, `Enter` | one row is left and marked, and `Enter` opens it | #187 (fixed) |
-| `tab-selection` | `Down`, `2`, `1` | the marked row is the same | #188 |
-| `remove-neighbour` | click, `x`, `r` | the removed row is gone and the marked row is the one before or after it, by name | #188 |
+| `tab-selection` | `Down`, `2`, `1` | the marked row is the same | #188 (fixed) |
+| `remove-neighbour` | click, `x`, `r` | the removed row is gone and the marked row is the next one by name, the previous one only when the removed row was the last | #188 (fixed) |
+| `reopen` | `Down`, `Esc`, `/rabe`, `Enter` | the reopened pane marks the same row and Enter opens that row's detail | #188 (pending a live run) |
 | `back-cost`, `back-timeline` | tab key, `Enter`, `b` | back on that tab | #185 |
 
 `fixed` is the set that must pass on `main`. `pending` is the set of issues that are not fixed yet; it may FAIL, and the script reports it and does not hide it. `all` is both. A pending sequence moves to `fixed` in the pull request that fixes its issue. This is not run in CI: it needs a login. Run `fixed` before each release of the 0.9.x line and record the counts in the release PR.

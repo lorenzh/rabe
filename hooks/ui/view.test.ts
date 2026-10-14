@@ -527,3 +527,9 @@ test('Esc in a filled search field leaves the field instead of closing the pane 
   expect(holdsClose('row:a', 'verify')).toBe(false)
   expect(holdsClose(undefined, 'verify')).toBe(false)
 })
+
+test('landOn answers whether every key landed', async () => {
+  const ring = () => undefined
+  expect(await landOn(['tab-cost', 'row:a'], ring, async () => true)).toBe(true)
+  expect(await landOn(['tab-cost', 'row:a'], ring, async key => key === 'tab-cost')).toBe(false)
+})

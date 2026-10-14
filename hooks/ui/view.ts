@@ -261,22 +261,24 @@ export const holdsClose = (ringOn: string | undefined, query: string): boolean =
 // move that fails. The active tab stands at the same index in every view; any
 // other key, once the ring is on that tab (where it was, or moved there now),
 // first waits for `shown` (the new view drawn, see `screens`) and stays on the
-// tab when that wait gives up.
+// tab when that wait gives up. It answers whether every key landed.
 export async function landOn(
   keys: string[],
   ringOn: () => string | undefined,
   focus: (key: string) => Promise<boolean>,
   shown?: () => Promise<boolean>,
-): Promise<void> {
+): Promise<boolean> {
   let isOnTab = false
   for (const key of keys) {
     const isTab = key.startsWith('tab-')
     if (!(isTab && key === ringOn())) {
-      if (shown && !isTab && isOnTab && !(await shown())) return
-      if (!(await focus(key))) return
+      if (shown && !isTab && isOnTab && !(await shown())) return false
+      if (!(await focus(key))) return false
     }
     isOnTab = isTab
   }
+
+  return true
 }
 
 // The changes of the view that can move their landing's target: a tab, a fold

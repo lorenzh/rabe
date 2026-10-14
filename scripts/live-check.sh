@@ -39,8 +39,9 @@ Options:
 
 Environment: CLAUDE names the Claude Code binary (default claude).
 Sequences: ring-2 ring-3 ring-4 (fixed: tab key, 1, Down Down lands on the
-third row), search-esc, search-enter (fixed), click-stop, search-keys,
-tab-selection, remove-neighbour, back-cost, back-timeline (pending).
+third row), search-esc, search-enter, click-stop, tab-selection,
+remove-neighbour (fixed), search-keys, back-cost, back-timeline, reopen
+(pending).
 Exit codes: 0 all rounds passed, 1 a round failed, 2 usage or setup error.
 EOF
 }
@@ -99,8 +100,8 @@ plugin=$(cd "$plugin" && pwd)
 
 # Key sequences. FIXED ones must pass on main; PENDING ones belong to issues
 # that are not fixed yet and may FAIL: the script reports them.
-FIXED="ring-2 ring-3 ring-4 search-esc search-enter"
-PENDING="click-stop search-keys tab-selection remove-neighbour back-cost back-timeline"
+FIXED="ring-2 ring-3 ring-4 search-esc search-enter click-stop tab-selection remove-neighbour"
+PENDING="search-keys back-cost back-timeline reopen"
 seqs=()
 if [ -n "$sequences" ]; then
   [ -z "$keys" ] && [ -z "$expect" ] || fail "--sequences replaces --keys and --expect"
@@ -560,7 +561,7 @@ seq_tab_selection() {
   [ "$before" = "$after" ] || { why="row $before was selected, back on row $after"; return 1; }
 }
 seq_remove_neighbour() {
-  local before i at=-1 now prev= next=
+  local before i at=-1 now prev= next= want
   local -a names=()
   before=$(running | wc -l)
   click_running || return 1
@@ -588,12 +589,37 @@ seq_remove_neighbour() {
     [ "$(ident "${view[lrows[i]]}")" = "$clicked" ] && { why="r left the row of sleep $clicked"; return 1; }
   done
   [ "$lsel" -ge 0 ] || { why="r left no row selected"; return 1; }
-  # The neighbour on either side, by name: a clipped list shows other rows.
+  # The next row, by name (a clipped list shows other rows); the previous
+  # one only when the removed row was the last.
   now=$(ident "${view[lrows[lsel]]}")
   [ "$at" -gt 0 ] && prev=${names[at - 1]}
   [ $((at + 1)) -lt ${#names[@]} ] && next=${names[at + 1]}
-  { [ -n "$now" ] && { [ "$now" = "$prev" ] || [ "$now" = "$next" ]; }; } ||
-    { why="after r on sleep $clicked the marker is on '$now', not on '$prev' or '$next'"; return 1; }
+  want=${next:-$prev}
+  { [ -n "$now" ] && [ "$now" = "$want" ]; } ||
+    { why="after r on sleep $clicked the marker is on '$now', not on '$want'"; return 1; }
+}
+# Esc and /rabe again (#188): Enter presses the row that was marked, so the
+# detail it opens is the second row's, not the tab's first stop.
+seq_reopen() {
+  local i before name
+  keys Down
+  snap
+  listscan
+  before=$lsel
+  [ "$before" -ge 0 ] || { why="no row is marked after Down"; return 1; }
+  name=$(ident "${view[lrows[before]]}")
+  k Escape
+  sleep 1
+  reopen_pane || { why="/rabe did not open the pane again"; return 1; }
+  sleep 1
+  snap
+  listscan
+  [ "$lsel" = "$before" ] || { why="row $before was marked, the reopened pane marks row $lsel"; return 1; }
+  keys Enter
+  snap
+  pane_has 'b:? back' || { why="Enter after the reopen opened no detail: the ring is not on the row"; return 1; }
+  pane_has "${name%% *}" || { why="the detail is not the one of '$name'"; return 1; }
+  k b
 }
 seq_back() { # tab key
   local i
@@ -668,6 +694,7 @@ run_seq() {
     search-enter) seq_search_enter ;;
     tab-selection) seq_tab_selection ;;
     remove-neighbour) seq_remove_neighbour ;;
+    reopen) seq_reopen ;;
     back-cost) seq_back 2 ;;
     back-timeline) seq_back 4 ;;
   esac

@@ -912,19 +912,26 @@ test("a tab visit keeps the Items selection: a row picked on Cost or Effects is 
   await ui.unmount()
 })
 
-test('r selects the next row, and the previous one at the end of the list (#188)', async ($, on) => {
-  const all = orderOf(ALL).agents ?? []
-  const mid = all.find((id, at) => at > 0 && ALL.find(item => item.id === id)?.status !== 'running')
-  const state = hold(on, ALL, { selected: mid, order: orderOf(ALL) })
-  on('ui.open', async () => ({ value: { isPlaced: true as const } }))
-  const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
-  await arm($, `row:${mid}`)
-  await ui.redraw()
-  await ui.press({ key: 'remove' })
-  expect(state.removed).toEqual([mid])
-  expect(state.selected).toBe(all[all.indexOf(mid as string) + 1])
-  await ui.unmount()
-})
+for (const [name, at] of [
+  ['the next row', 1],
+  ['the previous row at the end of the list', -1],
+] as const) {
+  test(`r selects ${name} (#188)`, async ($, on) => {
+    const ended = ALL.filter(item => item.kind === 'agent' && item.status !== 'running')
+    const rows = orderOf(ended).agents ?? []
+    expect(rows.length).toBeGreaterThan(1)
+    const gone = at === 1 ? rows[0] : rows[rows.length - 1]
+    const state = hold(on, ended, { selected: gone, order: orderOf(ended) })
+    on('ui.open', async () => ({ value: { isPlaced: true as const } }))
+    const ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    await arm($, `row:${gone}`)
+    await ui.redraw()
+    await ui.press({ key: 'remove' })
+    expect(state.removed).toEqual([gone])
+    expect(state.selected).toBe(rows[rows.indexOf(gone as string) + at])
+    await ui.unmount()
+  })
+}
 
 test('the session end keeps a summary for the next session in this project', async ($, on) => {
   hold(on, ALL)

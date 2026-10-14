@@ -39,8 +39,8 @@ check 'timeout reaches the plan' 0 'timeout: 30$' --dry-run --timeout 30
 check 'timeout must be a number' 2 '--timeout' --timeout soon
 
 check 'sequences reach the plan' 0 'sequences: ring-2 search-keys$' --dry-run --sequences ring-2,search-keys
-check 'fixed names the sequences of fixed issues' 0 'sequences: ring-2 ring-3 ring-4 search-esc search-enter$' --dry-run --sequences fixed
-check 'pending names the sequences of open issues' 0 'sequences: click-stop search-keys tab-selection remove-neighbour back-cost back-timeline$' --dry-run --sequences pending
+check 'fixed names the sequences of fixed issues' 0 'sequences: ring-2 ring-3 ring-4 search-esc search-enter click-stop tab-selection remove-neighbour$' --dry-run --sequences fixed
+check 'pending names the sequences of open issues' 0 'sequences: search-keys back-cost back-timeline reopen$' --dry-run --sequences pending
 check 'an unknown sequence fails' 2 'unknown sequence: nope' --sequences nope
 check 'sequences and --keys exclude each other' 2 '--sequences' --sequences ring-2 --keys Down
 check 'sequences and --expect exclude each other' 2 '--sequences' --sequences ring-2 --expect x
