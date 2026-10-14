@@ -183,7 +183,7 @@ const disarmed = (one: ViewButton): ViewButton => {
 
 // Dim controls keep only the hotkeys their view owns.
 function bind(drawn: Drawn): Drawn {
-  const hotkeys = ['x', 'g', 'r', 'a', 'd', 'm', 's', 'c', 'b', 'f', 'w']
+  const hotkeys = ['x', 'g', 'r', 'a', 'd', 'm', 's', 'c', 'b', 'f', 'w', 'k']
   const buttons = drawn.buttons.map(one =>
     one.dim && one.action.type === 'none' && hotkeys.includes(one.label.slice(0, 1))
       ? { ...one, hotkey: one.label.slice(0, 1) }

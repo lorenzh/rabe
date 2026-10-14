@@ -81,7 +81,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | Tab / Shift+Tab | Move the focus through rows, tabs and buttons |
 | `b` | Go back to the list |
 | `1` to `4` | Switch tab and focus its marked row. An empty tab keeps the focus on its label |
-| `s` | Focus search. Enter focuses the first matching row. Esc leaves the field and keeps the pane open when the query is not empty; the next Esc closes the pane |
+| `s` | Focus search. Enter focuses the first matching row. Esc keeps the pane and the filter open when the query is not empty, but Claude Code then hands the keys to the prompt: press `ctrl+x tab` to return to the pane |
 | `k` | Clear the filter (dim while there is none) |
 | `x` | Stop the selected item |
 | `g` | Stop the group among rows the search shows (the button shows its count), or the workflow run of the selected run or workflow agent |

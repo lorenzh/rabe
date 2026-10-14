@@ -63,7 +63,7 @@ type Ui = Record<string, unknown>
 // The clock of the last `hold`, for a test that waits on the pane's timers.
 let held: ReturnType<typeof mock.clock> | undefined
 
-function hold(on: On, items: RabeItem[], seeds: Ui = {}): Ui {
+function hold(on: On, items: RabeItem[], seeds: Ui = {}, isSwallowing = true): Ui {
   held = mock.clock(on, { now: NOW })
   const fixed: Ui = { items, turns: TURNS, lines: LINES }
   const sets: Ui = {}
@@ -79,9 +79,11 @@ function hold(on: On, items: RabeItem[], seeds: Ui = {}): Ui {
     if (e.plugin === 'rabe') sets[e.key] = e.value
     return next(e)
   })
-  on('ui.focus', { requestId: 'rabe' }, async (_$, e, next) =>
-    e.origin.kind === 'person' ? {} : next(e),
-  )
+  if (isSwallowing) {
+    on('ui.focus', { requestId: 'rabe' }, async (_$, e, next) =>
+      e.origin.kind === 'person' ? {} : next(e),
+    )
+  }
   on('ui.toast', async (_$, e) => {
     sets.toasts = [...((sets.toasts as string[] | undefined) ?? []), e.text]
     return { value: undefined }
@@ -2097,6 +2099,24 @@ for (const surface of SURFACES) {
     },
   )
 }
+
+// #187: the field label shows `▸` while the ring is on it. The kit stamps every
+// `$.ui.close` as origin plugin, so the person's Esc hook is covered by the live
+// check (`search-esc`), not here.
+test('the search label shows the marker only while the ring is on the field (#187)', async ($, on) => {
+  hold(on, ALL, { order: orderOf(ALL) }, false)
+  on('ui.focus', async (_$, e) => ({ element: e.element }) as never)
+  const ui = await $.ui.mount({ surface: 'desktop', ...PANE } as never)
+  const label = async () => (await ui.find({ type: 'Input', key: 'search' }))?.props.label
+  expect(await label()).toBe('search')
+  await arm($, 'search')
+  await ui.redraw()
+  expect(await label()).toBe('▸ search')
+  await arm($, 'tab-items')
+  await ui.redraw()
+  expect(await label()).toBe('search')
+  await ui.unmount()
+})
 
 // Two removes in flight read the same value: the second write must not drop
 // the id the first one added.

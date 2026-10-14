@@ -609,13 +609,14 @@ export function pane(on: On, hours = baseHours): void {
   })
 
   // A close the host carries out clears every hold; a canceled one keeps it.
-  // Esc in a filled search field leaves the field to the first row and keeps
-  // the pane open (#187); the next Esc closes it.
+  // Esc in a filled search field is refused, so the pane and the filter stay
+  // (#187). The engine has released the keyboard before this hook runs, so the
+  // ring cannot be landed anywhere: the keys go to the prompt until the person
+  // presses `ctrl+x tab`. The ring state is dropped with the keyboard.
   on('ui.close', { id: PANE, origin: { kind: 'person' } }, async ($, e, next) => {
     const { value: query = '' } = await $.state.get({ plugin: 'rabe', key: 'query' })
     if (!holdsClose(interaction.ringOn, query)) return next(e)
-    const surface = interaction.surface === 'desktop' ? 'desktop' : 'terminal'
-    await landView($, { type: 'query', text: query, isSubmit: true }, surface)
+    feed($, { type: 'unfocused' })
     return { value: undefined }
   }).catch((_$, e, next) => next(e))
 

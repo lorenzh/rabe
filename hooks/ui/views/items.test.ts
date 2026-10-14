@@ -81,6 +81,8 @@ test('a filtered list offers a button that clears the filter (#187)', () => {
     one => one.key === 'clear-search',
   )
   expect(none?.dim).toBe(true)
+  // dim, but still bound: a second `k` must not reach the composer
+  expect(none?.hotkey).toBe('k')
 })
 
 test('at 90 columns and more the list and the selected item sit side by side', () => {

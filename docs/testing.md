@@ -144,7 +144,7 @@ The binary is `claude` on `PATH`, or the one named in the environment variable `
 
 ### Key sequences
 
-The test kit refuses Rabe's own `ui.focus` before any hook sees it, so it cannot show a focus or landing bug (#174 and #175 needed a traced live copy). `--sequences` repeats fixed key sequences over `--repeat` rounds and prints one verdict per sequence:
+The test kit stamps every `$.ui.close` as origin plugin, so the person's Esc hook is covered by the live check only. It also refuses Rabe's own `ui.focus` before any hook sees it, so it cannot show a focus or landing bug (#174 and #175 needed a traced live copy). `--sequences` repeats fixed key sequences over `--repeat` rounds and prints one verdict per sequence:
 
 ```sh
 scripts/live-check.sh --sequences fixed --repeat 5 --model haiku
@@ -158,8 +158,8 @@ Each round starts from the list (step 5 above), runs the sequence and reads only
 | `ring-2`, `ring-3`, `ring-4` | tab key, `1`, `Down`, `Down` | each `Down` after the tab key and `1` lands on the next shell (three shells in a row, checked after each press), not on `s: search`. After each tab key the script waits until the tab bar marks that tab (at most 5 s): a key sent before the tab is drawn gives up its landing on the marked row, as a person's key does | #174, #175 (fixed) |
 | `click-stop` | click a running shell, Enter, `b`, `x` | Enter opens the clicked shell (the ring followed the click); then its process stops (found by its duration), no other one | #186 |
 | `search-keys` | `s z z x` | the field reads `zzx` | #180 |
-| `search-esc` | `s`, type, `Esc` | the field reads `zz` before `Esc` and after `Esc` and a `z`, and the pane is still open | #187 |
-| `search-enter` | `s`, a duration, `Enter`, `Enter` | one row is left and marked, and `Enter` opens it | #187 |
+| `search-esc` | `s`, type, `Esc` | the field reads `zz` before `Esc` and after `Esc` and a `z`, and the pane is still open (the keys then go to the prompt) | #187 (fixed) |
+| `search-enter` | `s`, a duration, `Enter`, `Enter` | one row is left and marked, and `Enter` opens it | #187 (fixed) |
 | `tab-selection` | `Down`, `2`, `1` | the marked row is the same | #188 |
 | `remove-neighbour` | click, `x`, `r` | the removed row is gone and the marked row is the one before or after it, by name | #188 |
 | `back-cost`, `back-timeline` | tab key, `Enter`, `b` | back on that tab | #185 |
