@@ -7,6 +7,43 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
+export type Rec = Record<string, unknown>
+
+// The record itself, or an empty one for anything else.
+export function rec(value: unknown): Rec {
+  return isRecord(value) ? value : {}
+}
+
+export function list(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : []
+}
+
+export function str(value: unknown): string | undefined {
+  return typeof value === 'string' && value !== '' ? value : undefined
+}
+
+export function num(value: unknown): number | undefined {
+  return typeof value === 'number' ? value : undefined
+}
+
+// One JSON object; arrays, scalars and bad text give undefined.
+export function parseJson(text: string): Rec | undefined {
+  try {
+    const value = JSON.parse(text)
+    return isRecord(value) ? value : undefined
+  } catch {
+    return undefined
+  }
+}
+
+// The JSON objects of a JSONL text; blank and bad lines are skipped.
+export function jsonRecords(text: string): Rec[] {
+  return text.split('\n').flatMap(line => {
+    const one = parseJson(line)
+    return one ? [one] : []
+  })
+}
+
 export function restored<T>(value: Record<string, T> | undefined): Record<string, T> {
   return isRecord(value) ? value : {}
 }

@@ -1,7 +1,7 @@
 import type { RabeCodexStep, RabeEdit, RabeRollout, RabeRolloutCursor } from '../../types'
 import { clip, type EndStatus, itemId, type NewItem } from '../model'
 import type { CodexRequest } from '../prices'
-import { isRecord } from '../reading'
+import { isRecord, list, num, parseJson, type Rec, rec, str } from '../reading'
 import { shellWrites } from '../writes'
 import { MAX_EDITS } from './agent-items'
 
@@ -9,8 +9,6 @@ const MAX_STEPS = 50
 const MAX_TEXT = 300
 const CHANGES = ['add', 'update', 'delete'] as const
 const MAX_CHECKS = 20
-
-export type Rec = Record<string, unknown>
 
 export type CodexJob = Rec & { id: string }
 
@@ -27,10 +25,6 @@ export type CodexSession = {
   rollout?: Rollout
   // Set with `rollout`: the job's dollars, undefined when not known.
   usd?: number
-}
-
-export function rec(value: unknown): Rec {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Rec) : {}
 }
 
 function validStep(value: unknown): boolean {
@@ -86,27 +80,6 @@ export function rolloutCursor(value: unknown): RabeRolloutCursor | undefined {
   )
     return
   return value as RabeRolloutCursor
-}
-
-export function list(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : []
-}
-
-export function str(value: unknown): string | undefined {
-  return typeof value === 'string' && value !== '' ? value : undefined
-}
-
-function num(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined
-}
-
-export function parseJson(text: string): Rec | undefined {
-  try {
-    const value = JSON.parse(text)
-    return value && typeof value === 'object' ? (value as Rec) : undefined
-  } catch {
-    return undefined
-  }
 }
 
 function defined<T extends object>(value: T): T {

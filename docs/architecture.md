@@ -25,7 +25,7 @@ hooks/
   sources/monitors.ts monitors: items and their output lines
   sources/crons.ts    cron jobs and /loop wakeups
   sources/worktrees.ts  the repository's git worktrees, for the Effects tab
-  reading.ts          pure byte cursors and output chunks
+  reading.ts          pure byte cursors, output chunks and JSON/JSONL record reading
   diag.ts             /rabe-diag: the last poll of each source, without private data
   tasks.ts            pure: task notifications, task output files, port guess
   shell-words.ts      pure shell words and here-doc tokenization
@@ -52,6 +52,8 @@ data/prices.csv       list prices per model, read at run time for the cost estim
 ```
 
 The pure [interaction model](architecture/interaction.md) owns focus, held order, regain retries and arming. The pane feeds events and runs its effects.
+
+Before you write a helper, look in the table "Shared helpers" in [`AGENTS.md`](../AGENTS.md#shared-helpers-look-here-before-writing-one).
 
 The details are split by area: [state and items](architecture/state.md), [sources](architecture/sources.md), [prices](architecture/prices.md), [UI](architecture/ui.md), [focus and keys](architecture/focus-and-keys.md), [focus order and arming](architecture/focus-order.md), and [view behavior](architecture/views.md).
 
