@@ -10,7 +10,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
-- Back from a detail returns to the tab and row it was opened from, not always to Items; one level, cleared when the pane closes (fixes [#185](https://github.com/lorenzh/rabe/issues/185))
+- Back from a detail returns to the tab and row it was opened from, not always to Items; one level, cleared when the pane closes ([#212](https://github.com/lorenzh/rabe/pull/212), fixes [#185](https://github.com/lorenzh/rabe/issues/185))
 - Each tab keeps its own selected row, `r` selects the next row (the previous one at the end) without arming `x` for it, and a reopened pane puts the focus on the selected row of the stored tab, asking again while the landing is refused ([#211](https://github.com/lorenzh/rabe/pull/211), fixes [#188](https://github.com/lorenzh/rabe/issues/188))
 - Esc in a filled search field keeps the pane and the filter open; Claude Code releases the keyboard before Rabe sees the close, so the keys go to the prompt until `ctrl+x tab`; Enter focuses the first matching row; the field label shows `▸` while focused; `k` clears the filter ([#210](https://github.com/lorenzh/rabe/pull/210), fixes [#187](https://github.com/lorenzh/rabe/issues/187))
 - A click on a row moves the focus ring onto it, so `x`, `r`, `c` and the arrow keys act from the clicked row, as from the keyboard; a click on a tab still lands on the tab's marked row, like the keys `1` to `4` ([#209](https://github.com/lorenzh/rabe/pull/209), fixes [#186](https://github.com/lorenzh/rabe/issues/186))
