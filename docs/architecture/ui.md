@@ -9,7 +9,7 @@ keywords: [View, renderer, palette, cell engine, band, AbovePrompt, Drawn, ViewB
 
 ## The views
 
-The band and the pane read the sources' session values and draw. Neither writes items, and no view reads a file. The Items list and the band's chips leave out the ended items the person removed (`kept(items, removed)` in `lists.ts`, from `rabe.removed` as `Model.removed`; see [Removing ended items](views.md#removing-ended-items)); everything else counts them. The agent turns come from `rabe.turns`, Codex steps from the item's `detail.steps`, and shell and monitor output from `rabe.lines`. Views are pure functions. Among UI modules, only `band.tsx`, `pane.tsx` and `builtin.tsx` touch `$`; `pane.tsx` turns an action into `$` calls in its top-level `act($, action, surface)`.
+The band and the pane read the sources' session values and draw. Neither writes items, and no view reads a file. Only the Items list (its rows, empty note and tab count) and the band's chips leave out the ended items the person removed (`kept(items, removed)` in `lists.ts`, from `rabe.removed` as `Model.removed`; see [Removing ended items](views.md#removing-ended-items)); a workflow's agent rows, the Cost rows and totals, the Timeline and every summary keep them. The agent turns come from `rabe.turns`, Codex steps from the item's `detail.steps`, and shell and monitor output from `rabe.lines`. Views are pure functions. Among UI modules, only `band.tsx`, `pane.tsx` and `builtin.tsx` touch `$`; `pane.tsx` turns an action into `$` calls in its top-level `act($, action, surface)`.
 
 Agent metadata, transcript paths, turns and item updates come from `hooks/sources/agent-items.ts`.
 `agents.ts` records the returned data in session state. Views read that state only.

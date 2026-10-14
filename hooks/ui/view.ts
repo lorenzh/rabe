@@ -19,8 +19,8 @@ import { type Grid, MAX_COLUMNS, MAX_ROWS, type Span } from './cells/grid'
 // files the main session changed, `cwd` the session's folder, `worktrees`
 // git's worktrees of it (absent without git), `sessionId` what
 // `claude --resume` takes to come back to this session. `removed` are
-// the ids the person removed (`rabe.removed`): only the list and the band's
-// chips leave them out (`kept`); summaries and the other tabs count them.
+// the ids the person removed (`rabe.removed`): only the Items list and the
+// band's chips leave them out (`kept`); every other view keeps them.
 export type Model = {
   items: RabeItem[]
   removed?: string[]

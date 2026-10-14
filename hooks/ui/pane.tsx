@@ -260,7 +260,7 @@ async function choose($: EngineInterface, id: string): Promise<boolean> {
 }
 
 // Hides ended items for the session: they stay in `rabe.items`, which polls
-// fill again, and only the list leaves them out (`kept`). An id stays even when
+// fill again, and only the Items list leaves them out (`kept`). An id stays even when
 // the cap drops its item, which a poll may find again.
 async function remove($: EngineInterface, action: Action & { type: 'remove' | 'clear' }) {
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })

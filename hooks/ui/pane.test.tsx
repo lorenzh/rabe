@@ -2098,9 +2098,9 @@ test('a remove that loses the race to another write keeps both ids', async ($, o
   await ui.unmount()
 })
 
-// Removing hides rows only: a removed workflow agent has no row in its run,
-// but still counts in its phases and tokens, and a removed item in the cost.
-test('a removed workflow agent still counts in its run and the cost', async ($, on) => {
+// Removing hides the item from the Items list only (#206): a removed
+// workflow agent keeps its row and counts in its run, and in the cost.
+test('a removed workflow agent still shows in its run and counts in the cost', async ($, on) => {
   const done = { ...reviewed, tokens: { input: 30_000, output: 2_000 } }
   const items = ALL.map(item => (item.id === reviewed.id ? done : item))
   hold(on, items, { removed: [done.id], open: flow.id, order: orderOf(items) })
@@ -2109,7 +2109,7 @@ test('a removed workflow agent still counts in its run and the cost', async ($, 
   expect(detail).toContain('✓ Review → ◐ Verify')
   expect(detail).toContain('in 49k')
   expect(detail).toContain('REVIEW 1 done')
-  expect(detail).not.toContain('review:bugs')
+  expect(detail).toContain('review:bugs')
   await ui.press({ key: 'back' })
   const shown = (await screen(ui)).join('\n')
   expect(shown).toContain(`Items ${items.length - 1}`)

@@ -10,7 +10,6 @@ import {
   forwarderOf,
   glyph,
   KIND_LABEL,
-  kept,
   nameSpans,
   shown,
   stable,
@@ -224,7 +223,7 @@ const spanText = (ms: number) => (ms < 2 * HOUR ? `${Math.round(ms / 60_000)} mi
 // plain text, so the rows' focus order stays; `w` widens the window.
 export const timelineView: View = (model, size, sel): Drawn => {
   const since = sel.window?.since ?? 0
-  const all = stable(kept(shown(model.items), model.removed), sel.order?.timeline, byStart)
+  const all = stable(shown(model.items), sel.order?.timeline, byStart)
   const list = all.filter(item => !isEnded(item) || (item.endedAt ?? since) >= since)
   const folded = all.length - list.length
   const selected = list.find(item => item.id === sel.selected) ?? list[0]
