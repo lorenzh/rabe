@@ -98,3 +98,15 @@ test('cron facts name the last fire, count and turn end without claiming success
     ),
   ).toBe(false)
 })
+
+test('an agent that changed model or effort shows the pairs in order', () => {
+  const models = [
+    { model: 'claude-opus-5-5', effort: 'high' },
+    { model: 'claude-sonnet-5-5', effort: 'medium' },
+    { model: 'claude-haiku-5' },
+  ]
+  const changed = { ...explore, detail: { ...explore.detail, models } } as typeof explore
+  expect(facts(changed, NOW, ALL).lines[0]).toBe(
+    'Explore · opus-5-5·high → sonnet-5-5·medium → haiku-5·n/a · worktree pkg-db',
+  )
+})

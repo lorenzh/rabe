@@ -27,12 +27,16 @@ export type RabeCodexCall = {
   threadId?: string
 }
 
+// One model and effort an agent ran with; `effort` is absent for a model without one.
+export type RabeModelPair = { model: string; effort?: string }
+
 export type RabeAgentDetail = {
   agentId: string
   isTeammate?: true
   name?: string
   type?: string
   model?: string
+  models?: RabeModelPair[]
   description?: string
   prompt?: string
   transcriptPath?: string

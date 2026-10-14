@@ -1,4 +1,5 @@
 import type { RabeItem } from '../model'
+import { pairsText } from '../sources/agent-items'
 import { clockTime, duration, validId } from './format'
 import { children, forwarderOf, glyph, KIND_LABEL, nextAt, statusLabel } from './lists'
 
@@ -43,7 +44,8 @@ export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: stri
         : d.cwd && d.cwd === cwd
           ? 'main tree'
           : 'tree n/a'
-      lines.push(`${na(d.type)} · ${na(d.model)} · ${tree}`)
+      const model = d.models?.length ? pairsText(d.models) : na(d.model)
+      lines.push(`${na(d.type)} · ${model} · ${tree}`)
       if (d.worktreeBranch) lines.push(`branch ${d.worktreeBranch}`)
       if (d.workflowPhase) lines.push(`phase ${d.workflowPhase}`)
       lines.push(`agent ${validId(d.agentId) ? d.agentId : 'n/a'}`, by, ran(item, now))

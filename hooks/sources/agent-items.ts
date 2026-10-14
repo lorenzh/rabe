@@ -1,5 +1,5 @@
 import type { AgentInfo, AgentStatus, TurnStepResult, TurnUsage } from 'claude-code'
-import type { RabeCodexCall, RabeEdit, RabeToolUse, RabeTurn } from '../../types'
+import type { RabeCodexCall, RabeEdit, RabeModelPair, RabeToolUse, RabeTurn } from '../../types'
 import { companionOutput } from '../forwarders'
 import {
   clip,
@@ -20,6 +20,7 @@ type AgentItem = RabeItemOf<'agent'>
 const MAX_TURNS = 30
 export const MAX_EDITS = 100
 const MAX_CALLS = 10
+const MAX_PAIRS = 6
 const MAX_SUMMARY = 80
 const SUMMARY_FIELDS = ['file_path', 'command', 'pattern', 'path', 'url', 'query', 'description']
 const META_FIELDS = ['cwd', 'worktreePath', 'worktreeBranch', 'workflowPhase'] as const
@@ -235,6 +236,27 @@ export function listed(
   return isEnded({ status }) ? endItem(named, id, status as EndStatus, now) : named
 }
 
+// A change is a pair that differs from the last one; a pair seen before and left
+// again counts as a change. The newest MAX_PAIRS are kept.
+export function withPair(held: RabeModelPair[] = [], pair: RabeModelPair): RabeModelPair[] {
+  const last = held.at(-1)
+  if (last?.model === pair.model && last.effort === pair.effort) return held
+
+  return [...held, pair].slice(-MAX_PAIRS)
+}
+
+// `<synthetic>` marks an abort or an error, not a model.
+export function pairOf(model: string | undefined, effort: unknown): RabeModelPair | undefined {
+  if (!model || model === '<synthetic>') return undefined
+
+  return { model, ...(effort !== undefined && effort !== '' && { effort: String(effort) }) }
+}
+
+// `opus-5-5·high → sonnet-5-5·medium`; a model without effort shows n/a.
+export function pairsText(pairs: RabeModelPair[]): string {
+  return pairs.map(p => `${p.model.replace(/^claude-/, '')}·${p.effort ?? 'n/a'}`).join(' → ')
+}
+
 export function stepped(
   items: RabeItem[],
   id: string,
@@ -242,6 +264,7 @@ export function stepped(
   tools: RabeToolUse[],
   now: number,
   usd: number | undefined,
+  pair?: RabeModelPair,
 ): RabeItem[] {
   const item = asAgent(items, id)
   if (!item) return items
@@ -254,6 +277,7 @@ export function stepped(
     costUsd: result.usage ? addCost(item, usd) : item.costUsd,
     detail: {
       model: result.usage?.model ?? item.detail.model,
+      ...(pair && { models: withPair(item.detail.models, pair) }),
       toolCount: (item.detail.toolCount ?? 0) + tools.length,
       lastTool: last?.name ?? item.detail.lastTool,
       lastToolAt: last ? now : item.detail.lastToolAt,

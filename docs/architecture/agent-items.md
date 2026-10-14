@@ -26,3 +26,5 @@ See [Sources](sources.md) for behaviour and [the module map](../architecture.md)
 
 The source re-exports only `addTurn`, `agentTranscript`, `metaPatch`, `metaPath` and `toolSummary` for existing tests.
 Only the pure module exports `changedFile` and `ranBash`.
+
+`withPair`, `pairOf` and `pairsText` keep the model and effort an agent ran with. Each `turn.step` gives the model the step used (the result's usage first) and the requested `effort`; a pair that differs from the last one is appended to `detail.models`, capped at six. `<synthetic>` is no pair, and a missing `effort` shows `n/a`. Facts show all pairs; a workflow row shows the last one.

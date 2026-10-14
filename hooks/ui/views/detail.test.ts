@@ -808,3 +808,13 @@ test('an idle teammate keeps its last activity label in detail', () => {
     expect(shown).toContain('active')
   }
 })
+
+test('a workflow row shows the last model and effort of its agent', () => {
+  const models = [{ model: 'claude-haiku-5' }, { model: 'claude-sonnet-5-5', effort: 'medium' }]
+  const tuned = { ...verify, detail: { ...verify.detail, models } } as typeof verify
+  const items = ALL.map(item => (item.id === verify.id ? tuned : item))
+  const shown = lines(open(model(items), flow.id).grid)
+  expect(shown.some(line => /◐ verify:db\.ts +sonnet-5-5·medium · 22k · 40s$/.test(line))).toBe(
+    true,
+  )
+})

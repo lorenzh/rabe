@@ -6,7 +6,7 @@ import type {
   TurnStepResult,
 } from 'claude-code'
 
-import type { RabeEdit } from '../../types'
+import type { RabeEdit, RabeModelPair } from '../../types'
 import { companionCall } from '../forwarders'
 import { fault, type Pollers, skipped, tally } from '../loop'
 import { clip, type EndStatus, isAbsolute, isEnded, itemId, type RabeItem } from '../model'
@@ -39,6 +39,7 @@ import {
   MAX_EDITS,
   metaPatch,
   metaPath,
+  pairOf,
   ranBash,
   stepped,
   type Turns,
@@ -367,6 +368,7 @@ async function recordStep(
   agentId: string,
   result: TurnStepResult,
   file: string,
+  pair?: RabeModelPair,
 ) {
   const id = itemId('agent', agentId)
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
@@ -375,7 +377,7 @@ async function recordStep(
   const tools = result.toolUses.map(use => ({ name: use.name, summary: toolSummary(use.input) }))
   const usage = result.usage
   const usd = usage ? claudeUsd(await prices($, file), usage, usage.model) : undefined
-  await write($, list => stepped(list, id, result, tools, now, usd))
+  await write($, list => stepped(list, id, result, tools, now, usd, pair))
   if (!result.answer && tools.length === 0) return
   await writeTurns($, turns => {
     const index = (turns[id]?.at(-1)?.index ?? 0) + 1
@@ -455,7 +457,8 @@ export function agents(on: On, file: string, pollers: Pollers): void {
 
   on('turn.step', { agentId: /^/ }, async function* ($, e, next) {
     const result = yield* next(e)
-    if (e.agentId) await recordStep($, e.agentId, result, file)
+    if (e.agentId)
+      await recordStep($, e.agentId, result, file, pairOf(result.usage?.model ?? e.model, e.effort))
 
     return result
   })
