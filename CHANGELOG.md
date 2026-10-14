@@ -7,7 +7,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 ### Changed
 
 - The README demo GIF shows the 0.9.0 pane: search field, per-tab selection and the current Items, Cost and Timeline content ([#225](https://github.com/lorenzh/rabe/pull/225), fixes [#224](https://github.com/lorenzh/rabe/issues/224))
-- JSON and JSONL record reading lives once in `hooks/reading.ts`; `AGENTS.md` lists the shared helpers ([#PR](https://github.com/lorenzh/rabe/pull/PR), refs [#202](https://github.com/lorenzh/rabe/issues/202))
+- JSON and JSONL record reading lives once in `hooks/reading.ts`; `AGENTS.md` lists the shared helpers ([#228](https://github.com/lorenzh/rabe/pull/228), refs [#202](https://github.com/lorenzh/rabe/issues/202))
 
 ### Fixed
 
