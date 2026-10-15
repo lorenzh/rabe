@@ -81,7 +81,11 @@ export function groupRows(
       worker.kind === 'agent' || worker.kind === 'codex' ? worker.detail.model : undefined
     const key = by === 'harness' ? item.kind : (model ?? '')
     const title =
-      by === 'harness' ? (item.kind === 'codex' ? 'Codex' : 'Claude Code') : (model ?? 'model n/a')
+      by === 'harness'
+        ? item.kind === 'codex'
+          ? 'Codex'
+          : 'Claude Code'
+        : (model?.replace(/^claude-/, '') ?? 'model n/a')
     sums.set(key, { ...add(sums.get(key), worker), title })
   }
   const rows: GroupRow[] = [...sums].map(([key, sum]) => ({

@@ -12,8 +12,16 @@ import { fitLine, focusOn } from './lines'
 const dim = { fg: C.dim }
 const LONG_TOOL = 2 * 60_000
 const STUCK = 5 * 60_000
-// TOKENS, COST and TIME, right-aligned.
-const RIGHT = 8 + 9 + 7
+// The widths of TOKENS, COST and TIME or WORKERS, right-aligned. The groupings
+// have a wider last column (it holds `WORKERS`, then a space) and, in a pane
+// under 44 columns, narrower number columns so the numbers still fit.
+type Widths = { tokens: number; cost: number; last: number }
+
+function widths(by: RabeGrouping, columns: number): Widths {
+  if (by === 'agent') return { tokens: 8, cost: 9, last: 7 }
+
+  return columns >= 44 ? { tokens: 8, cost: 9, last: 8 } : { tokens: 7, cost: 8, last: 6 }
+}
 
 function barStyle(item: RabeItem): Style {
   if (item.status === 'failed') return { fg: C.red }
@@ -80,6 +88,7 @@ function groupLine(
   barWidth: number,
   isSelected: boolean,
   columns: number,
+  w: Widths,
 ): Line[] {
   const blocks = row.tokens < 0 ? '▏'.padEnd(barWidth) : bar(row.tokens, max, barWidth)
   // A total that leaves some workers out says so in words.
@@ -96,9 +105,9 @@ function groupLine(
   const bg = isSelected ? { bg: C.selected } : {}
   const numbers: Line['spans'] = [
     [barWidth ? ` ${blocks}` : '', row.tokens < 0 ? dim : { fg: C.orange }],
-    [(row.tokens < 0 ? 'n/a' : tokens(row.tokens)).padStart(8), row.tokens < 0 ? dim : {}],
-    [cost(row.costUsd).padStart(9), row.costUsd === undefined ? dim : {}],
-    [(row.count === undefined ? '' : `${row.count}`).padStart(7)],
+    [(row.tokens < 0 ? 'n/a' : tokens(row.tokens)).padStart(w.tokens), row.tokens < 0 ? dim : {}],
+    [cost(row.costUsd).padStart(w.cost), row.costUsd === undefined ? dim : {}],
+    [(row.count === undefined ? '' : `${row.count}`).padStart(w.last)],
   ]
   const label = {
     key,
@@ -173,8 +182,13 @@ export const costView: View = (model, size, sel): Drawn => {
       ? [...items.map(item => item.id), ...rows.map(row => row.id)]
       : rows.map(row => row.id)
   const pickedId = ids.includes(sel.selected) ? sel.selected : (ids[0] ?? '')
-  const nameWidth = Math.max(12, Math.min(36, size.columns - RIGHT - 12))
-  const room = size.columns - nameWidth - RIGHT - 1
+  const w = widths(by, size.columns)
+  const right = w.tokens + w.cost + w.last
+  // A grouping row stacks when its name does not fit, so its name column may
+  // shrink to keep the number columns whole in the narrowest pane.
+  const least = by === 'agent' ? 12 : Math.min(12, Math.max(5, size.columns - right))
+  const nameWidth = Math.max(least, Math.min(36, size.columns - right - 12))
+  const room = size.columns - nameWidth - right - 1
   const barWidth = room >= 4 ? room : 0
   const max = Math.max(1, ...list.map(tokenSum), ...rows.map(row => row.tokens))
   const session = model.usd === undefined ? 'session cost n/a' : `≈ ${usd(model.usd)} session`
@@ -204,7 +218,7 @@ export const costView: View = (model, size, sel): Drawn => {
     {
       spans: [
         [
-          `${fit('  NAME', nameWidth)}${' '.repeat(barWidth ? barWidth + 1 : 0)}${'TOKENS'.padStart(8)}${'COST'.padStart(9)}${(by === 'agent' ? 'TIME' : 'WORKERS').padStart(7)}`,
+          `${fit(nameWidth < 6 ? ' NAME' : '  NAME', nameWidth)}${' '.repeat(barWidth ? barWidth + 1 : 0)}${'TOKENS'.padStart(w.tokens)}${'COST'.padStart(w.cost)}${(by === 'agent' ? 'TIME' : w.last > 6 ? 'WORKERS' : 'COUNT').padStart(w.last)}`,
           dim,
         ],
       ],
@@ -224,7 +238,7 @@ export const costView: View = (model, size, sel): Drawn => {
       workerLine(item, max, model.now, nameWidth, barWidth, item.id === pickedId),
     ),
     ...rows.flatMap(row =>
-      groupLine(row, max, nameWidth, barWidth, row.id === pickedId, size.columns),
+      groupLine(row, max, nameWidth, barWidth, row.id === pickedId, size.columns, w),
     ),
   ]
   const body: Line[] = drawn.length ? drawn : [{ spans: [[' No agent or Codex job yet.', dim]] }]

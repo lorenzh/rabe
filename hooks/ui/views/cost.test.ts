@@ -311,3 +311,56 @@ test('long model names keep the partial marker and a distinguishing end', () => 
     for (const label of labels) expect(label, `${columns}`).toContain('(partial)')
   }
 })
+
+test('the groupings keep a space between COST and WORKERS and every value at pane widths', () => {
+  const main = { 'claude-opus-5-5': { steps: 3, input: 1000, output: 200, cached: 500, usd: 0.5 } }
+  const sonnet = {
+    ...plan,
+    id: 's',
+    detail: { ...plan.detail, model: 'claude-sonnet-5-5' },
+  } as RabeItem
+  for (const columns of [26, 36, 46, 80]) {
+    for (const grouping of ['model', 'harness'] as const) {
+      const sel = { ...NO_SELECTION, grouping }
+      const size = { ...SIZE, columns }
+      const shown = lines(
+        gridOf(costView({ ...MODEL, items: [explore, sonnet], mainUsage: main }, size, sel)).grid,
+      )
+      const at = `${grouping} ${columns} ${shown.join('|')}`
+      expect(
+        shown.some(line => /COST +(WORKERS|COUNT)/.test(line)),
+        at,
+      ).toBe(true)
+      expect(
+        shown.some(line => /\$0\.50/.test(line)),
+        at,
+      ).toBe(true)
+      expect(grouping === 'harness' || shown.some(line => /\$0\.16/.test(line)), at).toBe(true)
+      expect(
+        shown.some(line => line.includes('…') && /\$…/.test(line)),
+        at,
+      ).toBe(false)
+    }
+  }
+})
+
+test('worker and main model rows use the same short model id', () => {
+  const main = {
+    'claude-sonnet-5-5': { steps: 3, input: 1000, output: 200, cached: 500, usd: 0.5 },
+  }
+  const sonnet = {
+    ...plan,
+    id: 's',
+    detail: { ...plan.detail, model: 'claude-sonnet-5-5' },
+  } as RabeItem
+  const sel = { ...NO_SELECTION, grouping: 'model' as const }
+  const shown = lines(
+    gridOf(costView({ ...MODEL, items: [sonnet], mainUsage: main }, SIZE, sel)).grid,
+  )
+  expect(
+    shown.some(line => /• sonnet-5-5 /.test(line)),
+    shown.join('|'),
+  ).toBe(true)
+  expect(shown.some(line => /main( session)? · sonnet-5-5/.test(line))).toBe(true)
+  expect(shown.some(line => line.includes('claude-sonnet'))).toBe(false)
+})
