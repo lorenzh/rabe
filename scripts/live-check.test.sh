@@ -72,7 +72,10 @@ visible() {
   vis=()
   for ((id = 0; id < total; id++)); do
     [[ $g == *" $id "* ]] && continue
-    [ -n "$f" ] && [ "${durs[id]:-}" != "$f" ] && continue
+    # The seeded "zebra nap" row (the first) also matches letters of its title.
+    if [ -n "$f" ] && [ "${durs[id]:-}" != "$f" ]; then
+      { [ "$id" = 0 ] && [ -e "$FAKE/zebra" ] && [[ "zebra nap" == *"$f"* ]]; } || continue
+    fi
     vis+=("$id")
   done
   rows=${#vis[@]}
@@ -288,6 +291,7 @@ case $cmd in
             *) [ "$n" = "$sel" ] && m=▌ || m=' '
                title="row $n"
                [ -n "${FAKE_SLEEP:-}" ] && title="sleep ${durs[id]:-}"
+               [ "$id" = 0 ] && [ -e "$FAKE/zebra" ] && title+=" # zebra nap"
                g=▶
                grep -qx "$id" "$FAKE/ended" 2>/dev/null && g=■
                [ "$w" = i ] && line="$m  $g $title" || line="$m$g $title" ;;
