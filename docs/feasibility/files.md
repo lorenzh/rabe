@@ -2,7 +2,7 @@
 title: Files and runtime limits
 description: What files Rabe reads, which writes it can detect, and what still needs live testing.
 tags: [feasibility, files, limits]
-keywords: [shell writes, script, bashEditDiff, changedFiles, bashEditDiffEnabled, shared, files outside the project, runtime testing, shellWrites, candidates, fs.stat, mtime, here-doc, redirection, glob, brace expansion, command substitution, FileChange, changed, beforeBash, afterBash, ranBash, rabe.edits, main session, via shell, Edit, Write, 4 MiB]
+keywords: [shell writes, script, bashEditDiff, changedFiles, bashEditDiffEnabled, shared, files outside the project, runtime testing, shellWrites, candidates, fs.stat, mtime, here-doc, redirection, glob, brace expansion, command substitution, FileChange, changed, beforeBash, afterBash, ranBash, rabe.edits, main session, via shell, Edit, Write, 4 MiB, rabe.diffs, structuredPatch, unified_diff, diff content]
 ---
 
 # Files and runtime limits
