@@ -294,7 +294,14 @@ case $cmd in
                [ "$id" = 0 ] && [ -e "$FAKE/zebra" ] && title+=" # zebra nap"
                g=▶
                grep -qx "$id" "$FAKE/ended" 2>/dev/null && g=■
-               [ "$w" = i ] && line="$m  $g $title" || line="$m$g $title" ;;
+               [ "$w" = i ] && line="$m  $g $title" || line="$m$g $title"
+               # FAKE_BAR: a Timeline bar one space after the title, one cell
+               # longer at each draw, as a running item's bar grows (#233).
+               if [ -n "${FAKE_BAR:-}" ]; then
+                 b=$(($(cat "$FAKE/bar" 2>/dev/null || echo 1) + 1))
+                 echo "$b" >"$FAKE/bar"
+                 line+=" $(printf '█%.0s' $(seq 1 "$b"))"
+               fi ;;
           esac
           if [ "$n" -ge "$from" ]; then
             [[ $w == [ri] ]] && rowk+=("${#right[@]}:$n")
@@ -361,6 +368,8 @@ expect() { # name, condition...
   if "$@"; then echo "ok   $name"; else echo "FAIL $name"; failed=1; fi
 }
 
+faked CLAUDE=./nope/claude 'a relative CLAUDE that is no file is named in the error' 2 'was not found' --shells 0
+stop
 faked FAKE_NEW=fail 'a failed session start is a setup error' 2 'could not start' --shells 0
 expect 'a failed session start kills no tmux server' test ! -e "$FAKE/killed"
 stop
@@ -471,6 +480,7 @@ sq FAKE_REMOVE=reset 'r that marks the first row instead of the neighbour is FAI
 sq FAKE_REMOVE=keep 'r that keeps the row is FAIL' 1 'FAIL remove-neighbour 0/1' --shells 3 --timeout 50 --sequences remove-neighbour
 sq 'a reopened pane that marks the same row and opens it is PASS' 0 'PASS reopen 1/1' --shells 3 --timeout 50 --sequences reopen
 sq 'b back on the Cost and Timeline tabs is PASS' 0 'PASS back-timeline 1/1' --shells 3 --timeout 50 --sequences back-cost,back-timeline
+sq FAKE_SLEEP= FAKE_BAR=1 'a bar one space after the title is no part of the marked row is PASS' 0 'PASS back-timeline 1/1' --shells 3 --timeout 50 --sequences back-timeline
 sq FAKE_BACK=items 'b that goes to the first tab is FAIL on both' 1 'FAIL back-timeline 0/1' --shells 3 --timeout 50 --sequences back-cost,back-timeline
 sq FAKE_TABKEY=stop 'one failing sequence sets the exit code' 1 'PASS search-keys 1/1' --shells 3 --timeout 50 --sequences ring-2,search-keys
 

@@ -137,8 +137,14 @@ if [ $dry = 1 ]; then
 fi
 
 claude=${CLAUDE:-claude}
+# tmux starts it in the scratch folder, so a relative path would not be found.
+[[ $claude == */* && $claude != /* ]] && claude=$PWD/$claude
 command -v tmux >/dev/null || fail "tmux is not installed"
-command -v "$claude" >/dev/null || fail "$claude is not on PATH"
+if [[ $claude == */* ]]; then
+  [ -x "$claude" ] && [ ! -d "$claude" ] || fail "$claude was not found or is not executable"
+else
+  command -v "$claude" >/dev/null || fail "$claude is not on PATH"
+fi
 # Any session on the socket belongs to someone else, and cleanup must not end it.
 tmux -L "$name" list-sessions >/dev/null 2>&1 && fail "tmux socket $name is in use; pick another --name"
 
@@ -437,6 +443,9 @@ ident() {
   d=$(shellof "$1")
   if [ -n "$d" ]; then echo "$d"; else tr -d 0-9 <<<"${1:1}" | tr -s ' '; fi
 }
+# A row without its Timeline bar: the bar starts one space after a title that
+# fills its column, so a cut at the first double space keeps part of it (#233).
+rowtitle() { local r=${1:1}; echo "${1:0:1}${r%%[█▏▎▍▋▊▉◂]*}"; }
 # Clicks the last row that shows a running seeded shell (▶) other than the
 # marked one, and sets `clicked` to its duration.
 click_running() {
@@ -689,7 +698,7 @@ seq_back() { # tab key
   # counts: a Timeline bar grows while the row stays the same.
   local marked
   for i in "${!view[@]}"; do
-    [[ ${view[i]} == ▌* ]] && { marked=$(ident "${view[i]%%  *}"); break; }
+    [[ ${view[i]} == ▌* ]] && { marked=$(ident "$(rowtitle "${view[i]}")"); break; }
   done
   keys Enter
   snap
@@ -697,7 +706,7 @@ seq_back() { # tab key
   keys b
   snap
   for i in "${!view[@]}"; do
-    [[ ${view[i]} == ▌* ]] && { [ "$(ident "${view[i]%%  *}")" = "$marked" ] && return 0; break; }
+    [[ ${view[i]} == ▌* ]] && { [ "$(ident "$(rowtitle "${view[i]}")")" = "$marked" ] && return 0; break; }
   done
   why="b did not keep the marked row '$marked'"
   return 1
