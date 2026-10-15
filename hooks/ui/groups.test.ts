@@ -44,7 +44,7 @@ test('main steps have their own partial rows and never join a worker row', () =>
     ['by:model:main:claude-opus-5-5', 1200, 0.5],
     ['by:model:main:claude-new-9', 110, undefined],
   ])
-  expect(model[1]?.title).toContain('partial')
+  expect(model[1]?.isPartial).toBe(true)
   const harness = groupRows('harness', [explore, review], MAIN)
   expect(harness.find(row => row.id === 'by:harness:main')).toMatchObject({
     tokens: 1310,

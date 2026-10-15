@@ -175,9 +175,9 @@ test('the model grouping draws a row per model and the main session apart, parti
   expect(shown[3]).toMatch(/WORKERS$/)
   const at = row(shown, /opus-5-5 .*41k +≈ \$0\.16 +1$/)
   expect(at).toBeGreaterThan(3)
-  expect(shown.some(line => /main session \(partial\) · opus-5-5 .*1k +≈ \$0\.50/.test(line))).toBe(
-    true,
-  )
+  expect(
+    shown.some(line => /main session · opus-5-5 .*\(partial\).*1k +≈ \$0\.50/.test(line)),
+  ).toBe(true)
   expect(rowKeys(drawn)).toContain('row:by:model:main:claude-opus-5-5')
   expect(shown.some(line => line.includes('model n/a'))).toBe(true)
 })
@@ -186,4 +186,19 @@ test('a group total that leaves workers out says partial in words', () => {
   const sel = { ...NO_SELECTION, grouping: 'harness' as const }
   const shown = lines(gridOf(costView({ ...MODEL, items: [explore, plan] }, SIZE, sel)).grid)
   expect(shown.some(line => /Claude Code \(partial\) .*41k/.test(line))).toBe(true)
+})
+
+test('the main session row keeps (partial) visible at every width and grouping', () => {
+  const main = { 'claude-opus-5-5': { steps: 3, input: 1000, output: 200, cached: 500, usd: 0.5 } }
+  for (const grouping of ['agent', 'model', 'harness'] as const) {
+    for (const columns of [30, 40, 50, 80]) {
+      const sel = { ...NO_SELECTION, grouping } as typeof NO_SELECTION
+      const drawn = costView({ ...MODEL, mainUsage: main }, { ...SIZE, columns }, sel)
+      const labels = drawn.nodes.flatMap(node =>
+        'spans' in node ? node.spans.filter(isPress) : [],
+      )
+      const own = labels.find(one => one.key.includes(':main'))
+      expect(own?.label, `${grouping} ${columns}`).toContain('(partial)')
+    }
+  }
 })

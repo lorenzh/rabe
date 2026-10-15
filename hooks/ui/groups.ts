@@ -37,7 +37,8 @@ function add(sum: Sum | undefined, item: RabeItem): Sum {
 function mainRow(by: RabeGrouping, model: string, one: RabeMainUsage): GroupRow {
   return {
     id: `by:${by}:main:${model}`,
-    title: `main session (partial) · ${model.replace(/^claude-/, '')}`,
+    title: `main session · ${model.replace(/^claude-/, '')}`,
+    isPartial: true,
     tokens: one.input + one.output,
     costUsd: one.isUnpriced ? undefined : one.usd,
   }
@@ -53,7 +54,8 @@ export function mainTotal(
 
   return {
     id: `by:${by}:main`,
-    title: 'main session (partial)',
+    title: 'main session',
+    isPartial: true,
     tokens: all.reduce((n, one) => n + one.input + one.output, 0),
     costUsd: all.some(one => one.isUnpriced)
       ? undefined
