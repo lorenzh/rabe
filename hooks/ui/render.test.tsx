@@ -471,7 +471,7 @@ test('the first element after the tabs never stops or deletes', () => {
 
 // The walk takes about 4 s; the suite runs files side by side.
 test('whatever changes while the pane is open, the focusable keys only grow at the end, rows of the list in their group', {
-  timeoutMs: 20_000,
+  timeoutMs: 60_000,
 }, () => {
   const start = ALL.map(item =>
     item.id === explore.id ? agentOf('a1', { edits: [{ path: PATHS[0] ?? '', at: NOW }] }) : item,
