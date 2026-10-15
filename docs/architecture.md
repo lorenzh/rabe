@@ -40,7 +40,7 @@ hooks/
   ui/touched.ts       pure file edits, conflicts and worktree rows
   ui/pane-data.ts     clipboard and toast text filtering; stored-summary validation
   ui/interaction.ts   pure state transitions for focus, held order, regain and arming
-  ui/sequence.ts      serializes reserved press landings, focus moves and the Input events of one field
+  ui/sequence.ts      serializes reserved press landings, focus moves and the Input events of one field; per-event action slots
   ui/builtin.tsx      hides Claude Code's own count of background work
   ui/render.tsx       one renderer: lines as row Boxes of Text and plain Buttons, charts as a Raster
   ui/view.ts          the view contract: Model, Size, Selection, Press, Line, Node, Drawn, View, Action

@@ -2033,6 +2033,29 @@ test('a press on another row selects it and arms x for it; on the selected row i
     await ui.unmount()
   })
 
+  // GPT review of 42f1a46: a hook beneath redacts the text and the handler
+  // is released before the closure ran; Rabe must not send the original.
+  test('a lost submit whose text a hook beneath redacted sends the redacted text', async ($, on) => {
+    const { sent, state } = setup(on, explore, undefined, true)
+    let ui!: Mounted<'terminal'>
+    on('ui.input', { requestId: 'rabe' }, (_$, e, next) =>
+      e.element === field
+        ? next({ ...e, value: e.value.replace('SECRET', '[redacted]') })
+        : next(e),
+    )
+    // A redraw before the closure: the engine releases the field's handler.
+    on('ui.input', { requestId: 'rabe' }, async (_$, e, next) => {
+      if (e.element === field) await ui.redraw()
+      return next(e)
+    })
+    ui = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    await arm($, field)
+    await ui.input({ key: field, text: 'token=SECRET', kind: 'submit' })
+    expect(state.toasts).toContain('Message sent to claude a1')
+    expect(sent).toEqual(['token=[redacted]'])
+    await ui.unmount()
+  })
+
   test('toasts delivery unknown on an exception', async ($, on) => {
     const { sent, state } = setup(on, explore, async () => {
       throw new Error('boom')
