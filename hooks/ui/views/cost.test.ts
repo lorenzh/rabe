@@ -364,3 +364,20 @@ test('worker and main model rows use the same short model id', () => {
   expect(shown.some(line => /main( session)? · sonnet-5-5/.test(line))).toBe(true)
   expect(shown.some(line => line.includes('claude-sonnet'))).toBe(false)
 })
+
+test('the agent grouping and the totals line keep every value at pane widths', () => {
+  const main = { 'claude-opus-5-5': { steps: 3, input: 1000, output: 200, cached: 500, usd: 0.5 } }
+  for (const columns of [26, 36, 46, 80]) {
+    const size = { ...SIZE, columns }
+    const model = { ...MODEL, items: [explore, review], mainUsage: main }
+    const shown = lines(gridOf(costView(model, size, NO_SELECTION)).grid)
+    const at = `${columns} ${shown.join('|')}`
+    expect(
+      shown.every(line => !line.includes('…')),
+      at,
+    ).toBe(true)
+    expect(shown.join('\n'), at).toMatch(/≈ \$0\.41 session/)
+    expect(shown.join('\n'), at).toMatch(/running \d/)
+    expect(shown.join('\n'), at).toMatch(/41k +≈ \$0\.16 +1m/)
+  }
+})
