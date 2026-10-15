@@ -4,11 +4,13 @@ import type {
   ToolResultOf,
   TurnCompleteReason,
   TurnStepResult,
+  TurnUsage,
 } from 'claude-code'
 
 import type { RabeEdit, RabeModelPair } from '../../types'
 import { companionCall } from '../forwarders'
 import { fault, type Pollers, skipped, tally } from '../loop'
+import { addMain } from '../main-usage'
 import { clip, type EndStatus, isAbsolute, isEnded, itemId, type RabeItem } from '../model'
 import { claudeUsd, type Prices, parsePrices, withOverride } from '../prices'
 import { isRecord, restored, unchanged } from '../reading'
@@ -387,6 +389,14 @@ async function recordStep(
   })
 }
 
+// A step of the main session (no agent), by model. Cache writes of the main
+// loop live 1 hour, so they bill at that rate; the sum starts when Rabe loads.
+async function recordMain($: EngineInterface, usage: TurnUsage, file: string) {
+  const usd = claudeUsd(await prices($, file), usage, usage.model, '1h')
+  const { value = {} } = await $.state.get({ plugin: 'rabe', key: 'mainUsage' })
+  await $.state.set({ plugin: 'rabe', key: 'mainUsage' }, addMain(value, usage, usd))
+}
+
 export function agents(on: On, file: string, pollers: Pollers): void {
   on('session.start', { cwd: /^/ }, async ($, e, next) => {
     pollers.push({ name: 'agents', run: items => pollAgents($, items), every: 3000 })
@@ -459,6 +469,15 @@ export function agents(on: On, file: string, pollers: Pollers): void {
     const result = yield* next(e)
     if (e.agentId)
       await recordStep($, e.agentId, result, file, pairOf(result.usage?.model, e.effort))
+
+    return result
+  })
+
+  // `{ agentId: /^/ }` does not match a step without the field, so the main
+  // loop's steps come through `model`, which every step has.
+  on('turn.step', { model: /^/ }, async function* ($, e, next) {
+    const result = yield* next(e)
+    if (!e.agentId && result.usage) await recordMain($, result.usage, file)
 
     return result
   })

@@ -54,7 +54,7 @@ test('each worker has a block bar by tokens in its kind color, and n/a where unk
 test('each worker row is a Button that opens it; the selected one takes the focus', () => {
   const sel = { ...NO_SELECTION, tab: 'cost' as const, selected: review.id }
   const drawn = gridOf(costView(MODEL, SIZE, sel))
-  expect(drawn.buttons).toEqual([])
+  expect(drawn.buttons.map(one => one.key)).toEqual(['by-agent', 'by-model', 'by-harness'])
   const rows = drawn.nodes.flatMap(node => ('spans' in node ? node.spans.filter(isPress) : []))
   expect(rows.map(one => one.key)).toEqual(
     [explore, review, verify, plan, reviewed].map(item => `row:${item.id}`),
@@ -108,7 +108,7 @@ test('the head names this session, and c copies the command that resumes it', ()
   const sessionId = '5f1c0d2e-7a7b-4c1d-9e2f-0123456789ab'
   const drawn = costView({ ...MODEL, sessionId }, SIZE, NO_SELECTION)
   expect(lines(gridOf(drawn).grid)[1]).toBe(` session ${sessionId}`)
-  expect(drawn.buttons).toEqual([
+  expect(drawn.buttons.filter(one => one.key.startsWith('resume:'))).toEqual([
     {
       key: `resume:${sessionId}`,
       label: 'c: copy resume',
@@ -118,7 +118,7 @@ test('the head names this session, and c copies the command that resumes it', ()
   ])
   const none = costView(MODEL, SIZE, NO_SELECTION)
   expect(lines(gridOf(none).grid)[1]).toBe(' session n/a')
-  expect(none.buttons).toEqual([])
+  expect(none.buttons.some(one => one.key.startsWith('resume:'))).toBe(false)
 })
 
 test('an agent that only forwarded to Codex adds its tokens to the job and has no row', () => {
@@ -164,4 +164,20 @@ test('idle stays readable when a long agent name is cut on every surface', () =>
       expect(lines(gridOf(drawn).grid).join(' ')).toContain('◷')
     }
   }
+})
+
+test('the model grouping draws a row per model and the main session apart, partial', () => {
+  const main = { 'claude-opus-5-5': { steps: 3, input: 1000, output: 200, cached: 500, usd: 0.5 } }
+  const sel = { ...NO_SELECTION, grouping: 'model' as const }
+  const drawn = costView({ ...MODEL, mainUsage: main }, SIZE, sel)
+  const shown = lines(gridOf(drawn).grid)
+  expect(shown[2]).toBe('by model · sorted by tokens')
+  expect(shown[3]).toMatch(/WORKERS$/)
+  const at = row(shown, /opus-5-5 .*41k +≈ \$0\.16 +1$/)
+  expect(at).toBeGreaterThan(3)
+  expect(shown.some(line => /main session \(partial\) · opus-5-5 .*1k +≈ \$0\.50/.test(line))).toBe(
+    true,
+  )
+  expect(rowKeys(drawn)).toContain('row:by:model:main:claude-opus-5-5')
+  expect(shown.some(line => line.includes('model n/a'))).toBe(true)
 })

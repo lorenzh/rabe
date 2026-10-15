@@ -2,7 +2,9 @@ import type { RenderSurface } from 'claude-code'
 
 import type {
   RabeEdit,
+  RabeGrouping,
   RabeLines,
+  RabeMainUsage,
   RabeOrder,
   RabePrevious,
   RabeTab,
@@ -33,6 +35,8 @@ export type Model = {
   cwd?: string
   sessionId?: string
   worktrees?: RabeWorktree[]
+  // The main session's steps by model since Rabe loaded (`rabe.mainUsage`).
+  mainUsage?: Record<string, RabeMainUsage>
 }
 
 // The cells a view may fill: `columns` from `bodyColumns`, `rows` from
@@ -79,6 +83,8 @@ export type Selection = {
   isOnSearch?: boolean
   // The Timeline's window; absent: the whole session, no key to widen it.
   window?: RabeWindow
+  // The Cost tab's grouping; absent: by agent.
+  grouping?: RabeGrouping
 }
 
 export type Action =
@@ -88,6 +94,8 @@ export type Action =
   | { type: 'query'; text: string; isSubmit?: true }
   // Widen the Timeline's window (`widen` in views/timeline.ts).
   | { type: 'window' }
+  // The Cost tab's grouping.
+  | { type: 'group'; by: RabeGrouping }
   | { type: 'focus'; key: string }
   | { type: 'stop'; ids: string[] }
   | { type: 'delete'; id: string }
@@ -246,6 +254,8 @@ export function landing(action: Action, open: string, drawn?: Drawn, from = 'ite
       return action.isSubmit ? ['tab-items', first ?? target ?? 'find'] : ['search']
     case 'window':
       return ['tab-timeline', 'window']
+    case 'group':
+      return ['tab-cost', `by-${action.by}`]
     case 'message':
       return [`message-agent:${action.id}`]
     default:

@@ -2,6 +2,7 @@ import type { EngineInterface, Next, On, RenderSurface, UiFocusInput } from 'cla
 
 import type { RabePrevious } from '../../types'
 import { isEnded, type RabeItem } from '../model'
+import { orderIds } from './groups'
 import {
   deferredFocus,
   heldOf,
@@ -450,6 +451,9 @@ async function act(
       await $.state.set({ plugin: 'rabe', key: 'window' }, widen(value, now))
       return land($, landing(action, ''))
     }
+    case 'group':
+      await $.state.set({ plugin: 'rabe', key: 'grouping' }, action.by)
+      return land($, landing(action, ''))
     case 'focus':
       await focusOn($, action.key)
       return
@@ -545,6 +549,8 @@ async function look(
   const { value: order } = await $.state.get({ plugin: 'rabe', key: 'order' })
   const { value: worktrees } = await $.state.get({ plugin: 'rabe', key: 'worktrees' })
   const { value: window } = await $.state.get({ plugin: 'rabe', key: 'window' })
+  const { value: grouping } = await $.state.get({ plugin: 'rabe', key: 'grouping' })
+  const { value: mainUsage } = await $.state.get({ plugin: 'rabe', key: 'mainUsage' })
   const now = await $.clock.now()
   const usage = await $.session.usage().catch(() => undefined)
   const model = {
@@ -559,6 +565,7 @@ async function look(
     cwd: await $.session.cwd().catch(() => undefined),
     sessionId: await $.session.id().catch(() => undefined),
     ...(worktrees && { worktrees }),
+    ...(mainUsage && { mainUsage }),
   }
 
   const selection = {
@@ -572,6 +579,7 @@ async function look(
     isListArmed: interaction.arming.isListArmed,
     isOnSearch: interaction.ringOn === 'search',
     window: window ?? windowOf(baseHours, now),
+    ...(grouping && { grouping }),
     ...(order && { order }),
   }
 
@@ -705,7 +713,15 @@ export function pane(on: On, hours = baseHours): void {
   on('command.run', { command: 'rabe' }, async $ => {
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
-    await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(items, edits))
+    const { value: mainUsage } = await $.state.get({ plugin: 'rabe', key: 'mainUsage' })
+    await $.state.set(
+      { plugin: 'rabe', key: 'order' },
+      {
+        ...orderOf(items, edits),
+        'cost:model': orderIds('model', items, mainUsage),
+        'cost:harness': orderIds('harness', items, mainUsage),
+      },
+    )
     await $.state.set({ plugin: 'rabe', key: 'window' }, windowOf(baseHours, await $.clock.now()))
     feed($, { type: 'opened' })
     isRestored = false

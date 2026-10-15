@@ -26,12 +26,14 @@ const RATES = [
   'output',
   'cache_read',
   'cache_write_5m',
+  'cache_write_1h',
   'cache_write',
   'long_context_tokens',
   'long_input',
   'long_output',
   'long_cache_read',
   'long_cache_write_5m',
+  'long_cache_write_1h',
   'long_cache_write',
 ] as const
 
@@ -116,20 +118,25 @@ export function findPrice(prices: Prices, provider: string, model?: string): Pri
 
 type Request = { uncached: number; read: number; write: number; output: number }
 
+// How long a cache write lives: the rate it bills at.
+export type WriteTtl = '5m' | '1h'
+
 // Above `long_context_tokens` of prompt (uncached, reads and writes) the long
 // rates bill every token of the request. A tier billed per session, or a long
 // rate that is missing, gives undefined: Rabe does not guess.
-function requestUsd(price: Price, r: Request): number | undefined {
+function requestUsd(price: Price, r: Request, ttl: WriteTtl = '5m'): number | undefined {
   const limit = price.rates.long_context_tokens
   const isLong = limit !== undefined && r.uncached + r.read + r.write > limit
   if (isLong && price.scope !== 'request') return undefined
-  const rate = (name: 'input' | 'output' | 'cache_read' | 'cache_write_5m' | 'cache_write') =>
-    price.rates[isLong ? (`long_${name}` as const) : name]
+  const rate = (
+    name: 'input' | 'output' | 'cache_read' | 'cache_write_5m' | 'cache_write_1h' | 'cache_write',
+  ) => price.rates[isLong ? (`long_${name}` as const) : name]
   const input = rate('input')
   const output = rate('output')
   if (input === undefined || output === undefined) return undefined
   // Claude rows fill cache_write_5m, OpenAI rows cache_write; empty bills at input.
-  const write = rate('cache_write_5m') ?? rate('cache_write') ?? input
+  const own = ttl === '1h' ? rate('cache_write_1h') : undefined
+  const write = own ?? rate('cache_write_5m') ?? rate('cache_write') ?? input
 
   return (
     (r.uncached * input +
@@ -140,17 +147,27 @@ function requestUsd(price: Price, r: Request): number | undefined {
   )
 }
 
-// One Claude response. Its usage has no 5m or 1h split, so writes bill at 5m.
-export function claudeUsd(prices: Prices, usage: ModelUsage, model: string): number | undefined {
+// One Claude response. Its usage has no 5m or 1h split, so writes bill at 5m
+// unless the caller says `ttl` (the main session's cache writes live 1h).
+export function claudeUsd(
+  prices: Prices,
+  usage: ModelUsage,
+  model: string,
+  ttl: WriteTtl = '5m',
+): number | undefined {
   const price = findPrice(prices, 'claude', model)
 
   return price
-    ? requestUsd(price, {
-        uncached: usage.input_tokens,
-        read: usage.cache_read_input_tokens,
-        write: usage.cache_creation_input_tokens,
-        output: usage.output_tokens,
-      })
+    ? requestUsd(
+        price,
+        {
+          uncached: usage.input_tokens,
+          read: usage.cache_read_input_tokens,
+          write: usage.cache_creation_input_tokens,
+          output: usage.output_tokens,
+        },
+        ttl,
+      )
     : undefined
 }
 

@@ -1,9 +1,11 @@
+import type { RabeGrouping } from '../../../types'
 import type { RabeItem } from '../../model'
 import { bar, fit } from '../cells/grid'
 import { C, CHIP, type Style, tone } from '../cells/palette'
 import { duration, short, tokens, usd, validId } from '../format'
+import { type GroupRow, groupRows, heldRows, mainTotal } from '../groups'
 import { byTokens, cost, glyph, shown, stable, tokenSum, totals, withForwarder } from '../lists'
-import type { Drawn, Line, Model, View } from '../view'
+import type { Drawn, Line, Model, View, ViewButton } from '../view'
 import { resumeButton } from './detail'
 import { fitLine, focusOn } from './lines'
 
@@ -58,6 +60,45 @@ function workerLine(
   }
 }
 
+// A row of the model and harness groupings, or the main session's row.
+function groupLine(
+  row: GroupRow,
+  max: number,
+  nameWidth: number,
+  barWidth: number,
+  isSelected: boolean,
+): Line {
+  const blocks = row.tokens < 0 ? '▏'.padEnd(barWidth) : bar(row.tokens, max, barWidth)
+  const name = fit(row.title, nameWidth - 3).trimEnd()
+  const key = `row:${row.id}`
+
+  return {
+    spans: [
+      [isSelected ? '▌' : ' ', { fg: C.orange }],
+      ['•', dim],
+      [' '],
+      {
+        key,
+        label: name,
+        action: { type: 'focus', key },
+        ...(!isSelected && { dim: true }),
+      },
+      [' '.repeat(nameWidth - 3 - [...name].length)],
+      [barWidth ? ` ${blocks}` : '', row.tokens < 0 ? dim : { fg: C.orange }],
+      [(row.tokens < 0 ? 'n/a' : tokens(row.tokens)).padStart(8), row.tokens < 0 ? dim : {}],
+      [cost(row.costUsd).padStart(9), row.costUsd === undefined ? dim : {}],
+      [(row.count === undefined ? '' : `${row.count}`).padStart(7)],
+    ],
+    ...(isSelected && { bg: C.selected }),
+  }
+}
+
+const GROUPINGS: { by: RabeGrouping; key: string }[] = [
+  { by: 'agent', key: 'i' },
+  { by: 'model', key: 'o' },
+  { by: 'harness', key: 'h' },
+]
+
 const note = (label: string, chip: Style, title: string, why: string): Line => ({
   spans: [[` ${label} `, chip], [` ${title}`], [` · ${why}`, dim]],
 })
@@ -92,14 +133,27 @@ export const costView: View = (model, size, sel): Drawn => {
   const workers = shown(model.items)
     .filter(item => item.kind === 'agent' || item.kind === 'codex')
     .map(item => withForwarder(item, model.items))
-  const list = stable(workers, sel.order?.cost, byTokens)
-  const selected = list.find(item => item.id === sel.selected) ?? list[0]
+  const by = sel.grouping ?? 'agent'
+  const main = model.mainUsage ?? {}
+  const items = stable(workers, sel.order?.cost, byTokens)
+  // The rows by id: a worker's row has its item's id, a group's its own.
+  const rows: GroupRow[] =
+    by === 'agent'
+      ? [mainTotal('agent', main)].flatMap(row => (row ? [row] : []))
+      : heldRows(groupRows(by, model.items, main), sel.order?.[`cost:${by}`])
+  const list = by === 'agent' ? items : []
+  const ids =
+    by === 'agent'
+      ? [...items.map(item => item.id), ...rows.map(row => row.id)]
+      : rows.map(row => row.id)
+  const pickedId = ids.includes(sel.selected) ? sel.selected : (ids[0] ?? '')
   const nameWidth = Math.max(12, Math.min(36, size.columns - RIGHT - 12))
   const room = size.columns - nameWidth - RIGHT - 1
   const barWidth = room >= 4 ? room : 0
-  const max = Math.max(1, ...list.map(tokenSum))
+  const max = Math.max(1, ...list.map(tokenSum), ...rows.map(row => row.tokens))
   const session = model.usd === undefined ? 'session cost n/a' : `≈ ${usd(model.usd)} session`
   const sortLabel = sel.order?.cost ? 'tokens when opened' : 'tokens'
+  const unit = by === 'agent' ? 'worker' : by
   const totalsHead: Line['spans'] = [[` ${session} `, { fg: C.bright }]]
   if (model.items.some(item => item.kind === 'agent')) {
     totalsHead.push([' claude ', dim], [cost(sum.claude), { fg: C.orange }])
@@ -120,11 +174,11 @@ export const costView: View = (model, size, sel): Drawn => {
       ],
     },
     { spans: [[` session ${validId(model.sessionId) ? model.sessionId : 'n/a'}`, dim]] },
-    { spans: [[`by worker · sorted by ${sortLabel}`, dim]] },
+    { spans: [[`by ${unit} · sorted by ${sortLabel}`, dim]] },
     {
       spans: [
         [
-          `${fit('  NAME', nameWidth)}${' '.repeat(barWidth ? barWidth + 1 : 0)}${'TOKENS'.padStart(8)}${'COST'.padStart(9)}${'TIME'.padStart(7)}`,
+          `${fit('  NAME', nameWidth)}${' '.repeat(barWidth ? barWidth + 1 : 0)}${'TOKENS'.padStart(8)}${'COST'.padStart(9)}${(by === 'agent' ? 'TIME' : 'WORKERS').padStart(7)}`,
           dim,
         ],
       ],
@@ -139,21 +193,36 @@ export const costView: View = (model, size, sel): Drawn => {
     { spans: [['LOAD', { fg: C.bright }]] },
     ...loadLines(model),
   ]
-  const rows: Line[] = list.length
-    ? list.map(item => workerLine(item, max, model.now, nameWidth, barWidth, item === selected))
-    : [{ spans: [[' No agent or Codex job yet.', dim]] }]
+  const drawn: Line[] = [
+    ...list.map(item =>
+      workerLine(item, max, model.now, nameWidth, barWidth, item.id === pickedId),
+    ),
+    ...rows.map(row => groupLine(row, max, nameWidth, barWidth, row.id === pickedId)),
+  ]
+  const body: Line[] = drawn.length ? drawn : [{ spans: [[' No agent or Codex job yet.', dim]] }]
   const isGone = model.items.some(item => item.kind === 'codex' && item.detail.isSessionMissing)
-  const foot = ['session cost as /cost totals it', isGone && 'n/a: a Codex session file is gone']
+  const foot = [
+    'session cost as /cost totals it',
+    Object.keys(main).length > 0 &&
+      'main session: steps since Rabe loaded, cache writes at the 1-hour rate',
+    isGone && 'n/a: a Codex session file is gone',
+  ]
   const lines = [
     ...head,
-    ...focusOn(rows, selected?.id ?? ''),
+    ...focusOn(body, pickedId),
     ...after,
     { spans: [] },
     { spans: [[foot.filter(Boolean).join(' · '), dim]] } as Line,
   ]
 
   const id = model.sessionId
-  const buttons = validId(id) ? [resumeButton(`claude --resume ${id}`, id)] : []
+  const buttons: ViewButton[] = GROUPINGS.map(one => ({
+    key: `by-${one.by}`,
+    label: `${one.key}: ${one.by}`,
+    hotkey: one.key,
+    action: { type: 'group', by: one.by },
+  }))
+  if (validId(id)) buttons.push(resumeButton(`claude --resume ${id}`, id))
 
   return { nodes: lines.map(line => fitLine(line, size.columns)), buttons }
 }

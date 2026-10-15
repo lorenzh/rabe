@@ -1132,8 +1132,8 @@ test('an agent the cap dropped comes back when the list shows it running', async
 
 const PRICES = [
   '# test prices',
-  'provider,model,aliases,input,output,cache_read,cache_write_5m',
-  'claude,claude-opus-5-5,,4,20,0.2,5',
+  'provider,model,aliases,input,output,cache_read,cache_write_5m,cache_write_1h',
+  'claude,claude-opus-5-5,,4,20,0.2,5,8',
 ].join('\n')
 
 // The plugin's own table and the user's files, as fs.read answers them.
@@ -1169,14 +1169,14 @@ function stepper(on: On, models: string[]) {
     }
   })
 
-  return async ($: Engine) => {
+  return async ($: Engine, { agentId }: { agentId?: string } = { agentId: 'a1' }) => {
     for (let index = 0; index < models.length; index++) {
       const stream = $.turn.step({
         turnId: 't1',
         index,
         model: 'm',
         messageCount: 1,
-        agentId: 'a1',
+        ...(agentId && { agentId }),
       })
       for await (const _ of stream);
     }
@@ -1194,6 +1194,33 @@ test('each step adds its price to the agent cost', async ($, on) => {
   await run($)
   expect(held.items?.[0]?.costUsd).toBe(2 * STEP_USD)
   expect(asked.every(path => path.endsWith('/data/prices.csv'))).toBe(true)
+})
+
+// the same step at the 1-hour write rate: 10 written at 8
+const MAIN_USD = (100 * 4 + 50 * 0.2 + 10 * 8 + 20 * 20) / 1e6
+
+test('a main-session step is kept per model at the 1-hour write rate', async ($, on) => {
+  const state = memoryState(on)
+  mock.clock(on, { now: 5000 })
+  priceFiles(on)
+  const run = stepper(on, ['claude-opus-5-5', 'claude-opus-5-5', 'claude-new-9'])
+  await run($, {})
+  expect(state['rabe.mainUsage']?.value).toEqual({
+    'claude-opus-5-5': { steps: 2, input: 320, output: 40, cached: 100, usd: 2 * MAIN_USD },
+    'claude-new-9': { steps: 1, input: 160, output: 20, cached: 50, isUnpriced: true },
+  })
+})
+
+test('an agent step is not a main-session step', async ($, on) => {
+  const state = memoryState(on)
+  mock.clock(on, { now: 5000 })
+  priceFiles(on)
+  on('agent.spawn', async () => ({ model: 'claude-opus-5-5', agentId: 'a1' }))
+  on('classic.SubagentStart', async () => ({}))
+  const run = stepper(on, ['claude-opus-5-5'])
+  await $.agent.spawn(SPAWN)
+  await run($)
+  expect(state['rabe.mainUsage']).toBeUndefined()
 })
 
 test('a step of a model without a price leaves the agent cost n/a for good', async ($, on) => {

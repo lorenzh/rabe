@@ -164,7 +164,8 @@ test('owned controls fit a narrow toolbar and keep visible labels when dim', () 
   const size = { ...SIZE, columns: 40 }
   const sel = { ...OPEN, tab: 'cost' as const }
   const first = draw(model([]), size, sel)
-  expect(controlRows(paneView(model([]), size, sel), size)).toBe(0)
+  // the three grouping buttons and the resume button wrap onto two rows at 40 columns
+  expect(controlRows(paneView(model([]), size, sel), size)).toBe(2)
   const later = draw({ ...model([]), sessionId: 'new-session' }, size, sel, first.held)
   expect(later.keys.slice(0, first.keys.length)).toEqual(first.keys)
   expect(later.keys.some(key => key.startsWith('inert-'))).toBe(false)
