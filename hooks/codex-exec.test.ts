@@ -251,3 +251,22 @@ test('the #152 and #220 lines parse model and effort though -o is expanded', () 
     dir: '/w',
   })
 })
+
+test('flags after `--` and redirect targets are not flags', () => {
+  expect(codexExec('codex exec -m gpt-6-sol -- "--model=spoof"')).toMatchObject({
+    model: 'gpt-6-sol',
+  })
+  expect(codexExec('codex exec -m gpt-6-sol x > --model=spoof')).toMatchObject({
+    model: 'gpt-6-sol',
+  })
+  expect(codexExec('codex exec -m gpt-6-sol x 2> -s')).toMatchObject({ model: 'gpt-6-sol' })
+})
+
+test('a later value with expansion makes the earlier one unknown', () => {
+  const exec = codexExec(
+    'codex exec -m gpt-6-sol -m "$M" -s read-only -s "$S" -c model_reasoning_effort=high -c model_reasoning_effort="$E" x',
+  )
+  expect(exec).not.toHaveProperty('model')
+  expect(exec).not.toHaveProperty('sandbox')
+  expect(exec).not.toHaveProperty('effort')
+})

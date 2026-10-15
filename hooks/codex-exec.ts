@@ -68,6 +68,26 @@ const SANDBOX = /^[a-z][a-z-]*$/
 const allowed = (value: string | undefined, rule: RegExp) =>
   value !== undefined && rule.test(value) ? value : undefined
 
+const REDIRECTS = new Set(['<', '>', '>>', '>|', '>&', '<&', '<>', '&>'])
+
+// The words of a call that may be flags: redirects with their operand and
+// everything from `--` on (the prompt) go.
+function options(args: Tok[]): Tok[] {
+  const out: Tok[] = []
+  for (let i = 0; i < args.length; i++) {
+    const tok = args[i]
+    if (!tok) continue
+    if (isWord(tok) && tok.known && tok.text === '--') break
+    if (!isWord(tok)) {
+      if (REDIRECTS.has(tok.op)) i++
+      continue
+    }
+    out.push(tok)
+  }
+
+  return out
+}
+
 type Flags = { model?: string; effort?: string; sandbox?: string; dir?: string; profile: boolean }
 
 // One pass over the words: the last value of each flag wins. A value is the
@@ -77,14 +97,19 @@ function flagsOf(args: Tok[]): Flags {
   const set = (name: Exclude<keyof Flags, 'profile'>, value: string | undefined) => {
     flags[name] = value
   }
-  for (const [i, tok] of args.entries()) {
-    if (!isWord(tok) || !tok.known || !tok.text.startsWith('-')) continue
+  for (let i = 0; i < args.length; i++) {
+    const tok = args[i]
+    if (!tok || !isWord(tok)) continue
+    // A word with expansion still names its flag by its raw start; its value is unknown,
+    // so it voids an earlier one.
+    const text = tok.known ? tok.text : tok.raw
+    if (!text.startsWith('-')) continue
     const next = args[i + 1]
     const word = isWord(next) && next.known ? next.text : undefined
-    const eq = tok.text.indexOf('=')
-    const name = eq < 0 ? tok.text : tok.text.slice(0, eq)
-    const inline = eq < 0 ? undefined : tok.text.slice(eq + 1)
-    const value = inline ?? word
+    const eq = text.indexOf('=')
+    const name = eq < 0 ? text : text.slice(0, eq)
+    const inline = eq < 0 || !tok.known ? undefined : text.slice(eq + 1)
+    const value = tok.known ? (inline ?? word) : undefined
     if (name === '-m' || name === '--model') set('model', value)
     else if (name === '-s' || name === '--sandbox') set('sandbox', value)
     else if (name === '-C' || name === '--cd') set('dir', value)
@@ -92,6 +117,8 @@ function flagsOf(args: Tok[]): Flags {
     else if (name === '-c' || name === '--config') {
       const match = value && /^model_reasoning_effort=(.*)$/.exec(value)
       if (match) set('effort', match[1]?.replace(/^(["'])(.*)\1$/, '$2'))
+      // An unknown config value may set the effort.
+      else if (value === undefined) set('effort', undefined)
     }
   }
 
@@ -112,7 +139,7 @@ export function codexExec(command: string, home?: string): CodexExec | undefined
   if (at < 0) return undefined
   const rest = toks.slice(at + 2)
   const end = rest.findIndex(tok => !isWord(tok) && ENDS.has(tok.op))
-  const args = end < 0 ? rest : rest.slice(0, end)
+  const args = options(end < 0 ? rest : rest.slice(0, end))
   let resultPath: string | undefined
   const flags = flagsOf(args)
   const model = flags.profile ? undefined : allowed(flags.model, MODEL)

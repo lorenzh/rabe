@@ -1211,3 +1211,29 @@ test('ended codex exec rows are not under the foreground cap', async ($, on) => 
   }
   expect(state['rabe.items']?.value).toHaveLength(MAX_FOREGROUND + 5)
 })
+
+test('the codex facet of a background call and of a Stop task reads no environment', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  let reads = 0
+  on('env.get', { name: 'HOME' }, async () => {
+    reads++
+
+    return { value: '/home/me' }
+  })
+  memoryState(on)
+  bash(on)
+  core(on)
+  // Other sources may read HOME at a Stop; a plain command is the baseline.
+  const run = async (command: string, id: string) => {
+    const before = reads
+    await $.tool.call({ tool: 'Bash', command, description: id, run_in_background: true })
+    await $.classic.Stop({
+      stop_hook_active: false,
+      background_tasks: [{ id, type: 'shell', status: 'running', description: id, command }],
+    })
+
+    return reads - before
+  }
+  const plain = await run('ls', 'p1')
+  expect(await run(CODEX, 'c1')).toBe(plain)
+})

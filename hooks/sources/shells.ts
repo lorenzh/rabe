@@ -384,7 +384,6 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
   const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
   const inFlight = new Set(tasks.map(task => task.id))
   const now = await $.clock.now()
-  const home = await $.env.get('HOME').catch(() => undefined)
   for (const item of runningShells(items)) {
     if (!item.detail.taskId || inFlight.has(item.detail.taskId)) continue
     // A subagent's task may be missing from the main session's list; the poll
@@ -411,7 +410,7 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
         return next
       }
       const outputPath = taskOutput(items, task.id)
-      const facet = codexFacet(codexExec(task.command, home))
+      const facet = codexFacet(codexExec(task.command))
 
       return addItem(
         next,
@@ -499,12 +498,15 @@ export function shells(on: On, pollers: Pollers): void {
     let added = false
     let startedAt = 0
     let exec: ReturnType<typeof codexExec>
-    try {
-      exec = codexExec(e.command, await $.env.get('HOME').catch(() => undefined))
-    } catch {}
-    if (!e.run_in_background) {
+    // The facet needs no home directory; only a foreground call reads HOME, for `~` in `-o`.
+    if (e.run_in_background) {
+      try {
+        exec = codexExec(e.command)
+      } catch {}
+    } else {
       try {
         startedAt = await $.clock.now()
+        exec = codexExec(e.command, await $.env.get('HOME').catch(() => undefined))
         shown = $.clock
           .sleep(SLOW_MS, { signal: stop.signal })
           .then(() => foreground($, e, id, startedAt, { exec }))
