@@ -1,6 +1,6 @@
 ---
 title: Rabe 0.10.0 design decisions
-description: Research report and recommendations for issues #199 (main-session tokens per model in the Cost tab), #218 (dropped message submit after a redraw) and #162 (diff in the Effects tab).
+description: "Research report and recommendations for issues #199 (main-session tokens per model in the Cost tab), #218 (dropped message submit after a redraw) and #162 (diff in the Effects tab)."
 tags: [research, decisions, cost, message-field, diff, data-sources]
 keywords: [0.10.0, "#199", "#218", "#162", Cost tab, grouping, tokens per model, turn.step, main session, ledger, cost-state, message field, Enter, submit, redraw, ui.input, toast, Effects tab, diff, structuredPatch, bashEditDiff, unified_diff, Codex rollout, caps, Privacy, hotkeys, research report, two-model research]
 ---
@@ -20,7 +20,7 @@ Three open design decisions for Rabe 0.10.0, under the repo rules (no new depend
 - `turn.step` on the main thread has no `agentId` and carries `usage` with the answering `model`; Rabe's agents hook ignores main steps today (`hooks/sources/agents.ts:456`, `types/claude-code.d.ts:13464-13538`). (A, B)
 - The band dollars are `$.session.usage().cost.usd`, which has no tokens and no model (`hooks/ui/lists.ts:416-425`, `types/claude-code.d.ts:10988`). (A, B)
 - Agent items keep aggregate tokens and the last step's model only; per-model `requests` exist only for Codex (`hooks/sources/agent-items.ts:255`, `types/index.d.ts:202`). The issue's data note is stale. (A, B)
-- Main steps are priced as 5-minute cache writes today; measured main usage is 1-hour writes (`hooks/prices.ts:144`, A's measurement over 14 days). (A; B names the 5-minute assumption, not the measurement)
+- Today only agent steps are priced, with cache writes at the 5-minute rate (`claudeUsd`, `hooks/prices.ts:144`; `hooks/sources/agents.ts:377`); main steps are excluded (`hooks/sources/agents.ts:456-458`) and main dollars come from the host ledger. Main-step pricing is a proposal: A's own transcripts over 14 days (one account) showed 1-hour writes, which is not a universal rate. (A; B names the 5-minute assumption, not the measurement)
 - Free hotkeys: `e h i j l n o p q t u v y z`; used: `a b c d f g k m r s w x` and digits 1-4 (`docs/architecture/focus-and-keys.md:43-57`). (A, B)
 - #218: the catch only recovers `search`; message submits are dropped when the closure never ran (`hooks/ui/pane.tsx:791-805`). `ui.input` carries `element`, `kind` and the whole `value`. `$.session.send` has no idempotency key (`types/claude-code.d.ts:11545`). A plugin cannot replay a press. (A, B)
 - #162: Edit and Write results carry `structuredPatch`; shell rows carry hunks only when the host sends `bashEditDiff` (`types/claude-code-tools.d.ts:4441,4548,5450`). `git diff` and file reads answer a different question and conflict with `docs/security.md:57-58`. (A, B)
@@ -49,12 +49,12 @@ Three open design decisions for Rabe 0.10.0, under the repo rules (no new depend
 | #162 | read files | S | wrong content | No |
 
 ## Recommendation
-1. **#199: (c), built on A's data source.** Ship the agent/model/harness grouping now, with main steps recorded per model from `turn.step` in a new declared `$.state` key and main tokens priced at the 1-hour write rate. Show a main USD figure only as "n/a" until the ledger scope is verified; change the acceptance line to "Claude rows equal the band; Codex is shown on top". Hotkeys `i` agent, `o` model, `h` harness. Main risk: steps before load or resume are missing, so label the row as partial.
+1. **#199: (c), built on A's data source.** Ship the agent/model/harness grouping now, with main steps recorded per model from `turn.step` in a new declared `$.state` key and main tokens priced at the 1-hour write rate. The band stays the ledger figure; grouped rows are a recorded-since-load estimate. Reconciling rows with the band is deferred until coverage (main USD n/a, historical steps missing) and ledger scope (a resumed session's band includes spend absent from every row) are verified, so the acceptance line "totals equal band" is not promised; Codex is shown on top. The owner chose to show the main-session dollar estimate flagged partial (PR #240) instead of n/a. Hotkeys `i` agent, `o` model, `h` harness. Main risk: steps before load or resume are missing, so label the row as partial.
 2. **#218: apply the message submit from the event**, as search does, with an event-local slot and a guard so a submit whose closure ran is never sent twice. Add a fixed "Message not sent" toast on refusal and "Delivery unknown" on an exception after send; never resend automatically. Presses stay dropped. Main risk: the 2-in-6 drop rate comes from #213's search trace, not a measured message failure; run the counted live check.
 3. **#162: keep bounded `structuredPatch`, `bashEditDiff` hunks and Codex `unified_diff`/`content` per operation in a separate state key**, not in `RabeEdit`. Caps: 200 lines and 8 KB per diff, 256 K units across diffs, oldest evicted first, truncation marked. Show the latest recorded operation with writer and time. Rows without content say "diff n/a: content not recorded". Layout: list beside the diff at 90 columns or more, otherwise one summary line and Enter as today. Add a README Privacy line and get the security review. Main risk: file content held in session state readable by other plugins.
 
 ## Open questions
-- Does `$.session.usage().cost.usd` count subagent requests? (`docs/feasibility/files.md:44`.) A live figure against the `cost-state` of the same session would settle it.
+- Does `$.session.usage().cost.usd` count subagent requests? (`docs/feasibility/files.md:44`.) Verify with one controlled subagent request and watch the ledger change, with the main session and other requests isolated; comparing with the same session's `cost-state` would not settle it, since both could exclude subagents.
 - Does the `{ agentId: /^/ }` matcher fire when the field is absent? A test-kit test settles it; else match on `model`.
 - Does the engine clear an Input's draft on a rejected submit?
 - Does the 20,000-node bound (`types/claude-code.d.ts:1413`) apply to `ui.render` trees?
