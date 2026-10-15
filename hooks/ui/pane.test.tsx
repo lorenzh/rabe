@@ -108,7 +108,13 @@ async function arm(
   })
 }
 
-function opening(on: On, isOpen: boolean, surfaces: string[] = ['terminal'], isPlaced = true) {
+function opening(
+  on: On,
+  isOpen: boolean,
+  surfaces: string[] = ['terminal'],
+  isPlaced = true,
+  closeFails = false,
+) {
   on('state.get', async () => ({ value: { value: undefined, version: 0 } }))
   on('session.surfaces', async () => ({ value: surfaces }) as never)
   const opens: unknown[] = []
@@ -125,13 +131,14 @@ function opening(on: On, isOpen: boolean, surfaces: string[] = ['terminal'], isP
   const closes: unknown[] = []
   on('ui.close', async (_$, e) => {
     closes.push(e)
+    if (closeFails) throw new Error('refused')
     return { value: undefined } as never
   })
 
   return Object.assign(opens, { closes })
 }
 
-for (const surface of ['vscode', 'terminal', 'desktop']) {
+for (const surface of ['vscode', 'mobile', 'terminal', 'desktop']) {
   test(`/rabe opens the pane on the ${surface} surface`, async ($, on) => {
     mock.clock(on, { now: NOW })
     const opens = opening(on, true, [surface])
@@ -154,6 +161,16 @@ test('/rabe answers in text where the host cannot place the pane', async ($, on)
   expect(opens.closes).toHaveLength(1)
   await clock.advance(1000)
   expect(opens).toHaveLength(1)
+})
+
+test('/rabe gives no text when the close of the unplaced pane fails', async ($, on) => {
+  on('state.get', { plugin: 'rabe', key: 'items' }, async () => ({
+    value: { value: [explore], version: 1 },
+  }))
+  mock.clock(on, { now: NOW })
+  opening(on, true, ['vscode'], false, true)
+  const answer = await $.command.run({ command: 'rabe', args: '' } as never)
+  expect(answer.text).toBeUndefined()
 })
 
 test('/rabe answers in text when no surface draws, without a title', async ($, on) => {
