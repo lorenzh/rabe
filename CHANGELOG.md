@@ -6,7 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
-- Enter in an agent's message field sends the message once, or shows `Message not sent` or `Delivery unknown`, also when a redraw released the field's handler first ([#NN](https://github.com/lorenzh/rabe/pull/NN), fixes [#218](https://github.com/lorenzh/rabe/issues/218))
+- Enter in an agent's message field sends the message once, or shows `Message not sent` or `Delivery unknown`, also when a redraw released the field's handler first ([#242](https://github.com/lorenzh/rabe/pull/242), fixes [#218](https://github.com/lorenzh/rabe/issues/218))
 
 ## [0.9.1] - 2026-10-14
 
