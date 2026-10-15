@@ -7,8 +7,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 ### Added
 
 - A direct `codex exec` in a Bash call (foreground or background) shows with the Agents as `codex`, with the model, effort and sandbox named by its flags; tokens and cost stay `n/a` ([#237](https://github.com/lorenzh/rabe/pull/237), refs [#179](https://github.com/lorenzh/rabe/issues/179))
-- A direct `codex exec` row gets tokens, cost, model and thread from its Codex session file: found by the `session id:` a foreground run prints on stderr, else by its start time (and `-C` directory); an ambiguous match, another model than `-m`, or an inline `CODEX_HOME` shows `n/a`. A detached run without `-o` stays running until its session file records the end ([#PRNUM](https://github.com/lorenzh/rabe/pull/PRNUM), refs [#179](https://github.com/lorenzh/rabe/issues/179))
-- A `-o` path that uses `$S` from a leading `S=/abs/path;` on the same line is resolved ([#PRNUM](https://github.com/lorenzh/rabe/pull/PRNUM))
+- A direct `codex exec` row gets tokens, cost, model and thread from its Codex session file: found by the `session id:` a foreground run prints on stderr, else by its start time (and `-C` directory); an ambiguous match, another model than `-m`, or an inline `CODEX_HOME` shows `n/a`. A detached run without `-o` stays running until its session file records the end ([#247](https://github.com/lorenzh/rabe/pull/247), refs [#179](https://github.com/lorenzh/rabe/issues/179))
+- A `-o` path that uses `$S` from a leading `S=/abs/path;` on the same line is resolved ([#247](https://github.com/lorenzh/rabe/pull/247))
 
 ## [0.9.1] - 2026-10-14
 
