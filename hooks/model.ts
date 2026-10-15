@@ -19,7 +19,7 @@ export type ItemPatch = Partial<
 
 export type EndStatus = Exclude<RabeItemStatus, 'running' | 'idle'>
 
-// Every kind, in the order the band and the diagnostics list them.
+// Every kind, in the band order; diagnostics use it to check membership only.
 export const KINDS = ['agent', 'codex', 'workflow', 'shell', 'monitor', 'cron'] as const
 
 // The item that started `item`, if it is in the list.

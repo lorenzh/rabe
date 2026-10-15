@@ -69,7 +69,7 @@ An optional field that is absent means the data is not known. Views show it as `
 - `isEnded(item)`: false for running or idle. Counts, the cap and removal use it so idle agents remain alive.
 - `itemId(kind, nativeId)` and `mergeItem(item, patch)`. `mergeItem` always keeps the item's own `seenAt`, also when a full `RabeItem` is passed as the patch.
 - `parentOf(item, items)` and `runOf(item, items)`: the item a `parentId` names, and that item only when it is a workflow run. Sources and views use them instead of their own `find` on `parentId`.
-- `KINDS`: every item kind in the order the band and `/rabe-diag` list them.
+- `KINDS`: every item kind, in the order the band lists them; `/rabe-diag` uses it to check that a kind is known and prints counts in item order.
 
 
 ## The registry
