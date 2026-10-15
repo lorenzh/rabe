@@ -6,7 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Changed
 
-- The README, guide and `docs/feasibility/ui.md` state where Rabe loads and draws: terminal, desktop app, VS Code, `claude -p` and the Agent SDK ([#241](https://github.com/lorenzh/rabe/pull/241), refs [#177](https://github.com/lorenzh/rabe/issues/177))
+- The README, guide and `docs/feasibility/ui.md` state where Rabe loads and draws: measured in `claude -p` and the Agent SDK, unverified in the VS Code extension and the desktop app, and how `/rabe` answers with or without a surface ([#241](https://github.com/lorenzh/rabe/pull/241), refs [#177](https://github.com/lorenzh/rabe/issues/177))
 - The README demo GIF shows the 0.9.0 pane: search field, per-tab selection and the current Items, Cost and Timeline content ([#225](https://github.com/lorenzh/rabe/pull/225), fixes [#224](https://github.com/lorenzh/rabe/issues/224))
 
 ### Fixed

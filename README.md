@@ -155,7 +155,7 @@ Ended items keep their stop buttons in place. These buttons stay dim. Pressing t
 
 Commands:
 
-- `/rabe`: open the pane. On any attached surface (terminal, desktop app, VS Code panel, mobile) it opens the pane and adds no text. Where nothing can draw it (a plain `claude -p` run or an SDK session, or a host that cannot place the pane), it answers with text instead: the running, idle and ended counts and one count per kind, never a title or prompt.
+- `/rabe`: open the pane. On any attached surface (terminal, desktop app, VS Code panel, mobile; the last two are [not measured]) it opens the pane and adds no text. Where nothing can draw it (a plain `claude -p` run or an SDK session, or a host that cannot place the pane), it answers with text instead: the running, idle and ended counts and one count per kind, never a title or prompt.
 - `/rabe-stop codex:<job id>`: cancel a running Codex job. Use the job id shown in Rabe, not the thread id. Empty arguments or arguments without `codex:` show usage. To stop other items, use `x` in the pane.
 - `/rabe-diag`: (also in non-interactive sessions) show what each source read in its last poll, with versions and options, and no prompts, titles or full paths. Run it when something shows `n/a` or is missing.
 - `/rabe:report-bug`: write a bug report for this repository.
@@ -219,7 +219,7 @@ Rabe keeps file cursors and parser summaries in session state. It skips files wh
 
 ## Requirements
 
-- Rabe needs Claude Code 2.1.296. Its band and pane draw in a terminal session. In the Claude desktop app (Code tab, local session, not WSL), Claude Code draws mods from 2.1.286, but Rabe has not been checked there since 0.1.0 ([#126](https://github.com/lorenzh/rabe/issues/126)). In the VS Code extension, `claude -p` and the Agent SDK, Rabe loads and tracks background work but nothing draws: `/rabe` answers with a short text summary, and `/rabe-diag` and `/rabe-stop` work as text commands. The git worktrees source runs only in interactive sessions. Other Claude Code versions can show `n/a` where a file changed.
+- Rabe needs Claude Code 2.1.296. Its band and pane draw in a terminal session. In the Claude desktop app (Code tab, local session, not WSL), Claude Code draws mods from 2.1.286, but Rabe has not been checked there since 0.1.0 ([#126](https://github.com/lorenzh/rabe/issues/126)). Measured with `claude -p` and an SDK-mode stream-json probe (2.1.296): Rabe loads and tracks background work, nothing draws, and `/rabe`, `/rabe-diag` and `/rabe-stop` answer as text. In the VS Code extension this is unverified: Rabe was not run there (not measured), the extension is documented to run hooks but not draw mods, it contains a `vscode` drawing client that was not tested, and the commands may be missing from the slash menu ([#177](https://github.com/lorenzh/rabe/issues/177)). With a `vscode` surface attached, `/rabe` opens the pane and returns no text; it answers with text only when no surface is attached or the pane is not placed. The git worktrees source runs only in interactive sessions. Other Claude Code versions can show `n/a` where a file changed.
 - Optional: the Codex plugin (`codex@openai-codex`) for Codex jobs, and the `gh` CLI for the report commands.
 
 ## Development
