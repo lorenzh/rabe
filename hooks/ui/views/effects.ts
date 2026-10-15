@@ -290,13 +290,22 @@ export const effectsView: View = (model, size, sel): Drawn => {
   if (isSplit) return { nodes: split(lines, file, model, size, listWidth), buttons: [] }
   const nodes = lines.map(line => fitLine(line, size.columns))
   if (file) {
-    const pad = Math.max(0, size.rows - 1 - nodes.length)
-    nodes.push(...Array.from({ length: pad }, () => ({ spans: [] })))
-    nodes.push(fitLine({ spans: [[` ${summaryOf(file, model.diffs)}`, dim]] }, size.columns))
+    // The last row the pane shows once it follows the focus, so the summary
+    // never lands below the window; blank rows fill a short list.
+    const row = shownFrom(size, focusRow(lines)) + (size.window?.rows ?? size.rows) - 1
+    while (nodes.length < row) nodes.push({ spans: [] })
+    nodes.splice(
+      row,
+      0,
+      fitLine({ spans: [[` ${summaryOf(file, model.diffs)}`, dim]] }, size.columns),
+    )
   }
 
   return { nodes, buttons: [] }
 }
+
+const focusRow = (lines: Line[]) =>
+  lines.findIndex(line => line.spans.some(part => isPress(part) && part.autoFocus))
 
 // The list beside the selected file's diff, drawn from the first row the pane
 // shows so the diff stays in view while the focus walks a long list. The diff
@@ -309,7 +318,7 @@ function split(
   listWidth: number,
 ): Line[] {
   const right = size.columns - listWidth - 2
-  const at = lines.findIndex(line => line.spans.some(part => isPress(part) && part.autoFocus))
+  const at = focusRow(lines)
   const detail = file
     ? [
         ...Array.from({ length: shownFrom(size, at) }, () => ({ spans: [] })),

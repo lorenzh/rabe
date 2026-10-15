@@ -3,7 +3,7 @@ import { type Engine, expect, type MockClock, mock, test } from 'claude-code/tes
 
 import type { RabeItem, RabeItemOf } from '../model'
 import { MAX_ENDED } from '../registry'
-import { memoryState } from '../testing'
+import { memoryState, overCap } from '../testing'
 import { advanceRollout, codexItem, jobEnd, parseRollout, STOP_USAGE } from './codex'
 
 const line = (type: string, payload: object) => JSON.stringify({ type, payload })
@@ -874,6 +874,11 @@ function endedShells(at: number): RabeItem[] {
 async function pollEnded($: Engine, on: On, heldAt: number) {
   const state = memoryState(on)
   state['rabe.items'] = { value: endedShells(heldAt), version: 1 }
+  const { diffs } = overCap(0)
+  state['rabe.diffs'] = {
+    value: { 'shell:s0': diffs['shell:old0'], 'shell:s1': diffs['shell:old1'] },
+    version: 1,
+  }
   const looked: string[] = []
   on('fs.list', { path: /\/sessions\// }, async (_$, e, next) => {
     looked.push(e.path)
@@ -905,6 +910,7 @@ test('a finished job newer than the oldest history held is added and pushes it o
   expect(items).toHaveLength(MAX_ENDED)
   expect(items.at(-1)).toMatchObject({ id: 'codex:task-1', status: 'done', endedAt: 9000 })
   expect(items.some(item => item.id === 'shell:s0')).toBe(false)
+  expect(Object.keys(state['rabe.diffs']?.value as object)).toEqual(['shell:s1'])
 })
 
 test('a job is linked to the agent whose companion call started it', async ($, on) => {
