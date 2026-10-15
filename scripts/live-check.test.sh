@@ -196,7 +196,8 @@ case $cmd in
         [ "${FAKE_BACK:-}" = items ] && echo 1 >"$FAKE/tab"
         # FAKE_BACK=other returns to the next row: a wrong return selection.
         if [ "${FAKE_BACK:-}" = other ]; then
-          read -r ring sel <"$FAKE/ring" && echo "$ring $(((sel + 1) % 4))" >"$FAKE/ring"
+          read -r ring sel 2>/dev/null <"$FAKE/ring" || { ring=$FAKE_RING; sel=$FAKE_RING; }
+          echo "$ring $(((sel + 1) % 4))" >"$FAKE/ring"
         fi
       elif [ -n "${FAKE_LIST:-}" ]; then
         visible
@@ -295,7 +296,7 @@ case $cmd in
             *) [ "$n" = "$sel" ] && m=▌ || m=' '
                title="row $n"
                # FAKE_TG=1: a glyph inside the title, differing after it.
-               [ -n "${FAKE_TG:-}" ] && title="worker █ ${letters[n]:-z}"
+               [ -n "${FAKE_TG:-}" ] && { local_l=(alpha beta gamma delta); title="worker █ ${local_l[n]:-z}"; }
                [ -n "${FAKE_SLEEP:-}" ] && title="sleep ${durs[id]:-}"
                # FAKE_ZTITLE=desc: Claude shows the description, not the comment.
                [ "$id" = 0 ] && [ -e "$FAKE/zebra" ] && [ "${FAKE_ZTITLE:-}" != desc ] && title+=" # zebra nap"
@@ -359,7 +360,6 @@ dead() { local i; for i in 1 2 3 4 5 6 7 8 9 10; do alive "$1" || return 0; "$re
 
 # Runs `check` against the fake tmux. Leading NAME=VALUE words set the fake's
 # environment; FAKE names its folder, which then holds pane, foreign and keys.
-letters=(alpha beta gamma delta)
 faked() {
   local vars=()
   while [[ $1 == *=* ]]; do vars+=("$1"); shift; done
