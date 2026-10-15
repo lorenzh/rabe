@@ -102,7 +102,12 @@ function flagsOf(args: Tok[]): Flags {
     if (!tok || !isWord(tok)) continue
     // A word with expansion still names its flag by its raw spelling, quotes removed;
     // its value is unknown, so it voids an earlier one.
-    const text = tok.known ? tok.text : tok.raw.replace(/\\(.)/g, '$1').replace(/["']/g, '')
+    const text = tok.known
+      ? tok.text
+      : tok.raw
+          .replace(/\\\n/g, '')
+          .replace(/\\([\s\S])/g, '$1')
+          .replace(/["']/g, '')
     if (!text.startsWith('-')) continue
     const next = args[i + 1]
     const word = isWord(next) && next.known ? next.text : undefined

@@ -297,3 +297,8 @@ test('the bypass flag is reported as the sandbox', () => {
   expect(exec?.sandbox).toBe('danger-full-access')
   expect(codexExec('codex exec --yolo x')?.sandbox).toBe('danger-full-access')
 })
+
+test('a backslash-newline continuation inside a flag voids the earlier model', () => {
+  const exec = codexExec('codex exec -m gpt-6-sol --mo\\\ndel="$M" x')
+  expect(exec).not.toHaveProperty('model')
+})
