@@ -149,20 +149,23 @@ function shownDiff(file: Touched, diffs: Model['diffs']): { diff?: RabeDiff; not
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
 // `+12 -3 · 2 hunks · edit by <title>`, or the reason there is no diff.
-function summaryOf(file: Touched, diffs: Model['diffs']): string {
+// The detail prints the reason in its body, so it asks for `isNoteKept` false.
+function summaryOf(file: Touched, diffs: Model['diffs'], isNoteKept = true): string {
   const { diff, note } = shownDiff(file, diffs)
   const head = diff
     ? `+${diff.added} -${diff.removed} · ${plural(diff.hunks, 'hunk')}`
-    : (note ?? '')
+    : isNoteKept
+      ? (note ?? '')
+      : ''
 
-  return `${head} · edit by ${file.last.title}`
+  return `${head ? `${head} · ` : ''}edit by ${file.last.title}`
 }
 
 function diffLines(file: Touched, diffs: Model['diffs'], now: number): Line[] {
   const { diff, note } = shownDiff(file, diffs)
   const head: Line[] = [
     { spans: [[file.rel, { fg: C.bright }]] },
-    { spans: [[`${summaryOf(file, diffs)} · ${ago(now - file.at)}`, dim]] },
+    { spans: [[`${summaryOf(file, diffs, false)} · ${ago(now - file.at)}`, dim]] },
     { spans: [] },
   ]
   if (!diff) return [...head, { spans: [[note ?? '', dim]] }]

@@ -567,3 +567,9 @@ test('the summary stays in the rows the whole pane shows, with the tab row above
     expect(row).toBeLessThan(from + 10)
   }
 })
+
+test('a file without recorded content shows the sentence once', () => {
+  const shown = lines(gridOf(effectsView({ ...MODEL, diffs: {} }, WIDE, NO_SELECTION)).grid)
+  const count = shown.filter(line => line.includes('diff n/a: content not recorded')).length
+  expect(count).toBe(1)
+})
