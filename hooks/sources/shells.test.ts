@@ -1223,17 +1223,31 @@ test('the codex facet of a background call and of a Stop task reads no environme
   memoryState(on)
   bash(on)
   core(on)
-  // Other sources may read HOME at a Stop; a plain command is the baseline.
-  const run = async (command: string, id: string) => {
+  const count = async (run: () => Promise<unknown>) => {
     const before = reads
-    await $.tool.call({ tool: 'Bash', command, description: id, run_in_background: true })
-    await $.classic.Stop({
-      stop_hook_active: false,
-      background_tasks: [{ id, type: 'shell', status: 'running', description: id, command }],
-    })
+    await run()
 
     return reads - before
   }
-  const plain = await run('ls', 'p1')
-  expect(await run(CODEX, 'c1')).toBe(plain)
+  const stop = (tasks: { id: string; command: string }[]) => () =>
+    $.classic.Stop({
+      stop_hook_active: false,
+      background_tasks: tasks.map(task => ({
+        ...task,
+        type: 'shell',
+        status: 'running',
+        description: task.id,
+      })),
+    })
+  const bg = await count(() =>
+    $.tool.call({ tool: 'Bash', command: CODEX, description: 'c1', run_in_background: true }),
+  )
+  const fg = await count(() => $.tool.call({ tool: 'Bash', command: CODEX }))
+  const unseen = await count(stop([{ id: 'c2', command: CODEX }]))
+  const none = await count(stop([]))
+  // Other sources read HOME for a Bash call; only a foreground call adds the shells read.
+  expect(bg).toBeLessThan(fg)
+  // An unseen Stop task, with no preceding Bash call, reads none.
+  expect(unseen).toBe(0)
+  expect(none).toBe(0)
 })

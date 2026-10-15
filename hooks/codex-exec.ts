@@ -68,7 +68,7 @@ const SANDBOX = /^[a-z][a-z-]*$/
 const allowed = (value: string | undefined, rule: RegExp) =>
   value !== undefined && rule.test(value) ? value : undefined
 
-const REDIRECTS = new Set(['<', '>', '>>', '>|', '>&', '<&', '<>', '&>'])
+const REDIRECTS = new Set(['<', '>', '>>', '>|', '>&', '<&', '<>', '&>', '<<<', '&>>'])
 
 // The words of a call that may be flags: redirects with their operand and
 // everything from `--` on (the prompt) go.
@@ -100,9 +100,9 @@ function flagsOf(args: Tok[]): Flags {
   for (let i = 0; i < args.length; i++) {
     const tok = args[i]
     if (!tok || !isWord(tok)) continue
-    // A word with expansion still names its flag by its raw start; its value is unknown,
-    // so it voids an earlier one.
-    const text = tok.known ? tok.text : tok.raw
+    // A word with expansion still names its flag by its raw spelling, quotes removed;
+    // its value is unknown, so it voids an earlier one.
+    const text = tok.known ? tok.text : tok.raw.replace(/["']/g, '')
     if (!text.startsWith('-')) continue
     const next = args[i + 1]
     const word = isWord(next) && next.known ? next.text : undefined

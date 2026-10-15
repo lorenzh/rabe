@@ -270,3 +270,19 @@ test('a later value with expansion makes the earlier one unknown', () => {
   expect(exec).not.toHaveProperty('sandbox')
   expect(exec).not.toHaveProperty('effort')
 })
+
+test('every redirect operator takes its operand', () => {
+  for (const op of ['<<<', '&>>', '&>', '>>', '>|', '<>', '>&', '<&']) {
+    expect(codexExec(`codex exec -m gpt-6-sol x ${op} --model=spoof`)).toMatchObject({
+      model: 'gpt-6-sol',
+    })
+  }
+})
+
+test('a quoted flag with inline expansion voids the earlier value', () => {
+  const exec = codexExec(
+    'codex exec -m gpt-6-sol --model "--model=$M" -s read-only "--sandbox=$S" x',
+  )
+  expect(exec).not.toHaveProperty('model')
+  expect(exec).not.toHaveProperty('sandbox')
+})
