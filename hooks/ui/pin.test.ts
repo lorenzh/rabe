@@ -4,8 +4,8 @@ import type { RabeItem } from '../model'
 import { dev, explore, NOW } from './fixtures'
 import { follow, type Geometry, geometry, measure, NO_PIN } from './pin'
 import { hold } from './render'
-import { layout, type Selection } from './view'
-import { paneView } from './views/pane'
+import { isPress, layout, type Selection } from './view'
+import { paneView, seatsRows } from './views/pane'
 
 const geo: Geometry = {
   above: 4,
@@ -136,4 +136,53 @@ test('a stacked cost group row scrolls into view with its numbers line', () => {
     const top = follow(NO_PIN, found, 'cost', found.key).top
     expect(row + rows, `${at}`).toBeLessThanOrEqual(top + found.rows)
   }
+})
+
+test('a held stacked cost group row keeps its numbers line when the group below it is gone', () => {
+  // Groups A and B stack in a 40x15 Cost pane; B's last worker is pruned
+  // while the pane holds its keys, so B draws as a gone slot.
+  const worker = (at: number, model: string): RabeItem =>
+    ({
+      ...explore,
+      id: `agent:w${at}`,
+      tokens: { input: 1000 * (9 - at), output: 0 },
+      detail: { ...explore.detail, agentId: `w${at}`, model },
+    }) as RabeItem
+  const a = 'claude-model-a-long-name'
+  const b = 'claude-model-b-long-name'
+  const items = [
+    worker(0, a),
+    worker(1, b),
+    ...Array.from({ length: 6 }, (_, at) => worker(at + 2, `claude-model-${at}-long-name`)),
+  ]
+  const size = { columns: 40, rows: 15, surface: 'terminal', hasInput: true } as const
+  const picked: Selection = { ...sel, tab: 'cost', grouping: 'model', selected: `by:model:${a}` }
+  const first = hold(
+    layout(paneView({ items, turns: {}, lines: {}, now: NOW }, size, picked)),
+    undefined,
+    seatsRows(picked),
+  )
+  const pruned = {
+    items: items.filter(one => one.id !== 'agent:w1'),
+    turns: {},
+    lines: {},
+    now: NOW,
+  }
+  const later = hold(layout(paneView(pruned, size, picked)), first.held, seatsRows(picked))
+  const at = later.list.findIndex(
+    piece =>
+      'spans' in piece && piece.spans.some(one => isPress(one) && one.key === `row:by:model:${a}`),
+  )
+  const next = later.list[at + 1]
+  expect(next && 'spans' in next && next.joins).toBe(true)
+  const fresh = geometry(pruned, size, picked)
+  const found = measure(
+    later.list,
+    fresh?.head ?? 0,
+    size,
+    picked.selected,
+    undefined,
+    fresh?.isTight,
+  )
+  expect(found.focus?.[1]).toBe(2)
 })
