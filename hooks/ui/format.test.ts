@@ -1,6 +1,18 @@
 import { expect, test } from 'claude-code/testing'
 
-import { ago, clockTime, day, duration, middleEllipsis, short, tokens, usd } from './format'
+import {
+  ago,
+  clockTime,
+  cut,
+  day,
+  duration,
+  idOrNa,
+  middleEllipsis,
+  na,
+  short,
+  tokens,
+  usd,
+} from './format'
 
 test('middle ellipsis keeps both ends of a long string', () => {
   expect(middleEllipsis('abcdefghij', 6)).toBe('abc…ij')
@@ -45,4 +57,18 @@ test('day names today, yesterday or the date, with the time', () => {
   expect(day(new Date(2026, 9, 8, 9, 5).getTime(), now)).toBe('today 09:05')
   expect(day(new Date(2026, 9, 7, 17, 40).getTime(), now)).toBe('yesterday 17:40')
   expect(day(new Date(2026, 9, 1, 8, 0).getTime(), now)).toBe('2026-10-01 08:00')
+})
+
+test('cut keeps short text and ends a long one with an ellipsis', () => {
+  expect(cut('abc', 3)).toBe('abc')
+  expect(cut('abcd', 3)).toBe('ab…')
+})
+
+test('na names a missing or empty value', () => {
+  expect(na(undefined)).toBe('n/a')
+  expect(na('')).toBe('n/a')
+  expect(na(0)).toBe('0')
+  expect(idOrNa('abc_1')).toBe('abc_1')
+  expect(idOrNa('../x')).toBe('n/a')
+  expect(idOrNa(undefined)).toBe('n/a')
 })

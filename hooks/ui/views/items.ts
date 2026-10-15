@@ -1,8 +1,8 @@
 import { isEnded, type RabeItem } from '../../model'
-import type { Span } from '../cells/grid'
+import { type Span, safe } from '../cells/grid'
 import { C, type Style, tone } from '../cells/palette'
 import { facts } from '../facts'
-import { tokens, usd } from '../format'
+import { cut, tokens, usd } from '../format'
 import {
   byParent,
   FAMILIES,
@@ -32,7 +32,7 @@ import {
   type ViewInput,
 } from '../view'
 import { detailButtons, detailLines, messageInput } from './detail'
-import { beside, cut, fitLine, focusOn, itemLine, plain } from './lines'
+import { beside, fitLine, focusOn, itemLine, plain } from './lines'
 
 const GROUP_COLOR: Record<Group, number> = {
   failed: C.red,
@@ -228,7 +228,7 @@ function listButtons(
         {
           key: 'find',
           label: query
-            ? `s: search "${cut(query, Math.min(16, Math.max(1, size.columns - 17)))}"`
+            ? `s: search "${cut(safe(query), Math.min(16, Math.max(1, size.columns - 17)))}"`
             : isSplit(size)
               ? 's: search'
               : 's',

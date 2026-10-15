@@ -3,7 +3,7 @@ import { isEnded, type RabeItem } from '../../model'
 import { nextRun } from '../../schedule'
 import { fit } from '../cells/grid'
 import { C, CHIP, type Style, tone } from '../cells/palette'
-import { clockTime, day, duration, tokens, usd, validId } from '../format'
+import { clockTime, day, duration, idOrNa, tokens, usd, validId } from '../format'
 import {
   bar,
   byStart,
@@ -141,7 +141,7 @@ function previousLines(model: Model, width: number): Line[] {
           } as Line,
         ]
       : []),
-    { spans: [[` id ${validId(prev.sessionId) ? prev.sessionId : 'n/a'}`, dim]] },
+    { spans: [[` id ${idOrNa(prev.sessionId)}`, dim]] },
   ]
 
   return out.map(line => ({ ...line, bg: C.raised }))

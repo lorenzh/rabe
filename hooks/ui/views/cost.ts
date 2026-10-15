@@ -1,7 +1,7 @@
 import type { RabeItem } from '../../model'
 import { bar, fit } from '../cells/grid'
 import { C, CHIP, type Style, tone } from '../cells/palette'
-import { duration, short, tokens, usd, validId } from '../format'
+import { duration, idOrNa, short, tokens, usd, validId } from '../format'
 import { byTokens, cost, glyph, shown, stable, tokenSum, totals, withForwarder } from '../lists'
 import type { Drawn, Line, Model, View } from '../view'
 import { resumeButton } from './detail'
@@ -119,7 +119,7 @@ export const costView: View = (model, size, sel): Drawn => {
         [sum.unknown ? `  ${sum.unknown} n/a` : '', dim],
       ],
     },
-    { spans: [[` session ${validId(model.sessionId) ? model.sessionId : 'n/a'}`, dim]] },
+    { spans: [[` session ${idOrNa(model.sessionId)}`, dim]] },
     { spans: [[`by worker · sorted by ${sortLabel}`, dim]] },
     {
       spans: [
