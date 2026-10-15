@@ -717,9 +717,10 @@ export function pane(on: On, hours = baseHours): void {
     // Unplaced: the host cannot draw the pane (it waits undrawn). Close it, and
     // never feed `opened` (that schedules the refocus), so the text is the answer.
     if (!opened.isPlaced) {
-      // A refused close leaves the pane pending: it stays the only answer.
+      // A refused or intercepted close leaves the pane pending: it stays the
+      // only answer. A resolved close counts only when the pane is gone.
       const closed = await $.ui.close({ id: PANE }).then(
-        () => true,
+        async () => !(await $.ui.panes()).some(one => one.id === PANE),
         () => false,
       )
       return closed ? { text: itemsText(items) } : {}

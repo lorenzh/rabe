@@ -114,6 +114,7 @@ function opening(
   surfaces: string[] = ['terminal'],
   isPlaced = true,
   closeFails = false,
+  closeIntercepted = false,
 ) {
   on('state.get', async () => ({ value: { value: undefined, version: 0 } }))
   on('session.surfaces', async () => ({ value: surfaces }) as never)
@@ -127,11 +128,14 @@ function opening(
     } as never
   })
   const pane = { id: 'rabe', title: 'Rabe', isShown: true, isFocused: false, isPlaced }
-  on('ui.panes', async () => ({ value: isOpen ? [pane] : [] }))
+  let isClosed = false
+  on('ui.panes', async () => ({ value: isOpen && !isClosed ? [pane] : [] }))
   const closes: unknown[] = []
   on('ui.close', async (_$, e) => {
     closes.push(e)
     if (closeFails) throw new Error('refused')
+    // A lower hook answered the close without next: it resolves, the pane stays.
+    if (!closeIntercepted) isClosed = true
     return { value: undefined } as never
   })
 
@@ -169,6 +173,16 @@ test('/rabe gives no text when the close of the unplaced pane fails', async ($, 
   }))
   mock.clock(on, { now: NOW })
   opening(on, true, ['vscode'], false, true)
+  const answer = await $.command.run({ command: 'rabe', args: '' } as never)
+  expect(answer.text).toBeUndefined()
+})
+
+test('/rabe gives no text when the close of the unplaced pane is intercepted', async ($, on) => {
+  on('state.get', { plugin: 'rabe', key: 'items' }, async () => ({
+    value: { value: [explore], version: 1 },
+  }))
+  mock.clock(on, { now: NOW })
+  opening(on, true, ['vscode'], false, false, true)
   const answer = await $.command.run({ command: 'rabe', args: '' } as never)
   expect(answer.text).toBeUndefined()
 })
