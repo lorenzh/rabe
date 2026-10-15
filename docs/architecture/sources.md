@@ -26,7 +26,7 @@ A source owns the items of its kind. It uses `itemId(kind, nativeId)` for ids, s
 
 ### Starting work: `session.start` with a matcher
 
-`pane.tsx` owns the plain `session.start` hook. Each source gives its own start hook a matcher (see [the engine's rule for `$`](state.md#the-engines-rule-for-)): the agents source uses `{ cwd: /^/ }`, the worktrees source uses `{ isInteractive: true }`, since only a person at the prompt sees the band and the pane, and the Codex source and `/rabe-diag` use `{ isInteractive: [true, false] }`, so the commands `/rabe-stop` and `/rabe-diag` also exist in an SDK session (the VS Code extension). When `$.session.surfaces()` lists surfaces and none is `terminal` or `desktop`, `/rabe` does not open the pane and answers with a plain-text summary: counts of running and ended items, then one line per item with kind, status and title.
+`pane.tsx` owns the plain `session.start` hook. Each source gives its own start hook a matcher (see [the engine's rule for `$`](state.md#the-engines-rule-for-)): the agents source uses `{ cwd: /^/ }`, the worktrees source uses `{ isInteractive: true }`, since only a person at the prompt sees the band and the pane, and the Codex source and `/rabe-diag` use `{ isInteractive: [true, false] }`, so the commands `/rabe-stop` and `/rabe-diag` also exist in an SDK session (the VS Code extension). When `$.session.surfaces()` lists surfaces and none is `terminal` or `desktop`, `/rabe` does not open the pane and answers with a plain-text summary: counts of running, idle and ended items and one count per kind, never a title; with no items it says there is no background work.
 
 ### Stopping an item
 

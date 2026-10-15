@@ -129,7 +129,7 @@ test('/rabe answers in plain text where the pane cannot draw', async ($, on) => 
   const opens = opening(on, true, ['vscode'])
   const answer = await $.command.run({ command: 'rabe', args: '' } as never)
   expect(opens).toHaveLength(0)
-  expect(answer.text).toBe('Rabe: 1 running, 0 ended.\n- agent: 1')
+  expect(answer.text).toBe('Rabe: 1 running, 0 idle, 0 ended.\n- agent: 1')
 })
 
 test('/rabe answers in text when no surface draws, without a title', async ($, on) => {
@@ -140,8 +140,18 @@ test('/rabe answers in text when no surface draws, without a title', async ($, o
   const opens = opening(on, true, [])
   const answer = await $.command.run({ command: 'rabe', args: '' } as never)
   expect(opens).toHaveLength(0)
-  expect(answer.text).toBe('Rabe: 1 running, 0 ended.\n- agent: 1')
+  expect(answer.text).toBe('Rabe: 1 running, 0 idle, 0 ended.\n- agent: 1')
   expect(answer.text).not.toContain('Ignore')
+})
+
+test('/rabe text counts an idle item apart from running', async ($, on) => {
+  const idle = { ...explore, status: 'idle' } as RabeItem
+  on('state.get', { plugin: 'rabe', key: 'items' }, async () => ({
+    value: { value: [idle], version: 1 },
+  }))
+  opening(on, true, [])
+  const answer = await $.command.run({ command: 'rabe', args: '' } as never)
+  expect(answer.text).toBe('Rabe: 0 running, 1 idle, 0 ended.\n- agent: 1')
 })
 
 test('/rabe opens the pane so that Esc closes it', async ($, on) => {

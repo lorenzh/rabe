@@ -43,10 +43,14 @@ export function asPrevious(value: unknown): RabePrevious | undefined {
 // file text (docs/security.md).
 export function itemsText(items: RabeItem[]): string {
   if (items.length === 0) return 'Rabe: no background work.'
-  const live = items.filter(one => !isEnded(one)).length
+  const ended = items.filter(isEnded).length
+  const idle = items.filter(one => one.status === 'idle').length
   const kinds = new Map<string, number>()
   for (const one of items) kinds.set(one.kind, (kinds.get(one.kind) ?? 0) + 1)
   const rows = [...kinds].map(([kind, count]) => `- ${kind}: ${count}`)
 
-  return [`Rabe: ${live} running, ${items.length - live} ended.`, ...rows].join('\n')
+  return [
+    `Rabe: ${items.length - ended - idle} running, ${idle} idle, ${ended} ended.`,
+    ...rows,
+  ].join('\n')
 }
