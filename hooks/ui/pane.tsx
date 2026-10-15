@@ -719,10 +719,10 @@ export function pane(on: On, hours = baseHours): void {
     if (!opened.isPlaced) {
       // A refused or intercepted close leaves the pane pending: it stays the
       // only answer. A resolved close counts only when the pane is gone.
-      const closed = await $.ui.close({ id: PANE }).then(
-        async () => !(await $.ui.panes()).some(one => one.id === PANE),
-        () => false,
-      )
+      const closed = await $.ui
+        .close({ id: PANE })
+        .then(async () => !(await $.ui.panes()).some(one => one.id === PANE))
+        .catch(() => false)
       return closed ? { text: itemsText(items) } : {}
     }
     feed($, { type: 'opened' })
