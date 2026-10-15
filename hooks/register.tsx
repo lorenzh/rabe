@@ -116,7 +116,10 @@ async function write(
       version === snapshot.version
         ? commit(snapshot.before, () => snapshot.items)
         : commit(value, change)
-    if (next === undefined) return false
+    if (next === undefined) {
+      await dropOrphans($)
+      return false
+    }
     const { isSet } = await $.state.set({ plugin: 'rabe', key: 'items' }, next.items, {
       ifVersion: version,
     })
@@ -130,7 +133,7 @@ async function write(
 
 // An item staged and capped out inside one poll is in neither list, so no
 // `dropped` id names it: the poll's commit also drops the diffs whose editor
-// the final list lacks. `main` has no item.
+// the final list lacks, also when the replay changed nothing. `main` has no item.
 async function dropOrphans($: Pick<EngineInterface, 'state'>): Promise<void> {
   for (;;) {
     const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diffs' })

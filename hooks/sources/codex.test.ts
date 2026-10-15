@@ -838,6 +838,50 @@ test('/rabe-stop keeps the cost of an unchanged session file and drops it otherw
   expect(stopped?.costUsd).toBeUndefined()
 })
 
+test('jobs staged and capped out leave no diff when a concurrent event fills the cap first', async ($, on) => {
+  let state: Held = {}
+  let isFilled = false
+  on('state.get', { key: 'items' }, async (_$, e, next) => {
+    const diffs = Object.keys((state['rabe.diffs']?.value ?? {}) as object)
+    if (!isFilled && diffs.includes('codex:task-1') && diffs.includes('codex:task-2')) {
+      isFilled = true
+      const held = state['rabe.items']?.value as RabeItem[]
+      const shell: RabeItem = {
+        id: 'shell:late',
+        kind: 'shell',
+        title: 'late',
+        status: 'done',
+        seenAt: 10000,
+        endedAt: 10000,
+        detail: { command: 'late' },
+      }
+      state['rabe.items'] = { value: [...held, shell], version: 9 }
+    }
+    return next(e)
+  })
+  state = memoryState(on)
+  state['rabe.items'] = { value: endedShells(9500).slice(1), version: 1 }
+  const done = (id: string, sec: number) =>
+    job({ id, status: 'completed', completedAt: `1970-01-01T00:00:0${sec}.000Z` })
+  const w = world(on, {
+    [`${WS}/state.json`]: {
+      jobs: [
+        { id: 'task-1', status: 'completed' },
+        { id: 'task-2', status: 'completed' },
+      ],
+    },
+    [`${WS}/jobs/task-1.json`]: done('task-1', 8),
+    [`${WS}/jobs/task-2.json`]: done('task-2', 9),
+    [ROLLOUT_PATH]: change('completed', { '/work/a.ts': { type: 'add', content: 'x' } }, 3000),
+  })
+  await startAndTick($, w)
+  expect(isFilled).toBe(true)
+  const ids = ((state['rabe.items']?.value ?? []) as RabeItem[]).map(item => item.id)
+  expect(
+    Object.keys((state['rabe.diffs']?.value ?? {}) as object).filter(id => !ids.includes(id)),
+  ).toEqual([])
+})
+
 test('an unchanged session file keeps the model and effort it gave', () => {
   const item = codexItem({ ...job(), id: 'task-1' }, { path: ROLLOUT_PATH, updatedAt: 5000 })
   expect(item.detail).not.toHaveProperty('model')
@@ -1328,15 +1372,14 @@ for (const rotation of ['truncation', 'inode replacement']) {
 
 test('an eviction between the membership check and the diff write leaves no diff entry', async ($, on) => {
   let state: Held = {}
-  // the diffs are read right after the membership check; the eviction follows it
   let isEvicted = false
-  on('state.get', { key: 'diffs' }, async (_$, e, next) => {
-    const out = await next(e)
-    if (!isEvicted) {
+  // the eviction lands just before the write that adds the job's diff
+  on('state.set', { key: 'diffs' }, async (_$, e, next) => {
+    if (!isEvicted && 'codex:task-1' in (e.value as object)) {
       isEvicted = true
       state['rabe.items'] = { value: [], version: 9 }
     }
-    return out
+    return next(e)
   })
   state = memoryState(on)
   state['rabe.items'] = {
