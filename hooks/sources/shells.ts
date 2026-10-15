@@ -508,6 +508,7 @@ export function shells(on: On, pollers: Pollers): void {
     // The facet needs no home directory; only a foreground call reads HOME, for `~` in `-o`.
     if (e.run_in_background) {
       try {
+        startedAt = await $.clock.now()
         exec = codexExec(e.command)
       } catch {}
     } else {

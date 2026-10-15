@@ -95,9 +95,11 @@ export type RabeCodexRun = {
   // The thread id: from `session id:` on stderr, or from the matched session file.
   threadId?: string
   sessionPath?: string
+  // How the file was found: the stderr session id, or the start time (checked against `-m` on each read).
+  matchedBy?: 'id' | 'time'
   sessionUpdatedAt?: number
   isSessionPartial?: boolean
-  // When the session file's last task completed.
+  // When this run's own task completed in the session file.
   sessionEndedAt?: number
   // No unique session file (ambiguous, none, another model, an inline CODEX_HOME): n/a.
   isUnmatched?: boolean
@@ -236,7 +238,7 @@ export type RabeRollout = {
   steps: RabeCodexStep[]
   edits?: RabeEdit[]
   checks?: { path: string; from: number; to: number }[]
-  // When the last task completed (`task_complete`); a later `task_started` clears it.
+  // When the first task from the parse's start on completed (`task_complete`).
   endedAt?: number
 }
 

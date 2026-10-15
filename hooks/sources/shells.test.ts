@@ -1307,3 +1307,15 @@ test('a foreground row that ends keeps the session fields another source wrote',
     { status: 'done', detail: { codex: { model: 'gpt-6-sol', sessionPath: '/r' } } },
   ])
 })
+
+test('a background call starts when it was called, not when it returned', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const release = slowBash(on, { backgroundTaskId: 'b9' })
+  core(on)
+  const call = $.tool.call({ tool: 'Bash', command: 'codex exec - < b', run_in_background: true })
+  await clock.advance(3000)
+  release()
+  await call
+  expect(state['rabe.items']?.value).toMatchObject([{ id: 'shell:b9', startedAt: 1000 }])
+})

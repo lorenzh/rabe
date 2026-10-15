@@ -1335,6 +1335,8 @@ const execRollout = (id: string, at: string, cwd = '/w', end = '') =>
       : []),
   ].join('\n')
 const EXEC_PATH = `${SESSIONS}/rollout-1970-01-01T00-00-01-${EXEC_ID}.jsonl`
+const OTHER_ID = '01a14163-0000-71c3-825e-494f278f73c7'
+const OTHER_PATH = `${SESSIONS}/rollout-1970-01-01T00-00-01-${OTHER_ID}.jsonl`
 
 async function pollExec($: Engine, on: On, rows: RabeItem[], rollouts: Record<string, string>) {
   const state = memoryState(on)
@@ -1431,4 +1433,123 @@ test('a detached run without a result file or session file ends with its end unk
     status: 'done',
     detail: { codex: { isUnmatched: true, isEndUnknown: true } },
   })
+})
+
+// A resumed thread's records with times: token totals and the end of each turn.
+const timedTotal = (at: string, input: number) =>
+  JSON.stringify({
+    type: 'event_msg',
+    timestamp: at,
+    payload: {
+      type: 'token_count',
+      info: {
+        total_token_usage: { input_tokens: input, cached_input_tokens: 0, output_tokens: 1 },
+        last_token_usage: { input_tokens: 10, cached_input_tokens: 0, output_tokens: 1 },
+      },
+    },
+  })
+const complete = (at: string) =>
+  JSON.stringify({ type: 'event_msg', timestamp: at, payload: { type: 'task_complete' } })
+const started = (at: string) =>
+  JSON.stringify({ type: 'event_msg', timestamp: at, payload: { type: 'task_started' } })
+
+test('a session id a plugin job or a second run holds gives no session file', async ($, on) => {
+  const job: RabeItem = {
+    id: 'codex:task-1',
+    kind: 'codex',
+    title: 'job',
+    status: 'running',
+    seenAt: 1000,
+    detail: { jobId: 'task-1', threadId: EXEC_ID },
+  }
+  const { items } = await pollExec(
+    $,
+    on,
+    [
+      execRow('a', { threadId: EXEC_ID }),
+      execRow('b', { threadId: OTHER_ID }),
+      execRow('c', { threadId: OTHER_ID }),
+      job,
+    ],
+    {
+      [EXEC_PATH]: execRollout(EXEC_ID, '1970-01-01T00:00:01.500Z'),
+      [OTHER_PATH]: execRollout(OTHER_ID, '1970-01-01T00:00:01.500Z'),
+    },
+  )
+  for (const id of ['shell:fg-a', 'shell:fg-b', 'shell:fg-c']) {
+    const row = items().find(one => one.id === id)
+    expect(row?.tokens).toBeUndefined()
+    expect(row?.detail).toMatchObject({ codex: { isUnmatched: true } })
+    expect(row?.detail).not.toMatchObject({ codex: { sessionPath: expect.any(String) } })
+  }
+})
+
+test('an ended run counts no turn a later resume added to its thread', async ($, on) => {
+  const { items } = await pollExec(
+    $,
+    on,
+    [execRow('a', { threadId: EXEC_ID }, { startedAt: 1000, endedAt: 4000 })],
+    {
+      [EXEC_PATH]: [
+        execRollout(EXEC_ID, '1970-01-01T00:00:01.100Z').split('\n')[0],
+        started('1970-01-01T00:00:01.200Z'),
+        timedTotal('1970-01-01T00:00:02.000Z', 10),
+        complete('1970-01-01T00:00:03.000Z'),
+        started('1970-01-01T00:00:06.000Z'),
+        timedTotal('1970-01-01T00:00:07.000Z', 30),
+        complete('1970-01-01T00:00:08.000Z'),
+      ].join('\n'),
+    },
+  )
+  expect(items()[0]?.tokens).toMatchObject({ input: 10 })
+})
+
+test('a running detached run counts only its own turn, up to its task_complete', async ($, on) => {
+  const row = execRow(
+    'a',
+    { threadId: EXEC_ID, isDetached: true },
+    { status: 'running', endedAt: undefined },
+  )
+  const { items } = await pollExec($, on, [row], {
+    [EXEC_PATH]: [
+      execRollout(EXEC_ID, '1970-01-01T00:00:01.100Z').split('\n')[0],
+      timedTotal('1970-01-01T00:00:02.000Z', 10),
+      complete('1970-01-01T00:00:03.000Z'),
+      started('1970-01-01T00:00:06.000Z'),
+      timedTotal('1970-01-01T00:00:07.000Z', 30),
+      complete('1970-01-01T00:00:08.000Z'),
+    ].join('\n'),
+  })
+  expect(items()[0]).toMatchObject({ status: 'done', endedAt: 3000, tokens: { input: 10 } })
+})
+
+test('a resumed thread counts usage from the run start, not from the matching allowance', async ($, on) => {
+  const row = execRow('a', { threadId: EXEC_ID }, { startedAt: 7000, endedAt: 9500 })
+  const { items } = await pollExec($, on, [row], {
+    [EXEC_PATH]: [
+      execRollout(EXEC_ID, '1970-01-01T00:00:00.500Z').split('\n')[0],
+      timedTotal('1970-01-01T00:00:01.000Z', 90),
+      timedTotal('1970-01-01T00:00:04.000Z', 100),
+      timedTotal('1970-01-01T00:00:09.000Z', 110),
+    ].join('\n'),
+  })
+  expect(items()[0]?.tokens).toMatchObject({ input: 10 })
+})
+
+test('a time match that a later turn_context shows to be another model is dropped', async ($, on) => {
+  const meta = execRollout(EXEC_ID, '1970-01-01T00:00:01.500Z').split('\n')[0] ?? ''
+  const { items, w } = await pollExec($, on, [execRow('a', { model: 'gpt-6-luna' })], {
+    [EXEC_PATH]: meta,
+  })
+  expect(items()[0]).toMatchObject({ detail: { codex: { sessionPath: EXEC_PATH } } })
+  w.files.set(EXEC_PATH, {
+    text: execRollout(EXEC_ID, '1970-01-01T00:00:01.500Z'),
+    mtimeMs: 15_000,
+  })
+  await w.clock.advance(2000)
+  const row = items()[0]
+  expect(row).toMatchObject({ detail: { codex: { model: 'gpt-6-luna', isUnmatched: true } } })
+  expect(row?.tokens).toBeUndefined()
+  expect(row?.costUsd).toBeUndefined()
+  expect(row?.detail).not.toMatchObject({ codex: { sessionPath: expect.any(String) } })
 })

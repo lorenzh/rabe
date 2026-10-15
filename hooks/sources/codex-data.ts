@@ -227,10 +227,10 @@ export function advanceRollout(
     const timestamp = Date.parse(str(record.timestamp) ?? '')
     if (until !== undefined && timestamp > until) continue
     if (Number.isFinite(timestamp)) at = Math.max(at ?? 0, timestamp)
-    if (record.type === 'event_msg' && payload.type === 'task_complete') {
-      out.endedAt = Number.isFinite(timestamp) ? timestamp : at
-    } else if (record.type === 'event_msg' && payload.type === 'task_started') {
-      delete out.endedAt
+    // the first task from `since` on that completed: a later resume does not move it
+    const isOwn = since === undefined || !Number.isFinite(timestamp) || timestamp >= since
+    if (record.type === 'event_msg' && payload.type === 'task_complete' && isOwn) {
+      out.endedAt ??= Number.isFinite(timestamp) ? timestamp : at
     }
     if (record.type === 'turn_context') {
       const settings = rec(rec(payload.collaboration_mode).settings)

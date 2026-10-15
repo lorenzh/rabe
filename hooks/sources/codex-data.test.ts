@@ -124,7 +124,7 @@ test('a file two runs could own matches neither', () => {
   ])
 })
 
-test('a rollout records when its task completed, and a new task opens it again', () => {
+test('a rollout records when its first task from the start on completed', () => {
   const event = (type: string, at: string) =>
     JSON.stringify({ type: 'event_msg', timestamp: at, payload: { type } })
   const done = [
@@ -132,8 +132,15 @@ test('a rollout records when its task completed, and a new task opens it again',
     event('task_complete', '1970-01-01T00:00:05.000Z'),
   ]
   expect(parseRollout(done.join('\n')).endedAt).toBe(5000)
-  const again = [...done, event('task_started', '1970-01-01T00:00:06.000Z')]
-  expect(parseRollout(again.join('\n')).endedAt).toBeUndefined()
+  // a later turn (a resume) does not move or clear this run's end
+  const again = [
+    ...done,
+    event('task_started', '1970-01-01T00:00:06.000Z'),
+    event('task_complete', '1970-01-01T00:00:09.000Z'),
+  ]
+  expect(parseRollout(again.join('\n')).endedAt).toBe(5000)
+  // an earlier turn of a resumed thread, before the start, is not this run's end
+  expect(parseRollout(again.join('\n'), undefined, 5500).endedAt).toBe(9000)
   const held = advanceRollout(done.join('\n'))
   expect(rolloutCursor(held)).toBe(held)
   expect(rolloutCursor({ ...held, out: { ...held.out, endedAt: 'x' } })).toBeUndefined()

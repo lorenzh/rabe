@@ -487,12 +487,30 @@ async function pollExec(
   const now = await $.clock.now()
   const found = new Map<string, { path: string; threadId: string; byTime: boolean }>()
   const unmatched = new Set<string>()
+  // What is owned: the threads of plugin jobs, and the threads and files of other rows.
+  const jobThreads = new Set(
+    items.flatMap(item => (item.kind === 'codex' && item.detail.threadId) || []),
+  )
+  const rowThreads = new Map<string, number>()
+  for (const row of rows) {
+    const { threadId } = row.detail.codex
+    if (threadId) rowThreads.set(threadId, (rowThreads.get(threadId) ?? 0) + 1)
+  }
+  const claimed = new Set(rows.flatMap(row => row.detail.codex.sessionPath ?? []))
   for (const row of rows) {
     const { threadId, sessionPath, isUnmatched } = row.detail.codex
     if (sessionPath || isUnmatched || !threadId) continue
+    // a thread a plugin job or a second run names is not this run's alone
+    if (jobThreads.has(threadId) || (rowThreads.get(threadId) ?? 0) > 1) {
+      unmatched.add(row.id)
+      continue
+    }
     const path = await findRollout($, codexHome, threadId, row.startedAt ?? now)
-    if (path) found.set(row.id, { path, threadId, byTime: false })
-    else if (row.status !== 'running' && now - (row.endedAt ?? 0) > EXEC_AFTER_MS) {
+    if (path && claimed.has(path)) unmatched.add(row.id)
+    else if (path) {
+      found.set(row.id, { path, threadId, byTime: false })
+      claimed.add(path)
+    } else if (row.status !== 'running' && now - (row.endedAt ?? 0) > EXEC_AFTER_MS) {
       unmatched.add(row.id)
     }
   }
@@ -505,13 +523,9 @@ async function pollExec(
   )
   if (due.length) {
     const starts = due.map(row => row.startedAt ?? 0)
-    const claimed = new Set(rows.flatMap(row => row.detail.codex.sessionPath ?? []))
-    const threads = new Set(
-      items.flatMap(item => (item.kind === 'codex' && item.detail.threadId) || []),
-    )
     const metas = (
       await execFiles($, codexHome, starts, Math.min(...starts) - EXEC_BEFORE_MS, claimed)
-    ).filter(meta => !threads.has(meta.id))
+    ).filter(meta => !jobThreads.has(meta.id) && !rowThreads.has(meta.id))
     const runs = open.map(row => ({
       id: row.id,
       startedAt: row.startedAt ?? 0,
@@ -536,20 +550,41 @@ async function pollExec(
     const backlog = cursor && cursor.offset < cursor.size && !cursor.partial
     const isSettled = codex.sessionEndedAt !== undefined || now - (row.endedAt ?? 0) > EXEC_READ_MS
     if (!match && row.status !== 'running' && !backlog && isSettled) continue
-    // `since`: a resumed thread's earlier turns are not this run's
-    const job: CodexJob = {
-      id: row.id,
-      threadId,
-      ...(row.startedAt !== undefined && { startedAt: iso(row.startedAt - EXEC_BEFORE_MS) }),
+    const byTime = match ? match.byTime : codex.matchedBy === 'time'
+    // This invocation's records only: from its start (not the matching
+    // allowance) to its end, or its own task_complete when that comes first.
+    const read = (until: number | undefined) =>
+      readSession(
+        $,
+        codexHome,
+        {
+          id: row.id,
+          threadId,
+          ...(row.startedAt !== undefined && { startedAt: iso(row.startedAt) }),
+          ...(until !== undefined && { status: 'completed', completedAt: iso(until) }),
+        },
+        match ? { sessionPath: path } : codex,
+        looks,
+        file,
+        row.id,
+      ).catch(fault)
+    const bound = (...ends: (number | undefined)[]) => {
+      const known = ends.filter((one): one is number => one !== undefined)
+      return known.length ? Math.min(...known) : undefined
     }
-    const known = match ? { sessionPath: path } : codex
-    const session = await readSession($, codexHome, job, known, looks, file, row.id).catch(fault)
+    const until = bound(row.status === 'running' ? undefined : row.endedAt, codex.sessionEndedAt)
+    let session = await read(until)
+    const own = session?.rollout?.endedAt
+    if (own !== undefined && (until === undefined || own < until)) session = await read(own)
     const rollout = session?.rollout
-    // matched by time only: a rollout of another model than `-m` is not this run
-    if (match?.byTime && rollout?.model && codex.model && rollout.model !== codex.model) {
+    // matched by time: the model `-m` asked for must be the file's, checked on each read;
+    // until the file names one, the match holds no usage
+    const isOtherModel = byTime && codex.model && rollout?.model && rollout.model !== codex.model
+    if (isOtherModel) {
       unmatched.add(row.id)
       continue
     }
+    const isPending = byTime && codex.model !== undefined && rollout && !rollout.model
     const isUnchanged = session?.updatedAt !== undefined && !rollout
     stage(poll, held => {
       const current = held.find(one => one.id === row.id)
@@ -558,22 +593,25 @@ async function pollExec(
         ...current.detail.codex,
         threadId,
         sessionPath: session?.path ?? path,
+        matchedBy: byTime ? 'time' : 'id',
         ...(session?.updatedAt !== undefined && { sessionUpdatedAt: session.updatedAt }),
-        ...(rollout && {
-          ...(rollout.model && { model: rollout.model }),
-          ...(rollout.effort && { effort: rollout.effort }),
-          ...(rollout.sandbox && { sandbox: rollout.sandbox }),
-          isSessionPartial: session?.isPartial === true,
-          ...(rollout.endedAt !== undefined && { sessionEndedAt: rollout.endedAt }),
-        }),
+        ...(rollout &&
+          !isPending && {
+            model: current.detail.codex.model ?? rollout.model,
+            ...(rollout.effort && { effort: rollout.effort }),
+            ...(rollout.sandbox && { sandbox: rollout.sandbox }),
+            isSessionPartial: session?.isPartial === true,
+            ...(rollout.endedAt !== undefined && { sessionEndedAt: rollout.endedAt }),
+          }),
       }
+      if (facet.model === undefined) delete facet.model
       const next = updateItem(held, row.id, {
         detail: { codex: facet },
-        ...(rollout && { tokens: rollout.tokens }),
-        ...(!isUnchanged && { costUsd: session?.usd }),
+        ...(rollout && !isPending && { tokens: rollout.tokens }),
+        ...(!isUnchanged && !isPending && { costUsd: session?.usd }),
       })
       const endedAt = rollout?.endedAt
-      return codex.isDetached && endedAt !== undefined
+      return codex.isDetached && endedAt !== undefined && !isPending
         ? endItem(next, row.id, 'done', endedAt)
         : next
     })
@@ -582,11 +620,24 @@ async function pollExec(
     stage(poll, held => {
       const current = held.find(one => one.id === id)
       if (!isExecRow(current)) return held
-      const { isDetached } = current.detail.codex
+      // a file matched by time and then found to be another run's leaves nothing of it
+      const {
+        sessionPath: _path,
+        sessionUpdatedAt: _updated,
+        isSessionPartial: _partial,
+        sessionEndedAt: _ended,
+        matchedBy,
+        threadId,
+        ...rest
+      } = current.detail.codex
+      const { isDetached } = rest
       const next = updateItem(held, id, {
+        tokens: undefined,
+        costUsd: undefined,
         detail: {
           codex: {
-            ...current.detail.codex,
+            ...rest,
+            ...(threadId && matchedBy !== 'time' && { threadId }),
             isUnmatched: true,
             ...(isDetached && current.status === 'running' && { isEndUnknown: true }),
           },
