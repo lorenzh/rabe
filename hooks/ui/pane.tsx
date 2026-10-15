@@ -18,7 +18,7 @@ import { KIND_LABEL, kept, matches, orderOf, previousOf, rowOf } from './lists'
 import { asPrevious, clipText, nameOf, toastText } from './pane-data'
 import { follow, geometry, MIN_ROWS, measure, NO_PIN, type Pin } from './pin'
 import { type At, hold, render } from './render'
-import { reserve, screens, sequence } from './sequence'
+import { inTurn, reserve, screens, sequence } from './sequence'
 import {
   type Action,
   bounded,
@@ -586,15 +586,14 @@ async function look(
 }
 
 // The presses and Input events under way, per surface and element, oldest
-// first. Each event's hook adds its own slot before `next(e)`; the closure
-// beneath, which the engine runs with the event, fills the oldest empty slot of
-// its element whose event text matches (an Input event carries the field's
-// whole text), so an event carries out only an action of its own event; two
-// events with the same text are interchangeable and each runs exactly once.
-type Slot = {
-  value?: string
-  press?: { action: Action; surface: RenderSurface; element: string }
-}
+// first. Each event's hook adds its own slot before `next(e)`, and the closure
+// beneath, which the engine runs inside that `next(e)`, fills the oldest empty
+// slot of its element. Input events of one element run one at a time
+// (`inTurn`), so an Input event's slot is the only one of its element and its
+// closure's action is its own, whatever text a hook beneath hands the closure.
+// ponytail: two presses of one Button in flight at once may swap their
+// actions; both are that Button's, and each runs exactly once.
+type Slot = { press?: { action: Action; surface: RenderSurface; element: string } }
 const waiting = new Map<string, Slot[]>()
 
 // A submitted message whose drawing a redraw released: send it from the
@@ -621,20 +620,16 @@ async function lostMessage(
 
 const slotOf = (at: At) => `${at.surface} ${at.element}`
 
-function leave(action: Action, at: At & { value?: string }): void {
-  const slot = waiting.get(slotOf(at))?.find(one => !one.press && one.value === at.value)
+function leave(action: Action, at: At): void {
+  const slot = waiting.get(slotOf(at))?.find(one => !one.press)
   if (slot) slot.press = { action, surface: at.surface, element: at.element }
 }
 
 // Runs a press or an Input event beneath the hook, then carries out the action
 // its closure left in this event's own slot with the hook's `$`.
-async function carry<R>(
-  $: EngineInterface,
-  at: At & { value?: string },
-  run: (mine: Slot) => Promise<R>,
-): Promise<R> {
+async function carry<R>($: EngineInterface, at: At, run: (mine: Slot) => Promise<R>): Promise<R> {
   const key = slotOf(at)
-  const mine: Slot = { value: at.value }
+  const mine: Slot = {}
   screen.release()
   const focusTurn = reserve()
   feed($, { type: 'press-start' })
@@ -829,20 +824,22 @@ export function pane(on: On, hours = baseHours): void {
   // A redraw between a key and its closure releases the field's handler. The
   // event carries the field's whole text, so the search filter still follows
   // the field (#180) and a submitted message is still sent once (#218). Any
-  // other Input's event is dropped.
+  // other Input's event is dropped. Events of one field run one at a time.
   on('ui.input', { requestId: PANE }, ($, e, next) =>
-    carry($, e, mine =>
-      next(e).catch(async (error: Error) => {
-        if (!error?.message?.includes(RELEASED)) throw error
-        if (e.element === 'search') {
-          leave(queryOf(e.value, e.kind), e)
+    inTurn(slotOf(e), () =>
+      carry($, e, mine =>
+        next(e).catch(async (error: Error) => {
+          if (!error?.message?.includes(RELEASED)) throw error
+          if (e.element === 'search') {
+            leave(queryOf(e.value, e.kind), e)
+            return { element: e.element, value: e.value }
+          }
+          if (!(e.element.startsWith('message:') && e.kind === 'submit')) throw error
+          // A filled slot: the closure ran and `carry` sends its action.
+          if (!mine.press) await lostMessage($, e, mine)
           return { element: e.element, value: e.value }
-        }
-        if (!(e.element.startsWith('message:') && e.kind === 'submit')) throw error
-        // A filled slot: the closure ran and `carry` sends its action.
-        if (!mine.press) await lostMessage($, e, mine)
-        return { element: e.element, value: e.value }
-      }),
+        }),
+      ),
     ),
   ).catch((_$, e, next) =>
     next.called && next.error.message?.includes(RELEASED)

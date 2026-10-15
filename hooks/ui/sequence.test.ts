@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DRAW_MS, reserve, SHOW_MS, screens, sequence } from './sequence'
+import { DRAW_MS, inTurn, reserve, SHOW_MS, screens, sequence } from './sequence'
 
 test('queued focus work runs in order and continues after a failure', async () => {
   const seen: number[] = []
@@ -20,6 +20,30 @@ test('queued focus work runs in order and continues after a failure', async () =
   await expect(first).rejects.toThrow('focus failed')
   await second
   expect(seen).toEqual([1, 2])
+})
+
+test('runs of one key wait for the earlier ones, even a failed one; other keys do not wait', async () => {
+  const seen: string[] = []
+  let release!: () => void
+  const gate = new Promise<void>(resolve => {
+    release = resolve
+  })
+  const first = inTurn('message:a', async () => {
+    await gate
+    seen.push('a1')
+    throw new Error('released')
+  })
+  const second = inTurn('message:a', async () => {
+    seen.push('a2')
+  })
+  await inTurn('search', async () => {
+    seen.push('search')
+  })
+  expect(seen).toEqual(['search'])
+  release()
+  await expect(first).rejects.toThrow('released')
+  await second
+  expect(seen).toEqual(['search', 'a1', 'a2'])
 })
 
 test('a reserved focus turn keeps later arrows behind the press that entered first', async () => {

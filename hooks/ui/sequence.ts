@@ -30,6 +30,24 @@ export function sequence<T>(run: () => Promise<T>): Promise<T> {
   return result
 }
 
+// The last run per key, which the next run of that key waits for.
+const lanes = new Map<string, Promise<void>>()
+
+// Runs `run` once every earlier run of the same key settled; other keys do
+// not wait.
+export function inTurn<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const result = (lanes.get(key) ?? Promise.resolve()).then(run)
+  const done = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  lanes.set(key, done)
+  void done.then(() => {
+    if (lanes.get(key) === done) lanes.delete(key)
+  })
+  return result
+}
+
 // How long a landing waits for a drawing of the new view, and how long after
 // it before the focus call (a drawing reaches the screen some time after the
 // render hook returns: docs/feasibility/ui.md, item 9). Timing, not a barrier.
