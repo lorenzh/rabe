@@ -23,6 +23,7 @@ import {
   type Action,
   bounded,
   holdsClose,
+  isWorkflowAgent,
   landing,
   landingOf,
   landOn,
@@ -509,8 +510,19 @@ async function act(
     case 'message': {
       const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
       const item = items.find(one => one.id === action.id)
-      if (item?.kind !== 'agent' || !action.text.trim()) return
-      const sent = await $.session.send({ to: { agentId: item.detail.agentId }, text: action.text })
+      if (!action.text.trim()) return
+      if (item?.kind !== 'agent' || isEnded(item) || isWorkflowAgent(item)) {
+        toast($, 'Message not sent')
+        return
+      }
+      // Never resend: the send may have reached the agent.
+      const sent = await $.session
+        .send({ to: { agentId: item.detail.agentId }, text: action.text })
+        .catch(() => undefined)
+      if (!sent) {
+        toast($, 'Delivery unknown')
+        return
+      }
       toast(
         $,
         sent.isDelivered
@@ -587,6 +599,28 @@ async function look(
 type Slot = { press?: { action: Action; surface: RenderSurface; element: string } }
 const waiting = new Map<string, Slot[]>()
 
+// A submitted message whose drawing a redraw released: send it from the
+// event's text if the field is still drawn, else say it was not sent.
+async function lostMessage(
+  $: EngineInterface,
+  e: { element: string; value: string; surface: RenderSurface },
+  mine: Slot,
+): Promise<void> {
+  const id = e.element.slice('message:'.length)
+  const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+  const item = items.find(one => one.id === id)
+  if (!e.value.trim()) return
+  if (item?.kind !== 'agent' || isEnded(item) || isWorkflowAgent(item)) {
+    toast($, 'Message not sent')
+    return
+  }
+  mine.press = {
+    action: { type: 'message', id, text: e.value },
+    surface: e.surface,
+    element: e.element,
+  }
+}
+
 const slotOf = (at: At) => `${at.surface} ${at.element}`
 
 function leave(action: Action, at: At): void {
@@ -596,7 +630,7 @@ function leave(action: Action, at: At): void {
 
 // Runs a press or an Input event beneath the hook, then carries out the action
 // its closure left in this event's own slot with the hook's `$`.
-async function carry<R>($: EngineInterface, at: At, run: () => Promise<R>): Promise<R> {
+async function carry<R>($: EngineInterface, at: At, run: (mine: Slot) => Promise<R>): Promise<R> {
   const key = slotOf(at)
   const mine: Slot = {}
   screen.release()
@@ -605,7 +639,7 @@ async function carry<R>($: EngineInterface, at: At, run: () => Promise<R>): Prom
   waiting.set(key, [...(waiting.get(key) ?? []), mine])
   let result: R
   try {
-    result = await run()
+    result = await run(mine)
   } catch (error) {
     await focusTurn(async () => undefined)
     feed($, { type: 'press-end' })
@@ -791,13 +825,20 @@ export function pane(on: On, hours = baseHours): void {
     next.called && next.error.message?.includes(RELEASED) ? { element: e.element } : next(e),
   )
   // A redraw between a key and its closure releases the field's handler. The
-  // search field's event carries the field's whole text, so the filter still
-  // follows the field (#180); any other Input's event is dropped.
+  // event carries the field's whole text, so the search filter still follows
+  // the field (#180) and a submitted message is still sent once (#218). Any
+  // other Input's event is dropped.
   on('ui.input', { requestId: PANE }, ($, e, next) =>
-    carry($, e, () =>
-      next(e).catch((error: Error) => {
-        if (e.element !== 'search' || !error?.message?.includes(RELEASED)) throw error
-        leave(queryOf(e.value, e.kind), e)
+    carry($, e, mine =>
+      next(e).catch(async (error: Error) => {
+        if (!error?.message?.includes(RELEASED)) throw error
+        if (e.element === 'search') {
+          leave(queryOf(e.value, e.kind), e)
+          return { element: e.element, value: e.value }
+        }
+        if (e.element.startsWith('message:') && e.kind === 'submit' && !mine.press)
+          await lostMessage($, e, mine)
+        else throw error
         return { element: e.element, value: e.value }
       }),
     ),

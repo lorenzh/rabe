@@ -1814,6 +1814,122 @@ test('a press on another row selects it and arms x for it; on the selected row i
   await ui.unmount()
 })
 
+// #218, tests named 'a lost message ...': a redraw between Enter and the closure frees the message field's
+// handler; the submit's own text is sent once, or the person is told.
+{
+  const field = `message:${explore.id}`
+  const setup = (
+    on: On,
+    item: RabeItem = explore,
+    send: (text: string) => Promise<{ isDelivered: boolean; reason?: string }> = async () => ({
+      isDelivered: true,
+    }),
+  ) => {
+    const sent: string[] = []
+    const state = hold(on, [item], { open: item.id, selected: item.id })
+    on('session.send', async (_$, e) => {
+      sent.push(e.text)
+      return send(e.text) as never
+    })
+    return { sent, state }
+  }
+  const lost = (id: string) => ({
+    name: 'lost-handle',
+    tier: 'append' as const,
+    register(on: On) {
+      on('ui.input', { requestId: 'rabe' }, async (_$, e, next) => {
+        if (e.element !== id) return next(e)
+        throw new Error('no handler is held under handle')
+      })
+    },
+  })
+
+  test('sends once from the event text', { plugins: [lost(field)] }, async ($, on) => {
+    const { sent, state } = setup(on)
+    const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    await arm($, field)
+    await ui.input({ key: field, text: 'hello', kind: 'submit' })
+    expect(sent).toEqual(['hello'])
+    expect(String(state.toasts)).not.toContain('hello')
+    await ui.unmount()
+  })
+
+  test('never sends a change or an empty submit', { plugins: [lost(field)] }, async ($, on) => {
+    const { sent } = setup(on)
+    const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    await arm($, field)
+    await ui.input({ key: field, text: 'hello', kind: 'change' })
+    await ui.input({ key: field, text: '  ', kind: 'submit' })
+    expect(sent).toEqual([])
+    await ui.unmount()
+  })
+
+  test('sends two overlapping submits once each', { plugins: [lost(field)] }, async ($, on) => {
+    const { sent } = setup(on)
+    const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    await arm($, field)
+    await Promise.all([
+      ui.input({ key: field, text: 'one', kind: 'submit' }),
+      ui.input({ key: field, text: 'two', kind: 'submit' }),
+    ])
+    expect(sent.sort()).toEqual(['one', 'two'])
+    await ui.unmount()
+  })
+
+  test('sends once when the view changes meanwhile', { plugins: [lost(field)] }, async ($, on) => {
+    const { sent } = setup(on)
+    const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    await arm($, field)
+    const sending = ui.input({ key: field, text: 'hello', kind: 'submit' })
+    await ui.press({ key: 'tab-cost' })
+    await sending
+    expect(sent).toEqual(['hello'])
+    await ui.unmount()
+  })
+
+  test('toasts a refusal and does not resend', { plugins: [lost(field)] }, async ($, on) => {
+    const { sent, state } = setup(on, explore, async () => ({ isDelivered: false, reason: 'busy' }))
+    const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    await arm($, field)
+    await ui.input({ key: field, text: 'hello', kind: 'submit' })
+    expect(sent).toEqual(['hello'])
+    expect(state.toasts).toContain('Message not sent: busy')
+    await ui.unmount()
+  })
+
+  test('toasts delivery unknown on an exception', { plugins: [lost(field)] }, async ($, on) => {
+    const { sent, state } = setup(on, explore, async () => {
+      throw new Error('boom')
+    })
+    const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    await arm($, field)
+    await ui.input({ key: field, text: 'hello', kind: 'submit' })
+    expect(sent).toEqual(['hello'])
+    expect(state.toasts).toContain('Delivery unknown')
+    await ui.unmount()
+  })
+
+  test('sends nothing to an ended agent', async ($, on) => {
+    const items = [explore]
+    const state = hold(on, items, { open: explore.id, selected: explore.id })
+    const sent: string[] = []
+    on('session.send', async (_$, e) => {
+      sent.push(e.text)
+      return { isDelivered: true }
+    })
+    on('ui.input', { requestId: 'rabe' }, async (_$, e) => {
+      items[0] = { ...explore, status: 'done', endedAt: NOW } as RabeItem
+      throw new Error('no handler is held under handle')
+    })
+    const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    await arm($, field)
+    await ui.input({ key: field, text: 'hello', kind: 'submit' })
+    expect(sent).toEqual([])
+    expect(state.toasts).toContain('Message not sent')
+    await ui.unmount()
+  })
+}
+
 // GPT review round 11: the ring and the selection part when a click selects
 // another row. Enter presses the row that holds the ring and opens it; a press
 // on a row away from the ring, which only a pointer makes, selects it first.

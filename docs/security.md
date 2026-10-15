@@ -81,7 +81,7 @@ Rabe sends nothing anywhere. It does not call `$.http.fetch`, and it does not ru
 ### Destructive actions
 
 - Stop, stop group, stop run, delete, remove and clear run only after the person's own press on a button that the pane armed (see [Focus order and arming](architecture/focus-order.md)).
-- A message to an agent is not armed. It goes only when the person submits text they typed in the agent's message field; the field's own submit is that choice, and the text is never prefilled from a file.
+- A message to an agent is not armed. It goes only when the person submits text they typed in the agent's message field; the field's own submit is that choice, and the text is never prefilled from a file. When a redraw released the field's handler, the submit's own event text is sent once from the same field, never repeated and never put into a toast or storage; a failure shows a fixed toast (`Message not sent`, `Delivery unknown`).
 - A poll, a file, a hook event or a note never starts any of them. Do not weaken the append-only focus order or the arming rules to make a control easier to reach.
 
 ### Supply chain
