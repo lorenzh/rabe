@@ -1363,3 +1363,27 @@ test('a job found with an edit before the first poll keeps its diff', async ($, 
   await startAndTick($, w)
   expect(Object.keys(state['rabe.diffs']?.value as object)).toEqual(['codex:task-1'])
 })
+
+test('a job staged and capped out in the same poll leaves no diff entry', async ($, on) => {
+  const state = memoryState(on)
+  state['rabe.items'] = { value: endedShells(9500).slice(1), version: 1 }
+  const done = (id: string, sec: number) =>
+    job({ id, status: 'completed', completedAt: `1970-01-01T00:00:0${sec}.000Z` })
+  const w = world(on, {
+    [`${WS}/state.json`]: {
+      jobs: [
+        { id: 'task-1', status: 'completed' },
+        { id: 'task-2', status: 'completed' },
+      ],
+    },
+    [`${WS}/jobs/task-1.json`]: done('task-1', 8),
+    [`${WS}/jobs/task-2.json`]: done('task-2', 9),
+    [ROLLOUT_PATH]: change('completed', { '/work/a.ts': { type: 'add', content: 'x' } }, 3000),
+  })
+  await startAndTick($, w)
+  const ids = ((state['rabe.items']?.value ?? []) as RabeItem[]).map(item => item.id)
+  expect(ids).not.toContain('codex:task-1')
+  expect(
+    Object.keys((state['rabe.diffs']?.value ?? {}) as object).filter(id => !ids.includes(id)),
+  ).toEqual([])
+})

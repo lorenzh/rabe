@@ -122,8 +122,27 @@ async function write(
     })
     if (isSet) {
       await forget($, next.dropped)
+      await dropOrphans($)
       return true
     }
+  }
+}
+
+// An item staged and capped out inside one poll is in neither list, so no
+// `dropped` id names it: the poll's commit also drops the diffs whose editor
+// the final list lacks. `main` has no item.
+async function dropOrphans($: Pick<EngineInterface, 'state'>): Promise<void> {
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(
+      value,
+      Object.keys(value).filter(id => id !== 'main'),
+      items,
+    )
+    if (next === value) return
+    const diffs = await $.state.set({ plugin: 'rabe', key: 'diffs' }, next, { ifVersion: version })
+    if (diffs.isSet) return
   }
 }
 
