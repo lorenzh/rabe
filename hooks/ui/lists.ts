@@ -1,5 +1,5 @@
 import type { RabeEdit, RabeOrder, RabePrevious } from '../../types'
-import { isEnded, type RabeItem, type RabeItemKind } from '../model'
+import { isEnded, KINDS, type RabeItem, type RabeItemKind, runOf } from '../model'
 import { nextRuns } from '../schedule'
 import { byConflict, touched } from './touched'
 
@@ -289,7 +289,7 @@ export function byParent(list: RabeItem[], items: RabeItem[]): Family[] {
     let block = blocks.find(one => one.id === id)
     if (!block) {
       const parent = items.find(one => one.id === id)
-      const run = parent && items.find(one => one.id === parent.parentId && one.kind === 'workflow')
+      const run = parent && runOf(parent, items)
       const title = !parent ? 'agent n/a' : run ? `${run.title} › ${parent.title}` : parent.title
       block = { id, ...(parent && { parent }), title, items: [] }
       blocks.push(block)
@@ -462,20 +462,18 @@ export type BandRow = { glyph: string; kind: RabeItemKind; count: number; failed
 export function bandRows(items: RabeItem[], now: number): BandRow[] {
   const running = (kind: RabeItemKind) =>
     shown(items).filter(item => item.kind === kind && item.status === 'running').length
-  const failed = (['agent', 'codex', 'workflow', 'shell', 'monitor', 'cron'] as const).flatMap(
-    kind => {
-      const count = items.filter(
-        item =>
-          item.kind === kind &&
-          item.status === 'failed' &&
-          now - (item.endedAt ?? item.seenAt) < 10 * 60_000,
-      ).length
-      return count ? [{ glyph: '✗', kind, count, failed: true }] : []
-    },
-  )
+  const failed = KINDS.flatMap(kind => {
+    const count = items.filter(
+      item =>
+        item.kind === kind &&
+        item.status === 'failed' &&
+        now - (item.endedAt ?? item.seenAt) < 10 * 60_000,
+    ).length
+    return count ? [{ glyph: '✗', kind, count, failed: true }] : []
+  })
   const rows: BandRow[] = [
     ...failed,
-    ...(['agent', 'codex', 'workflow', 'shell', 'monitor', 'cron'] as const).map(kind => ({
+    ...KINDS.map(kind => ({
       glyph: RUNNING_GLYPH[kind],
       kind,
       count: running(kind),

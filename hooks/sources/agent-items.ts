@@ -10,6 +10,7 @@ import {
   type RabeItemOf,
   type RabeItemStatus,
   type RabeTokens,
+  runOf,
 } from '../model'
 import { parseJson } from '../reading'
 import { addItem, endItem, updateItem } from '../registry'
@@ -55,8 +56,8 @@ export function metaPatch(text: string): Partial<AgentItem['detail']> | undefine
 }
 
 export function metaPath(item: AgentItem, items: RabeItem[]): string | undefined {
-  const parent = items.find(one => one.id === item.parentId)
-  if (parent?.kind === 'workflow') {
+  const parent = runOf(item, items)
+  if (parent) {
     const folder =
       parent.detail.transcriptDir ??
       parent.detail.scriptPath?.replace(

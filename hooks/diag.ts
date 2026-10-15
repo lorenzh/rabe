@@ -2,7 +2,7 @@ import type { EngineInterface, On } from 'claude-code'
 
 import type { RabeDiag } from '../types'
 import { shorten } from './loop'
-import type { RabeItem } from './model'
+import { KINDS, type RabeItem } from './model'
 import { isRecord } from './reading'
 
 export type DiagFacts = {
@@ -27,7 +27,7 @@ export function diagText(facts: DiagFacts): string {
   for (const item of Array.isArray(facts.items) ? facts.items : []) {
     if (
       !item ||
-      !['agent', 'codex', 'shell', 'monitor', 'workflow', 'cron'].includes(item.kind) ||
+      !(KINDS as readonly string[]).includes(item.kind) ||
       !['running', 'idle', 'done', 'failed', 'stopped'].includes(item.status)
     )
       continue
