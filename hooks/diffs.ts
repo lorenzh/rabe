@@ -128,7 +128,13 @@ export function keep(
 ): Record<string, RabeDiff[]> {
   const own = all[editor] ?? []
   const fresh = added.filter(
-    one => !own.some(old => old.at === one.at && pathKey(old.path) === pathKey(one.path)),
+    one =>
+      !own.some(
+        old =>
+          old.at === one.at &&
+          pathKey(old.path) === pathKey(one.path) &&
+          old.lines.join('\n') === one.lines.join('\n'),
+      ),
   )
   if (fresh.length === 0) return all
   const next = { ...all, [editor]: [...own, ...fresh].slice(-MAX_PER_EDITOR) }

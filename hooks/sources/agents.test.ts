@@ -1995,3 +1995,22 @@ test('a poll that pushes out an agent without turns still drops its diffs', asyn
   await clock.advance(4000)
   expect(Object.keys(state['rabe.diffs']?.value as object)).toEqual(['agent:w1'])
 })
+
+test('a late Edit result of an evicted agent leaves no diff entry', async ($, on) => {
+  engine(on, 'a1', false)
+  const state = memoryState(on)
+  const hunk = { oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+b'] }
+  on('tool.call', { tool: ['Edit'] }, async (_$, e) => ({
+    result: { filePath: e.file_path, structuredPatch: [hunk], originalFile: 'a' } as never,
+  }))
+  await $.agent.spawn(SPAWN)
+  state['rabe.items'] = { value: [], version: 9 }
+  await $.tool.call({
+    tool: 'Edit',
+    file_path: '/r/a.ts',
+    old_string: 'a',
+    new_string: 'b',
+    agentId: 'a1',
+  } as never)
+  expect(state['rabe.diffs']?.value ?? {}).toEqual({})
+})

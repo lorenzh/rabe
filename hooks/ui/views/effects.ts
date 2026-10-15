@@ -292,7 +292,11 @@ export const effectsView: View = (model, size, sel): Drawn => {
   if (file) {
     // The last row the pane shows once it follows the focus, so the summary
     // never lands below the window; blank rows fill a short list.
-    const row = shownFrom(size, focusRow(lines)) + (size.window?.rows ?? size.rows) - 1
+    // The body's room is the rows the pane keeps after its tab row, toolbar
+    // and hint (see `paneView`), which may be fewer than the window's.
+    const rows = Math.min(size.window?.rows ?? size.rows, size.rows)
+    const view = size.window && { ...size, window: { ...size.window, rows } }
+    const row = (view ? shownFrom(view, focusRow(lines)) : 0) + rows - 1
     while (nodes.length < row) nodes.push({ spans: [] })
     nodes.splice(
       row,

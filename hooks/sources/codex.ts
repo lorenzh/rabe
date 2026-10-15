@@ -185,6 +185,9 @@ async function recordDiffs(
 ): Promise<void> {
   if (!diffs?.length) return
   for (;;) {
+    // A job the list no longer holds leaves no diff behind.
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    if (!items.some(one => one.id === id)) return
     const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
     const next = keep(value, id, diffs)
     if (next === value) return

@@ -146,6 +146,11 @@ async function recordDiffs(
   if (diffs.length === 0) return
   const editor = agentId ? itemId('agent', agentId) : 'main'
   for (;;) {
+    // A late result of an evicted agent leaves no diff behind.
+    if (agentId) {
+      const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+      if (!items.some(one => one.id === editor)) return
+    }
     const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
     const next = keep(value, editor, diffs)
     if (next === value) return

@@ -61,3 +61,12 @@ test('keep skips a repeated operation and evicts the oldest over the total limit
   expect(recorded(all, 'main', '/r/f', 45)?.at).toBe(45)
   expect(recorded(all, 'main', '/r/f', 999)).toBeUndefined()
 })
+
+test('two distinct changes at the same time both stay, the later one is shown', () => {
+  const one = fromContent('/r/f', 10, 'first')
+  const two = fromContent('/r/f', 10, 'second')
+  const all = keep(keep({}, 'main', [one]), 'main', [two])
+  expect(all.main).toHaveLength(2)
+  expect(recorded(all, 'main', '/r/f', 10)?.lines).toEqual(['@@ -0,0 +1,1 @@', '+second'])
+  expect(keep(all, 'main', [two])).toBe(all)
+})

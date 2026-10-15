@@ -8,6 +8,7 @@ import { ALL, dev, explore, gridOf, NOW, plan, review } from '../fixtures'
 import { orderOf } from '../lists'
 import { isPress, type Model, NO_SELECTION, type Press, rowKeys, type Size, stepRow } from '../view'
 import { effectsView } from './effects'
+import { paneView } from './pane'
 
 // One column below the split (SPLIT_COLUMNS), so the list takes the whole width.
 const SIZE: Size = { columns: 89, rows: 30, surface: 'terminal', hasInput: false }
@@ -489,6 +490,13 @@ test('a wide pane draws the latest recorded diff of the selected file beside the
     'row:file:/repo/.claude/worktrees/pkg-db/src/db/pool.ts',
     'row:file:/repo/src/cli/main.ts',
   ])
+  expect(all(MODEL, SIZE)).toEqual([
+    'row:file:/repo/src/logger.ts',
+    'row:file:/repo/src/api/server.ts',
+    'row:file:/repo/.claude/worktrees/pkg-db/src/db/pool.ts',
+    'row:file:/repo/src/cli/main.ts',
+    'row:ssh:5173',
+  ])
 })
 
 test('a file without a recorded diff for its latest operation says so', () => {
@@ -533,5 +541,29 @@ test('the summary of a narrow pane stays inside the rows the pane shows, whateve
     expect(row).toBeGreaterThanOrEqual(from)
     expect(row).toBeLessThan(from + window.rows)
     expect(rowKeys(drawn).filter(key => key.startsWith('row:file:'))).toHaveLength(25)
+  }
+})
+
+test('the summary stays in the rows the whole pane shows, with the tab row above', () => {
+  const paths = Array.from({ length: 25 }, (_, n) => `/repo/src/f${n}.ts`)
+  const model: Model = {
+    ...MODEL,
+    items: [editing(api, [NOW - 5000, ...paths])],
+    turns: {},
+    diffs: { [api.id]: [patch] },
+  }
+  const size: Size = { ...SIZE, rows: 10, window: { top: 0, rows: 10 } }
+  for (const selected of [paths[0], paths[12]]) {
+    const drawn = gridOf(
+      paneView(model, size, { ...NO_SELECTION, tab: 'effects', selected: `file:${selected}` }),
+    )
+    const row = lines(drawn.grid).findIndex(line => line.includes('· edit by'))
+    const focus = drawn.nodes.findIndex(node =>
+      'spans' in node ? node.spans.some(part => isPress(part) && part.autoFocus) : false,
+    )
+    // the engine scrolls no further than it must to keep the focus in view
+    const from = Math.max(0, focus - 9)
+    expect(row).toBeGreaterThanOrEqual(from)
+    expect(row).toBeLessThan(from + 10)
   }
 })
