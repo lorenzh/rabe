@@ -6,7 +6,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Added
 
-- Agents show the model and effort they ran with, including changes (`opus-5-5·high → sonnet-5-5·medium`), in the facts and as a chip on workflow rows ([#232](https://github.com/lorenzh/rabe/pull/232), refs [#200](https://github.com/lorenzh/rabe/issues/200))
+- Agents show the model and the effort of the request as the hook saw it, including changes (`opus-5-5·high → sonnet-5-5·medium`), in the facts and as a chip on workflow rows ([#232](https://github.com/lorenzh/rabe/pull/232), refs [#200](https://github.com/lorenzh/rabe/issues/200))
 
 ### Changed
 

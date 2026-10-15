@@ -132,7 +132,10 @@ export function headLines(model: Model, item: RabeItem, columns: number): Line[]
       ],
       right: [[f.status.slice(2), { fg: tone(item) }]],
     },
-    ...[...f.lines.flatMap(chunks), ...long].map(line => ({
+    ...[
+      ...f.lines.flatMap(line => (line.startsWith('models ') ? chunks(line) : [line])),
+      ...long,
+    ].map(line => ({
       spans: [[line, { fg: C.dim }]] as Span[],
     })),
     { spans: [] },
