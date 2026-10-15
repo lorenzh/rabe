@@ -11,6 +11,7 @@ test('a foreground codex exec has no detached flag', () => {
   expect(codexExec('codex exec -m gpt-5.5 -o /tmp/r.txt - < /tmp/b.md')).toEqual({
     resultPath: '/tmp/r.txt',
     isDetached: false,
+    model: 'gpt-5.5',
   })
 })
 
@@ -19,7 +20,7 @@ test('a codex exec run with nohup and & is detached', () => {
     codexExec(
       'cd /x && setsid nohup codex exec -s read-only --output-last-message /tmp/r.txt - < b > l 2>&1 &',
     ),
-  ).toEqual({ resultPath: '/tmp/r.txt', isDetached: true })
+  ).toEqual({ resultPath: '/tmp/r.txt', isDetached: true, sandbox: 'read-only' })
   expect(codexExec('nohup codex exec --output-last-message=/tmp/r.txt - &')).toEqual({
     resultPath: '/tmp/r.txt',
     isDetached: true,

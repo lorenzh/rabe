@@ -65,43 +65,37 @@ const MODEL = /^[A-Za-z0-9][\w.:-]*$/
 const EFFORT = /^[a-z]+$/
 const SANDBOX = /^[a-z][a-z-]*$/
 
-// The value of a flag: `--name=value`, or the next word for `-s`/`--name`.
-// Only a word without expansion counts. `long` forms may use `=`.
-function flagValue(args: Tok[], names: RegExp, long: string): string | undefined {
-  let found: string | undefined
-  args.forEach((tok, i) => {
-    if (!isWord(tok) || !tok.known) return
-    const eq = tok.text.startsWith(`${long}=`) ? tok.text.slice(long.length + 1) : undefined
-    if (eq !== undefined) {
-      found = eq
-      return
-    }
-    const next = args[i + 1]
-    if (names.test(tok.text) && isWord(next) && next.known) found = next.text
-    else if (names.test(tok.text)) found = undefined
-  })
-
-  return found
-}
-
 const allowed = (value: string | undefined, rule: RegExp) =>
   value !== undefined && rule.test(value) ? value : undefined
 
-// The effort of `-c model_reasoning_effort=X` (also `--config`), TOML quotes removed.
-function effortOf(args: Tok[]): string | undefined {
-  let found: string | undefined
-  args.forEach((tok, i) => {
-    if (!isWord(tok) || !tok.known) return
-    const next = args[i + 1]
-    const config = /^--config=(.*)$/.exec(tok.text)?.[1]
-    const word =
-      config ??
-      (/^(-c|--config)$/.test(tok.text) && isWord(next) && next.known ? next.text : undefined)
-    const match = word && /^model_reasoning_effort=(.*)$/.exec(word)
-    if (match) found = match[1]?.replace(/^(["'])(.*)\1$/, '$2')
-  })
+type Flags = { model?: string; effort?: string; sandbox?: string; dir?: string; profile: boolean }
 
-  return found
+// One pass over the words: the last value of each flag wins. A value is the
+// next word, or the part after `=`; a word with expansion gives none.
+function flagsOf(args: Tok[]): Flags {
+  const flags: Flags = { profile: false }
+  const set = (name: Exclude<keyof Flags, 'profile'>, value: string | undefined) => {
+    flags[name] = value
+  }
+  for (const [i, tok] of args.entries()) {
+    if (!isWord(tok) || !tok.known || !tok.text.startsWith('-')) continue
+    const next = args[i + 1]
+    const word = isWord(next) && next.known ? next.text : undefined
+    const eq = tok.text.indexOf('=')
+    const name = eq < 0 ? tok.text : tok.text.slice(0, eq)
+    const inline = eq < 0 ? undefined : tok.text.slice(eq + 1)
+    const value = inline ?? word
+    if (name === '-m' || name === '--model') set('model', value)
+    else if (name === '-s' || name === '--sandbox') set('sandbox', value)
+    else if (name === '-C' || name === '--cd') set('dir', value)
+    else if (name === '-p' || name === '--profile') flags.profile = true
+    else if (name === '-c' || name === '--config') {
+      const match = value && /^model_reasoning_effort=(.*)$/.exec(value)
+      if (match) set('effort', match[1]?.replace(/^(["'])(.*)\1$/, '$2'))
+    }
+  }
+
+  return flags
 }
 
 // A `codex exec` call in a command line: the absolute file named by `-o`,
@@ -120,14 +114,11 @@ export function codexExec(command: string, home?: string): CodexExec | undefined
   const end = rest.findIndex(tok => !isWord(tok) && ENDS.has(tok.op))
   const args = end < 0 ? rest : rest.slice(0, end)
   let resultPath: string | undefined
-  const hasProfile = args.some(tok => isWord(tok) && /^(-p|--profile|--profile=.*)$/.test(tok.text))
-  const model = hasProfile
-    ? undefined
-    : allowed(flagValue(args, /^(-m|--model)$/, '--model'), MODEL)
-  const effort = allowed(effortOf(args), EFFORT)
-  const sandbox = allowed(flagValue(args, /^(-s|--sandbox)$/, '--sandbox'), SANDBOX)
-  const dirValue = flagValue(args, /^(-C|--cd)$/, '--cd')
-  const dir = dirValue?.startsWith('/') ? dirValue : undefined
+  const flags = flagsOf(args)
+  const model = flags.profile ? undefined : allowed(flags.model, MODEL)
+  const effort = allowed(flags.effort, EFFORT)
+  const sandbox = allowed(flags.sandbox, SANDBOX)
+  const dir = flags.dir?.startsWith('/') ? flags.dir : undefined
   let hasCodexHome = false
   for (let i = at - 1; i >= 0; i--) {
     const tok = toks[i]

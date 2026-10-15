@@ -1082,7 +1082,7 @@ test('with a frozen clock the newest ended foreground rows stay', async ($, on) 
   )
 })
 
-test('detached codex exec rows the poll ends keep the foreground cap', async ($, on) => {
+test('ended detached codex exec rows the poll ends are not under the foreground cap', async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const state = memoryState(on)
   let written = false
@@ -1101,7 +1101,7 @@ test('detached codex exec rows the poll ends keep the foreground cap', async ($,
   written = true
   await clock.advance(60_000)
   const items = state['rabe.items']?.value as RabeItem[]
-  expect(items.map(item => item.status)).toEqual(Array(MAX_FOREGROUND).fill('done'))
+  expect(items.map(item => item.status)).toEqual(Array(MAX_FOREGROUND + 1).fill('done'))
 })
 
 test('an interrupted detached codex exec ends as stopped', async ($, on) => {
