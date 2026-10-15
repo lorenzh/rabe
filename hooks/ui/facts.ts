@@ -1,6 +1,6 @@
 import type { RabeItem } from '../model'
 import { clockTime, duration, validId } from './format'
-import { children, forwarderOf, glyph, KIND_LABEL, nextAt, statusLabel } from './lists'
+import { children, forwarderOf, glyph, KIND_LABEL, kindOf, nextAt, statusLabel } from './lists'
 
 // `long` is the last fact, drawn in full across lines.
 export type Facts = { title: string; status: string; lines: string[]; long?: string }
@@ -32,7 +32,7 @@ function ran(item: RabeItem, now: number): string {
 
 export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: string): Facts {
   const parent = items.find(one => one.id === item.parentId)
-  const by = `started by ${parent ? `${KIND_LABEL[parent.kind]} ${parent.title}` : 'main session'}`
+  const by = `started by ${parent ? `${KIND_LABEL[kindOf(parent)]} ${parent.title}` : 'main session'}`
   const lines: string[] = []
   let long: string | undefined
   switch (item.kind) {
@@ -79,6 +79,11 @@ export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: stri
     case 'shell': {
       const d = item.detail
       lines.push(`task ${na(d.taskId)}`, by, ran(item, now))
+      if (d.codex) {
+        const { model, effort, sandbox } = d.codex
+        lines.push(`model ${na(model)} · effort ${na(effort)} · sandbox ${na(sandbox)}`)
+        lines.push('tokens n/a · cost n/a')
+      }
       long = `command ${d.command}`
       if (d.exitCode !== undefined) lines.push(`exit code ${d.exitCode}`)
       if (d.port !== undefined) lines.push(`port :${d.port}`)
@@ -122,7 +127,7 @@ export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: stri
   }
 
   return {
-    title: `${KIND_LABEL[item.kind]} · ${item.title}`,
+    title: `${KIND_LABEL[kindOf(item)]} · ${item.title}`,
     status: `${glyph(item)} ${statusWord(item, now)}`,
     lines,
     ...(long !== undefined && { long }),

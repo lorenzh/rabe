@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Added
+
+- A direct `codex exec` in a Bash call (foreground or background) shows with the Agents as `codex`, with the model, effort and sandbox named by its flags; tokens and cost stay `n/a` ([#PR](https://github.com/lorenzh/rabe/pull/PR), refs [#179](https://github.com/lorenzh/rabe/issues/179))
+
 ## [0.9.1] - 2026-10-14
 
 No migration. Update with `claude plugin update rabe` and `/reload-plugins`; a running session keeps working.

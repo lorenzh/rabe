@@ -98,3 +98,23 @@ test('cron facts name the last fire, count and turn end without claiming success
     ),
   ).toBe(false)
 })
+
+test('a direct codex run shows model, effort and sandbox, n/a for missing', () => {
+  const item = {
+    id: 'shell:b9',
+    kind: 'shell',
+    title: 'codex exec',
+    status: 'running',
+    seenAt: NOW,
+    startedAt: NOW,
+    detail: {
+      command: 'codex exec x',
+      taskId: 'b9',
+      codex: { model: 'gpt-6-sol', effort: 'high' },
+    },
+  } as const
+  const { title, lines } = facts(item, NOW, [item])
+  expect(title).toBe('codex · codex exec')
+  expect(lines).toContain('model gpt-6-sol · effort high · sandbox n/a')
+  expect(lines).toContain('tokens n/a · cost n/a')
+})

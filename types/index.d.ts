@@ -94,6 +94,9 @@ export type RabeShellDetail = {
   port?: number
   // When Rabe found the port; orders the Effects tab's ports found since the open.
   portAt?: number
+  // Set when the command is a direct `codex exec`: what its flags name.
+  // A field the flags do not give (or give with an expansion) is missing.
+  codex?: { model?: string; effort?: string; sandbox?: string }
 }
 
 export type RabeMonitorDetail = {

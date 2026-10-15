@@ -1125,3 +1125,89 @@ test('a detached codex exec moved to the background leaves only its background r
   const items = state['rabe.items']?.value as RabeItem[]
   expect(items.map(item => item.id)).toEqual(['shell:b1'])
 })
+
+const CODEX =
+  'codex exec -m gpt-6-sol -c model_reasoning_effort=high -s workspace-write -o $S/o.md - < b'
+
+test('a background codex exec gets the codex facet', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: CODEX, run_in_background: true })
+  expect(state['rabe.items']?.value).toMatchObject([
+    {
+      id: 'shell:b1',
+      kind: 'shell',
+      status: 'running',
+      detail: { codex: { model: 'gpt-6-sol', effort: 'high', sandbox: 'workspace-write' } },
+    },
+  ])
+})
+
+test('a plain codex exec has an empty facet; other commands have none', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  await $.tool.call({
+    tool: 'Bash',
+    command: 'codex exec x',
+    description: 'one',
+    run_in_background: true,
+  })
+  await $.tool.call({ tool: 'Bash', command: 'ls', description: 'two', run_in_background: true })
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items[0]?.detail).toMatchObject({ codex: {} })
+  expect(items[1]?.detail).not.toHaveProperty('codex')
+})
+
+test('a foreground codex exec row gets the facet and ends as before', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: CODEX })
+  expect(state['rabe.items']?.value).toMatchObject([
+    { status: 'done', detail: { codex: { model: 'gpt-6-sol' } } },
+  ])
+})
+
+test('at Stop a task row from the list gets the facet, without a duplicate', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: 'bun run dev', run_in_background: true })
+  await $.classic.Stop({
+    stop_hook_active: false,
+    background_tasks: [
+      { id: 'b1', type: 'shell', status: 'running', description: 'dev', command: 'bun run dev' },
+      { id: 'b7', type: 'shell', status: 'running', description: 'x', command: CODEX },
+    ],
+  })
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items.map(item => item.id)).toEqual(['shell:b1', 'shell:b7'])
+  expect(items[1]?.detail).toMatchObject({ codex: { effort: 'high', sandbox: 'workspace-write' } })
+  await $.classic.Stop({
+    stop_hook_active: false,
+    background_tasks: [
+      { id: 'b7', type: 'shell', status: 'running', description: 'x', command: CODEX },
+    ],
+  })
+  expect(
+    ((state['rabe.items']?.value ?? []) as RabeItem[]).filter(i => i.id === 'shell:b7'),
+  ).toHaveLength(1)
+})
+
+test('ended codex exec rows are not under the foreground cap', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  for (let i = 0; i < MAX_FOREGROUND + 5; i++) {
+    await clock.set(1000 + i)
+    await $.tool.call({ tool: 'Bash', command: `${CODEX} # ${i}` })
+  }
+  expect(state['rabe.items']?.value).toHaveLength(MAX_FOREGROUND + 5)
+})

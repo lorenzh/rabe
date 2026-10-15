@@ -178,3 +178,75 @@ test('a & after the closing ) detaches the group past newlines and ends inside i
   expect(codexExec('(codex exec -o /tmp/r.txt x |& tee l)')).toEqual(fg)
   expect(codexExec('(a)\ncodex exec -o /tmp/r.txt x\n) &')).toEqual(fg)
 })
+
+test('model, effort, sandbox and directory come from the flags', () => {
+  expect(
+    codexExec(
+      'codex exec -m gpt-6-sol -c model_reasoning_effort=high -s workspace-write --skip-git-repo-check -C /w/tree -o /tmp/o.md - < b',
+    ),
+  ).toEqual({
+    resultPath: '/tmp/o.md',
+    isDetached: false,
+    model: 'gpt-6-sol',
+    effort: 'high',
+    sandbox: 'workspace-write',
+    dir: '/w/tree',
+  })
+})
+
+test('the long and = forms parse, and TOML quotes go', () => {
+  const run = codexExec(
+    `codex exec --model=gpt-5.5 --config 'model_reasoning_effort="low"' --sandbox=read-only --cd /x y`,
+  )
+  expect(run).toEqual({
+    isDetached: false,
+    model: 'gpt-5.5',
+    effort: 'low',
+    sandbox: 'read-only',
+    dir: '/x',
+  })
+  expect(codexExec('codex exec --model gpt-5.5 --config=model_reasoning_effort=xhigh x')).toEqual({
+    isDetached: false,
+    model: 'gpt-5.5',
+    effort: 'xhigh',
+  })
+})
+
+test('an expanded or odd value is undefined, not guessed', () => {
+  expect(codexExec('codex exec -m "$M" -c model_reasoning_effort=$E -s "$S" -C $D x')).toEqual({
+    isDetached: false,
+  })
+  expect(codexExec('codex exec -m ";rm" -c model_reasoning_effort=Hi!x x')).toEqual({
+    isDetached: false,
+  })
+})
+
+test('a profile makes the model unknown', () => {
+  expect(codexExec('codex exec -p fast -m gpt-5.5 x')).toEqual({ isDetached: false })
+})
+
+test('resume and review keep their flags', () => {
+  expect(codexExec('codex exec resume --last -m gpt-5.5 x')?.model).toBe('gpt-5.5')
+  expect(codexExec('codex exec review -m gpt-5.5 -c model_reasoning_effort=high')).toEqual({
+    isDetached: false,
+    model: 'gpt-5.5',
+    effort: 'high',
+  })
+})
+
+test('an inline CODEX_HOME is flagged', () => {
+  expect(codexExec('CODEX_HOME=/tmp/h codex exec -m gpt-5.5 x')?.hasCodexHome).toBe(true)
+  expect(codexExec('codex exec x')?.hasCodexHome).toBeUndefined()
+})
+
+test('the #152 and #220 lines parse model and effort though -o is expanded', () => {
+  const line =
+    'SPATZ_SUGGESTION_ID=abc codex exec -m gpt-6-sol -c model_reasoning_effort=high -s workspace-write --skip-git-repo-check -C /w -o $S/out.md - < $S/brief.md > $S/log.txt 2>&1'
+  expect(codexExec(line)).toEqual({
+    isDetached: false,
+    model: 'gpt-6-sol',
+    effort: 'high',
+    sandbox: 'workspace-write',
+    dir: '/w',
+  })
+})
