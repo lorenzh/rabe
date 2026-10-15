@@ -1,0 +1,17 @@
+---
+title: Cost groupings
+description: How hooks/ui/groups.ts builds the model and harness rows of the Cost tab, including partial totals.
+tags: [architecture, ui, cost, modules]
+keywords: [groups, groupRows, GroupRow, grouping, model, harness, partial, n/a, held order]
+---
+
+# Cost groupings
+
+`hooks/ui/groups.ts` is pure. `groupRows(by, items, main)` turns the items into the rows of the `model` and `harness` groupings of the Cost tab. [View behavior](views.md) describes the tab and its buttons.
+
+- Each worker counts once. A forwarder's spend is in its Codex job's row (`withForwarder`).
+- Tokens are `-1`, drawn `n/a`, when no worker of the row has a known count.
+- When only some workers have one, the total leaves the others out and the row is `isPartial`. The view adds the word `(partial)` to the row's name, not only a colour.
+- Dollars are `n/a` when one worker has none.
+- The main session has its own rows (per model, or one for the harness). They come from `hooks/main-usage.ts` (see [Main-session usage](main-usage.md)) and are always partial.
+- `heldRows` and `orderIds` keep the order of the open pane through `stable`. The grouping is part of the pane's scope (`scopeOf`), so a change of grouping starts a new hold.

@@ -181,3 +181,9 @@ test('the model grouping draws a row per model and the main session apart, parti
   expect(rowKeys(drawn)).toContain('row:by:model:main:claude-opus-5-5')
   expect(shown.some(line => line.includes('model n/a'))).toBe(true)
 })
+
+test('a group total that leaves workers out says partial in words', () => {
+  const sel = { ...NO_SELECTION, grouping: 'harness' as const }
+  const shown = lines(gridOf(costView({ ...MODEL, items: [explore, plan] }, SIZE, sel)).grid)
+  expect(shown.some(line => /Claude Code \(partial\) .*41k/.test(line))).toBe(true)
+})

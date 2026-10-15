@@ -60,3 +60,10 @@ test('a held order keeps the rows in place, new rows after it', () => {
   expect(heldRows(grown, held).map(row => row.id)).toEqual(held)
   expect(heldRows(grown).map(row => row.id)).toEqual([rows[1]?.id, rows[0]?.id])
 })
+
+test('a row with some unknown tokens is partial; one with none known stays n/a', () => {
+  const [mixed] = groupRows('harness', [explore, plan])
+  expect([mixed?.tokens, mixed?.isPartial, mixed?.count]).toEqual([41_000, true, 2])
+  const [none] = groupRows('harness', [plan])
+  expect([none?.tokens, none?.isPartial]).toEqual([-1, false])
+})

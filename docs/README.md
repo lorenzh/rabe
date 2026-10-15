@@ -38,6 +38,8 @@ Use this index to find the guide that matches your question.
 - [Pane data](architecture/pane-data.md): clipboard and toast security checks, plus stored-summary validation.
 - [Shell words](architecture/shell-words.md): shell words, quoting, here-doc bodies and the write detector boundary.
 - [Touched files](architecture/touched.md): file edits, conflicts, worktree rows and private list helpers.
+- [Cost groupings](architecture/groups.md): model and harness rows of the Cost tab, partial totals and held order.
+- [Main-session usage](architecture/main-usage.md): per-model sums of the main session's steps for the partial Cost rows.
 
 ## Feasibility
 

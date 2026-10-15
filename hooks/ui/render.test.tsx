@@ -3,6 +3,7 @@ import { expect, test } from 'claude-code/testing'
 import type { RabeItem, RabeItemOf } from '../model'
 import { type Grid, grid, lines, safe, write } from './cells/grid'
 import { ALL, babysit, ci, dev, explore, flow, NOW, plan, raster, review } from './fixtures'
+import { scopeOf } from './interaction'
 import { orderOf } from './lists'
 import { type Held, hold, isRowKey, render, shifts, type Ui } from './render'
 import {
@@ -128,6 +129,7 @@ const actionsOf = (list: Piece[], text = ''): [string, Action][] =>
 function apply(sel: Selection, action: Action): void {
   if (action.type === 'tab') sel.tab = action.tab
   if (action.type === 'query') sel.query = action.text
+  if (action.type === 'group') sel.grouping = action.by
   if (action.type === 'window') sel.window = widen(sel.window ?? windowOf(4, NOW), NOW)
   if (action.type === 'fold') {
     const { group } = action
@@ -443,6 +445,8 @@ function checkTargets(
 const SCOPES: Partial<Selection>[] = [
   { tab: 'items' },
   { tab: 'cost' },
+  { tab: 'cost', grouping: 'model' },
+  { tab: 'cost', grouping: 'harness' },
   { tab: 'effects' },
   { tab: 'timeline' },
   { tab: 'timeline', window: windowOf(4, NOW) },
@@ -471,7 +475,7 @@ test('the first element after the tabs never stops or deletes', () => {
 
 // The walk takes about 4 s; the suite runs files side by side.
 test('whatever changes while the pane is open, the focusable keys only grow at the end, rows of the list in their group', {
-  timeoutMs: 60_000,
+  timeoutMs: 20_000,
 }, () => {
   const start = ALL.map(item =>
     item.id === explore.id ? agentOf('a1', { edits: [{ path: PATHS[0] ?? '', at: NOW }] }) : item,
@@ -508,7 +512,7 @@ test('whatever changes while the pane is open, the focusable keys only grow at t
           // its index, is moved; where it lands must not stop or delete.
           const text = ['', 'serve', 'agent', 'zz'][pick(4)] ?? ''
           const switches = actionsOf(last.list, text).filter(([, action]) =>
-            ['tab', 'open', 'fold', 'query', 'window'].includes(action.type),
+            ['tab', 'open', 'fold', 'query', 'window', 'group'].includes(action.type),
           )
           const [pressed, action] = switches[pick(switches.length)] ?? []
           if (!action) continue
@@ -521,7 +525,16 @@ test('whatever changes while the pane is open, the focusable keys only grow at t
             isLive = true
           } else {
             const was = sel.open
+            const scopeWas = scopeOf(sel)
+            const groupWas = sel.grouping ?? 'agent'
             apply(sel, action)
+            // A change of the grouping is a change of the view: its hold starts anew.
+            if (action.type === 'group' && action.by !== groupWas) {
+              expect([JSON.stringify(action), scopeOf(sel) === scopeWas]).toEqual([
+                JSON.stringify(action),
+                false,
+              ])
+            }
             last = draw(model(items), size, sel)
             const actions = new Map(actionsOf(last.list))
             const keys = landing(action, was)

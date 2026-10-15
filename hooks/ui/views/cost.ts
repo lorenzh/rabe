@@ -69,7 +69,12 @@ function groupLine(
   isSelected: boolean,
 ): Line {
   const blocks = row.tokens < 0 ? '▏'.padEnd(barWidth) : bar(row.tokens, max, barWidth)
-  const name = fit(row.title, nameWidth - 3).trimEnd()
+  // A total that leaves some workers out says so in words.
+  const tag = row.isPartial ? ' (partial)' : ''
+  const room = Math.max(0, nameWidth - 3)
+  const name = room
+    ? `${fit(row.title, Math.max(0, room - tag.length)).trimEnd()}${tag}`.slice(-room)
+    : ''
   const key = `row:${row.id}`
 
   return {
@@ -83,7 +88,7 @@ function groupLine(
         action: { type: 'focus', key },
         ...(!isSelected && { dim: true }),
       },
-      [' '.repeat(nameWidth - 3 - [...name].length)],
+      [' '.repeat(Math.max(0, room - [...name].length))],
       [barWidth ? ` ${blocks}` : '', row.tokens < 0 ? dim : { fg: C.orange }],
       [(row.tokens < 0 ? 'n/a' : tokens(row.tokens)).padStart(8), row.tokens < 0 ? dim : {}],
       [cost(row.costUsd).padStart(9), row.costUsd === undefined ? dim : {}],

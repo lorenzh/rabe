@@ -3,11 +3,13 @@ import type { RabeItem } from '../model'
 import { shown, stable, tokenSum, withForwarder } from './lists'
 
 // A row of the Cost tab's model and harness groupings. `tokens` is -1 when no
-// member's tokens are known; `costUsd` is undefined when one member's is.
+// member's tokens are known; `isPartial` when only some are (the total then
+// leaves the others out); `costUsd` is undefined when one member's is.
 export type GroupRow = {
   id: string
   title: string
   tokens: number
+  isPartial?: boolean
   costUsd?: number
   // Workers in the row; absent on a main-session row (its steps are partial).
   count?: number
@@ -16,14 +18,17 @@ export type GroupRow = {
 const plus = (a: number | undefined, b: number | undefined) =>
   a === undefined || b === undefined ? undefined : a + b
 
-type Sum = { tokens: number; costUsd?: number; count: number }
+type Sum = { tokens: number; isPartial: boolean; costUsd?: number; count: number }
 
 function add(sum: Sum | undefined, item: RabeItem): Sum {
   const tok = tokenSum(item)
 
+  const known = tok >= 0 || (sum !== undefined && sum.tokens >= 0)
+
   return {
-    tokens:
-      tok >= 0 || (sum && sum.tokens >= 0) ? Math.max(sum?.tokens ?? 0, 0) + Math.max(tok, 0) : -1,
+    tokens: known ? Math.max(sum?.tokens ?? 0, 0) + Math.max(tok, 0) : -1,
+    isPartial:
+      known && ((sum?.isPartial ?? false) || tok < 0 || (sum !== undefined && sum.tokens < 0)),
     costUsd: sum ? plus(sum.costUsd, item.costUsd) : item.costUsd,
     count: (sum?.count ?? 0) + 1,
   }
@@ -81,6 +86,7 @@ export function groupRows(
     id: `by:${by}:${key || 'n/a'}`,
     title: sum.title,
     tokens: sum.tokens,
+    isPartial: sum.isPartial,
     costUsd: sum.costUsd,
     count: sum.count,
   }))
