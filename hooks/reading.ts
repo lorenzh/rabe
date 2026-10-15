@@ -179,6 +179,31 @@ export function readChunk(text: string, truncated: boolean, json: boolean, disca
   }
 }
 
+// The cursor after one read: the file stamp, the byte offset past the chunk
+// and whether the chunk was partial or skipped.
+export function nextCursor(
+  stamp: FileStamp,
+  offset: number,
+  chunk: { bytes: number; partial: boolean; isDiscarding?: boolean },
+) {
+  return {
+    ...stamp,
+    offset: offset + chunk.bytes,
+    partial: chunk.partial,
+    isDiscarding: chunk.isDiscarding,
+  }
+}
+
+// True when `stat` is the regular file `name` directly inside `root`, after
+// symlinks resolve: the one check that keeps a link from leaving a task folder.
+export function isOwnFile(
+  root: { realPath?: string },
+  stat: { realPath?: string; kind?: string },
+  name: string,
+): boolean {
+  return !!root.realPath && stat.realPath === `${root.realPath}/${name}` && stat.kind === 'file'
+}
+
 export function outputLines(
   held: RabeLines | undefined,
   lines: string[],

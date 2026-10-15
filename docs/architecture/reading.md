@@ -13,6 +13,8 @@ The [shared poll loop](loop.md) calls the file readers. Each source owns its eng
 
 `rec`, `list`, `str` and `num` narrow an unknown value: `rec` gives the object or an empty one, `list` the array or an empty one, `str` a non-empty string or `undefined`, `num` a number or `undefined`. `parseJson` parses one JSON object. Arrays, scalars and invalid text give `undefined`. `jsonRecords` applies it to each line of a JSONL text and skips blank lines, invalid lines and lines that are not objects. Sources use these helpers instead of their own parsers, so every JSON read accepts objects only.
 
+`nextCursor(stamp, offset, chunk)` builds the stored cursor after one read: the file stamp, the offset past the chunk and its `partial` and `isDiscarding` flags. The shell, monitor and Codex readers use it. `isOwnFile(root, stat, name)` is the one check that a resolved path is the regular file `name` directly in the resolved task folder; the shell, monitor and workflow readers call it before they read, so a link cannot lead out of the folder. The readers themselves stay apart because each calls `$`.
+
 ## Cursors
 
 Shell and monitor cursors live inside each item’s `rabe.lines` entry. One versioned write commits output and cursor together. A failed write retries against current state. Removing an item drops its cursor with its lines. Codex cursors and parser summaries live in `rabe.rollouts`. Session state survives module reloads. Source polls prune Codex entries for items that left the registry. Readers treat non-object restored maps as empty. Invalid cursor or parser entries are absent and rebuilt.

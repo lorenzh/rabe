@@ -5,7 +5,9 @@ import { itemId, type RabeItem } from '../model'
 import {
   cursorOf,
   inodeOf,
+  isOwnFile,
   linesOf,
+  nextCursor,
   outputUpdate,
   readChunk,
   readPlan,
@@ -90,12 +92,7 @@ async function readFile(
     if (!folder) return {}
     const root = await $.fs.stat(folder, { resolve: true })
     const stat = await $.fs.stat(path, { resolve: true })
-    if (
-      !root.realPath ||
-      stat.realPath !== `${root.realPath}/${path.slice(path.lastIndexOf('/') + 1)}` ||
-      stat.kind !== 'file'
-    )
-      return {}
+    if (!isOwnFile(root, stat, path.slice(path.lastIndexOf('/') + 1)) || !stat.realPath) return {}
     path = stat.realPath
     const { value: saved } = await $.state.get({ plugin: 'rabe', key: 'lines' })
     const value = restored(saved)
@@ -169,12 +166,7 @@ async function readFile(
       reset,
       !reset && held?.partial === true,
       parsed.ended !== undefined,
-      {
-        ...stamp,
-        offset: offset + chunk.bytes,
-        partial: chunk.partial,
-        isDiscarding: chunk.isDiscarding,
-      },
+      nextCursor(stamp, offset, chunk),
       { ended: parsed.ended, exitCode: parsed.exitCode },
     )
     return { text: chunk.text, ended: parsed.ended, exitCode: parsed.exitCode }

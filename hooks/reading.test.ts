@@ -5,8 +5,10 @@ import {
   cursorOf,
   fileOffset,
   inodeOf,
+  isOwnFile,
   jsonRecords,
   list,
+  nextCursor,
   num,
   outputLines,
   parseJson,
@@ -125,4 +127,20 @@ test('JSON helpers keep objects and drop everything else', () => {
   expect(str('a')).toBe('a')
   expect(num('1')).toBeUndefined()
   expect(num(1)).toBe(1)
+})
+
+test('nextCursor moves the offset past the chunk and keeps the stamp', () => {
+  const chunk = { bytes: 4, partial: true, isDiscarding: undefined }
+  expect(nextCursor(stat, 10, chunk)).toEqual({ ...stat, offset: 14, partial: true })
+  expect(nextCursor(stat, 0, { bytes: 9, partial: false, isDiscarding: true }).isDiscarding).toBe(
+    true,
+  )
+})
+
+test('isOwnFile takes only a regular file named in the resolved folder', () => {
+  const root = { realPath: '/t' }
+  expect(isOwnFile(root, { realPath: '/t/a.output', kind: 'file' }, 'a.output')).toBe(true)
+  expect(isOwnFile(root, { realPath: '/x/a.output', kind: 'file' }, 'a.output')).toBe(false)
+  expect(isOwnFile(root, { realPath: '/t/a.output', kind: 'directory' }, 'a.output')).toBe(false)
+  expect(isOwnFile({}, { realPath: '/undefined/a', kind: 'file' }, 'a')).toBe(false)
 })
