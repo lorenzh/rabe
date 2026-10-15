@@ -10,7 +10,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
-- `scripts/live-check.sh` compares only the title of the marked Timeline row after `b`, also when the title fills its column and one space precedes the bar, and it resolves a relative `CLAUDE` path against the current directory instead of failing with a misleading error (PR_LINK, fixes [#233](https://github.com/lorenzh/rabe/issues/233), [#234](https://github.com/lorenzh/rabe/issues/234))
+- `scripts/live-check.sh` compares only the title of the marked Timeline row after `b`, also when the title fills its column and one space precedes the bar, and it resolves a relative `CLAUDE` path against the current directory instead of failing with a misleading error ([#246](https://github.com/lorenzh/rabe/pull/246), fixes [#233](https://github.com/lorenzh/rabe/issues/233), [#234](https://github.com/lorenzh/rabe/issues/234))
 - `b` (Back) returns to the Items row you opened, not to an older tab, when the item whose detail was open left the list before ([#227](https://github.com/lorenzh/rabe/pull/227), fixes [#223](https://github.com/lorenzh/rabe/issues/223))
 - A direct `codex exec` in a subshell group sent to the background with `&` shows as detached also when a newline or another command comes before the closing `)`, as in `(codex exec ... -o f x\n) &` ([#226](https://github.com/lorenzh/rabe/pull/226), fixes [#222](https://github.com/lorenzh/rabe/issues/222))
 
