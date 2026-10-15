@@ -537,6 +537,7 @@ async function look(
   const { value: turns = {} } = await $.state.get({ plugin: 'rabe', key: 'turns' })
   const { value: lines = {} } = await $.state.get({ plugin: 'rabe', key: 'lines' })
   const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
+  const { value: diffs = {} } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
   const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
   const { value: query = '' } = await $.state.get({ plugin: 'rabe', key: 'query' })
   const { value: folded = [] } = await $.state.get({ plugin: 'rabe', key: 'folded' })
@@ -556,6 +557,7 @@ async function look(
     usd: usage?.cost?.usd,
     previous: await previous($).catch(() => undefined),
     edits,
+    diffs,
     cwd: await $.session.cwd().catch(() => undefined),
     sessionId: await $.session.id().catch(() => undefined),
     ...(worktrees && { worktrees }),

@@ -197,7 +197,15 @@ async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Pro
     const next = prune(value, dropped, items)
     if (next === value) return
     const turns = await $.state.set({ plugin: 'rabe', key: 'turns' }, next, { ifVersion: version })
-    if (turns.isSet) return
+    if (turns.isSet) break
+  }
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, dropped, items)
+    if (next === value) return
+    const diffs = await $.state.set({ plugin: 'rabe', key: 'diffs' }, next, { ifVersion: version })
+    if (diffs.isSet) return
   }
 }
 

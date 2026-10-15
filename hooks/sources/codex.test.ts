@@ -104,6 +104,25 @@ const command = (script: string, exit_code: number, at: number, cwd = 'file:///w
     },
   })
 
+test('completed file changes carry their diffs: update patch, added content, none for a delete', () => {
+  const rollout = [
+    change('completed', { '/w/new.ts': { type: 'add', content: 'a\nb' } }, 1000),
+    change(
+      'completed',
+      {
+        '/w/a.ts': { type: 'update', unified_diff: '@@ -1 +1 @@\n-x\n+y\n', move_path: null },
+        '/w/gone.ts': { type: 'delete', content: 'secret' },
+      },
+      2000,
+    ),
+  ].join('\n')
+  const { diffs } = parseRollout(rollout)
+  expect(diffs).toMatchObject([
+    { path: '/w/new.ts', at: 1000, added: 2 },
+    { path: '/w/a.ts', at: 2000, added: 1, removed: 1, lines: ['@@ -1 +1 @@', '-x', '+y'] },
+  ])
+})
+
 test('completed file changes are edits; shell writes are files to check on disk', () => {
   const rollout = [
     change('completed', { '/work/new.cjs': { type: 'add', content: 'x' } }, 1000),

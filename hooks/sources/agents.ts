@@ -6,7 +6,8 @@ import type {
   TurnStepResult,
 } from 'claude-code'
 
-import type { RabeEdit } from '../../types'
+import type { RabeDiff, RabeEdit } from '../../types'
+import { fromHunks, fromToolResult, keep } from '../diffs'
 import { companionCall } from '../forwarders'
 import { fault, type Pollers, skipped, tally } from '../loop'
 import { clip, type EndStatus, isAbsolute, isEnded, itemId, type RabeItem } from '../model'
@@ -89,7 +90,15 @@ async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Pro
     const next = prune(value, dropped, items)
     if (next === value) return
     const turns = await $.state.set({ plugin: 'rabe', key: 'turns' }, next, { ifVersion: version })
-    if (turns.isSet) return
+    if (turns.isSet) break
+  }
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, dropped, items)
+    if (next === value) return
+    const diffs = await $.state.set({ plugin: 'rabe', key: 'diffs' }, next, { ifVersion: version })
+    if (diffs.isSet) return
   }
 }
 
@@ -121,6 +130,26 @@ async function record(
     const { value = [], version } = await $.state.get({ plugin: 'rabe', key: 'edits' })
     const next = [...value, ...changes].slice(-MAX_EDITS)
     const { isSet } = await $.state.set({ plugin: 'rabe', key: 'edits' }, next, {
+      ifVersion: version,
+    })
+    if (isSet) return
+  }
+}
+
+// The diffs of recorded operations, kept by editor: the agent's item id, or
+// `main`. Content is held in session state only, never read from files.
+async function recordDiffs(
+  $: EngineInterface,
+  agentId: string | undefined,
+  diffs: RabeDiff[],
+): Promise<void> {
+  if (diffs.length === 0) return
+  const editor = agentId ? itemId('agent', agentId) : 'main'
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
+    const next = keep(value, editor, diffs)
+    if (next === value) return
+    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'diffs' }, next, {
       ifVersion: version,
     })
     if (isSet) return
@@ -243,6 +272,18 @@ async function afterBash(
     }
   }
   await record($, agentId, changes)
+  const hunks = new Map(
+    (diff && !diff.shared && !diff.skipped && !diff.unavailable && Array.isArray(diff.files)
+      ? diff.files
+      : []
+    ).map(file => [file?.filePath, file]),
+  )
+  const diffs = changes.flatMap(change => {
+    const file = hunks.get(change.path)
+    if (!file || file.deleted) return []
+    return [fromHunks(change.path, at, file.hunks)].filter(one => one !== undefined)
+  })
+  await recordDiffs($, agentId, diffs)
 }
 
 function cachedMeta(
@@ -466,7 +507,10 @@ export function agents(on: On, file: string, pollers: Pollers): void {
       const path = (e.tool === 'Edit' || e.tool === 'Write') && changedFile(answer, e.file_path)
       if (path) {
         const via = e.tool === 'Edit' ? 'edit' : 'write'
-        await record($, e.agentId, [{ path, at: await $.clock.now(), via }])
+        const at = await $.clock.now()
+        await record($, e.agentId, [{ path, at, via }])
+        const diff = fromToolResult(path, at, answer.result)
+        if (diff) await recordDiffs($, e.agentId, [diff])
       }
     } catch {}
 

@@ -9,7 +9,8 @@ import { orderOf } from '../lists'
 import { isPress, type Model, NO_SELECTION, type Press, rowKeys, type Size, stepRow } from '../view'
 import { effectsView } from './effects'
 
-const SIZE: Size = { columns: 90, rows: 30, surface: 'terminal', hasInput: false }
+// One column below the split (SPLIT_COLUMNS), so the list takes the whole width.
+const SIZE: Size = { columns: 89, rows: 30, surface: 'terminal', hasInput: false }
 
 const api: RabeItem = {
   id: 'agent:a3',
@@ -68,7 +69,7 @@ test('a file edited by two agents in one tree heads the tab as a conflict', () =
   const shown = lines(grid)
   expect(shown[0]).toBe(' ⚠ conflict  src/logger.ts is edited by Plan auth split and logger in api')
   expect(cell(grid, 1, 0)).toEqual(['⚠'.codePointAt(0), C.red, CHIP.failed.bg])
-  expect(cell(grid, 89, 0)[2]).toBe(CHIP.failed.bg)
+  expect(cell(grid, 88, 0)[2]).toBe(CHIP.failed.bg)
 })
 
 test('files touched list each file with who edited it and how often, conflicts first', () => {
@@ -78,7 +79,7 @@ test('files touched list each file with who edited it and how often, conflicts f
   expect(head).toBeGreaterThan(0)
   expect(shown[head + 1]).toMatch(/^ {2}FILE +BY +CHANGE$/)
   expect(shown[head + 2]).toMatch(
-    /^▌ src\/logger\.ts +Plan auth split, logger in api +3 changes: edit$/,
+    /^▌ src\/logger\.ts +Plan auth split, logger in a… 3 changes: edit$/,
   )
   expect(shown[head + 3]).toMatch(/^ {2}src\/api\/server\.ts +logger in api +edit$/)
   expect(shown.some(line => /^ {2}src\/db\/pool\.ts +Explore verifyToken +edit$/.test(line))).toBe(
@@ -161,7 +162,7 @@ test('ports show the command and the ssh line, a Button that copies; c presses t
   expect(shown[head + 1]).toBe('  :5173  bun run dev')
   expect(shown[head + 2]).toBe('   c: ssh -L 5173:localhost:5173 <your-host>')
   expect(cell(drawn.grid, 0, head + 2)[2]).toBe(CHIP.monitor.bg)
-  expect(cell(drawn.grid, 89, head + 2)[2]).toBe(CHIP.monitor.bg)
+  expect(cell(drawn.grid, 88, head + 2)[2]).toBe(CHIP.monitor.bg)
   expect(presses(drawn).find(one => one.key === 'row:ssh:5173')).toMatchObject({
     label: 'ssh -L 5173:localhost:5173 <your-host>',
     hotkey: 'c',
@@ -458,4 +459,45 @@ test('a conflict names the main tree only when git places the file there', () =>
   expect(draw('/repo/shared.txt', undefined, '/repo/.wt/fix')).toBe(
     by.replace('shared.txt', '/repo/shared.txt'),
   )
+})
+
+const WIDE: Size = { ...SIZE, columns: 120 }
+const OPERATION = { path: '/repo/src/logger.ts', at: NOW - 10_000 }
+const patch = {
+  ...OPERATION,
+  lines: ['@@ -1,2 +1,2 @@', ' keep', '-old', '+new\tx'],
+  added: 12,
+  removed: 3,
+  hunks: 2,
+}
+
+test('a wide pane draws the latest recorded diff of the selected file beside the list', () => {
+  const diffs = { [api.id]: [{ ...patch, at: NOW - 30_000, lines: ['+older'] }, patch] }
+  const drawn = gridOf(effectsView({ ...MODEL, diffs }, WIDE, NO_SELECTION))
+  const shown = lines(drawn.grid)
+  expect(shown.some(line => /│ src\/logger\.ts/.test(line))).toBe(true)
+  expect(shown.some(line => line.includes('+12 -3 · 2 hunks · edit by logger in api'))).toBe(true)
+  expect(shown.some(line => /│ \+new {4}x/.test(line))).toBe(true)
+  expect(shown.some(line => line.includes('+older'))).toBe(false)
+  // no new Buttons: the focus order is the list's
+  const keys = rowKeys(drawn).filter(key => key.startsWith('row:'))
+  expect(keys[0]).toBe('row:file:/repo/src/logger.ts')
+})
+
+test('a file without a recorded diff for its latest operation says so', () => {
+  const diffs = { [api.id]: [{ ...patch, at: NOW - 99_000 }] }
+  const shown = lines(gridOf(effectsView({ ...MODEL, diffs }, WIDE, NO_SELECTION)).grid)
+  expect(shown.some(line => line.includes('diff n/a: content not recorded'))).toBe(true)
+  const big = { [api.id]: [{ ...patch, lines: [], note: 'too-large' as const }] }
+  const text = lines(gridOf(effectsView({ ...MODEL, diffs: big }, WIDE, NO_SELECTION)).grid)
+  expect(text.some(line => line.includes('diff n/a: file too large'))).toBe(true)
+})
+
+test('a narrow pane shows one summary line instead of the diff', () => {
+  const diffs = { [api.id]: [patch] }
+  const shown = lines(gridOf(effectsView({ ...MODEL, diffs }, SIZE, NO_SELECTION)).grid)
+  expect(
+    shown.filter(line => line.includes('+12 -3 · 2 hunks · edit by logger in api')),
+  ).toHaveLength(1)
+  expect(shown.some(line => line.includes('+new'))).toBe(false)
 })

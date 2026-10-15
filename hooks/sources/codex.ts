@@ -1,6 +1,7 @@
 import type { EngineInterface, FsStat, On } from 'claude-code'
 
-import type { RabeEdit } from '../../types'
+import type { RabeDiff, RabeEdit } from '../../types'
+import { keep } from '../diffs'
 import { linkForwarders } from '../forwarders'
 import { fault, type Pollers, skipped, tally } from '../loop'
 import { itemId, type NewItem, type RabeItem, type RabeItemOf } from '../model'
@@ -84,7 +85,15 @@ async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Pro
     const next = prune(value, dropped, items)
     if (next === value) return
     const turns = await $.state.set({ plugin: 'rabe', key: 'turns' }, next, { ifVersion: version })
-    if (turns.isSet) return
+    if (turns.isSet) break
+  }
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, dropped, items)
+    if (next === value) return
+    const diffs = await $.state.set({ plugin: 'rabe', key: 'diffs' }, next, { ifVersion: version })
+    if (diffs.isSet) return
   }
 }
 
@@ -168,6 +177,24 @@ async function prices($: EngineInterface, file: string): Promise<Prices> {
   return own ? withOverride(built, own) : []
 }
 
+// The file diffs of one parse, kept under the job's item id (see `keep`).
+async function recordDiffs(
+  $: EngineInterface,
+  id: string,
+  diffs: RabeDiff[] | undefined,
+): Promise<void> {
+  if (!diffs?.length) return
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
+    const next = keep(value, id, diffs)
+    if (next === value) return
+    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'diffs' }, next, {
+      ifVersion: version,
+    })
+    if (isSet) return
+  }
+}
+
 async function readSession(
   $: EngineInterface,
   codexHome: string,
@@ -249,6 +276,7 @@ async function readSession(
       parseRollout(String(text), await $.env.get('HOME'), jobStart(job), until),
       looks,
     )
+    await recordDiffs($, itemId('codex', job.id), rollout.diffs)
     return { path, updatedAt, rollout, usd: codexUsd(await prices($, file), rollout.requests) }
   }
   const stamp = { size: stat.size, mtimeMs: stat.mtimeMs, identity }
@@ -287,7 +315,9 @@ async function readSession(
     until,
   )
   const rollout = await confirmed($, parser.out, looks)
-  parser.out = { ...rollout, requests: [] }
+  await recordDiffs($, key, rollout.diffs)
+  const { diffs: _diffs, ...kept } = rollout
+  parser.out = { ...kept, requests: [] }
   const cost = rollout.requests.length ? codexUsd(await prices($, file), rollout.requests) : 0
   const isUnpriced = (!reset && previous?.isUnpriced === true) || cost === undefined
   const hasRequests = (!reset && previous?.hasRequests === true) || rollout.requests.length > 0

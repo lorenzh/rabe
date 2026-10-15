@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Added
+
+- The Effects tab shows the diff of the selected file beside the list (one summary line below 90 columns), recorded when the change happens and never read from files ([#PR](https://github.com/lorenzh/rabe/pull/PR), refs [#162](https://github.com/lorenzh/rabe/issues/162))
+
 ## [0.9.1] - 2026-10-14
 
 No migration. Update with `claude plugin update rabe` and `/reload-plugins`; a running session keeps working.

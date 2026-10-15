@@ -1,12 +1,14 @@
-import type { RabeOrder } from '../../../types'
+import type { RabeDiff, RabeOrder } from '../../../types'
+import { recorded } from '../../diffs'
 import { isInside, type RabeItemOf } from '../../model'
 import { fit, type Span } from '../cells/grid'
 import { C, CHIP } from '../cells/palette'
-import { middleEllipsis } from '../format'
+import { ago, middleEllipsis } from '../format'
 import { stable } from '../lists'
 import { byConflict, type Touched, touched, worktreeRows } from '../touched'
-import type { Drawn, Line, Model, View } from '../view'
-import { fitLine, focusOn } from './lines'
+import { type Drawn, isPress, type Line, type Model, type Size, type View } from '../view'
+import { SPLIT_COLUMNS, shownFrom } from './items'
+import { beside, fitLine, focusOn, plain } from './lines'
 
 const dim = { fg: C.dim }
 const CHANGE = 29
@@ -131,6 +133,58 @@ function treeLines(model: Model, files: Touched[]): Line[] {
   ]
 }
 
+// What the diff area shows for a file: its latest recorded operation, or why
+// there is none. An older operation never stands in for the latest one.
+function shownDiff(file: Touched, diffs: Model['diffs']): { diff?: RabeDiff; note?: string } {
+  if (file.isDeleted) return { note: 'deleted' }
+  const diff = recorded(diffs, file.last.id, file.path, file.at)
+  if (!diff) return { note: 'diff n/a: content not recorded' }
+  if (diff.note === 'too-large') return { note: 'diff n/a: file too large' }
+  if (diff.isEvicted) return { note: 'diff n/a: dropped, too much diff content held' }
+  if (diff.note === 'unchanged') return { note: 'no change' }
+
+  return { diff }
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+
+// `+12 -3 · 2 hunks · edit by <title>`, or the reason there is no diff.
+function summaryOf(file: Touched, diffs: Model['diffs']): string {
+  const { diff, note } = shownDiff(file, diffs)
+  const head = diff
+    ? `+${diff.added} -${diff.removed} · ${plural(diff.hunks, 'hunk')}`
+    : (note ?? '')
+
+  return `${head} · edit by ${file.last.title}`
+}
+
+function diffLines(file: Touched, diffs: Model['diffs'], now: number): Line[] {
+  const { diff, note } = shownDiff(file, diffs)
+  const head: Line[] = [
+    { spans: [[file.rel, { fg: C.bright }]] },
+    { spans: [[`${summaryOf(file, diffs)} · ${ago(now - file.at)}`, dim]] },
+    { spans: [] },
+  ]
+  if (!diff) return [...head, { spans: [[note ?? '', dim]] }]
+  const body = diff.lines.map((line): Line => {
+    const text = line.replace(/\t/g, '    ')
+    const fg = text.startsWith('@@')
+      ? C.blue
+      : text.startsWith('+')
+        ? C.green
+        : text.startsWith('-')
+          ? C.red
+          : undefined
+
+    return { spans: [[text, fg === undefined ? {} : { fg }]] }
+  })
+  const cutNote: Line[] = diff.isTruncated
+    ? [{ spans: [['… cut: the change is longer than the 200 lines kept', dim]] }]
+    : []
+
+  return [...head, ...body, ...cutNote]
+}
+
 const sshLine = (port: number) => `ssh -L ${port}:localhost:${port} <your-host>`
 
 type Port = { item: RabeItemOf<'shell'>; port: number; at: number }
@@ -207,7 +261,10 @@ export const effectsView: View = (model, size, sel): Drawn => {
   const ids = [...files.map(file => file.id), ...shown.map(({ port }) => `ssh:${port}`)]
   const selected = ids.includes(sel.selected) ? sel.selected : (ids[0] ?? '')
   const hotkey = ports.held[0]?.port ?? ports.fresh[0]?.port
-  const w = widths(size.columns)
+  const file = files.find(one => one.id === selected)
+  const isSplit = size.columns >= SPLIT_COLUMNS && files.length > 0
+  const listWidth = isSplit ? Math.min(48, Math.floor(size.columns * 0.42)) : size.columns
+  const w = widths(listWidth)
   const portLines: Line[] = [
     {
       spans: [
@@ -230,5 +287,36 @@ export const effectsView: View = (model, size, sel): Drawn => {
     selected,
   )
 
-  return { nodes: lines.map(line => fitLine(line, size.columns)), buttons: [] }
+  if (isSplit) return { nodes: split(lines, file, model, size, listWidth), buttons: [] }
+  const nodes = lines.map(line => fitLine(line, size.columns))
+  if (file) {
+    const pad = Math.max(0, size.rows - 1 - nodes.length)
+    nodes.push(...Array.from({ length: pad }, () => ({ spans: [] })))
+    nodes.push(fitLine({ spans: [[` ${summaryOf(file, model.diffs)}`, dim]] }, size.columns))
+  }
+
+  return { nodes, buttons: [] }
+}
+
+// The list beside the selected file's diff, drawn from the first row the pane
+// shows so the diff stays in view while the focus walks a long list. The diff
+// is plain text, so the rows' focus order stays.
+function split(
+  lines: Line[],
+  file: Touched | undefined,
+  model: Model,
+  size: Size,
+  listWidth: number,
+): Line[] {
+  const right = size.columns - listWidth - 2
+  const at = lines.findIndex(line => line.spans.some(part => isPress(part) && part.autoFocus))
+  const detail = file
+    ? [
+        ...Array.from({ length: shownFrom(size, at) }, () => ({ spans: [] })),
+        ...diffLines(file, model.diffs, model.now).map(plain),
+      ]
+    : []
+  const rule: Span[] = [['│', { fg: C.rule }], [' ']]
+
+  return beside(lines, listWidth, rule, detail, right)
 }

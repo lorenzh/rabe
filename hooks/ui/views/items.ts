@@ -84,7 +84,7 @@ function isUnder(item: RabeItem, before: RabeItem[]): boolean {
 
 // The first row the pane shows once it has followed the focus onto row `at`:
 // the engine scrolls no further than it must, and does not say where it went.
-function shownFrom(size: Size, at: number): number {
+export function shownFrom(size: Size, at: number): number {
   if (!size.window || at < 0) return 0
   const { top, rows } = size.window
 

@@ -1,7 +1,7 @@
 import type { AgentSpawnInput, AgentStatus, FsStat, On } from 'claude-code'
 import { type Engine, expect, mock, test } from 'claude-code/testing'
 
-import type { RabeEdit } from '../../types'
+import type { RabeDiff, RabeEdit } from '../../types'
 import type { RabeItem, RabeItemOf, RabeTurn } from '../model'
 import { MAX_ENDED } from '../registry'
 import { core, files, memoryState } from '../testing'
@@ -31,13 +31,19 @@ const agent: RabeItem = {
 
 const turn = (index: number): RabeTurn => ({ index, at: index, text: `t${index}`, tools: [] })
 
-type Held = { items?: RabeItem[]; turns?: Record<string, RabeTurn[]>; edits?: RabeEdit[] }
+type Held = {
+  items?: RabeItem[]
+  turns?: Record<string, RabeTurn[]>
+  edits?: RabeEdit[]
+  diffs?: Record<string, RabeDiff[]>
+}
 
 function watch(on: On): Held {
   const held: Held = {}
   on('state.set', async (_$, e, next) => {
     if (e.plugin === 'rabe' && e.key === 'items') held.items = e.value as RabeItem[]
     if (e.plugin === 'rabe' && e.key === 'turns') held.turns = e.value as Held['turns']
+    if (e.plugin === 'rabe' && e.key === 'diffs') held.diffs = e.value as Held['diffs']
     if (e.plugin === 'rabe' && e.key === 'edits') held.edits = e.value as RabeEdit[]
 
     return next(e)
@@ -329,6 +335,32 @@ test('a step adds tokens, tools and a turn; the end of the run ends the agent', 
       tools: [{ name: 'Read', summary: 'src/db.ts' }],
     },
   ])
+})
+
+test('the diff of an Edit or Write result is kept by its editor, never read from a file', async ($, on) => {
+  const held = engine(on, 'a1')
+  const hunk = { oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+b'] }
+  on('tool.call', { tool: ['Edit', 'Write'] }, async (_$, e) => ({
+    result: (e.tool === 'Edit'
+      ? { filePath: e.file_path, structuredPatch: [hunk], originalFile: 'a' }
+      : { type: 'create', filePath: e.file_path, content: 'x\ny', structuredPatch: [] }) as never,
+  }))
+  await $.agent.spawn(SPAWN)
+  await $.tool.call({
+    tool: 'Edit',
+    file_path: '/r/a.ts',
+    old_string: 'a',
+    new_string: 'b',
+    agentId: 'a1',
+  } as never)
+  await $.tool.call({ tool: 'Write', file_path: '/r/n.ts', content: 'x\ny' } as never)
+  expect(held.diffs?.['agent:a1']?.[0]).toMatchObject({
+    path: '/r/a.ts',
+    at: 5000,
+    added: 1,
+    removed: 1,
+  })
+  expect(held.diffs?.main?.[0]).toMatchObject({ path: '/r/n.ts', added: 2, removed: 0 })
 })
 
 test('an edit the engine ran is kept on its agent; a refused or failed one is not', async ($, on) => {
