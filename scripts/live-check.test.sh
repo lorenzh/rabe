@@ -291,7 +291,8 @@ case $cmd in
             *) [ "$n" = "$sel" ] && m=▌ || m=' '
                title="row $n"
                [ -n "${FAKE_SLEEP:-}" ] && title="sleep ${durs[id]:-}"
-               [ "$id" = 0 ] && [ -e "$FAKE/zebra" ] && title+=" # zebra nap"
+               # FAKE_ZTITLE=desc: Claude shows the description, not the comment.
+               [ "$id" = 0 ] && [ -e "$FAKE/zebra" ] && [ "${FAKE_ZTITLE:-}" != desc ] && title+=" # zebra nap"
                g=▶
                grep -qx "$id" "$FAKE/ended" 2>/dev/null && g=■
                [ "$w" = i ] && line="$m  $g $title" || line="$m$g $title"
@@ -460,6 +461,7 @@ sq FAKE_TABLATE=2 'a tab that lands late is waited for before Down' 0 'PASS ring
 sq FAKE_TABKEY=stop 'a ring left on a stop after the tab key is FAIL' 1 'FAIL ring-2 0/1' --shells 3 --timeout 50 --sequences ring-2
 sq 'a field that reads what was typed is PASS' 0 'PASS search-keys 1/1' --shells 3 --timeout 50 --sequences search-keys
 sq FAKE_FIELD=eat 'a field that loses a key is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys
+sq FAKE_ZTITLE=desc 'a matching row whose title lacks the comment is PASS' 0 'PASS search-keys 1/1' --shells 3 --timeout 50 --sequences search-keys
 sq FAKE_BACKSPACE=stale 'a filter that stays after the last Backspace is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys
 sq FAKE_BACKSPACE=blur 'a field that loses the focus when rows return is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys
 sq FAKE_BACKSPACE=lost 'a Backspace lost while a seeded row matches is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys

@@ -536,11 +536,11 @@ seq_search_keys() {
   snap
   pane_has 'search:? +zeb' || { why="the field does not read zeb"; return 1; }
   # Backspace back to rows: the field keeps the focus, so typing goes on in it.
-  # zeb matches the seeded "zebra nap" row: a lost Backspace (#180) leaves text.
+  # zeb matches the command of the seeded "zebra nap" row: a lost Backspace (#180) leaves text.
   listscan
-  local i seen=
-  for i in "${lrows[@]}"; do [[ ${view[i]} == *'zebra nap'* ]] && seen=1; done
-  [ -n "$seen" ] || { why="no row matching zeb shows before the Backspaces: the seeded zebra nap row is missing"; return 1; }
+  # The row title is Claude's description, not the comment: one row is left.
+  { [ "${#lrows[@]}" -ge 1 ] && [ "${#lrows[@]}" -lt "$all" ]; } ||
+    { why="zeb left ${#lrows[@]} of $all rows before the Backspaces: no row matches it"; return 1; }
   keys BSpace BSpace BSpace
   snap
   listscan
