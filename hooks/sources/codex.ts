@@ -182,12 +182,17 @@ async function recordDiffs(
   $: EngineInterface,
   id: string,
   diffs: RabeDiff[] | undefined,
+  isStaged: boolean,
 ): Promise<void> {
   if (!diffs?.length) return
   for (;;) {
-    // A job the list no longer holds leaves no diff behind.
-    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
-    if (!items.some(one => one.id === id)) return
+    // A job the list no longer holds leaves no diff behind; a job this poll
+    // stages after the read is not held yet, and the commit's cleanup drops
+    // its diffs again if the cap pushes it out.
+    if (!isStaged) {
+      const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+      if (!items.some(one => one.id === id)) return
+    }
     const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
     const next = keep(value, id, diffs)
     if (next === value) return
@@ -195,7 +200,7 @@ async function recordDiffs(
       ifVersion: version,
     })
     // An eviction may have finished its cleanup after the check above: drop what this write left.
-    if (isSet) return forget($, [id])
+    if (isSet) return isStaged ? undefined : forget($, [id])
   }
 }
 
@@ -280,7 +285,7 @@ async function readSession(
       parseRollout(String(text), await $.env.get('HOME'), jobStart(job), until),
       looks,
     )
-    await recordDiffs($, itemId('codex', job.id), rollout.diffs)
+    await recordDiffs($, itemId('codex', job.id), rollout.diffs, !held)
     return { path, updatedAt, rollout, usd: codexUsd(await prices($, file), rollout.requests) }
   }
   const stamp = { size: stat.size, mtimeMs: stat.mtimeMs, identity }
@@ -319,7 +324,7 @@ async function readSession(
     until,
   )
   const rollout = await confirmed($, parser.out, looks)
-  await recordDiffs($, key, rollout.diffs)
+  await recordDiffs($, key, rollout.diffs, !held)
   const { diffs: _diffs, ...kept } = rollout
   parser.out = { ...kept, requests: [] }
   const cost = rollout.requests.length ? codexUsd(await prices($, file), rollout.requests) : 0

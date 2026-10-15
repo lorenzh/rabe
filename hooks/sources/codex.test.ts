@@ -1352,3 +1352,14 @@ test('an eviction between the membership check and the diff write leaves no diff
   expect(isEvicted).toBe(true)
   expect(state['rabe.diffs']?.value ?? {}).toEqual({})
 })
+
+test('a job found with an edit before the first poll keeps its diff', async ($, on) => {
+  const state = memoryState(on)
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: change('completed', { '/work/a.ts': { type: 'add', content: 'x' } }, 3000),
+  })
+  await startAndTick($, w)
+  expect(Object.keys(state['rabe.diffs']?.value as object)).toEqual(['codex:task-1'])
+})
