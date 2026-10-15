@@ -716,7 +716,6 @@ test('a workflow counts a removed agent in its phases and tokens and draws its r
   expect(shown.some(line => line.startsWith(' cost n/a   in 49k'))).toBe(true)
   expect(rowKeys(drawn)).toContain(`row:${done.id}`)
   expect(rowKeys(drawn)).toContain(`row:${verify.id}`)
-  expect(lines(drawn.grid).join('')).not.toContain('sonnet-5-5·medium')
 })
 
 test('unsafe command ids show n/a and have no copy control', () => {
@@ -835,6 +834,7 @@ test('a workflow row at 30 columns keeps the agent button and drops the chip', (
   const items = ALL.map(item => (item.id === verify.id ? tuned : item))
   const drawn = open(model(items), flow.id, { ...TERMINAL, columns: 30 })
   expect(rowKeys(drawn)).toContain(`row:${verify.id}`)
+  expect(lines(drawn.grid).join('')).not.toContain('sonnet-5-5·medium')
 })
 
 test('a very long branch name stays one cut fact line in the opened agent', () => {
