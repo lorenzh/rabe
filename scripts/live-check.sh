@@ -443,9 +443,11 @@ ident() {
   d=$(shellof "$1")
   if [ -n "$d" ]; then echo "$d"; else tr -d 0-9 <<<"${1:1}" | tr -s ' '; fi
 }
-# A row without its Timeline bar: the bar starts one space after a title that
-# fills its column, so a cut at the first double space keeps part of it (#233).
-rowtitle() { local r=${1:1}; echo "${1:0:1}${r%%[█▏▎▍▋▊▉◂]*}"; }
+# A row without its Timeline or Cost bar (#233). A title that fills its column
+# leaves one space before the bar, so the cut at the first double space may
+# keep it: drop a trailing run of bar glyphs (hooks/ui/cells/grid.ts) too. A
+# glyph inside the title stays, so titles that differ after it stay apart.
+rowtitle() { local r=${1:1}; r=${r%%  *}; echo "${1:0:1}$(sed -E 's/( ?[█▏▎▍▌▋▊▉◂])+$//' <<<"$r")"; }
 # Clicks the last row that shows a running seeded shell (▶) other than the
 # marked one, and sets `clicked` to its duration.
 click_running() {

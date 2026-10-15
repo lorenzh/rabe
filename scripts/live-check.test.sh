@@ -194,6 +194,10 @@ case $cmd in
       elif [ "$1" = b ]; then
         rm -f "$FAKE/detail"
         [ "${FAKE_BACK:-}" = items ] && echo 1 >"$FAKE/tab"
+        # FAKE_BACK=other returns to the next row: a wrong return selection.
+        if [ "${FAKE_BACK:-}" = other ]; then
+          read -r ring sel <"$FAKE/ring" && echo "$ring $(((sel + 1) % 4))" >"$FAKE/ring"
+        fi
       elif [ -n "${FAKE_LIST:-}" ]; then
         visible
         read -r ring sel 2>/dev/null <"$FAKE/ring" || { ring=$FAKE_RING; sel=$FAKE_RING; }
@@ -290,6 +294,8 @@ case $cmd in
             F:*) line=" ◐ ${w#F:}" ;;
             *) [ "$n" = "$sel" ] && m=▌ || m=' '
                title="row $n"
+               # FAKE_TG=1: a glyph inside the title, differing after it.
+               [ -n "${FAKE_TG:-}" ] && title="worker █ ${letters[n]:-z}"
                [ -n "${FAKE_SLEEP:-}" ] && title="sleep ${durs[id]:-}"
                # FAKE_ZTITLE=desc: Claude shows the description, not the comment.
                [ "$id" = 0 ] && [ -e "$FAKE/zebra" ] && [ "${FAKE_ZTITLE:-}" != desc ] && title+=" # zebra nap"
@@ -302,6 +308,10 @@ case $cmd in
                  b=$(($(cat "$FAKE/bar" 2>/dev/null || echo 1) + 1))
                  echo "$b" >"$FAKE/bar"
                  line+=" $(printf '█%.0s' $(seq 1 "$b"))"
+                 # =eighth: a short Cost bar of one ▌ or ▋ by turn.
+                 if [ "$FAKE_BAR" = eighth ]; then
+                   [ $((b / 4 % 2)) = 0 ] && line="${line% *} ▌" || line="${line% *} ▋"
+                 fi
                fi ;;
           esac
           if [ "$n" -ge "$from" ]; then
@@ -349,6 +359,7 @@ dead() { local i; for i in 1 2 3 4 5 6 7 8 9 10; do alive "$1" || return 0; "$re
 
 # Runs `check` against the fake tmux. Leading NAME=VALUE words set the fake's
 # environment; FAKE names its folder, which then holds pane, foreign and keys.
+letters=(alpha beta gamma delta)
 faked() {
   local vars=()
   while [[ $1 == *=* ]]; do vars+=("$1"); shift; done
@@ -483,6 +494,9 @@ sq FAKE_REMOVE=keep 'r that keeps the row is FAIL' 1 'FAIL remove-neighbour 0/1'
 sq 'a reopened pane that marks the same row and opens it is PASS' 0 'PASS reopen 1/1' --shells 3 --timeout 50 --sequences reopen
 sq 'b back on the Cost and Timeline tabs is PASS' 0 'PASS back-timeline 1/1' --shells 3 --timeout 50 --sequences back-cost,back-timeline
 sq FAKE_SLEEP= FAKE_BAR=1 'a bar one space after the title is no part of the marked row is PASS' 0 'PASS back-timeline 1/1' --shells 3 --timeout 50 --sequences back-timeline
+sq FAKE_SLEEP= FAKE_BAR=eighth 'a bar that ends on ▌ then ▋ is no part of the marked row is PASS' 0 'PASS back-cost 1/1' --shells 3 --timeout 50 --sequences back-cost
+sq FAKE_BACK=other FAKE_SLEEP= FAKE_BAR=1 FAKE_TG=1 'a glyph inside the title keeps the rows apart: a wrong return is FAIL' 1 'FAIL back-timeline 0/1' --shells 3 --timeout 50 --sequences back-timeline
+sq FAKE_SLEEP= FAKE_BAR=1 FAKE_TG=1 'a glyph inside the title with the right return is PASS' 0 'PASS back-timeline 1/1' --shells 3 --timeout 50 --sequences back-timeline
 sq FAKE_BACK=items 'b that goes to the first tab is FAIL on both' 1 'FAIL back-timeline 0/1' --shells 3 --timeout 50 --sequences back-cost,back-timeline
 sq FAKE_TABKEY=stop 'one failing sequence sets the exit code' 1 'PASS search-keys 1/1' --shells 3 --timeout 50 --sequences ring-2,search-keys
 
