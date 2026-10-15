@@ -711,14 +711,19 @@ export function pane(on: On, hours = baseHours): void {
     const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
     await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(items, edits))
     await $.state.set({ plugin: 'rabe', key: 'window' }, windowOf(baseHours, await $.clock.now()))
-    feed($, { type: 'opened' })
     isRestored = false
     pinned = NO_PIN
     const opened = await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })
-    // Unplaced: the host cannot draw the pane (it waits undrawn), so say it in text.
-    if (!opened.isPlaced) return { text: itemsText(items) }
+    // Unplaced: the host cannot draw the pane (it waits undrawn). Close it, and
+    // never feed `opened` (that schedules the refocus), so the text is the answer.
+    if (!opened.isPlaced) {
+      await $.ui.close({ id: PANE }).catch(() => undefined)
+      return { text: itemsText(items) }
+    }
+    feed($, { type: 'opened' })
 
-    return { text: 'Rabe opened.' }
+    // The pane is the answer; text would also reach the transcript.
+    return {}
   })
 
   // A close the host carries out clears every hold; a canceled one keeps it.

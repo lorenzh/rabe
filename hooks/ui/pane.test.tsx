@@ -120,10 +120,15 @@ function opening(on: On, isOpen: boolean, surfaces: string[] = ['terminal'], isP
         : { isPlaced: false as const, reason: 'too narrow' },
     } as never
   })
-  const pane = { id: 'rabe', title: 'Rabe', isShown: true, isFocused: false, isPlaced: true }
+  const pane = { id: 'rabe', title: 'Rabe', isShown: true, isFocused: false, isPlaced }
   on('ui.panes', async () => ({ value: isOpen ? [pane] : [] }))
+  const closes: unknown[] = []
+  on('ui.close', async (_$, e) => {
+    closes.push(e)
+    return { value: undefined } as never
+  })
 
-  return opens
+  return Object.assign(opens, { closes })
 }
 
 for (const surface of ['vscode', 'terminal', 'desktop']) {
@@ -132,7 +137,7 @@ for (const surface of ['vscode', 'terminal', 'desktop']) {
     const opens = opening(on, true, [surface])
     const answer = await $.command.run({ command: 'rabe', args: '' } as never)
     expect(opens.length).toBeGreaterThan(0)
-    expect(answer.text).toBe('Rabe opened.')
+    expect(answer.text).toBeUndefined()
   })
 }
 
@@ -140,11 +145,15 @@ test('/rabe answers in text where the host cannot place the pane', async ($, on)
   on('state.get', { plugin: 'rabe', key: 'items' }, async () => ({
     value: { value: [explore], version: 1 },
   }))
-  mock.clock(on, { now: NOW })
+  const clock = mock.clock(on, { now: NOW })
   const opens = opening(on, true, ['vscode'], false)
   const answer = await $.command.run({ command: 'rabe', args: '' } as never)
   expect(opens).toHaveLength(1)
   expect(answer.text).toBe('Rabe: 1 running, 0 idle, 0 ended.\n- agent: 1')
+  // The undrawn pane is closed and no refocus reopens it.
+  expect(opens.closes).toHaveLength(1)
+  await clock.advance(1000)
+  expect(opens).toHaveLength(1)
 })
 
 test('/rabe answers in text when no surface draws, without a title', async ($, on) => {
