@@ -21,7 +21,7 @@ Views read session state only, never files, and a file can change or vanish afte
 
 ## Eviction with items
 
-When an item leaves the list, the cap of ended items or a removal, each source's `forget` prunes `rabe.lines`, `rabe.turns` and `rabe.diffs` for the dropped ids. The three keys are pruned independently: an item without turns still loses its diffs. An id that is back in the list keeps its entries (`prune`). A late Edit result of an agent that is no longer in the list records no diff.
+When an item leaves the list, the cap of ended items or a removal, each source's `forget` prunes `rabe.lines`, `rabe.turns` and `rabe.diffs` for the dropped ids. The three keys are pruned independently: an item without turns still loses its diffs. An id that is back in the list keeps its entries (`prune`). A late Edit result of an agent that is no longer in the list records no diff. A recorder that wrote its diff while an eviction ran calls `forget` for its editor after the write, so cleanup that finished first cannot leave an orphan diff; the same holds for a Codex job.
 
 ## Privacy
 

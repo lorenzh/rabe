@@ -157,7 +157,8 @@ async function recordDiffs(
     const { isSet } = await $.state.set({ plugin: 'rabe', key: 'diffs' }, next, {
       ifVersion: version,
     })
-    if (isSet) return
+    // An eviction may have finished its cleanup after the check above: drop what this write left.
+    if (isSet) return agentId ? forget($, [editor]) : undefined
   }
 }
 

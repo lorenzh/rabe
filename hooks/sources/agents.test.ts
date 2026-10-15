@@ -2014,3 +2014,35 @@ test('a late Edit result of an evicted agent leaves no diff entry', async ($, on
   } as never)
   expect(state['rabe.diffs']?.value ?? {}).toEqual({})
 })
+
+test('an eviction between the membership check and the diff write leaves no diff entry', async ($, on) => {
+  engine(on, 'a1', false)
+  const hunk = { oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+b'] }
+  on('tool.call', { tool: ['Edit'] }, async (_$, e) => ({
+    result: { filePath: e.file_path, structuredPatch: [hunk], originalFile: 'a' } as never,
+  }))
+  let state: ReturnType<typeof memoryState> = {}
+  // once armed, the first read of the diffs follows the membership check; the eviction follows it
+  let isArmed = false
+  let isEvicted = false
+  on('state.get', { key: 'diffs' }, async (_$, e, next) => {
+    const out = await next(e)
+    if (isArmed && !isEvicted) {
+      isEvicted = true
+      state['rabe.items'] = { value: [], version: 9 }
+    }
+    return out
+  })
+  state = memoryState(on)
+  await $.agent.spawn(SPAWN)
+  isArmed = true
+  await $.tool.call({
+    tool: 'Edit',
+    file_path: '/r/a.ts',
+    old_string: 'a',
+    new_string: 'b',
+    agentId: 'a1',
+  } as never)
+  expect(isEvicted).toBe(true)
+  expect(state['rabe.diffs']?.value ?? {}).toEqual({})
+})

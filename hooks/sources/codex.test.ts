@@ -3,7 +3,7 @@ import { type Engine, expect, type MockClock, mock, test } from 'claude-code/tes
 
 import type { RabeItem, RabeItemOf } from '../model'
 import { MAX_ENDED } from '../registry'
-import { memoryState, overCap } from '../testing'
+import { type Held, memoryState, overCap } from '../testing'
 import { advanceRollout, codexItem, jobEnd, parseRollout, STOP_USAGE } from './codex'
 
 const line = (type: string, payload: object) => JSON.stringify({ type, payload })
@@ -1325,3 +1325,30 @@ for (const rotation of ['truncation', 'inode replacement']) {
     })
   })
 }
+
+test('an eviction between the membership check and the diff write leaves no diff entry', async ($, on) => {
+  let state: Held = {}
+  // the diffs are read right after the membership check; the eviction follows it
+  let isEvicted = false
+  on('state.get', { key: 'diffs' }, async (_$, e, next) => {
+    const out = await next(e)
+    if (!isEvicted) {
+      isEvicted = true
+      state['rabe.items'] = { value: [], version: 9 }
+    }
+    return out
+  })
+  state = memoryState(on)
+  state['rabe.items'] = {
+    value: [codexItem({ ...job(), id: 'task-1' }, { path: ROLLOUT_PATH, updatedAt: 1 })],
+    version: 1,
+  }
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: change('completed', { '/work/a.ts': { type: 'add', content: 'x' } }, 3000),
+  })
+  await startAndTick($, w)
+  expect(isEvicted).toBe(true)
+  expect(state['rabe.diffs']?.value ?? {}).toEqual({})
+})
