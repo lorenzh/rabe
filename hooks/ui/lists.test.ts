@@ -26,6 +26,8 @@ import {
   forwarderOf,
   grouped,
   groupNote,
+  harnessOf,
+  isWorker,
   kept,
   matches,
   nameSpans,
@@ -36,6 +38,8 @@ import {
   previousOf,
   share,
   shown,
+  spend,
+  spendBy,
   stable,
   timeLabel,
   totals,
@@ -488,4 +492,19 @@ test('idle teammates sort with live items before newer ended items', () => {
     idle.id,
     ended.id,
   ])
+})
+
+test('spend sums tokens, and one missing dollar amount makes the sum unknown', () => {
+  const workers = ALL.filter(isWorker)
+  expect(spend(workers)).toMatchObject({ input: expect.any(Number), unknown: 2 })
+  expect(spend([])).toEqual({ input: 0, output: 0, cached: 0, known: 0, unknown: 0 })
+  const priced = workers.filter(item => item.costUsd !== undefined)
+  expect(Math.round((spend(priced).usd ?? 0) * 100)).toBe(31)
+  expect(spend(workers).usd).toBeUndefined()
+})
+
+test('spendBy groups by the key and spend per group', () => {
+  const by = spendBy(ALL.filter(isWorker), harnessOf)
+  expect([...by.keys()].toSorted()).toEqual(['claude', 'codex'])
+  expect(by.get('codex')?.usd).toBe(0.09)
 })

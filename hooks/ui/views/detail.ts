@@ -7,8 +7,10 @@ import {
   byStart,
   children,
   forwarderOf,
+  isWorker,
   phases,
   share,
+  spend,
   stable,
   timeLabel,
   tokenSum,
@@ -55,24 +57,20 @@ function turnPath(summary: string, cwd: string | undefined, width: number): stri
 // Spend and activity on a panel: agents and Codex jobs their own, a workflow its agents'.
 // A Codex job counts the agent that only forwarded it.
 function costBox(model: Model, own: RabeItem): Line[] {
-  if (own.kind !== 'agent' && own.kind !== 'codex' && own.kind !== 'workflow') return []
+  if (own.kind !== 'workflow' && !isWorker(own)) return []
   const item = withForwarder(own, model.items)
   const list = item.kind === 'workflow' ? children(model.items, item.id) : [item]
-  const known = list.filter(one => one.tokens)
-  const sum = (key: 'input' | 'output' | 'cached') =>
-    known.reduce((n, one) => n + (one.tokens?.[key] ?? 0), 0)
+  const sum = spend(list)
   // one worker without a dollar amount makes the sum unknown
   const cost: Span =
-    list.length && list.every(one => one.costUsd !== undefined)
-      ? [`≈ ${usd(list.reduce((n, one) => n + (one.costUsd ?? 0), 0))}`, { fg: C.bright }]
-      : ['cost n/a', dim]
-  const cached = sum('cached')
-  const tok: Span[] = known.length
+    sum.usd !== undefined ? [`≈ ${usd(sum.usd)}`, { fg: C.bright }] : ['cost n/a', dim]
+  const cached = sum.cached
+  const tok: Span[] = sum.known
     ? [
         ['   in ', dim],
-        [tokens(sum('input'))],
+        [tokens(sum.input)],
         ['  out ', dim],
-        [tokens(sum('output'))],
+        [tokens(sum.output)],
         ...(cached ? ([['  cached ', dim], [tokens(cached)]] as Span[]) : []),
       ]
     : [['   tokens n/a', dim]]

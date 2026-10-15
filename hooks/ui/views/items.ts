@@ -11,6 +11,7 @@ import {
   glyph,
   grouped,
   groupNote,
+  isWorker,
   kept,
   matches,
   shown,
@@ -178,7 +179,7 @@ function summaryLine(model: Model, item: RabeItem): Line {
   if (d.port !== undefined) add(`:${d.port}`, { fg: C.blue })
   if (typeof d.model === 'string') add(d.model)
   if (spend.costUsd !== undefined) add(`≈ ${usd(spend.costUsd)}`, { fg: C.bright })
-  else if (item.kind === 'agent' || item.kind === 'codex') add('cost n/a')
+  else if (isWorker(item)) add('cost n/a')
   if (spend.tokens) add(`${tokens(spend.tokens.input)} in`)
   add(facts(item, model.now, model.items).status.slice(2), { fg: tone(item) })
 

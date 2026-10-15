@@ -368,27 +368,61 @@ type Totals = {
   codex?: number
 }
 
-const plus = (sum: number | undefined, value: number | undefined) =>
-  value === undefined ? sum : (sum ?? 0) + value
+// The workers that spend: Claude agents and Codex jobs.
+export const isWorker = (item: RabeItem) => item.kind === 'agent' || item.kind === 'codex'
+
+export const harnessOf = (item: RabeItem): 'claude' | 'codex' =>
+  item.kind === 'agent' ? 'claude' : 'codex'
+
+export type Spend = {
+  input: number
+  output: number
+  cached: number
+  // items with token data, and items without it
+  known: number
+  unknown: number
+  // undefined when no item is given or one has no dollar amount: that item
+  // makes the sum unknown, not smaller
+  usd?: number
+}
+
+export function spend(items: readonly RabeItem[]): Spend {
+  const out: Spend = { input: 0, output: 0, cached: 0, known: 0, unknown: 0 }
+  for (const item of items) {
+    if (item.tokens) {
+      out.known += 1
+      out.input += item.tokens.input
+      out.output += item.tokens.output
+      out.cached += item.tokens.cached ?? 0
+    } else out.unknown += 1
+  }
+  if (items.length && items.every(item => item.costUsd !== undefined)) {
+    out.usd = items.reduce((n, item) => n + (item.costUsd ?? 0), 0)
+  }
+
+  return out
+}
+
+export function spendBy<K>(items: readonly RabeItem[], keyOf: (item: RabeItem) => K) {
+  const groups = new Map<K, RabeItem[]>()
+  for (const item of items) {
+    const key = keyOf(item)
+    groups.set(key, [...(groups.get(key) ?? []), item])
+  }
+
+  return new Map([...groups].map(([key, group]) => [key, spend(group)]))
+}
 
 export function totals(items: RabeItem[]): Totals {
-  const out: Totals = { tokens: 0, unknown: 0 }
-  const unpriced = new Set<'claude' | 'codex'>()
-  for (const item of items) {
-    if (item.kind !== 'agent' && item.kind !== 'codex') continue
-    const side = item.kind === 'agent' ? 'claude' : 'codex'
-    if (!item.tokens) out.unknown += 1
-    out.tokens += item.tokens ? item.tokens.input + item.tokens.output : 0
-    if (item.costUsd === undefined) {
-      unpriced.add(side)
-      continue
-    }
-    out.usd = plus(out.usd, item.costUsd)
-    out[side] = plus(out[side], item.costUsd)
+  const workers = items.filter(isWorker)
+  const all = spend(workers)
+  const by = spendBy(workers, harnessOf)
+  const out: Totals = { tokens: all.input + all.output, unknown: all.unknown }
+  if (all.usd !== undefined) out.usd = all.usd
+  for (const side of ['claude', 'codex'] as const) {
+    const usd = by.get(side)?.usd
+    if (usd !== undefined) out[side] = usd
   }
-  // a worker without a dollar amount makes its sum unknown, not smaller
-  for (const side of unpriced) delete out[side]
-  if (unpriced.size) delete out.usd
 
   return out
 }
@@ -399,9 +433,7 @@ export const tokenSum = (item: RabeItem) =>
   item.tokens ? item.tokens.input + item.tokens.output : -1
 
 export function byTokens(items: RabeItem[]): RabeItem[] {
-  return items
-    .filter(item => item.kind === 'agent' || item.kind === 'codex')
-    .toSorted((a, b) => tokenSum(b) - tokenSum(a))
+  return items.filter(isWorker).toSorted((a, b) => tokenSum(b) - tokenSum(a))
 }
 
 export function share(items: RabeItem[], item: RabeItem): string {
