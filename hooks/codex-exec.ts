@@ -139,11 +139,37 @@ function flagsOf(args: Tok[]): Flags {
 // value that fails its allow-list, gives `undefined` for that field. A `-p`
 // profile may set the model, so the model is then not known.
 
+// A line that starts with `NAME=/abs/path` alone, then `;`, `&&` or a newline,
+// and then the call: that one value of NAME, which an `-o` path may use. Any
+// other assignment of NAME, or any other command before the call, gives none.
+function leadingValue(toks: Tok[], at: number): { name: string; value: string } | undefined {
+  const [first, sep] = toks
+  const match = isWord(first) ? /^([A-Za-z_]\w*)=(\/[\w./-]*)$/.exec(first.raw) : null
+  if (!match || isWord(sep) || !sep || ![';', '&&', '\n'].includes(sep.op)) return undefined
+  const [, name = '', value = ''] = match
+  const between = toks.slice(2, at)
+  if (!between.every(tok => isWord(tok) && !tok.raw.startsWith(`${name}=`))) return undefined
+
+  return { name, value }
+}
+
+// A word with `$NAME` or `${NAME}` (bare or in double quotes) as one known word.
+function resolved(word: Word, known: { name: string; value: string } | undefined, home?: string) {
+  if (word.known) return word.text
+  if (!known || /['\\]/.test(word.raw)) return undefined
+  const { name, value } = known
+  const raw = word.raw.replace(new RegExp(`\\$\\{${name}\\}|\\$${name}(?!\\w)`, 'g'), value)
+  const [one, ...rest] = lex(raw, home) ?? []
+
+  return rest.length === 0 && isWord(one) && one.known ? one.text : undefined
+}
+
 export function codexExec(command: string, home?: string): CodexExec | undefined {
   const toks = lex(command, home)
   if (!toks) return undefined
   const at = commandAt(toks)
   if (at < 0) return undefined
+  const known = leadingValue(toks, at)
   const rest = toks.slice(at + 2)
   const end = rest.findIndex(tok => !isWord(tok) && ENDS.has(tok.op))
   const args = options(end < 0 ? rest : rest.slice(0, end))
@@ -165,10 +191,11 @@ export function codexExec(command: string, home?: string): CodexExec | undefined
   }
   args.forEach((tok, i) => {
     if (!isWord(tok)) return
-    const value = tok.known ? /^--output-last-message=(.+)$/.exec(tok.text)?.[1] : undefined
+    const text = resolved(tok, known, home)
+    const value = text === undefined ? undefined : /^--output-last-message=(.+)$/.exec(text)?.[1]
     const word = value ?? (/^(-o|--output-last-message)$/.test(tok.text) ? args[i + 1] : undefined)
     const path =
-      typeof word === 'string' ? word : isWord(word) && word.known ? word.text : undefined
+      typeof word === 'string' ? word : isWord(word) ? resolved(word, known, home) : undefined
     if (path?.startsWith('/')) resultPath = path
   })
   // A `&` right after the call, or after the `)` of a group around it (past

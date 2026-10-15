@@ -1,6 +1,6 @@
 import type { EngineInterface, FsStat, On } from 'claude-code'
 
-import type { RabeEdit } from '../../types'
+import type { RabeCodexRun, RabeEdit } from '../../types'
 import { linkForwarders } from '../forwarders'
 import { fault, type Pollers, skipped, tally } from '../loop'
 import { itemId, type NewItem, type RabeItem, type RabeItemOf } from '../model'
@@ -32,10 +32,15 @@ import {
   type CodexJob,
   type CodexSession,
   codexItem,
+  EXEC_AFTER_MS,
+  EXEC_BEFORE_MS,
+  type ExecMeta,
+  execMeta,
   jobEnd,
   jobStart,
   jobStop,
   list,
+  matchExec,
   parseJson,
   parseRollout,
   type Rec,
@@ -54,6 +59,11 @@ const RUN_MS = 5000
 const DAY = 24 * 60 * 60 * 1000
 const LATE_MS = 2000
 const LOOK_MS = 1000
+// A run's session file is matched by time once its window closed and Codex
+// had this long to write the file's first record.
+const EXEC_GRACE_MS = 2000
+// An ended run's session file is read on for this long, until it records its end.
+const EXEC_READ_MS = 60_000
 
 async function write($: Pick<EngineInterface, 'state'>, change: Change): Promise<void> {
   for (;;) {
@@ -172,26 +182,26 @@ async function readSession(
   $: EngineInterface,
   codexHome: string,
   job: CodexJob,
-  held: RabeItemOf<'codex'> | undefined,
+  held: { sessionPath?: string; sessionUpdatedAt?: number } | undefined,
   looks: Looks,
   file: string,
+  key = itemId('codex', job.id),
 ): Promise<CodexSession | undefined> {
   const threadId = str(job.threadId)
   if (!threadId) return undefined
   const path =
-    held?.detail.sessionPath ??
+    held?.sessionPath ??
     (await findRollout($, codexHome, threadId, jobStart(job) ?? (await $.clock.now())))
   const stat = path ? await $.fs.stat(path).catch(fault) : undefined
   if (!path || !stat) {
     if (jobEnd(job.status)) return { isMissing: true }
 
     // a file seen before and gone now: no new fields, but the cost is no longer known
-    return held?.detail.sessionPath ? { path } : undefined
+    return held?.sessionPath ? { path } : undefined
   }
   const updatedAt = stat.mtimeMs
   const { value: savedValue, version } = await $.state.get({ plugin: 'rabe', key: 'rollouts' })
   const value = restored(savedValue)
-  const key = itemId('codex', job.id)
   const entry = value[key]
   const saved =
     entry &&
@@ -216,7 +226,7 @@ async function readSession(
   const same = previous && unchanged(stat, previous.cursor)
   if (
     (same && (previous.cursor.offset >= previous.cursor.size || previous.cursor.partial)) ||
-    (entry === undefined && updatedAt === held?.detail.sessionUpdatedAt)
+    (entry === undefined && updatedAt === held?.sessionUpdatedAt)
   ) {
     skipped()
     if (!previous) return { path, updatedAt }
@@ -375,7 +385,7 @@ async function refresh(
   }
   // a finished job the cap would drop again: its session file is not read
   if (!held && commit(items, change(codexItem(job, undefined))) === undefined) return
-  const session = await readSession($, codexHome, job, held, looks, file)
+  const session = await readSession($, codexHome, job, held?.detail, looks, file)
   stage(poll, change(codexItem(job, session)))
 }
 
@@ -422,6 +432,172 @@ async function cleanFiles(
   }
 }
 
+type ExecRow = RabeItemOf<'shell'> & { detail: { codex: RabeCodexRun } }
+
+const isExecRow = (item: RabeItem | undefined): item is ExecRow =>
+  item?.kind === 'shell' && item.detail.codex !== undefined
+
+const dayDir = (codexHome: string, at: number) =>
+  `${codexHome}/sessions/${new Date(at).toISOString().slice(0, 10).replaceAll('-', '/')}`
+
+// The first records of the direct exec session files changed since `from`,
+// in the day folders around each start, except the files in `claimed`.
+async function execFiles(
+  $: EngineInterface,
+  codexHome: string,
+  starts: number[],
+  from: number,
+  claimed: Set<string>,
+): Promise<ExecMeta[]> {
+  const dirs = new Set(starts.flatMap(at => [0, -DAY, DAY].map(one => dayDir(codexHome, at + one))))
+  const out: ExecMeta[] = []
+  for (const dir of dirs) {
+    for (const entry of await $.fs.list(dir).catch(e => fault(e, []))) {
+      const path = `${dir}/${entry.name}`
+      if (entry.kind !== 'file' || !/^rollout-[\w.-]+\.jsonl$/.test(entry.name)) continue
+      if (entry.mtimeMs < from || claimed.has(path)) continue
+      // the first record holds the session's instructions: tens of kB, so `head`, not a read
+      const result = await $.process
+        .run(['head', '-n', '1', '--', path], { timeoutMs: RUN_MS })
+        .catch(fault)
+      if (result?.exitCode !== 0 || result.isStdoutTruncated) continue
+      const meta = execMeta(tally(result.stdout), path)
+      if (meta) out.push(meta)
+    }
+  }
+
+  return out
+}
+
+const iso = (at: number) => new Date(at).toISOString()
+
+// The rows of direct `codex exec` runs: each finds its session file by the
+// session id from stderr, else by time once its window closed (unique or
+// none), then reads it like a Codex job's. See docs/feasibility/background-work.md.
+async function pollExec(
+  $: EngineInterface,
+  codexHome: string,
+  items: RabeItem[],
+  looks: Looks,
+  file: string,
+  poll: Poll,
+): Promise<void> {
+  const rows = items.filter(isExecRow)
+  if (rows.length === 0) return
+  const now = await $.clock.now()
+  const found = new Map<string, { path: string; threadId: string; byTime: boolean }>()
+  const unmatched = new Set<string>()
+  for (const row of rows) {
+    const { threadId, sessionPath, isUnmatched } = row.detail.codex
+    if (sessionPath || isUnmatched || !threadId) continue
+    const path = await findRollout($, codexHome, threadId, row.startedAt ?? now)
+    if (path) found.set(row.id, { path, threadId, byTime: false })
+    else if (row.status !== 'running' && now - (row.endedAt ?? 0) > EXEC_AFTER_MS) {
+      unmatched.add(row.id)
+    }
+  }
+  const open = rows.filter(row => !row.detail.codex.sessionPath && row.startedAt !== undefined)
+  const due = open.filter(
+    row =>
+      !row.detail.codex.isUnmatched &&
+      !row.detail.codex.threadId &&
+      now >= (row.startedAt ?? 0) + EXEC_AFTER_MS + EXEC_GRACE_MS,
+  )
+  if (due.length) {
+    const starts = due.map(row => row.startedAt ?? 0)
+    const claimed = new Set(rows.flatMap(row => row.detail.codex.sessionPath ?? []))
+    const threads = new Set(
+      items.flatMap(item => (item.kind === 'codex' && item.detail.threadId) || []),
+    )
+    const metas = (
+      await execFiles($, codexHome, starts, Math.min(...starts) - EXEC_BEFORE_MS, claimed)
+    ).filter(meta => !threads.has(meta.id))
+    const runs = open.map(row => ({
+      id: row.id,
+      startedAt: row.startedAt ?? 0,
+      ...(row.detail.codex.dir && { dir: row.detail.codex.dir }),
+    }))
+    const matched = matchExec(runs, metas)
+    for (const row of due) {
+      const meta = matched.get(row.id)
+      if (meta) found.set(row.id, { path: meta.path, threadId: meta.id, byTime: true })
+      else unmatched.add(row.id)
+    }
+  }
+  const { value } = await $.state.get({ plugin: 'rabe', key: 'rollouts' })
+  const cursors = restored(value)
+  for (const row of rows) {
+    const codex = row.detail.codex
+    const match = found.get(row.id)
+    const path = match?.path ?? codex.sessionPath
+    const threadId = match?.threadId ?? codex.threadId
+    if (!path || !threadId || unmatched.has(row.id)) continue
+    const cursor = cursorOf(cursors[row.id]?.cursor)
+    const backlog = cursor && cursor.offset < cursor.size && !cursor.partial
+    const isSettled = codex.sessionEndedAt !== undefined || now - (row.endedAt ?? 0) > EXEC_READ_MS
+    if (!match && row.status !== 'running' && !backlog && isSettled) continue
+    // `since`: a resumed thread's earlier turns are not this run's
+    const job: CodexJob = {
+      id: row.id,
+      threadId,
+      ...(row.startedAt !== undefined && { startedAt: iso(row.startedAt - EXEC_BEFORE_MS) }),
+    }
+    const known = match ? { sessionPath: path } : codex
+    const session = await readSession($, codexHome, job, known, looks, file, row.id).catch(fault)
+    const rollout = session?.rollout
+    // matched by time only: a rollout of another model than `-m` is not this run
+    if (match?.byTime && rollout?.model && codex.model && rollout.model !== codex.model) {
+      unmatched.add(row.id)
+      continue
+    }
+    const isUnchanged = session?.updatedAt !== undefined && !rollout
+    stage(poll, held => {
+      const current = held.find(one => one.id === row.id)
+      if (!isExecRow(current)) return held
+      const facet: RabeCodexRun = {
+        ...current.detail.codex,
+        threadId,
+        sessionPath: session?.path ?? path,
+        ...(session?.updatedAt !== undefined && { sessionUpdatedAt: session.updatedAt }),
+        ...(rollout && {
+          ...(rollout.model && { model: rollout.model }),
+          ...(rollout.effort && { effort: rollout.effort }),
+          ...(rollout.sandbox && { sandbox: rollout.sandbox }),
+          isSessionPartial: session?.isPartial === true,
+          ...(rollout.endedAt !== undefined && { sessionEndedAt: rollout.endedAt }),
+        }),
+      }
+      const next = updateItem(held, row.id, {
+        detail: { codex: facet },
+        ...(rollout && { tokens: rollout.tokens }),
+        ...(!isUnchanged && { costUsd: session?.usd }),
+      })
+      const endedAt = rollout?.endedAt
+      return codex.isDetached && endedAt !== undefined
+        ? endItem(next, row.id, 'done', endedAt)
+        : next
+    })
+  }
+  for (const id of unmatched) {
+    stage(poll, held => {
+      const current = held.find(one => one.id === id)
+      if (!isExecRow(current)) return held
+      const { isDetached } = current.detail.codex
+      const next = updateItem(held, id, {
+        detail: {
+          codex: {
+            ...current.detail.codex,
+            isUnmatched: true,
+            ...(isDetached && current.status === 'running' && { isEndUnknown: true }),
+          },
+        },
+      })
+      // a `&` run without a result file or session file: nothing will tell its end
+      return isDetached ? endItem(next, id, 'done', now) : next
+    })
+  }
+}
+
 async function pollCodex($: EngineInterface, file: string, items: RabeItem[]): Promise<Change> {
   const poll: Poll = { items, changes: [] }
   const { claude, codex } = await homes($)
@@ -463,6 +639,7 @@ async function pollCodex($: EngineInterface, file: string, items: RabeItem[]): P
       ).catch(fault)
     }
   }
+  await pollExec($, codex, poll.items, looks, file, poll).catch(fault)
   looks.stop.abort()
   stage(poll, linkForwarders)
   await cleanFiles($, poll.items, workspaces)

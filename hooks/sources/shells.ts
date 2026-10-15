@@ -1,5 +1,5 @@
 import type { EngineInterface, On } from 'claude-code'
-import type { RabeFileCursor, RabeLines } from '../../types'
+import type { RabeCodexRun, RabeFileCursor, RabeLines } from '../../types'
 import { codexExec } from '../codex-exec'
 import { fault, type Pollers, skipped, tally } from '../loop'
 import { type EndStatus, itemId, type RabeItem } from '../model'
@@ -34,6 +34,7 @@ import {
   taskFolder,
   taskOutput,
 } from '../tasks'
+import { sessionIdOf } from './codex-data'
 
 const MAX_READ = 4 * 1024 * 1024
 // A running foreground call shows only after this long, so quick commands cause no flicker.
@@ -432,15 +433,20 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
   )
 }
 
-// The `detail.codex` facet of a direct `codex exec`: what its flags name.
-const codexFacet = (exec: ReturnType<typeof codexExec>) =>
+// The `detail.codex` facet of a direct `codex exec`: what its flags name. An
+// inline CODEX_HOME puts the session file where Rabe does not look: none is matched.
+const codexFacet = (exec: ReturnType<typeof codexExec>): { codex: RabeCodexRun } | undefined =>
   exec && {
     codex: {
       ...(exec.model && { model: exec.model }),
       ...(exec.effort && { effort: exec.effort }),
       ...(exec.sandbox && { sandbox: exec.sandbox }),
+      ...(exec.dir && { dir: exec.dir }),
+      ...(exec.hasCodexHome && { isUnmatched: true }),
     },
   }
+
+type Facet = { codex: RabeCodexRun } | undefined
 
 type BashCall = { tool_use_id: string; command: string; description?: string; agentId?: string }
 
@@ -450,14 +456,15 @@ async function foreground(
   e: BashCall,
   id: string,
   startedAt: number,
-  {
-    resultPath,
-    end,
-    exec,
-  }: { resultPath?: string; end?: EndStatus; exec?: ReturnType<typeof codexExec> } = {},
+  { resultPath, end, facet }: { resultPath?: string; end?: EndStatus; facet?: Facet } = {},
 ) {
   const now = await $.clock.now()
   await write($, held => {
+    // the codex poll may have added the session fields to the facet meanwhile
+    const prior = held.find(item => item.id === id)
+    const codex = facet && {
+      codex: { ...(prior?.kind === 'shell' && prior.detail.codex), ...facet.codex },
+    }
     const added = addItem(
       held,
       {
@@ -467,7 +474,7 @@ async function foreground(
         status: 'running',
         startedAt: startedAt || now,
         ...(e.agentId && { parentId: itemId('agent', e.agentId) }),
-        detail: { command: e.command, ...(resultPath && { resultPath }), ...codexFacet(exec) },
+        detail: { command: e.command, ...(resultPath && { resultPath }), ...codex },
       },
       now,
     )
@@ -509,7 +516,7 @@ export function shells(on: On, pollers: Pollers): void {
         exec = codexExec(e.command, await $.env.get('HOME').catch(() => undefined))
         shown = $.clock
           .sleep(SLOW_MS, { signal: stop.signal })
-          .then(() => foreground($, e, id, startedAt, { exec }))
+          .then(() => foreground($, e, id, startedAt, { facet: codexFacet(exec) }))
           .then(() => {
             added = true
           })
@@ -523,21 +530,42 @@ export function shells(on: On, pollers: Pollers): void {
       stop.abort()
       await shown
       if (!e.run_in_background) {
-        await foreground($, e, id, startedAt, { end: 'stopped', exec }).catch(() => undefined)
+        await foreground($, e, id, startedAt, { end: 'stopped', facet: codexFacet(exec) }).catch(
+          () => undefined,
+        )
       }
       throw error
     }
     stop.abort()
     await shown
     try {
-      const result = answer.result as { backgroundTaskId?: string } | undefined
+      const result = answer.result as
+        | { backgroundTaskId?: string; stdout?: unknown; stderr?: unknown }
+        | undefined
       const taskId = result?.backgroundTaskId
       const now = await $.clock.now()
       const end = endOf(answer as Parameters<typeof endOf>[0])
-      // A `codex exec ... &` that ran outlives the call: its result file ends the row.
-      const keep = exec?.isDetached && end === 'done' && !taskId ? exec.resultPath : undefined
-      if (keep) await foreground($, e, id, startedAt, { resultPath: keep, exec })
-      else if (!taskId && !e.run_in_background) await foreground($, e, id, startedAt, { end, exec })
+      const facet = codexFacet(exec)
+      // A foreground run prints its session id to stderr, unless the command redirects it.
+      const threadId =
+        exec && !exec.isDetached && !taskId
+          ? sessionIdOf(`${String(result?.stdout ?? '')}\n${String(result?.stderr ?? '')}`)
+          : undefined
+      if (facet && threadId) facet.codex = { ...facet.codex, threadId }
+      // A `codex exec ... &` that ran outlives the call: its result file ends the
+      // row, or without one the end its session file records (see the codex source).
+      const run = exec
+      const detached = run?.isDetached === true && end === 'done' && !taskId
+      if (detached && run?.resultPath) {
+        await foreground($, e, id, startedAt, { resultPath: run.resultPath, facet })
+      } else if (detached && facet && !run?.hasCodexHome) {
+        await foreground($, e, id, startedAt, {
+          facet: { codex: { ...facet.codex, isDetached: true } },
+        })
+      } else if (!taskId && !e.run_in_background) {
+        const unknown = detached && facet && { codex: { ...facet.codex, isEndUnknown: true } }
+        await foreground($, e, id, startedAt, { end, facet: unknown || facet })
+      }
       if (taskId) {
         // Claude Code moved the call to the background: the task row replaces it.
         if (added) await write($, held => held.filter(item => item.id !== id))

@@ -401,7 +401,7 @@ function world(on: On, files: Record<string, string | object>, mtimeMs = 5000): 
         name,
         kind: held.files.has(prefix + name) ? ('file' as const) : ('dir' as const),
         size: 0,
-        mtimeMs: 0,
+        mtimeMs: held.files.get(prefix + name)?.mtimeMs ?? 0,
         isLink: false,
       })),
     }
@@ -425,10 +425,15 @@ function world(on: On, files: Record<string, string | object>, mtimeMs = 5000): 
     const file = held.files.get(e.path)
     return file ? { value: file.text } : { deny: 'ENOENT' }
   })
-  on('process.run', { argv: ['ls', 'tail'] }, async (_$, e, next) => {
+  on('process.run', { argv: ['ls', 'tail', 'head'] }, async (_$, e, next) => {
     const path = e.argv.at(-1) ?? ''
     const file = held.files.get(path)
     if (!file) return next(e)
+    if (e.argv[0] === 'head') {
+      held.calls.push(`head ${path}`)
+      const first = file.text.split('\n')[0] ?? ''
+      return { value: { exitCode: 0, stdout: `${first}\n`, stderr: '' } } as never
+    }
     if (e.argv[0] === 'ls') {
       held.calls.push(`ls ${path}`)
       return { value: { exitCode: 0, stdout: '1 file\n', stderr: '' } } as never
@@ -1300,3 +1305,130 @@ for (const rotation of ['truncation', 'inode replacement']) {
     })
   })
 }
+
+// A direct `codex exec` the shells source added: a shell row with the facet.
+function execRow(id: string, codex: object, over: object = {}): RabeItem {
+  return {
+    id: `shell:fg-${id}`,
+    kind: 'shell',
+    title: `codex exec · foreground`,
+    status: 'done',
+    seenAt: 1000,
+    startedAt: 1000,
+    endedAt: 9000,
+    detail: { command: 'codex exec - < b', codex },
+    ...over,
+  } as RabeItem
+}
+
+const EXEC_ID = '01a14163-d731-71c3-825e-494f278f73c7'
+const execRollout = (id: string, at: string, cwd = '/w', end = '') =>
+  [
+    JSON.stringify({
+      type: 'session_meta',
+      timestamp: at,
+      payload: { id, timestamp: at, cwd, source: 'exec' },
+    }),
+    ...ROLLOUT.split('\n').slice(1, -1),
+    ...(end
+      ? [JSON.stringify({ type: 'event_msg', timestamp: end, payload: { type: 'task_complete' } })]
+      : []),
+  ].join('\n')
+const EXEC_PATH = `${SESSIONS}/rollout-1970-01-01T00-00-01-${EXEC_ID}.jsonl`
+
+async function pollExec($: Engine, on: On, rows: RabeItem[], rollouts: Record<string, string>) {
+  const state = memoryState(on)
+  state['rabe.items'] = { value: rows, version: 1 }
+  prices(on)
+  const w = world(on, rollouts)
+  await startAndTick($, w)
+  await w.clock.advance(2000)
+  return { state, w, items: () => state['rabe.items']?.value as RabeItem[] }
+}
+
+test('a direct codex exec gets tokens, cost and model from the one rollout that started with it', async ($, on) => {
+  const { items } = await pollExec($, on, [execRow('a', { sandbox: 'read-only' })], {
+    [EXEC_PATH]: execRollout(EXEC_ID, '1970-01-01T00:00:01.500Z'),
+  })
+  expect(items()[0]).toMatchObject({
+    status: 'done',
+    tokens: { input: 25000, output: 3000, cached: 18000 },
+    costUsd: (7000 * 2 + 18000 * 0.1 + 3000 * 10) / 1e6,
+    detail: {
+      codex: {
+        model: 'gpt-6.1-sol',
+        effort: 'high',
+        sandbox: 'read-only',
+        threadId: EXEC_ID,
+        sessionPath: EXEC_PATH,
+      },
+    },
+  })
+})
+
+test('a direct codex exec with two rollouts near its start gets none', async ($, on) => {
+  const other = `${SESSIONS}/rollout-1970-01-01T00-00-02-x.jsonl`
+  const { items, w } = await pollExec($, on, [execRow('a', {})], {
+    [EXEC_PATH]: execRollout(EXEC_ID, '1970-01-01T00:00:01.500Z'),
+    [other]: execRollout('01a14163-0000-71c3-825e-494f278f73c7', '1970-01-01T00:00:02.000Z'),
+  })
+  expect(items()[0]).toMatchObject({ detail: { codex: { isUnmatched: true } } })
+  expect(items()[0]?.tokens).toBeUndefined()
+  // decided once: later polls read no first lines again
+  w.calls.length = 0
+  await w.clock.advance(4000)
+  expect(w.calls.filter(call => call.startsWith('head '))).toEqual([])
+})
+
+test('a rollout of another model than the -m flag is not the run', async ($, on) => {
+  const { items } = await pollExec($, on, [execRow('a', { model: 'gpt-6-luna' })], {
+    [EXEC_PATH]: execRollout(EXEC_ID, '1970-01-01T00:00:01.500Z'),
+  })
+  expect(items()[0]).toMatchObject({
+    detail: { codex: { model: 'gpt-6-luna', isUnmatched: true } },
+  })
+  expect(items()[0]?.tokens).toBeUndefined()
+})
+
+test('a run is not matched before its window closed', async ($, on) => {
+  const row = execRow('a', {}, { startedAt: 9000, status: 'running', endedAt: undefined })
+  const { items } = await pollExec($, on, [row], {
+    [EXEC_PATH]: execRollout(EXEC_ID, '1970-01-01T00:00:09.500Z'),
+  })
+  expect(items()[0]?.detail).toEqual(row.detail)
+})
+
+test('the session id from stderr finds the rollout by name at once', async ($, on) => {
+  const row = execRow('a', { threadId: EXEC_ID }, { startedAt: 9000 })
+  // started long after the run: the time would not match, the name does
+  const { items } = await pollExec($, on, [row], {
+    [EXEC_PATH]: execRollout(EXEC_ID, '1970-01-01T00:00:59.000Z'),
+  })
+  expect(items()[0]).toMatchObject({
+    tokens: { input: 25000 },
+    detail: { codex: { sessionPath: EXEC_PATH } },
+  })
+})
+
+test('a detached run without a result file ends when its rollout completes', async ($, on) => {
+  const row = execRow('a', { isDetached: true }, { status: 'running', endedAt: undefined })
+  const { items, w } = await pollExec($, on, [row], {
+    [EXEC_PATH]: execRollout(EXEC_ID, '1970-01-01T00:00:01.500Z'),
+  })
+  expect(items()[0]).toMatchObject({ status: 'running', tokens: { input: 25000 } })
+  w.files.set(EXEC_PATH, {
+    text: execRollout(EXEC_ID, '1970-01-01T00:00:01.500Z', '/w', '1970-01-01T00:00:12.000Z'),
+    mtimeMs: 12_500,
+  })
+  await w.clock.advance(2000)
+  expect(items()[0]).toMatchObject({ status: 'done', endedAt: 12_000 })
+})
+
+test('a detached run without a result file or session file ends with its end unknown', async ($, on) => {
+  const row = execRow('a', { isDetached: true }, { status: 'running', endedAt: undefined })
+  const { items } = await pollExec($, on, [row], {})
+  expect(items()[0]).toMatchObject({
+    status: 'done',
+    detail: { codex: { isUnmatched: true, isEndUnknown: true } },
+  })
+})

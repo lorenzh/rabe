@@ -23,3 +23,5 @@ See [Sources](sources.md) for behaviour and [the module map](../architecture.md)
 
 `Check` stays private. Only the pure module exports `CodexJob`, `CodexSession`, `Rollout` and `RolloutCursor`.
 The source re-exports only `advanceRollout`, `codexItem`, `jobEnd` and `parseRollout` for existing tests.
+
+For direct `codex exec` runs the module also holds `sessionIdOf` (the one `session id: <uuid>` line of a run's output), `execMeta` (the thread id, start and directory of a rollout's first record, only for `source: "exec"`), and `matchExec` with its window `EXEC_BEFORE_MS` and `EXEC_AFTER_MS` (a run gets a file only when it is the one file that fits the run and no other run fits it). `advanceRollout` records `endedAt` at a `task_complete` and clears it at a `task_started`. `codex.ts` keeps the folder listing, the `head -n 1` reads and the row updates (`pollExec`); see [Sources](sources.md).

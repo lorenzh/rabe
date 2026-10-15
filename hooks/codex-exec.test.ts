@@ -302,3 +302,35 @@ test('a backslash-newline continuation inside a flag voids the earlier model', (
   const exec = codexExec('codex exec -m gpt-6-sol --mo\\\ndel="$M" x')
   expect(exec).not.toHaveProperty('model')
 })
+
+test('a leading S=/abs statement resolves $S in the result path', () => {
+  for (const out of ['$S/out.md', '$'.concat('{S}/out.md'), '"$S/out.md"', '"$S"/out.md']) {
+    expect(codexExec(`S=/tmp/run; nohup codex exec -o ${out} - < b > l 2>&1 &`)).toEqual({
+      resultPath: '/tmp/run/out.md',
+      isDetached: true,
+    })
+  }
+  expect(codexExec('S=/tmp/run && codex exec -o $S/o.md -')?.resultPath).toBe('/tmp/run/o.md')
+  expect(codexExec('S=/tmp/run\ncodex exec -o $S/o.md -')?.resultPath).toBe('/tmp/run/o.md')
+})
+
+test('any other assignment of S leaves the result path unknown', () => {
+  for (const command of [
+    // a prefix assignment is not seen by the expansion on the same command
+    'S=/tmp/run codex exec -o $S/o.md -',
+    // set twice, set from an expansion, relative, or after other commands
+    'S=/tmp/run; S=/x; codex exec -o $S/o.md -',
+    'S=$HOME/run; codex exec -o $S/o.md -',
+    'S=run; codex exec -o $S/o.md -',
+    'cd /x && S=/tmp/run && codex exec -o $S/o.md -',
+    'S=/tmp/run || codex exec -o $S/o.md -',
+    'S=/tmp/run; export S=/y; codex exec -o $S/o.md -',
+    // another name, or a longer one that starts with S
+    'T=/tmp/run; codex exec -o $S/o.md -',
+    'S=/tmp/run; codex exec -o $SX/o.md -',
+    // a value with characters the shell would treat specially
+    "S='/tmp/a b'; codex exec -o $S/o.md -",
+  ]) {
+    expect(codexExec(command)?.resultPath).toBeUndefined()
+  }
+})

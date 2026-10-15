@@ -19,7 +19,7 @@ hooks/
   sources/agents.ts   Claude subagent hooks and polling
   sources/agent-items.ts  pure agent metadata, transcripts, turns and item updates
   sources/workflows.ts  workflow runs: items, phases and their end
-  sources/codex.ts    Codex job polling and /rabe-stop
+  sources/codex.ts    Codex job polling, session files of direct codex exec runs, /rabe-stop
   sources/codex-data.ts  pure Codex job and incremental rollout parsing
   sources/shells.ts   background shells: items, exit code, port
   sources/monitors.ts monitors: items and their output lines
