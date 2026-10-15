@@ -1824,6 +1824,7 @@ test('a press on another row selects it and arms x for it; on the selected row i
     send: (text: string) => Promise<{ isDelivered: boolean; reason?: string }> = async () => ({
       isDelivered: true,
     }),
+    gate = false,
   ) => {
     const sent: string[] = []
     const state = hold(on, [item], { open: item.id, selected: item.id })
@@ -1831,20 +1832,24 @@ test('a press on another row selects it and arms x for it; on the selected row i
       sent.push(e.text)
       return send(e.text) as never
     })
+    if (!gate) release(on)
     return { sent, state }
   }
-  const lost = (id: string) => ({
-    name: 'lost-handle',
-    tier: 'append' as const,
-    register(on: On) {
-      on('ui.input', { requestId: 'rabe' }, async (_$, e, next) => {
-        if (e.element !== id) return next(e)
-        throw new Error('no handler is held under handle')
-      })
-    },
-  })
+  // The drawing's handler is released: the hook beneath answers what the
+  // engine answers then, before (`next` never runs) or after the closure ran.
+  // Test hooks run in the test's memory, unlike a `plugins` entry.
+  const release = (
+    on: On,
+    gate?: { held?: (text: string) => Promise<void>; after?: (text: string) => boolean },
+  ) =>
+    on('ui.input', { requestId: 'rabe' }, async (_$, e, next) => {
+      if (e.element !== field) return next(e)
+      await gate?.held?.(e.value)
+      if (gate?.after?.(e.value)) await next(e)
+      throw new Error('no handler is held under handle')
+    })
 
-  test('sends once from the event text', { plugins: [lost(field)] }, async ($, on) => {
+  test('sends once from the event text', async ($, on) => {
     const { sent, state } = setup(on)
     const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
     await arm($, field)
@@ -1854,7 +1859,7 @@ test('a press on another row selects it and arms x for it; on the selected row i
     await ui.unmount()
   })
 
-  test('never sends a change or an empty submit', { plugins: [lost(field)] }, async ($, on) => {
+  test('never sends a change or an empty submit', async ($, on) => {
     const { sent } = setup(on)
     const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
     await arm($, field)
@@ -1864,7 +1869,7 @@ test('a press on another row selects it and arms x for it; on the selected row i
     await ui.unmount()
   })
 
-  test('sends two overlapping submits once each', { plugins: [lost(field)] }, async ($, on) => {
+  test('sends two overlapping submits once each', async ($, on) => {
     const { sent } = setup(on)
     const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
     await arm($, field)
@@ -1876,7 +1881,7 @@ test('a press on another row selects it and arms x for it; on the selected row i
     await ui.unmount()
   })
 
-  test('sends once when the view changes meanwhile', { plugins: [lost(field)] }, async ($, on) => {
+  test('sends once when the view changes meanwhile', async ($, on) => {
     const { sent } = setup(on)
     const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
     await arm($, field)
@@ -1887,17 +1892,67 @@ test('a press on another row selects it and arms x for it; on the selected row i
     await ui.unmount()
   })
 
-  test('toasts a refusal and does not resend', { plugins: [lost(field)] }, async ($, on) => {
+  test('toasts a refusal and does not resend', async ($, on) => {
     const { sent, state } = setup(on, explore, async () => ({ isDelivered: false, reason: 'busy' }))
     const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
     await arm($, field)
     await ui.input({ key: field, text: 'hello', kind: 'submit' })
     expect(sent).toEqual(['hello'])
-    expect(state.toasts).toContain('Message not sent: busy')
+    expect(state.toasts).toContain('Message not sent')
     await ui.unmount()
   })
 
-  test('toasts delivery unknown on an exception', { plugins: [lost(field)] }, async ($, on) => {
+  test('a refusal reason that echoes the text stays out of the toast', async ($, on) => {
+    const state = hold(on, [explore], { open: explore.id, selected: explore.id })
+    on('session.send', async (_$, e) => ({ isDelivered: false, reason: `no: ${e.text}` }) as never)
+    const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    await arm($, field)
+    await ui.input({ key: field, text: 'sekret', kind: 'submit' })
+    expect(state.toasts).toContain('Message not sent')
+    expect(String(state.toasts)).not.toContain('sekret')
+    await ui.unmount()
+  })
+
+  test('a rejection after the closure ran sends once', async ($, on) => {
+    const { sent } = setup(on, explore, undefined, true)
+    release(on, { after: () => true })
+    const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    await arm($, field)
+    await ui.input({ key: field, text: 'hello', kind: 'submit' })
+    expect(sent).toEqual(['hello'])
+    await ui.unmount()
+  })
+
+  test('one held before its closure and a queued one rejected after it each send their own text', async ($, on) => {
+    const { sent } = setup(on, explore, undefined, true)
+    let open!: () => void
+    const gate = new Promise<void>(r => {
+      open = r
+    })
+    let reached!: () => void
+    const heldA = new Promise<void>(r => {
+      reached = r
+    })
+    release(on, {
+      held: text => {
+        if (text !== 'A') return Promise.resolve()
+        reached()
+        return gate
+      },
+      after: text => text === 'B',
+    })
+    const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    await arm($, field)
+    const a = ui.input({ key: field, text: 'A', kind: 'submit' })
+    await heldA
+    const b = ui.input({ key: field, text: 'B', kind: 'submit' })
+    open()
+    await Promise.all([a, b])
+    expect([...sent].sort()).toEqual(['A', 'B'])
+    await ui.unmount()
+  })
+
+  test('toasts delivery unknown on an exception', async ($, on) => {
     const { sent, state } = setup(on, explore, async () => {
       throw new Error('boom')
     })

@@ -523,12 +523,7 @@ async function act(
         toast($, 'Delivery unknown')
         return
       }
-      toast(
-        $,
-        sent.isDelivered
-          ? `Message sent to claude ${nameOf(item)}`
-          : `Message not sent: ${sent.reason}`,
-      )
+      toast($, sent.isDelivered ? `Message sent to claude ${nameOf(item)}` : 'Message not sent')
       if (sent.isDelivered) await queueAction($, `Rabe: user sent a message to agent ${item.id}`)
       return sequence(async () => {
         const { selection } = await look($, true)
@@ -593,10 +588,13 @@ async function look(
 // The presses and Input events under way, per surface and element, oldest
 // first. Each event's hook adds its own slot before `next(e)`; the closure
 // beneath, which the engine runs with the event, fills the oldest empty slot of
-// its element, so an event carries out only an action of its own element.
-// ponytail: two events on one element in flight at once may swap their
-// actions; both are that element's, and each runs exactly once.
-type Slot = { press?: { action: Action; surface: RenderSurface; element: string } }
+// its element whose event text matches (an Input event carries the field's
+// whole text), so an event carries out only an action of its own event; two
+// events with the same text are interchangeable and each runs exactly once.
+type Slot = {
+  value?: string
+  press?: { action: Action; surface: RenderSurface; element: string }
+}
 const waiting = new Map<string, Slot[]>()
 
 // A submitted message whose drawing a redraw released: send it from the
@@ -623,16 +621,20 @@ async function lostMessage(
 
 const slotOf = (at: At) => `${at.surface} ${at.element}`
 
-function leave(action: Action, at: At): void {
-  const slot = waiting.get(slotOf(at))?.find(one => !one.press)
+function leave(action: Action, at: At & { value?: string }): void {
+  const slot = waiting.get(slotOf(at))?.find(one => !one.press && one.value === at.value)
   if (slot) slot.press = { action, surface: at.surface, element: at.element }
 }
 
 // Runs a press or an Input event beneath the hook, then carries out the action
 // its closure left in this event's own slot with the hook's `$`.
-async function carry<R>($: EngineInterface, at: At, run: (mine: Slot) => Promise<R>): Promise<R> {
+async function carry<R>(
+  $: EngineInterface,
+  at: At & { value?: string },
+  run: (mine: Slot) => Promise<R>,
+): Promise<R> {
   const key = slotOf(at)
-  const mine: Slot = {}
+  const mine: Slot = { value: at.value }
   screen.release()
   const focusTurn = reserve()
   feed($, { type: 'press-start' })
@@ -836,9 +838,9 @@ export function pane(on: On, hours = baseHours): void {
           leave(queryOf(e.value, e.kind), e)
           return { element: e.element, value: e.value }
         }
-        if (e.element.startsWith('message:') && e.kind === 'submit' && !mine.press)
-          await lostMessage($, e, mine)
-        else throw error
+        if (!(e.element.startsWith('message:') && e.kind === 'submit')) throw error
+        // A filled slot: the closure ran and `carry` sends its action.
+        if (!mine.press) await lostMessage($, e, mine)
         return { element: e.element, value: e.value }
       }),
     ),
