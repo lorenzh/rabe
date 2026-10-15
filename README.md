@@ -49,7 +49,7 @@ The pane has four tabs:
 
   The session cost as `/cost` totals it, this session's id (`c` copies `claude --resume <id>`), the estimated dollars of the Claude agents and of the Codex jobs when those sources exist, and per agent and Codex job a bar of tokens and its estimate. Worker names use more of the pane width. The header says "sorted by tokens when opened". Workers keep that order while the pane is open, and new workers follow them. Agents that look slow or stuck show under "Load".
 
-  `i`, `o` and `h` group the rows by agent, by model or by harness (Claude Code against Codex); one grouping is active, and the rows keep their order while the pane is open. The main session gets a row marked partial, one per model when grouped by model and one combined row otherwise: it counts only the steps Rabe saw since it loaded, and its dollars are an estimate at the 1-hour cache-write rate (`n/a` without a price). Claude rows add up to the band; Codex is shown on top. A forwarding agent's spend counts once, in its Codex job.
+  `i`, `o` and `h` group the rows by agent, by model or by harness (Claude Code against Codex); one grouping is active, and the rows keep their order while the pane is open. The main session gets a row marked partial, one per model when grouped by model and one combined row otherwise: it counts only the steps Rabe saw since it loaded, and its dollars are an estimate at the 1-hour cache-write rate (`n/a` without a price). In a narrow pane a group row puts its numbers on a second line; a long name loses its middle, never `(partial)`. Claude rows add up to the band; Codex is shown on top. A forwarding agent's spend counts once, in its Codex job.
 
 - **Effects**
 

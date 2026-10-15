@@ -268,3 +268,46 @@ test('narrow group rows keep every value and a recognisable name, workers includ
     }
   }
 })
+
+test('a partial worker group and the main session row of one model read apart', () => {
+  const main = { 'claude-opus-5-5': { steps: 3, input: 1000, output: 200, cached: 500, usd: 0.5 } }
+  const known = {
+    ...explore,
+    id: 'k',
+    detail: { ...explore.detail, model: 'claude-opus-5-5' },
+  } as RabeItem
+  const blind = { ...known, id: 'b', tokens: undefined } as RabeItem
+  for (const columns of [30, 40, 50]) {
+    const sel = { ...NO_SELECTION, grouping: 'model' as const }
+    const drawn = costView(
+      { ...MODEL, items: [known, blind], mainUsage: main },
+      { ...SIZE, columns },
+      sel,
+    )
+    const labels = drawn.nodes
+      .flatMap(node => ('spans' in node ? node.spans.filter(isPress) : []))
+      .filter(one => one.key.startsWith('row:by:'))
+      .map(one => one.label)
+    expect(labels.length, `${columns}`).toBe(2)
+    expect(new Set(labels).size, `${columns} ${labels}`).toBe(2)
+  }
+})
+
+test('long model names keep the partial marker and a distinguishing end', () => {
+  const name = 'claude-opus-5-5-experimental-preview-build-'
+  const main = {
+    [`${name}a`]: { steps: 3, input: 1000, output: 200, cached: 500, usd: 0.5 },
+    [`${name}b`]: { steps: 2, input: 900, output: 100, cached: 0, usd: 0.3 },
+  }
+  for (const columns of [30, 40, 50]) {
+    const sel = { ...NO_SELECTION, grouping: 'model' as const }
+    const drawn = costView({ ...MODEL, items: [], mainUsage: main }, { ...SIZE, columns }, sel)
+    const labels = drawn.nodes
+      .flatMap(node => ('spans' in node ? node.spans.filter(isPress) : []))
+      .filter(one => one.key.includes(':main'))
+      .map(one => one.label)
+    expect(labels.length, `${columns}`).toBe(2)
+    expect(new Set(labels).size, `${columns} ${labels}`).toBe(2)
+    for (const label of labels) expect(label, `${columns}`).toContain('(partial)')
+  }
+})

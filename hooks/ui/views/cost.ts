@@ -60,6 +60,16 @@ function workerLine(
   }
 }
 
+// `text` in `room` cells: the start and the end, the middle cut to `…`.
+function middle(text: string, room: number): string {
+  const chars = [...text]
+  if (chars.length <= room) return text
+  if (room < 3) return chars.slice(-Math.max(0, room)).join('')
+  const head = Math.floor((room - 1) / 2)
+
+  return `${chars.slice(0, head).join('')}…${chars.slice(head + 1 - room).join('')}`
+}
+
 // A row of the model and harness groupings, or the main session's row. When
 // the name and its "(partial)" marker do not fit the name column, the numbers
 // move to a second line: no value is dropped to keep a name.
@@ -69,6 +79,7 @@ function groupLine(
   nameWidth: number,
   barWidth: number,
   isSelected: boolean,
+  columns: number,
 ): Line[] {
   const blocks = row.tokens < 0 ? '▏'.padEnd(barWidth) : bar(row.tokens, max, barWidth)
   // A total that leaves some workers out says so in words.
@@ -76,11 +87,11 @@ function groupLine(
   const room = Math.max(0, nameWidth - 3)
   const full = `${row.title}${tag}`
   const stacked = [...full].length > room
-  // Stacked rows shorten the shared lead ("main session · ", "claude-").
-  const title = stacked
-    ? row.title.replace(/^main session · /, '').replace(/^claude-/, '')
-    : row.title
-  const name = stacked ? `${title}${tag}` : full
+  // Stacked rows shorten the shared lead to "main · " and drop "claude-". A
+  // name still too long for the line loses its middle, so the marker and the
+  // end that tells two models apart stay.
+  const title = row.title.replace(/^main session · /, 'main · ').replace(/^claude-/, '')
+  const name = stacked ? middle(title, columns - 3 - tag.length) + tag : full
   const key = `row:${row.id}`
   const bg = isSelected ? { bg: C.selected } : {}
   const numbers: Line['spans'] = [
@@ -99,7 +110,7 @@ function groupLine(
   if (stacked) {
     return [
       { spans: lead, ...bg },
-      { spans: [[' '.repeat(3)], ...numbers], ...bg },
+      { spans: [[' '.repeat(3)], ...numbers], joins: true, ...bg },
     ]
   }
 
@@ -212,7 +223,9 @@ export const costView: View = (model, size, sel): Drawn => {
     ...list.map(item =>
       workerLine(item, max, model.now, nameWidth, barWidth, item.id === pickedId),
     ),
-    ...rows.flatMap(row => groupLine(row, max, nameWidth, barWidth, row.id === pickedId)),
+    ...rows.flatMap(row =>
+      groupLine(row, max, nameWidth, barWidth, row.id === pickedId, size.columns),
+    ),
   ]
   const body: Line[] = drawn.length ? drawn : [{ spans: [[' No agent or Codex job yet.', dim]] }]
   const isGone = model.items.some(item => item.kind === 'codex' && item.detail.isSessionMissing)

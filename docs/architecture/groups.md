@@ -11,7 +11,8 @@ keywords: [groups, groupRows, GroupRow, grouping, model, harness, partial, n/a, 
 
 - Each worker counts once. A forwarder's spend is in its Codex job's row (`withForwarder`).
 - Tokens are `-1`, drawn `n/a`, when no worker of the row has a known count.
-- When only some workers have one, the total leaves the others out and the row is `isPartial`. The view adds the word `(partial)` to the row's name, not only a colour. The main session's rows are always `isPartial`, and the view cuts the name before the word, at every width.
+- When only some workers have one, the total leaves the others out and the row is `isPartial`. The view adds the word `(partial)` to the row's name, not only a colour. The main session's rows are always `isPartial`.
+- Where a name and its marker do not fit the name column, the row stacks: the name on one line, the bar and numbers on a second line (`joins`), so no value is dropped and the pane scrolls both lines into view together. A stacked name drops `claude-` and shortens `main session · ` to `main · `, so a partial worker group and the main session's row of one model still read apart. A name still too long for the line loses its middle (`…`), so `(partial)` and the end that tells two models apart stay.
 - Dollars are `n/a` when one worker has none.
 - The main session has its own rows (per model, or one for the harness). They come from `hooks/main-usage.ts` (see [Main-session usage](main-usage.md)) and are always partial.
 - `heldRows` and `orderIds` keep the order of the open pane through `stable`. The grouping is part of the pane's scope (`scopeOf`), so a change of grouping starts a new hold.

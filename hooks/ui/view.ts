@@ -160,7 +160,9 @@ export const isPress = (part: Part): part is Press => !Array.isArray(part)
 
 // One row of the body: Text parts and at most one Press per row (a tab bar
 // holds one per tab), then a part aligned to the right end. `bg` fills the row.
-export type Line = { spans: Part[]; right?: Span[]; bg?: number }
+// `joins`: the line goes on the row above it (a stacked Cost row's numbers);
+// the pane scrolls it into view with that row.
+export type Line = { spans: Part[]; right?: Span[]; bg?: number; joins?: true }
 
 // What a body holds: lines, and charts nobody presses (a Raster on the
 // terminal, text elsewhere).
