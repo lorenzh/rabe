@@ -108,13 +108,17 @@ async function arm(
   })
 }
 
-function opening(on: On, isOpen: boolean, surfaces: string[] = ['terminal']) {
+function opening(on: On, isOpen: boolean, surfaces: string[] = ['terminal'], isPlaced = true) {
   on('state.get', async () => ({ value: { value: undefined, version: 0 } }))
   on('session.surfaces', async () => ({ value: surfaces }) as never)
   const opens: unknown[] = []
   on('ui.open', async (_$, e) => {
     opens.push(e)
-    return { value: { isPlaced: true as const } }
+    return {
+      value: isPlaced
+        ? { isPlaced: true as const }
+        : { isPlaced: false as const, reason: 'too narrow' },
+    } as never
   })
   const pane = { id: 'rabe', title: 'Rabe', isShown: true, isFocused: false, isPlaced: true }
   on('ui.panes', async () => ({ value: isOpen ? [pane] : [] }))
@@ -122,13 +126,24 @@ function opening(on: On, isOpen: boolean, surfaces: string[] = ['terminal']) {
   return opens
 }
 
-test('/rabe answers in plain text where the pane cannot draw', async ($, on) => {
+for (const surface of ['vscode', 'terminal', 'desktop']) {
+  test(`/rabe opens the pane on the ${surface} surface`, async ($, on) => {
+    mock.clock(on, { now: NOW })
+    const opens = opening(on, true, [surface])
+    const answer = await $.command.run({ command: 'rabe', args: '' } as never)
+    expect(opens.length).toBeGreaterThan(0)
+    expect(answer.text).toBe('Rabe opened.')
+  })
+}
+
+test('/rabe answers in text where the host cannot place the pane', async ($, on) => {
   on('state.get', { plugin: 'rabe', key: 'items' }, async () => ({
     value: { value: [explore], version: 1 },
   }))
-  const opens = opening(on, true, ['vscode'])
+  mock.clock(on, { now: NOW })
+  const opens = opening(on, true, ['vscode'], false)
   const answer = await $.command.run({ command: 'rabe', args: '' } as never)
-  expect(opens).toHaveLength(0)
+  expect(opens).toHaveLength(1)
   expect(answer.text).toBe('Rabe: 1 running, 0 idle, 0 ended.\n- agent: 1')
 })
 

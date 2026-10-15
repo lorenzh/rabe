@@ -706,15 +706,17 @@ export function pane(on: On, hours = baseHours): void {
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const surfaces = await $.session.surfaces().catch(() => [])
     // An empty list means nothing draws (a plain -p run), so text is the answer.
-    if (!surfaces.some(one => one === 'terminal' || one === 'desktop'))
-      return { text: itemsText(items) }
+    // Checked first: `$.ui.open` reports isPlaced true there although nothing draws.
+    if (surfaces.length === 0) return { text: itemsText(items) }
     const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
     await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(items, edits))
     await $.state.set({ plugin: 'rabe', key: 'window' }, windowOf(baseHours, await $.clock.now()))
     feed($, { type: 'opened' })
     isRestored = false
     pinned = NO_PIN
-    await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })
+    const opened = await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })
+    // Unplaced: the host cannot draw the pane (it waits undrawn), so say it in text.
+    if (!opened.isPlaced) return { text: itemsText(items) }
 
     return { text: 'Rabe opened.' }
   })
