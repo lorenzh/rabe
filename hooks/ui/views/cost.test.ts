@@ -226,3 +226,45 @@ test('partial rows stay distinguishable at narrow widths', () => {
     }
   }
 })
+
+test('narrow group rows keep every value and a recognisable name, workers included', () => {
+  const main = { 'claude-opus-5-5': { steps: 3, input: 1000, output: 200, cached: 500, usd: 0.5 } }
+  const opus = {
+    ...explore,
+    id: 'o',
+    detail: { ...explore.detail, model: 'claude-opus-5-5' },
+  } as RabeItem
+  const sonnet = {
+    ...plan,
+    id: 's',
+    detail: { ...plan.detail, model: 'claude-sonnet-5-5' },
+  } as RabeItem
+  for (const columns of [30, 40, 50]) {
+    for (const grouping of ['model', 'harness'] as const) {
+      const sel = { ...NO_SELECTION, grouping }
+      const size = { ...SIZE, columns }
+      const shown = lines(
+        gridOf(costView({ ...MODEL, items: [opus, sonnet], mainUsage: main }, size, sel)).grid,
+      )
+      const at = `${grouping} ${columns} `
+      expect(
+        shown.some(line => /\b1k\b/.test(line)),
+        at,
+      ).toBe(true)
+      expect(
+        shown.some(line => /\$0\.50/.test(line)),
+        at,
+      ).toBe(true)
+      if (grouping === 'model') {
+        expect(
+          shown.some(line => line.includes('opus-5-5 (partial)')),
+          at,
+        ).toBe(true)
+        expect(
+          shown.some(line => line.includes('sonnet-5-5')),
+          at,
+        ).toBe(true)
+      }
+    }
+  }
+})

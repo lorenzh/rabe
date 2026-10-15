@@ -48,7 +48,7 @@ function workerLine(
         key: `row:${item.id}`,
         label: name,
         action: { type: 'open', id: item.id },
-        ...(!isSelected && { dim: true }),
+        ...(!isSelected && { dim: true as const }),
       },
       [' '.repeat(nameWidth - 3 - [...name].length)],
       [barWidth ? ` ${blocks}` : '', tok < 0 ? dim : barStyle(item)],
@@ -60,44 +60,52 @@ function workerLine(
   }
 }
 
-// A row of the model and harness groupings, or the main session's row.
+// A row of the model and harness groupings, or the main session's row. When
+// the name and its "(partial)" marker do not fit the name column, the numbers
+// move to a second line: no value is dropped to keep a name.
 function groupLine(
   row: GroupRow,
   max: number,
   nameWidth: number,
   barWidth: number,
   isSelected: boolean,
-): Line {
+): Line[] {
   const blocks = row.tokens < 0 ? '▏'.padEnd(barWidth) : bar(row.tokens, max, barWidth)
   // A total that leaves some workers out says so in words.
   const tag = row.isPartial ? ' (partial)' : ''
   const room = Math.max(0, nameWidth - 3)
-  // Narrow: drop the shared "main session · " lead and keep at least 6 name
-  // characters beside the marker, even if the row then runs past the column.
-  const squeezed = room - tag.length < 16
-  const title = squeezed ? row.title.replace(/^main session · /, '') : row.title
-  const name = `${fit(title, Math.max(6, room - tag.length)).trimEnd()}${tag}`
+  const full = `${row.title}${tag}`
+  const stacked = [...full].length > room
+  // Stacked rows shorten the shared lead ("main session · ", "claude-").
+  const title = stacked
+    ? row.title.replace(/^main session · /, '').replace(/^claude-/, '')
+    : row.title
+  const name = stacked ? `${title}${tag}` : full
   const key = `row:${row.id}`
-
-  return {
-    spans: [
-      [isSelected ? '▌' : ' ', { fg: C.orange }],
-      ['•', dim],
-      [' '],
-      {
-        key,
-        label: name,
-        action: { type: 'focus', key },
-        ...(!isSelected && { dim: true }),
-      },
-      [' '.repeat(Math.max(0, room - [...name].length))],
-      [barWidth ? ` ${blocks}` : '', row.tokens < 0 ? dim : { fg: C.orange }],
-      [(row.tokens < 0 ? 'n/a' : tokens(row.tokens)).padStart(8), row.tokens < 0 ? dim : {}],
-      [cost(row.costUsd).padStart(9), row.costUsd === undefined ? dim : {}],
-      [(row.count === undefined ? '' : `${row.count}`).padStart(7)],
-    ],
-    ...(isSelected && { bg: C.selected }),
+  const bg = isSelected ? { bg: C.selected } : {}
+  const numbers: Line['spans'] = [
+    [barWidth ? ` ${blocks}` : '', row.tokens < 0 ? dim : { fg: C.orange }],
+    [(row.tokens < 0 ? 'n/a' : tokens(row.tokens)).padStart(8), row.tokens < 0 ? dim : {}],
+    [cost(row.costUsd).padStart(9), row.costUsd === undefined ? dim : {}],
+    [(row.count === undefined ? '' : `${row.count}`).padStart(7)],
+  ]
+  const label = {
+    key,
+    label: name,
+    action: { type: 'focus' as const, key },
+    ...(!isSelected && { dim: true as const }),
   }
+  const lead: Line['spans'] = [[isSelected ? '▌' : ' ', { fg: C.orange }], ['•', dim], [' '], label]
+  if (stacked) {
+    return [
+      { spans: lead, ...bg },
+      { spans: [[' '.repeat(3)], ...numbers], ...bg },
+    ]
+  }
+
+  return [
+    { spans: [...lead, [' '.repeat(Math.max(0, room - [...name].length))], ...numbers], ...bg },
+  ]
 }
 
 const GROUPINGS: { by: RabeGrouping; key: string }[] = [
@@ -204,7 +212,7 @@ export const costView: View = (model, size, sel): Drawn => {
     ...list.map(item =>
       workerLine(item, max, model.now, nameWidth, barWidth, item.id === pickedId),
     ),
-    ...rows.map(row => groupLine(row, max, nameWidth, barWidth, row.id === pickedId)),
+    ...rows.flatMap(row => groupLine(row, max, nameWidth, barWidth, row.id === pickedId)),
   ]
   const body: Line[] = drawn.length ? drawn : [{ spans: [[' No agent or Codex job yet.', dim]] }]
   const isGone = model.items.some(item => item.kind === 'codex' && item.detail.isSessionMissing)
