@@ -72,9 +72,11 @@ function groupLine(
   // A total that leaves some workers out says so in words.
   const tag = row.isPartial ? ' (partial)' : ''
   const room = Math.max(0, nameWidth - 3)
-  const name = room
-    ? `${fit(row.title, Math.max(0, room - tag.length)).trimEnd()}${tag}`.slice(-room)
-    : ''
+  // Narrow: drop the shared "main session · " lead and keep at least 6 name
+  // characters beside the marker, even if the row then runs past the column.
+  const squeezed = room - tag.length < 16
+  const title = squeezed ? row.title.replace(/^main session · /, '') : row.title
+  const name = `${fit(title, Math.max(6, room - tag.length)).trimEnd()}${tag}`
   const key = `row:${row.id}`
 
   return {

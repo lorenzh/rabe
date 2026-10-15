@@ -202,3 +202,27 @@ test('the main session row keeps (partial) visible at every width and grouping',
     }
   }
 })
+
+test('partial rows stay distinguishable at narrow widths', () => {
+  const main = {
+    'claude-opus-5-5': { steps: 3, input: 1000, output: 200, cached: 500, usd: 0.5 },
+    'claude-sonnet-5-5': { steps: 2, input: 900, output: 100, cached: 0, usd: 0.3 },
+  }
+  for (const columns of [30, 40, 50]) {
+    const sel = { ...NO_SELECTION, grouping: 'model' as const }
+    const drawn = costView({ ...MODEL, items: [], mainUsage: main }, { ...SIZE, columns }, sel)
+    const labels = drawn.nodes
+      .flatMap(node => ('spans' in node ? node.spans.filter(isPress) : []))
+      .filter(one => one.key.includes(':main'))
+      .map(one => one.label)
+    expect(labels.length, `${columns}`).toBe(2)
+    expect(new Set(labels).size, `${columns} ${labels}`).toBe(2)
+    for (const label of labels) {
+      expect(label, `${columns}`).toContain('(partial)')
+      expect(
+        label.replace('(partial)', '').trim().length,
+        `${columns} ${label}`,
+      ).toBeGreaterThanOrEqual(6)
+    }
+  }
+})
