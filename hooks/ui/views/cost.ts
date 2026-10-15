@@ -2,7 +2,18 @@ import type { RabeItem } from '../../model'
 import { bar, fit } from '../cells/grid'
 import { C, CHIP, type Style, tone } from '../cells/palette'
 import { duration, short, tokens, usd, validId } from '../format'
-import { byTokens, cost, glyph, shown, stable, tokenSum, totals, withForwarder } from '../lists'
+import {
+  byTokens,
+  cost,
+  glyph,
+  isCodexRun,
+  kindOf,
+  shown,
+  stable,
+  tokenSum,
+  totals,
+  withForwarder,
+} from '../lists'
 import type { Drawn, Line, Model, View } from '../view'
 import { resumeButton } from './detail'
 import { fitLine, focusOn } from './lines'
@@ -90,7 +101,7 @@ export const costView: View = (model, size, sel): Drawn => {
   const running = model.items.filter(item => item.status === 'running').length
   // An agent that only forwarded to Codex counts in its job's row.
   const workers = shown(model.items)
-    .filter(item => item.kind === 'agent' || item.kind === 'codex')
+    .filter(item => kindOf(item) === 'agent' || kindOf(item) === 'codex')
     .map(item => withForwarder(item, model.items))
   const list = stable(workers, sel.order?.cost, byTokens)
   const selected = list.find(item => item.id === sel.selected) ?? list[0]
@@ -104,7 +115,7 @@ export const costView: View = (model, size, sel): Drawn => {
   if (model.items.some(item => item.kind === 'agent')) {
     totalsHead.push([' claude ', dim], [cost(sum.claude), { fg: C.orange }])
   }
-  if (model.items.some(item => item.kind === 'codex')) {
+  if (model.items.some(item => kindOf(item) === 'codex')) {
     totalsHead.push(['  codex ', dim], [cost(sum.codex), { fg: C.cyan }])
   }
   const head: Line[] = [
@@ -131,7 +142,10 @@ export const costView: View = (model, size, sel): Drawn => {
     },
   ]
   const free = model.items.some(
-    item => item.kind === 'shell' || item.kind === 'monitor' || item.kind === 'cron',
+    item =>
+      (item.kind === 'shell' && !isCodexRun(item)) ||
+      item.kind === 'monitor' ||
+      item.kind === 'cron',
   )
   const after: Line[] = [
     ...(free ? [{ spans: [[' shells, monitors and cron jobs use no tokens', dim]] } as Line] : []),

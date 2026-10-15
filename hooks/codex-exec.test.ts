@@ -286,3 +286,14 @@ test('a quoted flag with inline expansion voids the earlier value', () => {
   expect(exec).not.toHaveProperty('model')
   expect(exec).not.toHaveProperty('sandbox')
 })
+
+test('a backslash-escaped flag with a later unknown value voids the earlier model', () => {
+  const exec = codexExec('codex exec -m gpt-6-sol --mo\\del="$M" x')
+  expect(exec).not.toHaveProperty('model')
+})
+
+test('the bypass flag is reported as the sandbox', () => {
+  const exec = codexExec('codex exec --dangerously-bypass-approvals-and-sandbox x')
+  expect(exec?.sandbox).toBe('danger-full-access')
+  expect(codexExec('codex exec --yolo x')?.sandbox).toBe('danger-full-access')
+})

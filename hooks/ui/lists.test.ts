@@ -512,3 +512,12 @@ test('a direct codex run sits with the agents, counts as codex and shows in the 
     { glyph: '▶', kind: 'shell', count: 1 },
   ])
 })
+
+test('an ended direct codex run adds unknown usage and makes the codex sum n/a', () => {
+  const ended = { ...run, status: 'done' as const, endedAt: NOW }
+  expect(totals([review, ended])).toEqual({
+    tokens: (review.tokens?.input ?? 0) + (review.tokens?.output ?? 0),
+    unknown: 1,
+  })
+  expect(byTokens([review, ended]).map(i => i.id)).toEqual([review.id, ended.id])
+})

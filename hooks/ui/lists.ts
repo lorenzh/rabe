@@ -383,8 +383,9 @@ export function totals(items: RabeItem[]): Totals {
   const out: Totals = { tokens: 0, unknown: 0 }
   const unpriced = new Set<'claude' | 'codex'>()
   for (const item of items) {
-    if (item.kind !== 'agent' && item.kind !== 'codex') continue
-    const side = item.kind === 'agent' ? 'claude' : 'codex'
+    const kind = kindOf(item)
+    if (kind !== 'agent' && kind !== 'codex') continue
+    const side = kind === 'agent' ? 'claude' : 'codex'
     if (!item.tokens) out.unknown += 1
     out.tokens += item.tokens ? item.tokens.input + item.tokens.output : 0
     if (item.costUsd === undefined) {
@@ -408,7 +409,7 @@ export const tokenSum = (item: RabeItem) =>
 
 export function byTokens(items: RabeItem[]): RabeItem[] {
   return items
-    .filter(item => item.kind === 'agent' || item.kind === 'codex')
+    .filter(item => kindOf(item) === 'agent' || kindOf(item) === 'codex')
     .toSorted((a, b) => tokenSum(b) - tokenSum(a))
 }
 
