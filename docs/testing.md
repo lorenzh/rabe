@@ -20,7 +20,8 @@ The first two run in CI on every pull request. A live check runs by hand before 
 ```sh
 bun run test          # every *.test.ts and *.test.tsx under hooks/ (about 40 seconds)
 bun run test:scripts  # the tests of scripts/live-check.sh, against a fake tmux (about 35 seconds)
-bun run check         # lint, typecheck, strict validate, both of the above
+bun run check:blocks  # the write/forget blocks of the sources match agents.ts
+bun run check         # lint, typecheck, strict validate, the above and check:blocks
 ```
 
 `bun run test` is `claude plugin test .` from the pinned Claude Code. It runs each test file in a child process that is like the sandbox the mod runs in. There is no filter for one file or one folder: `claude plugin test hooks/ui` fails, because it looks for `hooks/hooks.json` in that folder. Run the whole suite.
