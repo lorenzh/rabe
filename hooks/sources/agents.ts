@@ -6,10 +6,11 @@ import type {
   TurnStepResult,
 } from 'claude-code'
 
-import type { RabeEdit } from '../../types'
+import type { RabeDiff, RabeEdit } from '../../types'
+import { fromHunks, fromToolResult, keep } from '../diffs'
 import { companionCall } from '../forwarders'
 import { fault, type Pollers, skipped, tally } from '../loop'
-import { clip, type EndStatus, isAbsolute, isEnded, itemId, type RabeItem } from '../model'
+import { clip, type EndStatus, isAbsolute, isEnded, itemId, type RabeItem, runOf } from '../model'
 import { claudeUsd, type Prices, parsePrices, withOverride } from '../prices'
 import { isRecord, restored, unchanged } from '../reading'
 import {
@@ -87,9 +88,17 @@ async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Pro
     const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'turns' })
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const next = prune(value, dropped, items)
-    if (next === value) return
+    if (next === value) break
     const turns = await $.state.set({ plugin: 'rabe', key: 'turns' }, next, { ifVersion: version })
-    if (turns.isSet) return
+    if (turns.isSet) break
+  }
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, dropped, items)
+    if (next === value) return
+    const diffs = await $.state.set({ plugin: 'rabe', key: 'diffs' }, next, { ifVersion: version })
+    if (diffs.isSet) return
   }
 }
 
@@ -124,6 +133,32 @@ async function record(
       ifVersion: version,
     })
     if (isSet) return
+  }
+}
+
+// The diffs of recorded operations, kept by editor: the agent's item id, or
+// `main`. Content is held in session state only, never read from files.
+async function recordDiffs(
+  $: EngineInterface,
+  agentId: string | undefined,
+  diffs: RabeDiff[],
+): Promise<void> {
+  if (diffs.length === 0) return
+  const editor = agentId ? itemId('agent', agentId) : 'main'
+  for (;;) {
+    // A late result of an evicted agent leaves no diff behind.
+    if (agentId) {
+      const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+      if (!items.some(one => one.id === editor)) return
+    }
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
+    const next = keep(value, editor, diffs)
+    if (next === value) return
+    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'diffs' }, next, {
+      ifVersion: version,
+    })
+    // An eviction may have finished its cleanup after the check above: drop what this write left.
+    if (isSet) return agentId ? forget($, [editor]) : undefined
   }
 }
 
@@ -243,6 +278,18 @@ async function afterBash(
     }
   }
   await record($, agentId, changes)
+  const hunks = new Map(
+    (diff && !diff.shared && !diff.skipped && !diff.unavailable && Array.isArray(diff.files)
+      ? diff.files
+      : []
+    ).map(file => [file?.filePath, file]),
+  )
+  const diffs = changes.flatMap(change => {
+    const file = hunks.get(change.path)
+    if (!file || file.deleted) return []
+    return [fromHunks(change.path, at, file.hunks)].filter(one => one !== undefined)
+  })
+  await recordDiffs($, agentId, diffs)
 }
 
 function cachedMeta(
@@ -328,15 +375,11 @@ async function pollAgents($: EngineInterface, items: RabeItem[]): Promise<Change
   const metadata = restored(cached)
   for (const item of poll.items) {
     if (item.kind !== 'agent') continue
-    const workflow = poll.items.find(
-      parent => parent.id === item.parentId && parent.kind === 'workflow',
-    )
+    const workflow = runOf(item, poll.items)
     if (
       item.status === 'running' ||
       (item.status === 'idle' && item.detail.isTeammate) ||
-      (workflow?.kind === 'workflow' &&
-        workflow.detail.phases?.length &&
-        item.detail.workflowPhase === undefined)
+      (workflow?.detail.phases?.length && item.detail.workflowPhase === undefined)
     ) {
       const change = await readMeta($, item.id, poll.items)
       if (change) stage(poll, change)
@@ -466,7 +509,10 @@ export function agents(on: On, file: string, pollers: Pollers): void {
       const path = (e.tool === 'Edit' || e.tool === 'Write') && changedFile(answer, e.file_path)
       if (path) {
         const via = e.tool === 'Edit' ? 'edit' : 'write'
-        await record($, e.agentId, [{ path, at: await $.clock.now(), via }])
+        const at = await $.clock.now()
+        await record($, e.agentId, [{ path, at, via }])
+        const diff = fromToolResult(path, at, answer.result)
+        if (diff) await recordDiffs($, e.agentId, [diff])
       }
     } catch {}
 

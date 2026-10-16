@@ -2,7 +2,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { RabeItem } from '../model'
 import { MAX_ENDED, MAX_FOREGROUND } from '../registry'
-import { core, files, memoryState } from '../testing'
+import { core, files, memoryState, overCap } from '../testing'
 
 const DIR = '/tmp/claude-1000/-home-me-app/5f1c/tasks'
 
@@ -1124,4 +1124,16 @@ test('a detached codex exec moved to the background leaves only its background r
   await $.tool.call({ tool: 'Bash', command: 'nohup codex exec -o /tmp/r.txt x &' })
   const items = state['rabe.items']?.value as RabeItem[]
   expect(items.map(item => item.id)).toEqual(['shell:b1'])
+})
+
+test('an item a hook write pushes out loses its diffs, though it has no turns', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const held = overCap(MAX_ENDED)
+  bash(on)
+  core(on)
+  state['rabe.items'] = { value: held.items, version: 1 }
+  state['rabe.diffs'] = { value: held.diffs, version: 1 }
+  await $.tool.call({ tool: 'Bash', command: 'bun run dev', run_in_background: true })
+  expect(state['rabe.diffs']?.value).toEqual({ 'shell:old1': held.diffs['shell:old1'] })
 })

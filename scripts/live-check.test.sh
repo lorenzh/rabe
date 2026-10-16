@@ -72,7 +72,10 @@ visible() {
   vis=()
   for ((id = 0; id < total; id++)); do
     [[ $g == *" $id "* ]] && continue
-    [ -n "$f" ] && [ "${durs[id]:-}" != "$f" ] && continue
+    # The seeded "zebra nap" row (the first) also matches letters of its title.
+    if [ -n "$f" ] && [ "${durs[id]:-}" != "$f" ]; then
+      { [ "$id" = 0 ] && [ -e "$FAKE/zebra" ] && [[ "zebra nap" == *"$f"* ]]; } || continue
+    fi
     vis+=("$id")
   done
   rows=${#vis[@]}
@@ -106,6 +109,7 @@ case $cmd in
         if [ -n "$pos" ] && [ "${FAKE_CLICK:-}" != ignore ]; then echo "$pos $pos" >"$FAKE/ring"; fi
         exit 0
       fi
+      [[ $2 == *'# zebra nap'* ]] && : >"$FAKE/zebra"
       [ "$2" = /rabe ] && rm -f "$FAKE/closed" "$FAKE/field" "$FAKE/opened" "$FAKE/detail"
       field=0 text=
       read -r field text 2>/dev/null <"$FAKE/field"
@@ -153,6 +157,7 @@ case $cmd in
       if [ "$field" = 1 ] && [ ${#1} = 1 ]; then
         { [ "${FAKE_FIELD:-}" = eat ] && [ ${#text} = 1 ]; } || text+=$1
         echo "1 $text" >"$FAKE/field"
+        echo "$text" >"$FAKE/filter"
       elif [ "$field" = 1 ] && [ "$1" = Escape ]; then
         if [ "${FAKE_ESC:-}" = close ]; then
           : >"$FAKE/closed"
@@ -164,6 +169,11 @@ case $cmd in
         echo "0 $text" >"$FAKE/field"
         echo "0 0" >"$FAKE/ring"
       elif [ "$field" = 1 ] && [ "$1" = BSpace ]; then
+        # FAKE_BACKSPACE=lost drops a Backspace while the text matches the
+        # seeded "zebra nap" row, the bug of #180 and #213.
+        if [ "${FAKE_BACKSPACE:-}" = lost ] && [ -e "$FAKE/zebra" ] && [[ "zebra nap" == *"$text"* ]]; then
+          exit 0
+        fi
         text=${text%?}
         # FAKE_BACKSPACE=blur drops the focus when the field empties and the
         # rows return (#180).
@@ -172,7 +182,13 @@ case $cmd in
         else
           echo "1 $text" >"$FAKE/field"
         fi
-        [ -n "$text" ] || rm -f "$FAKE/filter"
+        # FAKE_BACKSPACE=stale drops the change handler of the last
+        # Backspace: the field empties and the filter keeps the last letter.
+        if [ -n "$text" ]; then
+          echo "$text" >"$FAKE/filter"
+        elif [ "${FAKE_BACKSPACE:-}" != stale ]; then
+          rm -f "$FAKE/filter"
+        fi
       elif [ "$1" = s ]; then
         echo "1 " >"$FAKE/field"
       elif [ "$1" = b ]; then
@@ -275,6 +291,7 @@ case $cmd in
             *) [ "$n" = "$sel" ] && m=▌ || m=' '
                title="row $n"
                [ -n "${FAKE_SLEEP:-}" ] && title="sleep ${durs[id]:-}"
+               [ "$id" = 0 ] && [ -e "$FAKE/zebra" ] && title+=" # zebra nap"
                g=▶
                grep -qx "$id" "$FAKE/ended" 2>/dev/null && g=■
                [ "$w" = i ] && line="$m  $g $title" || line="$m$g $title" ;;
@@ -434,7 +451,9 @@ sq FAKE_TABLATE=2 'a tab that lands late is waited for before Down' 0 'PASS ring
 sq FAKE_TABKEY=stop 'a ring left on a stop after the tab key is FAIL' 1 'FAIL ring-2 0/1' --shells 3 --timeout 50 --sequences ring-2
 sq 'a field that reads what was typed is PASS' 0 'PASS search-keys 1/1' --shells 3 --timeout 50 --sequences search-keys
 sq FAKE_FIELD=eat 'a field that loses a key is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys
+sq FAKE_BACKSPACE=stale 'a filter that stays after the last Backspace is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys
 sq FAKE_BACKSPACE=blur 'a field that loses the focus when rows return is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys
+sq FAKE_BACKSPACE=lost 'a Backspace lost while a seeded row matches is FAIL' 1 'FAIL search-keys 0/1' --shells 3 --timeout 50 --sequences search-keys
 sq 'Esc that leaves the field keeps the pane PASS' 0 'PASS search-esc 1/1' --shells 3 --timeout 50 --sequences search-esc
 sq FAKE_ESC=close 'Esc that closes the pane is FAIL' 1 'FAIL search-esc 0/1' --shells 3 --timeout 50 --sequences search-esc
 sq 'a selection kept over the Cost tab is PASS' 0 'PASS tab-selection 1/1' --shells 3 --timeout 50 --sequences tab-selection

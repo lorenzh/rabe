@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Added
+
+- The Effects tab shows the diff of the selected file beside the list (one summary line below 90 columns), recorded when the change happens and never read from files ([#236](https://github.com/lorenzh/rabe/pull/236), refs [#162](https://github.com/lorenzh/rabe/issues/162))
+
 ### Fixed
 
 - Enter in an agent's message field sends the message once, or shows `Message not sent` or `Delivery unknown`, also when a redraw released the field's handler first ([#242](https://github.com/lorenzh/rabe/pull/242), fixes [#218](https://github.com/lorenzh/rabe/issues/218))
@@ -14,10 +18,13 @@ No migration. Update with `claude plugin update rabe` and `/reload-plugins`; a r
 
 ### Changed
 
+- The README, guide and `docs/feasibility/ui.md` state where Rabe loads and draws: measured in `claude -p` and the Agent SDK, unverified in the VS Code extension and the desktop app, and how `/rabe` answers with or without a surface ([#241](https://github.com/lorenzh/rabe/pull/241), refs [#177](https://github.com/lorenzh/rabe/issues/177))
 - The README demo GIF shows the 0.9.0 pane: search field, per-tab selection and the current Items, Cost and Timeline content ([#225](https://github.com/lorenzh/rabe/pull/225), fixes [#224](https://github.com/lorenzh/rabe/issues/224))
+- JSON and JSONL record reading lives once in `hooks/reading.ts`; `AGENTS.md` lists the shared helpers ([#228](https://github.com/lorenzh/rabe/pull/228), refs [#202](https://github.com/lorenzh/rabe/issues/202))
 
 ### Fixed
 
+- `/rabe-diag` and `/rabe-stop` are also registered in non-interactive (SDK) sessions, and `/rabe` answers with a plain-text summary where the pane cannot draw ([#230](https://github.com/lorenzh/rabe/pull/230), fixes [#178](https://github.com/lorenzh/rabe/issues/178))
 - `b` (Back) returns to the Items row you opened, not to an older tab, when the item whose detail was open left the list before ([#227](https://github.com/lorenzh/rabe/pull/227), fixes [#223](https://github.com/lorenzh/rabe/issues/223))
 - A direct `codex exec` in a subshell group sent to the background with `&` shows as detached also when a newline or another command comes before the closing `)`, as in `(codex exec ... -o f x\n) &` ([#226](https://github.com/lorenzh/rabe/pull/226), fixes [#222](https://github.com/lorenzh/rabe/issues/222))
 

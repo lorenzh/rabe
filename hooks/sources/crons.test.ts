@@ -3,7 +3,7 @@ import { expect, mock, type TestBody, test } from 'claude-code/testing'
 
 import type { RabeItem } from '../model'
 import { MAX_ENDED } from '../registry'
-import { core, memoryState } from '../testing'
+import { core, memoryState, overCap } from '../testing'
 import { cronFires } from './crons'
 
 const JOB = {
@@ -842,4 +842,18 @@ test('a late fire pair still updates the count when another prompt replaced the 
   await s.complete('t2')
   expect(s.detail()).toMatchObject({ fireCount: 2, fireId: 'f2' })
   expect(s.detail()).not.toHaveProperty('turnEnded')
+})
+
+test('an item a hook write pushes out loses its diffs, though it has no turns', async ($, on) => {
+  mock.clock(on, { now: 5000 })
+  const state = memoryState(on)
+  state['rabe.items'] = { value: full(), version: 1 }
+  const { diffs } = overCap(0)
+  state['rabe.diffs'] = {
+    value: { 'agent:a0': diffs['shell:old0'], 'shell:s5': diffs['shell:old1'] },
+    version: 1,
+  }
+  tools(on)
+  await $.tool.call({ tool: 'CronDelete', id: 'c1' })
+  expect(state['rabe.diffs']?.value).toEqual({ 'shell:s5': diffs['shell:old1'] })
 })

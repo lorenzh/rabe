@@ -25,7 +25,7 @@ hooks/
   sources/monitors.ts monitors: items and their output lines
   sources/crons.ts    cron jobs and /loop wakeups
   sources/worktrees.ts  the repository's git worktrees, for the Effects tab
-  reading.ts          pure byte cursors and output chunks
+  reading.ts          pure byte cursors, output chunks and JSON/JSONL record reading
   diag.ts             /rabe-diag: the last poll of each source, without private data
   tasks.ts            pure: task notifications, task output files, port guess
   shell-words.ts      pure shell words and here-doc tokenization
@@ -53,13 +53,15 @@ data/prices.csv       list prices per model, read at run time for the cost estim
 
 The pure [interaction model](architecture/interaction.md) owns focus, held order, regain retries and arming. The pane feeds events and runs its effects.
 
+Before you write a helper, look in the table "Shared helpers" in [`AGENTS.md`](../AGENTS.md#shared-helpers-look-here-before-writing-one).
+
 The details are split by area: [state and items](architecture/state.md), [sources](architecture/sources.md), [prices](architecture/prices.md), [UI](architecture/ui.md), [focus and keys](architecture/focus-and-keys.md), [focus order and arming](architecture/focus-order.md), and [view behavior](architecture/views.md).
 
 ## Shared poll loop
 
 `register.tsx` starts one clock timer at session start. Each source binds its own poll callback to `$`. This keeps `$` in the source file for module validation. The loop calls agents, Codex, shells, monitors and worktrees in order. Cron jobs and workflows still use events.
 
-The timer wakes every second. It skips a tick while the previous pass runs. Agents and worktrees refresh once at session start. The other sources first poll after two seconds. Codex and worktrees poll only in interactive sessions.
+The timer wakes every second. It skips a tick while the previous pass runs. Agents and worktrees refresh once at session start. The other sources first poll after two seconds. Worktrees poll only in interactive sessions.
 
 Each item poll returns a pure `Change`. A source can stage several changes locally before returning their composition. Later sources see the changed items with the ended-item cap applied. The loop composes returned changes in order. Its `write` and `forget` helpers use the same `commit` and `prune` rules as event writes. The write commits the collected list if its version still matches. Otherwise it replays changes against the latest list with a version check. This keeps event writes that arrive during a poll. An unchanged list causes no write. Dropped items lose their lines and turns.
 

@@ -15,7 +15,7 @@ import {
   scopeOf,
 } from './interaction'
 import { KIND_LABEL, kept, matches, orderOf, previousOf, rowOf } from './lists'
-import { asPrevious, clipText, nameOf, toastText } from './pane-data'
+import { asPrevious, clipText, itemsText, nameOf, toastText } from './pane-data'
 import { follow, geometry, MIN_ROWS, measure, NO_PIN, type Pin } from './pin'
 import { type At, hold, render } from './render'
 import { inTurn, reserve, screens, sequence, slots } from './sequence'
@@ -544,6 +544,7 @@ async function look(
   const { value: turns = {} } = await $.state.get({ plugin: 'rabe', key: 'turns' })
   const { value: lines = {} } = await $.state.get({ plugin: 'rabe', key: 'lines' })
   const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
+  const { value: diffs = {} } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
   const { value: tab = 'items' } = await $.state.get({ plugin: 'rabe', key: 'tab' })
   const { value: query = '' } = await $.state.get({ plugin: 'rabe', key: 'query' })
   const { value: folded = [] } = await $.state.get({ plugin: 'rabe', key: 'folded' })
@@ -563,6 +564,7 @@ async function look(
     usd: usage?.cost?.usd,
     previous: await previous($).catch(() => undefined),
     edits,
+    diffs,
     cwd: await $.session.cwd().catch(() => undefined),
     sessionId: await $.session.id().catch(() => undefined),
     ...(worktrees && { worktrees }),
@@ -741,15 +743,31 @@ export function pane(on: On, hours = baseHours): void {
   // Each open sorts the lists once; then they hold their order (see `stable`).
   on('command.run', { command: 'rabe' }, async $ => {
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const surfaces = await $.session.surfaces().catch(() => [])
+    // An empty list means nothing draws (a plain -p run), so text is the answer.
+    // Checked first: `$.ui.open` reports isPlaced true there although nothing draws.
+    if (surfaces.length === 0) return { text: itemsText(items) }
     const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
     await $.state.set({ plugin: 'rabe', key: 'order' }, orderOf(items, edits))
     await $.state.set({ plugin: 'rabe', key: 'window' }, windowOf(baseHours, await $.clock.now()))
-    feed($, { type: 'opened' })
     isRestored = false
     pinned = NO_PIN
-    await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })
+    const opened = await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })
+    // Unplaced: the host cannot draw the pane (it waits undrawn). Close it, and
+    // never feed `opened` (that schedules the refocus), so the text is the answer.
+    if (!opened.isPlaced) {
+      // A refused or intercepted close leaves the pane pending: it stays the
+      // only answer. A resolved close counts only when the pane is gone.
+      const closed = await $.ui
+        .close({ id: PANE })
+        .then(async () => !(await $.ui.panes()).some(one => one.id === PANE))
+        .catch(() => false)
+      return closed ? { text: itemsText(items) } : {}
+    }
+    feed($, { type: 'opened' })
 
-    return { text: 'Rabe opened.' }
+    // The pane is the answer; text would also reach the transcript.
+    return {}
   })
 
   // A close the host carries out clears every hold; a canceled one keeps it.

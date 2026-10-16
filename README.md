@@ -52,7 +52,7 @@ The pane has four tabs:
 
   ![The Effects tab: the files raven.md and notes.md with the agent or main session that wrote them, the main worktree with who worked there, and port 4173 with its ssh -L line, which c copies](docs/assets/tab-effects.gif)
 
-  Files that agents, Codex jobs and the main session changed, with who changed each and how (`edit`, `write`, `codex add`, `deleted`), a warning when two of them change the same file, the git worktrees files changed in with their branch and who worked there (the main session included), and open ports with the `ssh -L` command to reach them. Long file paths use a middle ellipsis and keep both ends. When a file has multiple changes, the label says `N changes: write, edit`. Files written through shell commands show as `via shell` when Claude Code reports them in a Bash diff or Rabe confirms them on disk. Script edits need `auto` mode or the Claude Code setting `bashEditDiffEnabled: true` in your user settings (project settings do not count). Shared, skipped or unavailable diffs leave only the disk fallback. Relative paths use the main session's current folder or the agent's known cwd. Unknown folders and uncertain directory changes show nothing for relative paths. Without a usable Bash diff, Rabe skips commands inside `if` or loops and paths with a glob or `$var`. Script edits without a usable diff stay invisible. Background commands record no edits. Enter or a click on a file opens the agent or Codex job that changed it last, or copies the path of a main-session file. In a Git repository each file shows relative to the worktree that holds it.
+  Files that agents, Codex jobs and the main session changed, with who changed each and how (`edit`, `write`, `codex add`, `deleted`), a warning when two of them change the same file, the git worktrees files changed in with their branch and who worked there (the main session included), and open ports with the `ssh -L` command to reach them. Long file paths use a middle ellipsis and keep both ends. When a file has multiple changes, the label says `N changes: write, edit`. Files written through shell commands show as `via shell` when Claude Code reports them in a Bash diff or Rabe confirms them on disk. Script edits need `auto` mode or the Claude Code setting `bashEditDiffEnabled: true` in your user settings (project settings do not count). Shared, skipped or unavailable diffs leave only the disk fallback. Relative paths use the main session's current folder or the agent's known cwd. Unknown folders and uncertain directory changes show nothing for relative paths. Without a usable Bash diff, Rabe skips commands inside `if` or loops and paths with a glob or `$var`. Script edits without a usable diff stay invisible. Background commands record no edits. Enter or a click on a file opens the agent or Codex job that changed it last, or copies the path of a main-session file. In a Git repository each file shows relative to the worktree that holds it. The selected file's diff shows beside the list at 90 columns or more, with who changed it and when; below that, one summary line (`+12 -3 · 2 hunks · edit by <title>`). The diff is the latest change Rabe recorded as it happened, cut at 200 lines. A file with no recorded content says `diff n/a: content not recorded`, a Write too large to diff says `diff n/a: file too large`, and a delete says `deleted`.
 - **Timeline**
 
   ![The Timeline tab: a bar per shell, monitor, agent, cron job and workflow over the last minutes, who started what, and the previous session with its cost; w widens the window](docs/assets/tab-timeline.gif)
@@ -155,9 +155,9 @@ Ended items keep their stop buttons in place. These buttons stay dim. Pressing t
 
 Commands:
 
-- `/rabe`: open the pane.
+- `/rabe`: open the pane. On any attached surface (terminal, desktop app, VS Code panel, mobile; the last two are [not measured]) it opens the pane and adds no text. Where nothing can draw it (a plain `claude -p` run or an SDK session, or a host that cannot place the pane), it answers with text instead: the running, idle and ended counts and one count per kind, never a title or prompt.
 - `/rabe-stop codex:<job id>`: cancel a running Codex job. Use the job id shown in Rabe, not the thread id. Empty arguments or arguments without `codex:` show usage. To stop other items, use `x` in the pane.
-- `/rabe-diag`: show what each source read in its last poll, with versions and options, and no prompts, titles or full paths. Run it when something shows `n/a` or is missing.
+- `/rabe-diag`: (also in non-interactive sessions) show what each source read in its last poll, with versions and options, and no prompts, titles or full paths. Run it when something shows `n/a` or is missing.
 - `/rabe:report-bug`: write a bug report for this repository.
 - `/rabe:feedback`: write an idea or a comment for this repository.
 
@@ -203,7 +203,9 @@ Rabe reads these files:
 
 On Linux, Rabe also reads process IDs, parent IDs and TCP listener ownership through `fuser`, `ps` and `ss`. It does not read process arguments or environments.
 
-For script edits, Rabe also takes changed file paths and known deletions from Claude Code's Bash result. It keeps no diff hunks or file content.
+For script edits, Rabe also takes changed file paths and known deletions from Claude Code's Bash result.
+
+For the Effects diff, Rabe keeps the diff hunks of each Edit, Write, Codex file change and Bash diff in session state as the change happens: at most 200 lines and 8192 characters per change and 262144 characters in all, oldest dropped first. It never reads a file or runs `git diff` for this. These hunks can hold file content, and other plugins in the session can read session state. They are never put into toasts, the clipboard, diagnostics, notes to Claude or `$.store`.
 
 Rabe checks each output and script path against the current session and project before reading. It also checks the resolved file against the resolved folder to reject symlink escapes. If a path is unexpected or cannot be resolved, its file data stays `n/a`.
 
@@ -219,8 +221,7 @@ Rabe keeps file cursors and parser summaries in session state. It skips files wh
 
 ## Requirements
 
-- Claude Code 2.1.296. We build and test Rabe with this version. Other versions can show `n/a` where a file changed.
-- A terminal for the colored band and pane. The maintainer last checked the Claude desktop app on Windows with Rabe 0.1.0. Desktop support is unverified since that check. [#117](https://github.com/lorenzh/rabe/issues/117) investigates current desktop support.
+- Rabe needs Claude Code 2.1.296. Its band and pane draw in a terminal session. In the Claude desktop app (Code tab, local session, not WSL), Claude Code draws mods from 2.1.286, but Rabe has not been checked there since 0.1.0 ([#126](https://github.com/lorenzh/rabe/issues/126)). Measured with `claude -p` and an SDK-mode stream-json probe (2.1.296): Rabe loads and tracks background work, nothing draws, and `/rabe`, `/rabe-diag` and `/rabe-stop` answer as text. In the VS Code extension this is unverified: Rabe was not run there (not measured), the extension is documented to run hooks but not draw mods, it contains a `vscode` drawing client that was not tested, and the commands may be missing from the slash menu ([#177](https://github.com/lorenzh/rabe/issues/177)). With a `vscode` surface attached, `/rabe` opens the pane and returns no text; it answers with text only when no surface is attached or the pane is not placed. The git worktrees source runs only in interactive sessions. Other Claude Code versions can show `n/a` where a file changed.
 - Optional: the Codex plugin (`codex@openai-codex`) for Codex jobs, and the `gh` CLI for the report commands.
 
 ## Development
