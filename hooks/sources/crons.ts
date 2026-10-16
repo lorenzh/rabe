@@ -1,7 +1,7 @@
 import type { EngineInterface, On, TurnCompleteReason } from 'claude-code'
 
 import { type EndStatus, itemId, type RabeItem, type RabeItemOf } from '../model'
-import { isRecord } from '../reading'
+import { isRecord, jsonRecords } from '../reading'
 import { addItem, type Change, commit, endItem, prune, updateItem } from '../registry'
 
 const LOOP_SENTINEL = '<<autonomous-loop-dynamic>>'
@@ -29,14 +29,8 @@ export function cronFires(text: string): Fires {
   const users = new Map<string, Record<string, unknown>>()
   const bad = new Set<string>()
   let promptId: string | undefined
-  for (const line of text.split('\n')) {
-    let row: unknown
-    try {
-      row = JSON.parse(line)
-    } catch {
-      continue
-    }
-    if (!isRecord(row) || row.isSidechain === true || typeof row.uuid !== 'string') continue
+  for (const row of jsonRecords(text)) {
+    if (row.isSidechain === true || typeof row.uuid !== 'string') continue
     const fire = row.type === 'system' && row.subtype === 'scheduled_task_fire'
     const content = isRecord(row.message) ? row.message.content : undefined
     const tool =
@@ -195,9 +189,17 @@ async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Pro
     const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'turns' })
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const next = prune(value, dropped, items)
-    if (next === value) return
+    if (next === value) break
     const turns = await $.state.set({ plugin: 'rabe', key: 'turns' }, next, { ifVersion: version })
-    if (turns.isSet) return
+    if (turns.isSet) break
+  }
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, dropped, items)
+    if (next === value) return
+    const diffs = await $.state.set({ plugin: 'rabe', key: 'diffs' }, next, { ifVersion: version })
+    if (diffs.isSet) return
   }
 }
 

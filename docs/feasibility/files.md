@@ -2,7 +2,7 @@
 title: Files and runtime limits
 description: What files Rabe reads, which writes it can detect, and what still needs live testing.
 tags: [feasibility, files, limits]
-keywords: [shell writes, script, bashEditDiff, changedFiles, bashEditDiffEnabled, shared, files outside the project, runtime testing, shellWrites, candidates, fs.stat, mtime, here-doc, redirection, glob, brace expansion, command substitution, FileChange, changed, beforeBash, afterBash, ranBash, rabe.edits, main session, via shell, Edit, Write, 4 MiB]
+keywords: [shell writes, script, bashEditDiff, changedFiles, bashEditDiffEnabled, shared, files outside the project, runtime testing, shellWrites, candidates, fs.stat, mtime, here-doc, redirection, glob, brace expansion, command substitution, FileChange, changed, beforeBash, afterBash, ranBash, rabe.edits, main session, via shell, Edit, Write, 4 MiB, rabe.diffs, structuredPatch, unified_diff, diff content]
 ---
 
 # Files and runtime limits
@@ -32,6 +32,16 @@ An agent can write files through Bash (`cat > ~/.agents/skills/x/SKILL.md <<'EOF
 
 Tested: `$.fs.stat` and `$.fs.read` read files under `~/.codex/sessions` and `/tmp/claude-<uid>/…/tasks/` without a prompt or a denial.
 
+
+## Diff content (issue #162)
+
+The Effects diff takes content only from what Claude Code and Codex already hand over, when the operation happens:
+
+- Edit and Write results carry `structuredPatch` hunks (`types/claude-code-tools.d.ts`). A Write that created a file carries `content`. An update with an empty patch and `originalFile: null` was too large to diff.
+- `bashEditDiff.files[].hunks` carries hunks for shell edits when the host sends them (the same conditions as `changedFiles`: not shared, skipped or unavailable).
+- Codex rollout `FileChange` items carry `unified_diff` for an update and `content` for an add; a delete has none.
+
+A file read or `git diff` would show a different change than the operation Rabe attributes to its editor and breaks the stat-only rule above, so neither is used. Content that was never sent shows `diff n/a: content not recorded`. Not yet checked live: whether agent (not main-session) Bash calls carry `bashEditDiff.files` hunks.
 
 ## Still to test at runtime
 

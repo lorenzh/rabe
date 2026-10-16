@@ -5,9 +5,17 @@ import {
   cursorOf,
   fileOffset,
   inodeOf,
+  isOwnFile,
+  jsonRecords,
+  list,
+  nextCursor,
+  num,
   outputLines,
+  parseJson,
   readChunk,
   readPlan,
+  rec,
+  str,
 } from './reading'
 
 const stat = { size: 6, mtimeMs: 1, identity: '1' }
@@ -104,4 +112,35 @@ test('restored cursors reject fractional byte positions and invalid fields', () 
     expect(cursorOf(value)).toBeUndefined()
   }
   expect(cursorOf(held)).toBe(held)
+})
+
+test('JSON helpers keep objects and drop everything else', () => {
+  expect(parseJson('{"a":1}')).toEqual({ a: 1 })
+  expect(parseJson('[1]')).toBeUndefined()
+  expect(parseJson('3')).toBeUndefined()
+  expect(parseJson('not json')).toBeUndefined()
+  expect(jsonRecords('{"a":1}\n\nbad\n[2]\n{"b":2}')).toEqual([{ a: 1 }, { b: 2 }])
+  expect(rec([1])).toEqual({})
+  expect(rec({ a: 1 })).toEqual({ a: 1 })
+  expect(list('x')).toEqual([])
+  expect(str('')).toBeUndefined()
+  expect(str('a')).toBe('a')
+  expect(num('1')).toBeUndefined()
+  expect(num(1)).toBe(1)
+})
+
+test('nextCursor moves the offset past the chunk and keeps the stamp', () => {
+  const chunk = { bytes: 4, partial: true, isDiscarding: undefined }
+  expect(nextCursor(stat, 10, chunk)).toEqual({ ...stat, offset: 14, partial: true })
+  expect(nextCursor(stat, 0, { bytes: 9, partial: false, isDiscarding: true }).isDiscarding).toBe(
+    true,
+  )
+})
+
+test('isOwnFile takes only a regular file named in the resolved folder', () => {
+  const root = { realPath: '/t' }
+  expect(isOwnFile(root, { realPath: '/t/a.output', kind: 'file' }, 'a.output')).toBe(true)
+  expect(isOwnFile(root, { realPath: '/x/a.output', kind: 'file' }, 'a.output')).toBe(false)
+  expect(isOwnFile(root, { realPath: '/t/a.output', kind: 'directory' }, 'a.output')).toBe(false)
+  expect(isOwnFile({}, { realPath: '/undefined/a', kind: 'file' }, 'a')).toBe(false)
 })

@@ -18,6 +18,8 @@ cd .worktrees/<name>
 
 Use a short branch name that includes the issue number. Keep all changes and commits in that worktree.
 
+To triage the backlog or check whether a bug reproduces, use the repo skill `.claude/skills/triaging-rabe-issues`. It judges issues against `main`, reproduces bugs in a real session with `scripts/live-check.sh` and records the finding in the issue.
+
 ## Set up Rabe
 
 Rabe uses Bun 1.4 for development tools. The pinned Claude Code dev dependency is listed in [`package.json`](package.json).

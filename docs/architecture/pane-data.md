@@ -10,7 +10,7 @@ keywords: [pane-data, pane-data.ts, pane.tsx, refactor, modules]
 `hooks/ui/pane-data.ts` contains pure helpers: text filtering and validation of stored session summaries.
 `clipText` and `toastText` form a security boundary before clipboard and toast API calls.
 Stored-summary validation removes legacy failed titles before the pane writes them back.
-It changes no behaviour.
+`itemsText` builds the answer of `/rabe` where nothing draws the pane: an empty `$.session.surfaces()`, or a `$.ui.open` that answers `isPlaced: false`. Every attached surface (`terminal`, `desktop`, `vscode`, `mobile`) gets the pane and no text; the pane or the text answers, never both. An unplaced pane is closed first. It carries counts and kind words only, because the answer enters Claude's transcript and titles are prompts or file text.
 
 `pane.tsx` keeps actions, focus and store calls. The imported helpers receive data only.
 

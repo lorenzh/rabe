@@ -59,6 +59,8 @@ type RabeItem = { [K in RabeItemKind]: RabeItemOf<K> }[RabeItemKind]
 
 A file change is `RabeEdit`: `{ path, at, via?, change? }`. `via` says how: `edit` or `write` (the tool), `shell` (a path from the host's Bash diff, or a command line's candidate checked on disk) or `codex` (a Codex file change, with `change` `add`, `update` or `delete`); a shell `mv` source or `rm` has `change: 'delete'`. An edit without `via` is an `Edit` or `Write` from before this field. The main session's changes have no item: they are the `$.state` key `rabe.edits`, the newest 100, written by the agents source.
 
+The `$.state` key `rabe.diffs` holds `RabeDiff[]` by editor id: the bounded diffs of the file operations Rabe saw (see [Touched files](touched.md#diffs-of-the-selected-file)). It is pruned with `forget`; its content never goes to toasts, the clipboard, diagnostics, notes or `$.store`.
+
 An optional field that is absent means the data is not known. Views show it as `n/a`. A source that needs a new field adds it as optional to the contract, here, and in this table.
 
 `model.ts` also has:
@@ -68,6 +70,8 @@ An optional field that is absent means the data is not known. Views show it as `
 - `EndStatus`: `done`, `failed` or `stopped`.
 - `isEnded(item)`: false for running or idle. Counts, the cap and removal use it so idle agents remain alive.
 - `itemId(kind, nativeId)` and `mergeItem(item, patch)`. `mergeItem` always keeps the item's own `seenAt`, also when a full `RabeItem` is passed as the patch.
+- `parentOf(item, items)` and `runOf(item, items)`: the item a `parentId` names, and that item only when it is a workflow run. Sources and views use them instead of their own `find` on `parentId`.
+- `KINDS`: every item kind, in the order the band lists them; `/rabe-diag` uses it to check that a kind is known and prints counts in item order.
 
 
 ## The registry
@@ -90,7 +94,7 @@ To list items, read the value: `const { value: items = [] } = await $.state.get(
 
 The [shared poll loop](../architecture.md#shared-poll-loop) stages item changes from every polled source. It commits them together after the sources finish. Event hooks use the immediate write loop below.
 
-Every file that writes items declares `write` and `forget` at its top level (the scanner does not follow `$` across an import). `write` writes only when the list changed, and tries again when another hook wrote first. `commit` applies the cap, so any write can drop items; `forget` then drops the per-item state of exactly those items:
+Every file that writes items declares `write` and `forget` at its top level (the scanner does not follow `$` across an import). `write` writes only when the list changed, and tries again when another hook wrote first. `commit` applies the cap, so any write can drop items; `forget` then drops the per-item state of exactly those items: `bun run check:blocks` (`scripts/check-write-blocks.ts`, comment stripping in `scripts/write-block.ts`) fails when the `write` and `forget` blocks of a source differ from the one in `agents.ts` apart from comments (whole-line, trailing and block), so a new source copies the block unchanged.
 
 ```ts
 import type { EngineInterface } from 'claude-code'

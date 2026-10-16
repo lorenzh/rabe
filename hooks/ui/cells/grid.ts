@@ -1,3 +1,4 @@
+import { cut } from '../format'
 import { DEFAULT, type Style } from './palette'
 
 // A fixed grid of terminal cells, row-major, three u32 per cell:
@@ -52,10 +53,8 @@ export function safe(text: string): string {
 
 export function fit(text: string, width: number): string {
   if (width <= 0) return ''
-  const chars = [...safe(text)]
-  if (chars.length > width) return `${chars.slice(0, width - 1).join('')}…`
 
-  return chars.join('').padEnd(width)
+  return cut(safe(text), width).padEnd(width)
 }
 
 export function grid(columns: number, rows: number, style: Style = {}): Grid {
@@ -206,9 +205,7 @@ export function spans(g: Grid, x: number, y: number, list: Span[], width = g.col
   for (const [text, style] of list) {
     const room = end - at
     if (room <= 0) break
-    const chars = [...safe(text)]
-    const shown = chars.length > room ? `${chars.slice(0, room - 1).join('')}…` : chars.join('')
-    at = write(g, at, y, shown, style)
+    at = write(g, at, y, cut(safe(text), room), style)
   }
 
   return at
