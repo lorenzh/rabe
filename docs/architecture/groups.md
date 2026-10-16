@@ -7,7 +7,7 @@ keywords: [groups, groupRows, GroupRow, grouping, model, harness, partial, n/a, 
 
 # Cost groupings
 
-`hooks/ui/groups.ts` is pure. `groupRows(by, items, main)` turns the items into the rows of the `model` and `harness` groupings of the Cost tab. [View behavior](views.md) describes the tab and its buttons.
+`hooks/ui/groups.ts` is pure. `groupRows(by, items, main)` turns the items into the rows of the `model` and `harness` groupings of the Cost tab; it sums each row with `spendBy` from `lists.ts`, the helper `totals` also uses. [View behavior](views.md) describes the tab and its buttons.
 
 - Each worker counts once. A forwarder's spend is in its Codex job's row (`withForwarder`).
 - Tokens are `-1`, drawn `n/a`, when no worker of the row has a known count.
