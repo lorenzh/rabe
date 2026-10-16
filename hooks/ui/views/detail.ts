@@ -1,4 +1,4 @@
-import { isEnded, isInside, type RabeItem } from '../../model'
+import { isEnded, isInside, type RabeItem, runOf } from '../../model'
 import { nextRuns } from '../../schedule'
 import { type Span, wrap } from '../cells/grid'
 import { C, type Style } from '../cells/palette'
@@ -434,7 +434,7 @@ export function detailButtons(
     )
   }
   const run = isWorkflowAgent(item)
-    ? items.find(one => one.id === item.parentId && one.kind === 'workflow')
+    ? runOf(item, items)
     : item.kind === 'workflow'
       ? item
       : undefined

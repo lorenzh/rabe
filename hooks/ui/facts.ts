@@ -1,4 +1,4 @@
-import type { RabeItem } from '../model'
+import { parentOf, type RabeItem } from '../model'
 import { clockTime, duration, idOrNa, na } from './format'
 import { children, forwarderOf, glyph, KIND_LABEL, nextAt, statusLabel } from './lists'
 
@@ -30,7 +30,7 @@ function ran(item: RabeItem, now: number): string {
 }
 
 export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: string): Facts {
-  const parent = items.find(one => one.id === item.parentId)
+  const parent = parentOf(item, items)
   const by = `started by ${parent ? `${KIND_LABEL[parent.kind]} ${parent.title}` : 'main session'}`
   const lines: string[] = []
   let long: string | undefined

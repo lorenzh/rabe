@@ -1,4 +1,4 @@
-import { isEnded, type RabeItem } from '../../model'
+import { isEnded, type RabeItem, runOf } from '../../model'
 import { type Span, safe } from '../cells/grid'
 import { C, type Style, tone } from '../cells/palette'
 import { facts } from '../facts'
@@ -208,7 +208,7 @@ function listButtons(
     selected?.kind === 'workflow'
       ? selected
       : selected && isWorkflowAgent(selected)
-        ? model.items.find(one => one.id === selected.parentId && one.kind === 'workflow')
+        ? runOf(selected, model.items)
         : undefined
   const group = (shown.find(list => selected && list.includes(selected)) ?? [])
     .filter(canStop)

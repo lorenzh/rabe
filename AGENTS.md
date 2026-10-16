@@ -49,6 +49,7 @@ Search this table and grep before you write a helper. Put new shared logic in th
 | Cursor after a read; is a path the task's own file after symlinks resolve | `nextCursor`, `isOwnFile` | `hooks/reading.ts` | `hooks/reading.test.ts` |
 | `n/a` for an unknown value or id; cut text with `…` | `na`, `idOrNa`, `cut` | `hooks/ui/format.ts` | `hooks/ui/format.test.ts` |
 | Tokens and dollars of workers, one unknown makes the sum unknown; which items are workers | `spend`, `spendBy`, `isWorker`, `harnessOf` (`totals` wraps them) | `hooks/ui/lists.ts` | `hooks/ui/lists.test.ts` |
+| The item that started an item; its workflow run; the list of kinds | `parentOf`, `runOf`, `KINDS` | `hooks/model.ts` | `hooks/model.test.ts` |
 
 ## Key Conventions
 - Get data from the mod API first, then from files on disk, then from the Claude Code or Codex source. Record each new source in the relevant document under `docs/feasibility/` and add it to [`docs/README.md`](docs/README.md).
