@@ -2,7 +2,17 @@ import type { RabeItem } from '../../model'
 import { bar, fit } from '../cells/grid'
 import { C, CHIP, type Style, tone } from '../cells/palette'
 import { duration, idOrNa, short, tokens, usd, validId } from '../format'
-import { byTokens, cost, glyph, shown, stable, tokenSum, totals, withForwarder } from '../lists'
+import {
+  byTokens,
+  cost,
+  glyph,
+  isWorker,
+  shown,
+  stable,
+  tokenSum,
+  totals,
+  withForwarder,
+} from '../lists'
 import type { Drawn, Line, Model, View } from '../view'
 import { resumeButton } from './detail'
 import { fitLine, focusOn } from './lines'
@@ -90,7 +100,7 @@ export const costView: View = (model, size, sel): Drawn => {
   const running = model.items.filter(item => item.status === 'running').length
   // An agent that only forwarded to Codex counts in its job's row.
   const workers = shown(model.items)
-    .filter(item => item.kind === 'agent' || item.kind === 'codex')
+    .filter(isWorker)
     .map(item => withForwarder(item, model.items))
   const list = stable(workers, sel.order?.cost, byTokens)
   const selected = list.find(item => item.id === sel.selected) ?? list[0]
