@@ -7,7 +7,9 @@ import { listeningPort, processTree } from '../ports'
 import {
   cursorOf,
   inodeOf,
+  isOwnFile,
   linesOf,
+  nextCursor,
   outputUpdate,
   readChunk,
   readPlan,
@@ -100,9 +102,7 @@ async function checkedOutput($: EngineInterface, path: string) {
   if (!folder) return undefined
   const root = await $.fs.stat(folder, { resolve: true })
   const stat = await $.fs.stat(path, { resolve: true })
-  return root.realPath &&
-    stat.realPath === `${root.realPath}/${path.slice(path.lastIndexOf('/') + 1)}` &&
-    stat.kind === 'file'
+  return isOwnFile(root, stat, path.slice(path.lastIndexOf('/') + 1)) && stat.realPath
     ? { path: stat.realPath, stat }
     : undefined
 }
@@ -190,12 +190,7 @@ async function readFile(
       reset,
       !reset && held?.partial === true,
       parsed.ended !== undefined,
-      {
-        ...stamp,
-        offset: offset + chunk.bytes,
-        partial: chunk.partial,
-        isDiscarding: chunk.isDiscarding,
-      },
+      nextCursor(stamp, offset, chunk),
       { ended: parsed.ended, exitCode: parsed.exitCode, port: guessPort(chunk.text) },
     )
     return {

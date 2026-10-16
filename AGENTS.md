@@ -46,6 +46,7 @@ Search this table and grep before you write a helper. Put new shared logic in th
 | Is a value an object (not an array) | `isRecord`, `rec` | `hooks/reading.ts` | `hooks/reading.test.ts` |
 | Safe `list`, `str`, `num` from unknown JSON | `list`, `str`, `num` | `hooks/reading.ts` | `hooks/reading.test.ts` |
 | Parse one JSON object or a JSONL text | `parseJson`, `jsonRecords` | `hooks/reading.ts` | `hooks/reading.test.ts` |
+| Cursor after a read; is a path the task's own file after symlinks resolve | `nextCursor`, `isOwnFile` | `hooks/reading.ts` | `hooks/reading.test.ts` |
 | `n/a` for an unknown value or id; cut text with `…` | `na`, `idOrNa`, `cut` | `hooks/ui/format.ts` | `hooks/ui/format.test.ts` |
 
 ## Key Conventions

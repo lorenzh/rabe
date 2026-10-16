@@ -1,6 +1,7 @@
 import type { BuiltinToolResults, EngineInterface, On } from 'claude-code'
 
 import { itemId } from '../model'
+import { isOwnFile } from '../reading'
 import { addItem, type Change, commit, endItem, prune, updateItem } from '../registry'
 import { endStatus, parseNotifications } from '../tasks'
 
@@ -74,8 +75,7 @@ async function readScript($: EngineInterface, path: string): Promise<string | un
   const folder = path.slice(0, path.lastIndexOf('/'))
   const root = await $.fs.stat(folder, { resolve: true })
   const stat = await $.fs.stat(path, { resolve: true })
-  if (!root.realPath || stat.realPath !== `${root.realPath}/${parts[4]}` || stat.kind !== 'file')
-    return undefined
+  if (!isOwnFile(root, stat, parts[4] ?? '') || !stat.realPath) return undefined
 
   return String(await $.fs.read(stat.realPath))
 }
