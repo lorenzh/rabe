@@ -1,5 +1,13 @@
 import type { RabeEdit, RabeOrder, RabePrevious } from '../../types'
-import { isEnded, KINDS, type RabeItem, type RabeItemKind, runOf } from '../model'
+import {
+  firstCodexOf,
+  isEnded,
+  itemById,
+  KINDS,
+  type RabeItem,
+  type RabeItemKind,
+  runOf,
+} from '../model'
 import { nextRuns } from '../schedule'
 import { byConflict, touched } from './touched'
 
@@ -132,11 +140,7 @@ function isForwarder(item: RabeItem, items: readonly RabeItem[]): boolean {
   if (item.kind !== 'agent') return false
   const calls = item.detail.codexCalls?.length ?? 0
 
-  return (
-    calls > 0 &&
-    item.detail.toolCount === calls &&
-    items.some(one => one.kind === 'codex' && one.parentId === item.id)
-  )
+  return calls > 0 && item.detail.toolCount === calls && firstCodexOf(items, item.id) !== undefined
 }
 
 // The items lists show: forwarders fold into their Codex jobs.
@@ -146,15 +150,19 @@ export const shown = (items: RabeItem[]): RabeItem[] =>
 // The forwarder folded into a Codex job: only its first job counts it.
 export function forwarderOf(job: RabeItem, items: readonly RabeItem[]): RabeItem | undefined {
   if (job.kind !== 'codex' || !job.parentId) return undefined
-  const parent = items.find(one => one.id === job.parentId)
-  const first = items.find(one => one.kind === 'codex' && one.parentId === job.parentId)
+  const parent = itemById(items, job.parentId)
+  const first = firstCodexOf(items, job.parentId)
 
   return parent && first === job && isForwarder(parent, items) ? parent : undefined
 }
 
 // The row that stands for item `id`: a folded forwarder's is its job's.
-export const rowOf = (id: string, items: readonly RabeItem[]): string =>
-  items.find(one => forwarderOf(one, items)?.id === id)?.id ?? id
+export function rowOf(id: string, items: readonly RabeItem[]): string {
+  const parent = itemById(items, id)
+  const job = firstCodexOf(items, id)
+
+  return job && parent && isForwarder(parent, items) ? job.id : id
+}
 
 const both = (a?: number, b?: number) => (a === undefined || b === undefined ? undefined : a + b)
 
@@ -180,10 +188,17 @@ export function withForwarder(item: RabeItem, items: readonly RabeItem[]): RabeI
 // Codex jobs follow the agent that started them, after its other jobs. A job
 // in `held` (the order the pane opened with) keeps its place.
 function nest(list: RabeItem[], held: readonly string[] = []): RabeItem[] {
+  const isHeld = new Set(held)
+  const agents = new Set(list.filter(item => item.kind === 'agent').map(item => item.id))
   const isChild = (item: RabeItem) =>
-    item.kind === 'codex' &&
-    !held.includes(item.id) &&
-    list.some(one => one.kind === 'agent' && one.id === item.parentId)
+    item.kind === 'codex' && !isHeld.has(item.id) && agents.has(item.parentId ?? '')
+  const kids = new Map<string, RabeItem[]>()
+  for (const item of list) {
+    if (item.parentId === undefined || !isChild(item)) continue
+    const own = kids.get(item.parentId) ?? []
+    own.push(item)
+    kids.set(item.parentId, own)
+  }
   const rest = list.filter(item => !isChild(item))
   const owner = (item?: RabeItem) => (item?.kind === 'codex' && item.parentId) || item?.id
   const placed = new Set<string | undefined>()
@@ -192,7 +207,7 @@ function nest(list: RabeItem[], held: readonly string[] = []): RabeItem[] {
     const id = owner(item)
     if (owner(rest[i + 1]) === id || placed.has(id)) return [item]
     placed.add(id)
-    return [item, ...list.filter(one => isChild(one) && one.parentId === id)]
+    return [item, ...(kids.get(id ?? '') ?? [])]
   })
 }
 
@@ -229,10 +244,15 @@ export function grouped(
   items: RabeItem[],
   order?: RabeOrder,
 ): { id: Group; label: string; items: RabeItem[] }[] {
+  // The first group whose held ids hold the item, as a lookup.
+  const heldIn = new Map<string, Group>()
+  if (order) {
+    for (const group of GROUPS) {
+      for (const id of order[group.id] ?? []) if (!heldIn.has(id)) heldIn.set(id, group.id)
+    }
+  }
   const of = (item: RabeItem): Group =>
-    order
-      ? (GROUPS.find(group => order[group.id]?.includes(item.id))?.id ?? kindGroupOf(item))
-      : groupOf(item)
+    order ? (heldIn.get(item.id) ?? kindGroupOf(item)) : groupOf(item)
 
   return GROUPS.map(group => {
     const held = order && (order[group.id] ?? [])
@@ -292,15 +312,17 @@ export type Family = { id: string; parent?: RabeItem; title: string; items: Rabe
 // "run › agent"; an agent Rabe no longer holds "agent n/a".
 export function byParent(list: RabeItem[], items: RabeItem[]): Family[] {
   const blocks: Family[] = [{ id: '', title: '', items: [] }]
+  const at = new Map<string, Family>([['', blocks[0] as Family]])
   for (const item of list) {
     const id = item.parentId ?? ''
-    let block = blocks.find(one => one.id === id)
+    let block = at.get(id)
     if (!block) {
-      const parent = items.find(one => one.id === id)
+      const parent = itemById(items, id)
       const run = parent && runOf(parent, items)
       const title = !parent ? 'agent n/a' : run ? `${run.title} › ${parent.title}` : parent.title
       block = { id, ...(parent && { parent }), title, items: [] }
       blocks.push(block)
+      at.set(id, block)
     }
     block.items.push(item)
   }
@@ -415,7 +437,9 @@ export function spendBy<K>(items: readonly RabeItem[], keyOf: (item: RabeItem) =
   const groups = new Map<K, RabeItem[]>()
   for (const item of items) {
     const key = keyOf(item)
-    groups.set(key, [...(groups.get(key) ?? []), item])
+    const own = groups.get(key) ?? []
+    own.push(item)
+    groups.set(key, own)
   }
 
   return new Map([...groups].map(([key, group]) => [key, spend(group)]))
@@ -495,12 +519,19 @@ type TreeLine = { prefix: string; item: RabeItem }
 
 export function tree(items: RabeItem[]): TreeLine[] {
   const ids = new Set(items.map(item => item.id))
+  const kids = new Map<string, RabeItem[]>()
+  for (const item of items) {
+    if (item.parentId === undefined) continue
+    const own = kids.get(item.parentId) ?? []
+    own.push(item)
+    kids.set(item.parentId, own)
+  }
   const out: TreeLine[] = []
   const walk = (list: RabeItem[], indent: string) => {
     for (const [i, item] of list.entries()) {
       const isLast = i === list.length - 1
       out.push({ prefix: `${indent}${isLast ? '└─ ' : '├─ '}`, item })
-      walk(children(items, item.id), `${indent}${isLast ? '   ' : '│  '}`)
+      walk(kids.get(item.id) ?? [], `${indent}${isLast ? '   ' : '│  '}`)
     }
   }
   walk(

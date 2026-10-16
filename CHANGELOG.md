@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Fixed
+
+- A long session with many running items no longer freezes the pane: grouping, nesting, the Timeline's tree and the Cost totals cost the square or the cube of the item count, now linear ([#260](https://github.com/lorenzh/rabe/issues/260))
+
 ## [0.10.0] - 2026-10-16
 
 No migration. Update with `claude plugin update rabe` and `/reload-plugins`; a running session keeps working. The new session values (`rabe.diffs`, the Cost grouping and the main session's usage per model) start empty after the reload, and no option, command or key was removed or renamed.
