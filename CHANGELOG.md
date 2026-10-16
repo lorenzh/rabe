@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Fixed
+
+- A direct `codex exec` call shows its model when the flag is written `-mo4`, `-m'o4'` or `-m$'o4'`, as Codex accepts it; `$'o4'` and `--model=$'o4'` are pinned by tests, and a `$'...'` with an escape stays `n/a` ([#249](https://github.com/lorenzh/rabe/issues/249))
+
 ## [0.10.0] - 2026-10-16
 
 No migration. Update with `claude plugin update rabe` and `/reload-plugins`; a running session keeps working. The new session values (`rabe.diffs`, the Cost grouping and the main session's usage per model) start empty after the reload, and no option, command or key was removed or renamed.

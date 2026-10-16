@@ -222,6 +222,25 @@ test('an expanded or odd value is undefined, not guessed', () => {
   })
 })
 
+test('every shell spelling of the model gives the same value', () => {
+  for (const m of [`$'o4'`, '"o4"', "'o4'", 'o4']) {
+    expect(codexExec(`codex exec -m ${m} x`)?.model).toBe('o4')
+    expect(codexExec(`codex exec --model=${m} x`)?.model).toBe('o4')
+  }
+  // An escape in $'...' is not decoded: the value is unknown.
+  expect(codexExec(`codex exec -m $'o\\x34' x`)).toEqual({ isDetached: false })
+  expect(codexExec(`codex exec --model=$'o\\x34' x`)).toEqual({ isDetached: false })
+})
+
+test('codex takes -m<value> attached, so Rabe does too', () => {
+  for (const m of ['o4', "'o4'", '"o4"', `$'o4'`]) {
+    expect(codexExec(`codex exec -m${m} x`)?.model).toBe('o4')
+  }
+  expect(codexExec('codex exec -m=o4 x')?.model).toBe('o4')
+  expect(codexExec('codex exec -mgpt-5.5 -m"$M" x')).toEqual({ isDetached: false })
+  expect(codexExec('codex exec -mo4 -- -mspoof')?.model).toBe('o4')
+})
+
 test('a profile makes the model unknown', () => {
   expect(codexExec('codex exec -p fast -m gpt-5.5 x')).toEqual({ isDetached: false })
 })
