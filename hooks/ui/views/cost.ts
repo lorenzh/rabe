@@ -23,6 +23,9 @@ function widths(by: RabeGrouping, columns: number): Widths {
   return columns >= 44 ? { tokens: 8, cost: 9, last: 8 } : { tokens: 7, cost: 8, last: 6 }
 }
 
+const timeText = (item: RabeItem, now: number) =>
+  item.startedAt === undefined ? 'n/a' : short((item.endedAt ?? now) - item.startedAt)
+
 function barStyle(item: RabeItem): Style {
   if (item.status === 'failed') return { fg: C.red }
   if (item.status === 'done') return { fg: C.green }
@@ -42,13 +45,14 @@ function workerLine(
   w: Widths,
 ): Line[] {
   const tok = tokenSum(item)
-  const time = item.startedAt === undefined ? 'n/a' : short((item.endedAt ?? now) - item.startedAt)
+  const time = timeText(item, now)
   const blocks = tok < 0 ? '▏'.padEnd(barWidth) : bar(tok, max, barWidth)
   const title = item.status === 'idle' ? `idle ${item.title}` : item.title
   // A narrow pane stacks a row whose name does not fit: name above, numbers below.
   const stacked = columns < 60 && [...title].length > nameWidth - 3
   const name = stacked ? fit(title, columns - 3).trimEnd() : fit(title, nameWidth - 3).trimEnd()
   const bg = isSelected ? { bg: C.selected } : {}
+  const indent = Math.max(0, Math.min(3, columns - w.tokens - w.cost - w.last))
   const numbers: Line['spans'] = [
     [barWidth ? ` ${blocks}` : '', tok < 0 ? dim : barStyle(item)],
     [(tok < 0 ? 'n/a' : tokens(tok)).padStart(w.tokens), tok < 0 ? dim : {}],
@@ -69,11 +73,23 @@ function workerLine(
   if (stacked) {
     return [
       { spans: lead, ...bg },
-      { spans: [[' '.repeat(3)], ...numbers], joins: true, ...bg },
+      { spans: [[' '.repeat(indent)], ...numbers], joins: true, ...bg },
     ]
   }
 
   return [{ spans: [...lead, [' '.repeat(nameWidth - 3 - [...name].length)], ...numbers], ...bg }]
+}
+
+// ` session <id>` on one line, or the id in pieces on a narrow pane.
+function sessionLines(id: string, columns: number): Line[] {
+  if ([...` session ${id}`].length <= columns) return [{ spans: [[` session ${id}`, dim]] }]
+  const out: Line[] = [{ spans: [[' session', dim]] }]
+  const step = Math.max(1, columns - 1)
+  for (let at = 0; at < id.length; at += step) {
+    out.push({ spans: [[` ${id.slice(at, at + step)}`, dim]] })
+  }
+
+  return out
 }
 
 // Dim text on as many lines as `columns` needs, broken at spaces.
@@ -124,6 +140,7 @@ function groupLine(
   const name = stacked ? middle(title, columns - 3 - tag.length) + tag : full
   const key = `row:${row.id}`
   const bg = isSelected ? { bg: C.selected } : {}
+  const indent = Math.max(0, Math.min(3, columns - w.tokens - w.cost - w.last))
   const numbers: Line['spans'] = [
     [barWidth ? ` ${blocks}` : '', row.tokens < 0 ? dim : { fg: C.orange }],
     [(row.tokens < 0 ? 'n/a' : tokens(row.tokens)).padStart(w.tokens), row.tokens < 0 ? dim : {}],
@@ -140,7 +157,7 @@ function groupLine(
   if (stacked) {
     return [
       { spans: lead, ...bg },
-      { spans: [[' '.repeat(3)], ...numbers], joins: true, ...bg },
+      { spans: [[' '.repeat(indent)], ...numbers], joins: true, ...bg },
     ]
   }
 
@@ -155,12 +172,20 @@ const GROUPINGS: { by: RabeGrouping; key: string }[] = [
   { by: 'harness', key: 'h' },
 ]
 
-const note = (label: string, chip: Style, title: string, why: string): Line => ({
-  spans: [[` ${label} `, chip], [` ${title}`], [` · ${why}`, dim]],
-})
+const note = (label: string, chip: Style, title: string, why: string, columns: number): Line[] => {
+  if ([...` ${label}  ${title} · ${why}`].length <= columns) {
+    return [{ spans: [[` ${label} `, chip], [` ${title}`], [` · ${why}`, dim]] }]
+  }
+
+  return [
+    { spans: [[` ${label} `, chip]] },
+    ...wrapText(title, columns, ' '),
+    ...wrapText(why, columns, ' · '),
+  ]
+}
 
 // Running agents that look slow: a tool call open for a while, or no step at all.
-function loadLines(model: Model): Line[] {
+function loadLines(model: Model, columns: number): Line[] {
   const out: Line[] = []
   for (const item of model.items) {
     if (item.kind !== 'agent' || item.status !== 'running') continue
@@ -170,9 +195,17 @@ function loadLines(model: Model): Line[] {
     const idle = model.now - since
     const tool = last?.tools.at(-1)
     if (tool && idle >= LONG_TOOL) {
-      out.push(note('◷ long tool', CHIP.cost, item.title, `in ${tool.name} for ${duration(idle)}`))
+      out.push(
+        ...note(
+          '◷ long tool',
+          CHIP.cost,
+          item.title,
+          `in ${tool.name} for ${duration(idle)}`,
+          columns,
+        ),
+      )
     } else if (!tool && idle >= STUCK) {
-      out.push(note('⚠ stuck', CHIP.shell, item.title, `no step for ${short(idle)}`))
+      out.push(...note('⚠ stuck', CHIP.shell, item.title, `no step for ${short(idle)}`, columns))
     }
   }
 
@@ -203,7 +236,26 @@ export const costView: View = (model, size, sel): Drawn => {
       ? [...items.map(item => item.id), ...rows.map(row => row.id)]
       : rows.map(row => row.id)
   const pickedId = ids.includes(sel.selected) ? sel.selected : (ids[0] ?? '')
-  const w = widths(by, size.columns)
+  // The column widths are minimums: a long value (a $1000.00 worker) widens
+  // its column instead of pushing the next one out of the line.
+  const base = widths(by, size.columns)
+  const longest = (min: number, texts: string[]) =>
+    Math.max(min, ...texts.map(text => [...text].length + 1))
+  const tokenText = (n: number) => (n < 0 ? 'n/a' : tokens(n))
+  const w: Widths = {
+    tokens: longest(base.tokens, [
+      ...list.map(i => tokenText(tokenSum(i))),
+      ...rows.map(r => tokenText(r.tokens)),
+    ]),
+    cost: longest(base.cost, [
+      ...list.map(i => cost(i.costUsd)),
+      ...rows.map(r => cost(r.costUsd)),
+    ]),
+    last: longest(base.last, [
+      ...list.map(i => timeText(i, model.now)),
+      ...rows.map(r => (r.count === undefined ? '' : `${r.count}`)),
+    ]),
+  }
   const right = w.tokens + w.cost + w.last
   // A grouping row stacks when its name does not fit, so its name column may
   // shrink to keep the number columns whole in the narrowest pane.
@@ -248,7 +300,7 @@ export const costView: View = (model, size, sel): Drawn => {
   }
   const head: Line[] = [
     ...wrapped.map(spans => ({ bg: C.panel, spans })),
-    { spans: [[` session ${validId(model.sessionId) ? model.sessionId : 'n/a'}`, dim]] },
+    ...sessionLines(validId(model.sessionId) ? (model.sessionId as string) : 'n/a', size.columns),
     ...wrapText(`by ${unit} · sorted by ${sortLabel}`, size.columns, ''),
     {
       spans: [
@@ -266,7 +318,7 @@ export const costView: View = (model, size, sel): Drawn => {
     ...(free ? wrapText('shells, monitors and cron jobs use no tokens', size.columns, ' ') : []),
     { spans: [] },
     { spans: [['LOAD', { fg: C.bright }]] },
-    ...loadLines(model),
+    ...loadLines(model, size.columns),
   ]
   const drawn: Line[] = [
     ...list.flatMap(item =>

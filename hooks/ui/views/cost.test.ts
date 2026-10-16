@@ -381,3 +381,44 @@ test('the agent grouping and the totals line keep every value at pane widths', (
     expect(shown.join('\n'), at).toMatch(/41k +≈ \$0\.16 +1m/)
   }
 })
+
+test('a long value widens its column; id, load notes and names stay whole when narrow', () => {
+  const big = { ...explore, costUsd: 1000 }
+  const sonnet = {
+    ...big,
+    id: 'b',
+    detail: { ...explore.detail, model: 'claude-sonnet-5-5' },
+  } as RabeItem
+  for (const columns of [60, 80, 120]) {
+    const size = { ...SIZE, columns }
+    const shown = lines(gridOf(costView({ ...MODEL, items: [big] }, size, NO_SELECTION)).grid)
+    expect(
+      shown.some(line => /\$1000\.00 +1m$/.test(line)),
+      `${columns} worker`,
+    ).toBe(true)
+    const sel = { ...NO_SELECTION, grouping: 'model' as const }
+    const grouped = lines(gridOf(costView({ ...MODEL, items: [sonnet] }, size, sel)).grid)
+    expect(
+      grouped.some(line => /\$1000\.00 +1$/.test(line)),
+      `${columns} group`,
+    ).toBe(true)
+  }
+  const sessionId = '5f1c0d2e-7a7b-4c1d-9e2f-0123456789ab'
+  const turns: Record<string, RabeTurn[]> = {
+    [explore.id]: [{ index: 1, at: NOW - 180_000, text: '', tools: [{ name: 'Bash' }] }],
+  }
+  const longName = { ...explore, title: 'Explore the verifyToken module carefully' }
+  for (const columns of [26, 36]) {
+    const size = { ...SIZE, columns }
+    const model = { ...MODEL, sessionId, turns, items: [longName] }
+    const shown = lines(gridOf(costView(model, size, NO_SELECTION)).grid)
+    expect(shown.join('').replace(/ /g, ''), `${columns} id`).toContain(sessionId)
+    expect(shown.join(' '), `${columns} tool`).toContain('long tool')
+    expect(shown.join(' '), `${columns} tool`).toMatch(/in Bash for 3m00s/)
+  }
+  // At 26 columns a worker name keeps its first 23 cells and loses the end.
+  const narrow = lines(
+    gridOf(costView({ ...MODEL, items: [longName] }, { ...SIZE, columns: 26 }, NO_SELECTION)).grid,
+  )
+  expect(narrow.join('|')).toContain('◐ Explore the verifyTo')
+})
