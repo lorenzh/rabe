@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Fixed
+
+- The Cost tab counts the main session in its tokens total and sorts its row with the workers; the heading says `by agent`, like the `i: agent` key ([#250](https://github.com/lorenzh/rabe/issues/250), [#251](https://github.com/lorenzh/rabe/issues/251))
+
 ## [0.10.0] - 2026-10-16
 
 No migration. Update with `claude plugin update rabe` and `/reload-plugins`; a running session keeps working. The new session values (`rabe.diffs`, the Cost grouping and the main session's usage per model) start empty after the reload, and no option, command or key was removed or renamed.

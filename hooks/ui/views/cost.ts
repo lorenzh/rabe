@@ -5,7 +5,6 @@ import { C, CHIP, type Style, tone } from '../cells/palette'
 import { duration, idOrNa, short, tokens, usd, validId } from '../format'
 import { type GroupRow, groupRows, heldRows, mainTotal } from '../groups'
 import {
-  byTokens,
   cost,
   glyph,
   isCodexRun,
@@ -236,17 +235,26 @@ export const costView: View = (model, size, sel): Drawn => {
     .map(item => withForwarder(item, model.items))
   const by = sel.grouping ?? 'agent'
   const main = model.mainUsage ?? {}
-  const items = stable(workers, sel.order?.cost, byTokens)
+  const mainRow = by === 'agent' ? mainTotal('agent', main) : undefined
+  // The main session's row sorts by tokens with the workers; a held order puts it last.
+  const order = stable<{ id: string; tokens: number }>(
+    [
+      ...workers.map(item => ({ id: item.id, tokens: tokenSum(item) })),
+      ...(mainRow ? [mainRow] : []),
+    ],
+    sel.order?.cost,
+    all => all.toSorted((a, b) => b.tokens - a.tokens),
+  ).map(one => one.id)
+  const items = order.flatMap(id => workers.filter(item => item.id === id))
   // The rows by id: a worker's row has its item's id, a group's its own.
   const rows: GroupRow[] =
     by === 'agent'
-      ? [mainTotal('agent', main)].flatMap(row => (row ? [row] : []))
+      ? mainRow
+        ? [mainRow]
+        : []
       : heldRows(groupRows(by, model.items, main), sel.order?.[`cost:${by}`])
   const list = by === 'agent' ? items : []
-  const ids =
-    by === 'agent'
-      ? [...items.map(item => item.id), ...rows.map(row => row.id)]
-      : rows.map(row => row.id)
+  const ids = by === 'agent' ? order : rows.map(row => row.id)
   const pickedId = ids.includes(sel.selected) ? sel.selected : (ids[0] ?? '')
   // The column widths are minimums: a long value (a $1000.00 worker) widens
   // its column instead of pushing the next one out of the line.
@@ -278,7 +286,6 @@ export const costView: View = (model, size, sel): Drawn => {
   const max = Math.max(1, ...list.map(tokenSum), ...rows.map(row => row.tokens))
   const session = model.usd === undefined ? 'session cost n/a' : `≈ ${usd(model.usd)} session`
   const sortLabel = sel.order?.cost ? 'tokens when opened' : 'tokens'
-  const unit = by === 'agent' ? 'worker' : by
   const parts: Part[][] = [[[` ${session} `, { fg: C.bright }]]]
   if (model.items.some(item => item.kind === 'agent')) {
     parts.push([
@@ -294,7 +301,7 @@ export const costView: View = (model, size, sel): Drawn => {
   }
   parts.push([
     ['  tokens ', dim],
-    [tokens(sum.tokens), { fg: C.bright }],
+    [tokens(sum.tokens + (mainRow?.tokens ?? 0)), { fg: C.bright }],
   ])
   parts.push([
     ['  running ', dim],
@@ -313,7 +320,7 @@ export const costView: View = (model, size, sel): Drawn => {
   const head: Line[] = [
     ...wrapped.map(spans => ({ bg: C.panel, spans })),
     ...sessionLines(idOrNa(model.sessionId), size.columns),
-    ...wrapText(`by ${unit} · sorted by ${sortLabel}`, size.columns, ''),
+    ...wrapText(`by ${by} · sorted by ${sortLabel}`, size.columns, ''),
     {
       spans: [
         [
@@ -336,12 +343,16 @@ export const costView: View = (model, size, sel): Drawn => {
     ...loadLines(model, size.columns),
   ]
   const drawn: Line[] = [
-    ...list.flatMap(item =>
-      workerLine(item, max, model.now, nameWidth, barWidth, item.id === pickedId, size.columns, w),
-    ),
-    ...rows.flatMap(row =>
-      groupLine(row, max, nameWidth, barWidth, row.id === pickedId, size.columns, w),
-    ),
+    ...ids.flatMap(id => {
+      const item = list.find(one => one.id === id)
+      const row = rows.find(one => one.id === id)
+
+      return item
+        ? workerLine(item, max, model.now, nameWidth, barWidth, id === pickedId, size.columns, w)
+        : row
+          ? groupLine(row, max, nameWidth, barWidth, id === pickedId, size.columns, w)
+          : []
+    }),
   ]
   const body: Line[] = drawn.length ? drawn : [{ spans: [[' No agent or Codex job yet.', dim]] }]
   const isGone = model.items.some(item => item.kind === 'codex' && item.detail.isSessionMissing)
