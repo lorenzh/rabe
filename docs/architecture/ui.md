@@ -37,7 +37,7 @@ The shared timer in `register.tsx` also calls `$.ui.invalidate('ui.render')`. It
 | `ui/touched.ts` | Pure file edit grouping (`touched`), conflicts (`byConflict`) and worktree rows (`treeOf`, `worktreeRows`); views import it directly, and `lists.ts` keeps only legacy test re-exports |
 | `ui/pane-data.ts` | Pure clipboard and toast filtering, native item names and stored-summary validation |
 | `ui/facts.ts` | The fact lines of one item (model, worktree, ids, who started it, run time, exit code; transcripts, commands and cron prompts as the `long` fact) |
-| `ui/format.ts` | Durations, ages, token and dollar amounts; `validId`, the allow list for resume and agent ids |
+| `ui/format.ts` | Durations, ages, token and dollar amounts; `validId`, the allow list for resume and agent ids; `na` and `idOrNa` (the `n/a` word); `cut` (the one ellipsis cut, which `fit`, `spans` and `fitLine` use after `safe`) |
 | `ui/fixtures.ts` | Fake items, `screen(ui)` and `raster(drawn)` / `gridOf(drawn)` for the tests; nothing else imports it |
 
 ### The view contract

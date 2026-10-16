@@ -30,7 +30,7 @@ Use this index to find the guide that matches your question.
 - [Codex data](architecture/codex-data.md): Codex job parsing and incremental rollout parsing with restored step checks.
 - [Agent items](architecture/agent-items.md): metadata cache recovery that preserves newer event fields, transcripts and turns.
 - [Price estimate](architecture/prices.md): price lookup and cost estimates.
-- [UI rendering](architecture/ui.md): view contract, renderer, palette, cells, sizing, and band.
+- [UI rendering](architecture/ui.md): view contract, renderer, palette, cells, sizing, band, and the shared formatting helpers (`na`, `idOrNa`, `cut`).
 - [Pane interaction state](architecture/interaction.md): pure transitions for focus, nested presses, queued arrow bursts and wraparound, refused moves, held order, regain, opening and arming.
 - [Focus and keys](architecture/focus-and-keys.md): pane behavior, key controls, split-list copy, message and delete actions, and focus moves.
 - [Focus order and arming](architecture/focus-order.md): held order, append-only slots, gone rows that leave the lists, target-bound keys, and arming.
