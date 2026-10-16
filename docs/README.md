@@ -37,7 +37,8 @@ Use this index to find the guide that matches your question.
 - [View behavior](architecture/views.md): tabs, cron schedules, workflow agent counts, inert stop controls, removed items, idle labels, live-item sorting, idle detail activity and Timeline windows, session summaries, full command and prompt details, and copy controls.
 - [Pane data](architecture/pane-data.md): clipboard and toast security checks, the counts-only text answer of `/rabe` where no pane draws, plus stored-summary validation.
 - [Shell words](architecture/shell-words.md): shell words, quoting, here-doc bodies and the write detector boundary.
-- [Touched files](architecture/touched.md): file edits, conflicts, worktree rows and private list helpers.
+- [Touched files](architecture/touched.md): file edits, conflicts, worktree rows, private list helpers and the diffs the Effects tab shows for the selected file.
+- [File diffs](architecture/diffs.md): how diffs of file operations are captured at record time, capped, evicted with their items and kept private.
 
 ## Feasibility
 

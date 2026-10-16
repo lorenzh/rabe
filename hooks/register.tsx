@@ -116,14 +116,36 @@ async function write(
       version === snapshot.version
         ? commit(snapshot.before, () => snapshot.items)
         : commit(value, change)
-    if (next === undefined) return false
+    if (next === undefined) {
+      await dropOrphans($)
+      return false
+    }
     const { isSet } = await $.state.set({ plugin: 'rabe', key: 'items' }, next.items, {
       ifVersion: version,
     })
     if (isSet) {
       await forget($, next.dropped)
+      await dropOrphans($)
       return true
     }
+  }
+}
+
+// An item staged and capped out inside one poll is in neither list, so no
+// `dropped` id names it: the poll's commit also drops the diffs whose editor
+// the final list lacks, also when the replay changed nothing. `main` has no item.
+async function dropOrphans($: Pick<EngineInterface, 'state'>): Promise<void> {
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(
+      value,
+      Object.keys(value).filter(id => id !== 'main'),
+      items,
+    )
+    if (next === value) return
+    const diffs = await $.state.set({ plugin: 'rabe', key: 'diffs' }, next, { ifVersion: version })
+    if (diffs.isSet) return
   }
 }
 
@@ -142,8 +164,16 @@ async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Pro
     const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'turns' })
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const next = prune(value, dropped, items)
-    if (next === value) return
+    if (next === value) break
     const turns = await $.state.set({ plugin: 'rabe', key: 'turns' }, next, { ifVersion: version })
-    if (turns.isSet) return
+    if (turns.isSet) break
+  }
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, dropped, items)
+    if (next === value) return
+    const diffs = await $.state.set({ plugin: 'rabe', key: 'diffs' }, next, { ifVersion: version })
+    if (diffs.isSet) return
   }
 }

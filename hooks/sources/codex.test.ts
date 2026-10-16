@@ -3,7 +3,7 @@ import { type Engine, expect, type MockClock, mock, test } from 'claude-code/tes
 
 import type { RabeItem, RabeItemOf } from '../model'
 import { MAX_ENDED } from '../registry'
-import { memoryState } from '../testing'
+import { type Held, memoryState, overCap } from '../testing'
 import { advanceRollout, codexItem, jobEnd, parseRollout, STOP_USAGE } from './codex'
 
 const line = (type: string, payload: object) => JSON.stringify({ type, payload })
@@ -103,6 +103,25 @@ const command = (script: string, exit_code: number, at: number, cwd = 'file:///w
       aggregated_output: '',
     },
   })
+
+test('completed file changes carry their diffs: update patch, added content, none for a delete', () => {
+  const rollout = [
+    change('completed', { '/w/new.ts': { type: 'add', content: 'a\nb' } }, 1000),
+    change(
+      'completed',
+      {
+        '/w/a.ts': { type: 'update', unified_diff: '@@ -1 +1 @@\n-x\n+y\n', move_path: null },
+        '/w/gone.ts': { type: 'delete', content: 'secret' },
+      },
+      2000,
+    ),
+  ].join('\n')
+  const { diffs } = parseRollout(rollout)
+  expect(diffs).toMatchObject([
+    { path: '/w/new.ts', at: 1000, added: 2 },
+    { path: '/w/a.ts', at: 2000, added: 1, removed: 1, lines: ['@@ -1 +1 @@', '-x', '+y'] },
+  ])
+})
 
 test('completed file changes are edits; shell writes are files to check on disk', () => {
   const rollout = [
@@ -830,6 +849,50 @@ test('/rabe-stop keeps the cost of an unchanged session file and drops it otherw
   expect(stopped?.costUsd).toBeUndefined()
 })
 
+test('jobs staged and capped out leave no diff when a concurrent event fills the cap first', async ($, on) => {
+  let state: Held = {}
+  let isFilled = false
+  on('state.get', { key: 'items' }, async (_$, e, next) => {
+    const diffs = Object.keys((state['rabe.diffs']?.value ?? {}) as object)
+    if (!isFilled && diffs.includes('codex:task-1') && diffs.includes('codex:task-2')) {
+      isFilled = true
+      const held = state['rabe.items']?.value as RabeItem[]
+      const shell: RabeItem = {
+        id: 'shell:late',
+        kind: 'shell',
+        title: 'late',
+        status: 'done',
+        seenAt: 10000,
+        endedAt: 10000,
+        detail: { command: 'late' },
+      }
+      state['rabe.items'] = { value: [...held, shell], version: 9 }
+    }
+    return next(e)
+  })
+  state = memoryState(on)
+  state['rabe.items'] = { value: endedShells(9500).slice(1), version: 1 }
+  const done = (id: string, sec: number) =>
+    job({ id, status: 'completed', completedAt: `1970-01-01T00:00:0${sec}.000Z` })
+  const w = world(on, {
+    [`${WS}/state.json`]: {
+      jobs: [
+        { id: 'task-1', status: 'completed' },
+        { id: 'task-2', status: 'completed' },
+      ],
+    },
+    [`${WS}/jobs/task-1.json`]: done('task-1', 8),
+    [`${WS}/jobs/task-2.json`]: done('task-2', 9),
+    [ROLLOUT_PATH]: change('completed', { '/work/a.ts': { type: 'add', content: 'x' } }, 3000),
+  })
+  await startAndTick($, w)
+  expect(isFilled).toBe(true)
+  const ids = ((state['rabe.items']?.value ?? []) as RabeItem[]).map(item => item.id)
+  expect(
+    Object.keys((state['rabe.diffs']?.value ?? {}) as object).filter(id => !ids.includes(id)),
+  ).toEqual([])
+})
+
 test('an unchanged session file keeps the model and effort it gave', () => {
   const item = codexItem({ ...job(), id: 'task-1' }, { path: ROLLOUT_PATH, updatedAt: 5000 })
   expect(item.detail).not.toHaveProperty('model')
@@ -866,6 +929,11 @@ function endedShells(at: number): RabeItem[] {
 async function pollEnded($: Engine, on: On, heldAt: number) {
   const state = memoryState(on)
   state['rabe.items'] = { value: endedShells(heldAt), version: 1 }
+  const { diffs } = overCap(0)
+  state['rabe.diffs'] = {
+    value: { 'shell:s0': diffs['shell:old0'], 'shell:s1': diffs['shell:old1'] },
+    version: 1,
+  }
   const looked: string[] = []
   on('fs.list', { path: /\/sessions\// }, async (_$, e, next) => {
     looked.push(e.path)
@@ -897,6 +965,7 @@ test('a finished job newer than the oldest history held is added and pushes it o
   expect(items).toHaveLength(MAX_ENDED)
   expect(items.at(-1)).toMatchObject({ id: 'codex:task-1', status: 'done', endedAt: 9000 })
   expect(items.some(item => item.id === 'shell:s0')).toBe(false)
+  expect(Object.keys(state['rabe.diffs']?.value as object)).toEqual(['shell:s1'])
 })
 
 test('a job is linked to the agent whose companion call started it', async ($, on) => {
@@ -1311,3 +1380,64 @@ for (const rotation of ['truncation', 'inode replacement']) {
     })
   })
 }
+
+test('an eviction between the membership check and the diff write leaves no diff entry', async ($, on) => {
+  let state: Held = {}
+  let isEvicted = false
+  // the eviction lands just before the write that adds the job's diff
+  on('state.set', { key: 'diffs' }, async (_$, e, next) => {
+    if (!isEvicted && 'codex:task-1' in (e.value as object)) {
+      isEvicted = true
+      state['rabe.items'] = { value: [], version: 9 }
+    }
+    return next(e)
+  })
+  state = memoryState(on)
+  state['rabe.items'] = {
+    value: [codexItem({ ...job(), id: 'task-1' }, { path: ROLLOUT_PATH, updatedAt: 1 })],
+    version: 1,
+  }
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: change('completed', { '/work/a.ts': { type: 'add', content: 'x' } }, 3000),
+  })
+  await startAndTick($, w)
+  expect(isEvicted).toBe(true)
+  expect(state['rabe.diffs']?.value ?? {}).toEqual({})
+})
+
+test('a job found with an edit before the first poll keeps its diff', async ($, on) => {
+  const state = memoryState(on)
+  const w = world(on, {
+    [`${WS}/state.json`]: { jobs: [job()] },
+    [`${WS}/jobs/task-1.json`]: job(),
+    [ROLLOUT_PATH]: change('completed', { '/work/a.ts': { type: 'add', content: 'x' } }, 3000),
+  })
+  await startAndTick($, w)
+  expect(Object.keys(state['rabe.diffs']?.value as object)).toEqual(['codex:task-1'])
+})
+
+test('a job staged and capped out in the same poll leaves no diff entry', async ($, on) => {
+  const state = memoryState(on)
+  state['rabe.items'] = { value: endedShells(9500).slice(1), version: 1 }
+  const done = (id: string, sec: number) =>
+    job({ id, status: 'completed', completedAt: `1970-01-01T00:00:0${sec}.000Z` })
+  const w = world(on, {
+    [`${WS}/state.json`]: {
+      jobs: [
+        { id: 'task-1', status: 'completed' },
+        { id: 'task-2', status: 'completed' },
+      ],
+    },
+    [`${WS}/jobs/task-1.json`]: done('task-1', 8),
+    [`${WS}/jobs/task-2.json`]: done('task-2', 9),
+    [ROLLOUT_PATH]: change('completed', { '/work/a.ts': { type: 'add', content: 'x' } }, 3000),
+  })
+  await startAndTick($, w)
+  const ids = ((state['rabe.items']?.value ?? []) as RabeItem[]).map(item => item.id)
+  expect(ids).not.toContain('codex:task-1')
+  expect(
+    Object.keys((state['rabe.diffs']?.value ?? {}) as object).filter(id => !ids.includes(id)),
+  ).toEqual([])
+})
