@@ -68,6 +68,8 @@ An optional field that is absent means the data is not known. Views show it as `
 - `EndStatus`: `done`, `failed` or `stopped`.
 - `isEnded(item)`: false for running or idle. Counts, the cap and removal use it so idle agents remain alive.
 - `itemId(kind, nativeId)` and `mergeItem(item, patch)`. `mergeItem` always keeps the item's own `seenAt`, also when a full `RabeItem` is passed as the patch.
+- `parentOf(item, items)` and `runOf(item, items)`: the item a `parentId` names, and that item only when it is a workflow run. Sources and views use them instead of their own `find` on `parentId`.
+- `KINDS`: every item kind, in the order the band lists them; `/rabe-diag` uses it to check that a kind is known and prints counts in item order.
 
 
 ## The registry
@@ -90,7 +92,7 @@ To list items, read the value: `const { value: items = [] } = await $.state.get(
 
 The [shared poll loop](../architecture.md#shared-poll-loop) stages item changes from every polled source. It commits them together after the sources finish. Event hooks use the immediate write loop below.
 
-Every file that writes items declares `write` and `forget` at its top level (the scanner does not follow `$` across an import). `write` writes only when the list changed, and tries again when another hook wrote first. `commit` applies the cap, so any write can drop items; `forget` then drops the per-item state of exactly those items:
+Every file that writes items declares `write` and `forget` at its top level (the scanner does not follow `$` across an import). `write` writes only when the list changed, and tries again when another hook wrote first. `commit` applies the cap, so any write can drop items; `forget` then drops the per-item state of exactly those items: `bun run check:blocks` (`scripts/check-write-blocks.ts`, comment stripping in `scripts/write-block.ts`) fails when the `write` and `forget` blocks of a source differ from the one in `agents.ts` apart from comments (whole-line, trailing and block), so a new source copies the block unchanged.
 
 ```ts
 import type { EngineInterface } from 'claude-code'

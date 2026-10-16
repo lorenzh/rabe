@@ -1,8 +1,8 @@
-import { isEnded, type RabeItem } from '../../model'
-import type { Span } from '../cells/grid'
+import { isEnded, type RabeItem, runOf } from '../../model'
+import { type Span, safe } from '../cells/grid'
 import { C, type Style, tone } from '../cells/palette'
 import { facts } from '../facts'
-import { tokens, usd } from '../format'
+import { cut, tokens, usd } from '../format'
 import {
   byParent,
   FAMILIES,
@@ -11,6 +11,7 @@ import {
   glyph,
   grouped,
   groupNote,
+  isWorker,
   kept,
   matches,
   shown,
@@ -32,7 +33,7 @@ import {
   type ViewInput,
 } from '../view'
 import { detailButtons, detailLines, messageInput } from './detail'
-import { beside, cut, fitLine, focusOn, itemLine, plain } from './lines'
+import { beside, fitLine, focusOn, itemLine, plain } from './lines'
 
 const GROUP_COLOR: Record<Group, number> = {
   failed: C.red,
@@ -178,7 +179,7 @@ function summaryLine(model: Model, item: RabeItem): Line {
   if (d.port !== undefined) add(`:${d.port}`, { fg: C.blue })
   if (typeof d.model === 'string') add(d.model)
   if (spend.costUsd !== undefined) add(`≈ ${usd(spend.costUsd)}`, { fg: C.bright })
-  else if (item.kind === 'agent' || item.kind === 'codex') add('cost n/a')
+  else if (isWorker(item)) add('cost n/a')
   if (spend.tokens) add(`${tokens(spend.tokens.input)} in`)
   add(facts(item, model.now, model.items).status.slice(2), { fg: tone(item) })
 
@@ -207,7 +208,7 @@ function listButtons(
     selected?.kind === 'workflow'
       ? selected
       : selected && isWorkflowAgent(selected)
-        ? model.items.find(one => one.id === selected.parentId && one.kind === 'workflow')
+        ? runOf(selected, model.items)
         : undefined
   const group = (shown.find(list => selected && list.includes(selected)) ?? [])
     .filter(canStop)
@@ -228,7 +229,7 @@ function listButtons(
         {
           key: 'find',
           label: query
-            ? `s: search "${cut(query, Math.min(16, Math.max(1, size.columns - 17)))}"`
+            ? `s: search "${cut(safe(query), Math.min(16, Math.max(1, size.columns - 17)))}"`
             : isSplit(size)
               ? 's: search'
               : 's',

@@ -28,7 +28,7 @@ Text from transcripts, meta files, output files, Codex files and workflow script
 
 ### Terminal output and the clipboard
 
-- Text from files reaches the screen only through `safe()` in `hooks/ui/cells/grid.ts`. `safe` uses an allow list, so escape and control characters become `?`. The views call it through `fitLine` and `cut` in `hooks/ui/views/lines.ts` and through `wrap` and `fit` in the cell engine. A new view that draws text from a file uses these helpers too.
+- Text from files reaches the screen only through `safe()` in `hooks/ui/cells/grid.ts`. `safe` uses an allow list, so escape and control characters become `?`. The views call it through `fitLine` in `hooks/ui/views/lines.ts` and through `wrap` and `fit` in the cell engine. `cut` in `hooks/ui/format.ts` only shortens text and does not call `safe`: a caller cuts `cut(safe(text), room)`, or uses `fitLine`. A new view that draws text from a file uses these helpers too.
 - Stop, remove and message toasts name items by kind and native id. Never use an item title or an agent name.
 - Every toast goes through `toast($, text)` in `hooks/ui/pane.tsx`, which applies `toastText`: whitespace becomes one space, and Unicode control (`Cc`) and format (`Cf`) characters become `?`. Do not call `$.ui.toast` directly.
 - Never pass raw ANSI from a file through to the terminal.

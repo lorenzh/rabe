@@ -11,7 +11,7 @@ import type { RabeEdit, RabeModelPair } from '../../types'
 import { companionCall } from '../forwarders'
 import { fault, type Pollers, skipped, tally } from '../loop'
 import { addMain } from '../main-usage'
-import { clip, type EndStatus, isAbsolute, isEnded, itemId, type RabeItem } from '../model'
+import { clip, type EndStatus, isAbsolute, isEnded, itemId, type RabeItem, runOf } from '../model'
 import { claudeUsd, type Prices, parsePrices, withOverride } from '../prices'
 import { isRecord, restored, unchanged } from '../reading'
 import {
@@ -331,15 +331,11 @@ async function pollAgents($: EngineInterface, items: RabeItem[]): Promise<Change
   const metadata = restored(cached)
   for (const item of poll.items) {
     if (item.kind !== 'agent') continue
-    const workflow = poll.items.find(
-      parent => parent.id === item.parentId && parent.kind === 'workflow',
-    )
+    const workflow = runOf(item, poll.items)
     if (
       item.status === 'running' ||
       (item.status === 'idle' && item.detail.isTeammate) ||
-      (workflow?.kind === 'workflow' &&
-        workflow.detail.phases?.length &&
-        item.detail.workflowPhase === undefined)
+      (workflow?.detail.phases?.length && item.detail.workflowPhase === undefined)
     ) {
       const change = await readMeta($, item.id, poll.items)
       if (change) stage(poll, change)

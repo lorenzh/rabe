@@ -1,6 +1,6 @@
 import type { RabeGrouping, RabeMainUsage } from '../../types'
 import type { RabeItem } from '../model'
-import { shown, stable, tokenSum, withForwarder } from './lists'
+import { isWorker, shown, spendBy, stable, withForwarder } from './lists'
 
 // A row of the Cost tab's model and harness groupings. `tokens` is -1 when no
 // member's tokens are known; `isPartial` when only some are (the total then
@@ -13,25 +13,6 @@ export type GroupRow = {
   costUsd?: number
   // Workers in the row; absent on a main-session row (its steps are partial).
   count?: number
-}
-
-const plus = (a: number | undefined, b: number | undefined) =>
-  a === undefined || b === undefined ? undefined : a + b
-
-type Sum = { tokens: number; isPartial: boolean; costUsd?: number; count: number }
-
-function add(sum: Sum | undefined, item: RabeItem): Sum {
-  const tok = tokenSum(item)
-
-  const known = tok >= 0 || (sum !== undefined && sum.tokens >= 0)
-
-  return {
-    tokens: known ? Math.max(sum?.tokens ?? 0, 0) + Math.max(tok, 0) : -1,
-    isPartial:
-      known && ((sum?.isPartial ?? false) || tok < 0 || (sum !== undefined && sum.tokens < 0)),
-    costUsd: sum ? plus(sum.costUsd, item.costUsd) : item.costUsd,
-    count: (sum?.count ?? 0) + 1,
-  }
 }
 
 function mainRow(by: RabeGrouping, model: string, one: RabeMainUsage): GroupRow {
@@ -73,28 +54,27 @@ export function groupRows(
   items: RabeItem[],
   main: Record<string, RabeMainUsage> = {},
 ): GroupRow[] {
-  const sums = new Map<string, Sum & { title: string }>()
-  for (const item of shown(items)) {
-    if (item.kind !== 'agent' && item.kind !== 'codex') continue
-    const worker = withForwarder(item, items)
-    const model =
-      worker.kind === 'agent' || worker.kind === 'codex' ? worker.detail.model : undefined
-    const key = by === 'harness' ? item.kind : (model ?? '')
-    const title =
-      by === 'harness'
-        ? item.kind === 'codex'
-          ? 'Codex'
-          : 'Claude Code'
-        : (model?.replace(/^claude-/, '') ?? 'model n/a')
-    sums.set(key, { ...add(sums.get(key), worker), title })
-  }
-  const rows: GroupRow[] = [...sums].map(([key, sum]) => ({
+  const workers = shown(items)
+    .filter(isWorker)
+    .map(item => withForwarder(item, items))
+  const modelOf = (item: RabeItem) =>
+    item.kind === 'agent' || item.kind === 'codex' ? item.detail.model : undefined
+  const keyOf = (item: RabeItem) => (by === 'harness' ? item.kind : (modelOf(item) ?? ''))
+  const titleOf = (key: string) =>
+    by === 'harness'
+      ? key === 'codex'
+        ? 'Codex'
+        : 'Claude Code'
+      : key
+        ? key.replace(/^claude-/, '')
+        : 'model n/a'
+  const rows: GroupRow[] = [...spendBy(workers, keyOf)].map(([key, sum]) => ({
     id: `by:${by}:${key || 'n/a'}`,
-    title: sum.title,
-    tokens: sum.tokens,
-    isPartial: sum.isPartial,
-    costUsd: sum.costUsd,
-    count: sum.count,
+    title: titleOf(key),
+    tokens: sum.known ? sum.input + sum.output : -1,
+    isPartial: sum.known > 0 && sum.unknown > 0,
+    costUsd: sum.usd,
+    count: sum.known + sum.unknown,
   }))
   const models = Object.entries(main)
   if (by === 'model') rows.push(...models.map(([model, one]) => mainRow(by, model, one)))

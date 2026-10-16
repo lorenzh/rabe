@@ -2,9 +2,19 @@ import type { RabeGrouping } from '../../../types'
 import type { RabeItem } from '../../model'
 import { bar, fit } from '../cells/grid'
 import { C, CHIP, type Style, tone } from '../cells/palette'
-import { duration, short, tokens, usd, validId } from '../format'
+import { duration, idOrNa, short, tokens, usd, validId } from '../format'
 import { type GroupRow, groupRows, heldRows, mainTotal } from '../groups'
-import { byTokens, cost, glyph, shown, stable, tokenSum, totals, withForwarder } from '../lists'
+import {
+  byTokens,
+  cost,
+  glyph,
+  isWorker,
+  shown,
+  stable,
+  tokenSum,
+  totals,
+  withForwarder,
+} from '../lists'
 import type { Drawn, Line, Model, Part, View, ViewButton } from '../view'
 import { resumeButton } from './detail'
 import { fitLine, focusOn } from './lines'
@@ -220,7 +230,7 @@ export const costView: View = (model, size, sel): Drawn => {
   const running = model.items.filter(item => item.status === 'running').length
   // An agent that only forwarded to Codex counts in its job's row.
   const workers = shown(model.items)
-    .filter(item => item.kind === 'agent' || item.kind === 'codex')
+    .filter(isWorker)
     .map(item => withForwarder(item, model.items))
   const by = sel.grouping ?? 'agent'
   const main = model.mainUsage ?? {}
@@ -300,7 +310,7 @@ export const costView: View = (model, size, sel): Drawn => {
   }
   const head: Line[] = [
     ...wrapped.map(spans => ({ bg: C.panel, spans })),
-    ...sessionLines(validId(model.sessionId) ? (model.sessionId as string) : 'n/a', size.columns),
+    ...sessionLines(idOrNa(model.sessionId), size.columns),
     ...wrapText(`by ${unit} · sorted by ${sortLabel}`, size.columns, ''),
     {
       spans: [
