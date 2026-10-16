@@ -34,7 +34,7 @@ export const IDLE: Interaction = { arming: DISARMED, seats: {}, holds: {}, press
 export const REGAIN_MS = 100
 
 export const scopeOf = (sel: Selection): string =>
-  JSON.stringify([sel.tab, sel.open, sel.query, sel.folded, sel.window?.hours])
+  JSON.stringify([sel.tab, sel.open, sel.query, sel.folded, sel.window?.hours, sel.grouping])
 
 export const heldOf = (state: Interaction, surface: string, sel: Selection): Held[] | undefined => {
   const mine = state.holds[surface]

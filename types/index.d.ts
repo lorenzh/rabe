@@ -6,6 +6,22 @@ export type RabeTokens = { input: number; output: number; cached?: number }
 
 // How a file changed: an Edit or Write call, a write guessed from a shell
 // command line, or a Codex file change. Absent: an Edit or Write.
+// What the Cost tab groups by: one row per worker, per model or per harness.
+export type RabeGrouping = 'agent' | 'model' | 'harness'
+
+// The main session's steps of one model, counted since Rabe loaded: tokens as
+// an agent item holds them (`input` includes `cached` and writes) and the
+// price of its steps at the 1-hour cache-write rate. `usd` is the sum of the
+// priced steps; `isUnpriced` marks a step without a price, so the sum is n/a.
+export type RabeMainUsage = {
+  steps: number
+  input: number
+  output: number
+  cached: number
+  usd?: number
+  isUnpriced?: true
+}
+
 export type RabeEditVia = 'edit' | 'write' | 'shell' | 'codex'
 
 export type RabeEdit = {
@@ -346,6 +362,10 @@ declare module 'claude-code' {
       // The repository's git worktrees; absent without git.
       worktrees: RabeWorktree[]
       window: RabeWindow
+      // The Cost tab's grouping; absent: by agent.
+      grouping: RabeGrouping
+      // The main session's steps by model (no agent), since Rabe loaded.
+      mainUsage: Record<string, RabeMainUsage>
       // The last poll of each source, by source name, for `/rabe-diag`.
       diag: Record<string, RabeDiag>
       // Successful actions from the pane, for the next main-session prompt.

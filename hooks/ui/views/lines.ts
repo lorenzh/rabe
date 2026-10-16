@@ -43,7 +43,7 @@ export function fitLine(line: Line, columns: number): Line {
   used = start
   for (const part of right) add(part, columns)
 
-  return { spans: out }
+  return { spans: out, ...(line.joins && { joins: true as const }) }
 }
 
 // Two columns of lines as one: `left` cut to `leftWidth`, then `gap`, then

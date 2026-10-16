@@ -958,6 +958,39 @@ test('enter on a cost row opens that item in the items tab', async ($, on) => {
   await ui.unmount()
 })
 
+const MAIN_USAGE = {
+  'claude-opus-5-5': { steps: 3, input: 1000, output: 200, cached: 500, usd: 0.5 },
+}
+
+test('i, o and h group the cost tab by agent, model or harness', async ($, on) => {
+  const state = hold(on, ALL, { tab: 'cost', mainUsage: MAIN_USAGE })
+  session(on)
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ surface, ...PANE } as never)
+    const keys = { 'by-agent': 'i', 'by-model': 'o', 'by-harness': 'h' }
+    for (const [key, hotkey] of Object.entries(keys)) {
+      expect((await ui.find({ type: 'Button', key }))?.props.hotkey).toBe(hotkey)
+    }
+    let shown = await screen(ui)
+    expect(shown.some(line => line.includes('by worker'))).toBe(true)
+    expect(shown.some(line => /main session +\(partial\)/.test(line))).toBe(true)
+    await ui.press({ key: 'by-model' })
+    expect(state.grouping).toBe('model')
+    shown = await screen(ui)
+    expect(shown.some(line => line.includes('by model'))).toBe(true)
+    expect(shown.some(line => /opus-5-5 .*41k/.test(line))).toBe(true)
+    expect(shown.some(line => line.includes('model n/a'))).toBe(true)
+    expect(shown.some(line => /main session · opus-5-5 .*\(partial\)/.test(line))).toBe(true)
+    await ui.press({ key: 'by-harness' })
+    shown = await screen(ui)
+    expect(shown.some(line => line.includes('Claude Code'))).toBe(true)
+    expect(shown.some(line => line.includes('Codex'))).toBe(true)
+    await ui.press({ key: 'by-agent' })
+    expect(state.grouping).toBe('agent')
+    await ui.unmount()
+  }
+})
+
 test('enter on a timeline row opens that item on every surface', async ($, on) => {
   const state = hold(on, ALL)
   session(on)
@@ -1492,7 +1525,8 @@ test('/rabe sorts the lists once; until the next open they hold that order', asy
   on('ui.open', async () => ({ value: { isPlaced: true as const } }))
   on('ui.panes', async () => ({ value: [] }))
   await $.command.run({ command: 'rabe', args: '' } as never)
-  expect(state.order).toEqual(orderOf(ALL))
+  expect(state.order).toMatchObject(orderOf(ALL))
+  expect(Object.keys(state.order as object)).toContain('cost:model')
 })
 
 // Issue 20: the Timeline opens on the last 4 hours, and w widens the window
