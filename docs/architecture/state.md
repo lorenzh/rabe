@@ -92,7 +92,7 @@ To list items, read the value: `const { value: items = [] } = await $.state.get(
 
 The [shared poll loop](../architecture.md#shared-poll-loop) stages item changes from every polled source. It commits them together after the sources finish. Event hooks use the immediate write loop below.
 
-Every file that writes items declares `write` and `forget` at its top level (the scanner does not follow `$` across an import). `write` writes only when the list changed, and tries again when another hook wrote first. `commit` applies the cap, so any write can drop items; `forget` then drops the per-item state of exactly those items: `bun run check:blocks` (`scripts/check-write-blocks.ts`) fails when the `write` and `forget` blocks of a source differ from the one in `agents.ts` apart from comments, so a new source copies the block unchanged.
+Every file that writes items declares `write` and `forget` at its top level (the scanner does not follow `$` across an import). `write` writes only when the list changed, and tries again when another hook wrote first. `commit` applies the cap, so any write can drop items; `forget` then drops the per-item state of exactly those items: `bun run check:blocks` (`scripts/check-write-blocks.ts`, comment stripping in `scripts/write-block.ts`) fails when the `write` and `forget` blocks of a source differ from the one in `agents.ts` apart from comments (whole-line, trailing and block), so a new source copies the block unchanged.
 
 ```ts
 import type { EngineInterface } from 'claude-code'
