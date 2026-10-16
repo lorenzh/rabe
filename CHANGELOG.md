@@ -13,9 +13,18 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - A direct `codex exec` row gets tokens, cost, model and thread from its Codex session file: found by the `session id:` a foreground run prints on stderr, else by its start time (and `-C` directory); only the run's own turn counts; an ambiguous match, a thread another run or Codex job holds, another model than `-m`, or an inline `CODEX_HOME` shows `n/a`. A detached run without `-o` stays running until its session file records the end ([#247](https://github.com/lorenzh/rabe/pull/247), refs [#179](https://github.com/lorenzh/rabe/issues/179))
 - A `-o` path that uses `$S` from a leading `S=/abs/path;` on the same line is resolved ([#247](https://github.com/lorenzh/rabe/pull/247))
 
+### Changed
+
+- The README, guide and `docs/feasibility/ui.md` state where Rabe loads and draws: measured in `claude -p` and the Agent SDK, unverified in the VS Code extension and the desktop app, and how `/rabe` answers with or without a surface ([#241](https://github.com/lorenzh/rabe/pull/241), refs [#177](https://github.com/lorenzh/rabe/issues/177))
+- JSON and JSONL record reading lives once in `hooks/reading.ts`; `AGENTS.md` lists the shared helpers ([#228](https://github.com/lorenzh/rabe/pull/228), refs [#202](https://github.com/lorenzh/rabe/issues/202))
+- The shared helpers live once: `na`, `idOrNa` and `cut` in `hooks/ui/format.ts`, `isOwnFile` and `nextCursor` in `hooks/reading.ts`, `spend` and `spendBy` in `hooks/ui/lists.ts`, `runOf`, `parentOf` and `KINDS` in `hooks/model.ts`; `bun run check:blocks` fails when the write and forget blocks of the sources drift apart ([#238](https://github.com/lorenzh/rabe/pull/238), [#239](https://github.com/lorenzh/rabe/pull/239), [#243](https://github.com/lorenzh/rabe/pull/243), [#244](https://github.com/lorenzh/rabe/pull/244), [#245](https://github.com/lorenzh/rabe/pull/245), refs [#202](https://github.com/lorenzh/rabe/issues/202))
+
 ### Fixed
 
 - Enter in an agent's message field sends the message once, or shows `Message not sent` or `Delivery unknown`, also when a redraw released the field's handler first ([#242](https://github.com/lorenzh/rabe/pull/242), fixes [#218](https://github.com/lorenzh/rabe/issues/218))
+- `scripts/live-check.sh` compares only the title of the marked Timeline row after `b`, also when the title fills its column and one space precedes the bar, and it resolves a relative `CLAUDE` path against the current directory instead of failing with a misleading error ([#246](https://github.com/lorenzh/rabe/pull/246), fixes [#233](https://github.com/lorenzh/rabe/issues/233), [#234](https://github.com/lorenzh/rabe/issues/234))
+- `/rabe-diag` and `/rabe-stop` are also registered in non-interactive (SDK) sessions, and `/rabe` answers with a plain-text summary where the pane cannot draw ([#230](https://github.com/lorenzh/rabe/pull/230), fixes [#178](https://github.com/lorenzh/rabe/issues/178))
+- The live search sequences `search-keys` and `search-esc` run against a seeded shell whose command carries the comment `# zebra nap`, so the typed letters always match a row and a lost Backspace shows on demand ([#231](https://github.com/lorenzh/rabe/pull/231), fixes [#219](https://github.com/lorenzh/rabe/issues/219))
 
 ## [0.9.1] - 2026-10-14
 
@@ -23,14 +32,10 @@ No migration. Update with `claude plugin update rabe` and `/reload-plugins`; a r
 
 ### Changed
 
-- The README, guide and `docs/feasibility/ui.md` state where Rabe loads and draws: measured in `claude -p` and the Agent SDK, unverified in the VS Code extension and the desktop app, and how `/rabe` answers with or without a surface ([#241](https://github.com/lorenzh/rabe/pull/241), refs [#177](https://github.com/lorenzh/rabe/issues/177))
 - The README demo GIF shows the 0.9.0 pane: search field, per-tab selection and the current Items, Cost and Timeline content ([#225](https://github.com/lorenzh/rabe/pull/225), fixes [#224](https://github.com/lorenzh/rabe/issues/224))
-- JSON and JSONL record reading lives once in `hooks/reading.ts`; `AGENTS.md` lists the shared helpers ([#228](https://github.com/lorenzh/rabe/pull/228), refs [#202](https://github.com/lorenzh/rabe/issues/202))
 
 ### Fixed
 
-- `scripts/live-check.sh` compares only the title of the marked Timeline row after `b`, also when the title fills its column and one space precedes the bar, and it resolves a relative `CLAUDE` path against the current directory instead of failing with a misleading error ([#246](https://github.com/lorenzh/rabe/pull/246), fixes [#233](https://github.com/lorenzh/rabe/issues/233), [#234](https://github.com/lorenzh/rabe/issues/234))
-- `/rabe-diag` and `/rabe-stop` are also registered in non-interactive (SDK) sessions, and `/rabe` answers with a plain-text summary where the pane cannot draw ([#230](https://github.com/lorenzh/rabe/pull/230), fixes [#178](https://github.com/lorenzh/rabe/issues/178))
 - `b` (Back) returns to the Items row you opened, not to an older tab, when the item whose detail was open left the list before ([#227](https://github.com/lorenzh/rabe/pull/227), fixes [#223](https://github.com/lorenzh/rabe/issues/223))
 - A direct `codex exec` in a subshell group sent to the background with `&` shows as detached also when a newline or another command comes before the closing `)`, as in `(codex exec ... -o f x\n) &` ([#226](https://github.com/lorenzh/rabe/pull/226), fixes [#222](https://github.com/lorenzh/rabe/issues/222))
 
