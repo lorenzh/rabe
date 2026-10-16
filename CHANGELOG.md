@@ -8,6 +8,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 - The Effects tab shows the diff of the selected file beside the list (one summary line below 90 columns), recorded when the change happens and never read from files ([#236](https://github.com/lorenzh/rabe/pull/236), refs [#162](https://github.com/lorenzh/rabe/issues/162))
 
+### Fixed
+
+- Enter in an agent's message field sends the message once, or shows `Message not sent` or `Delivery unknown`, also when a redraw released the field's handler first ([#242](https://github.com/lorenzh/rabe/pull/242), fixes [#218](https://github.com/lorenzh/rabe/issues/218))
+
 ## [0.9.1] - 2026-10-14
 
 No migration. Update with `claude plugin update rabe` and `/reload-plugins`; a running session keeps working.
