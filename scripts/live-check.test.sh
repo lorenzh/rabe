@@ -57,6 +57,7 @@ trap 'rm -rf "$fake"' EXIT
 mkdir "$fake/bin"
 cat >"$fake/bin/tmux" <<'EOF'
 #!/usr/bin/env bash
+export LC_ALL=C.UTF-8
 shift 2
 cmd=$1
 shift
@@ -192,6 +193,7 @@ case $cmd in
       elif [ "$1" = s ]; then
         echo "1 " >"$FAKE/field"
       elif [ "$1" = b ]; then
+        echo b >>"$FAKE/backs"
         rm -f "$FAKE/detail"
         [ "${FAKE_BACK:-}" = items ] && echo 1 >"$FAKE/tab"
         # FAKE_BACK=other returns to the next row: a wrong return selection.
@@ -267,7 +269,7 @@ case $cmd in
     if grep -qx /rabe "$FAKE/screen" 2>/dev/null && [ "${FAKE_PANE:-}" != none ] && [ ! -e "$FAKE/closed" ]; then
       tab=$(cat "$FAKE/tab" 2>/dev/null || echo 1)
       at=(0 1 15 26 40)
-      rule=$(printf '─%.0s' $(seq 1 "${at[tab]}"))━━━──────────
+      rule=$(printf '─%.0s' $(seq 1 "${at[tab]}"))━━━$(printf '─%.0s' $(seq 1 $((87 - at[tab]))))
       tabs=(' 1: Items 4    2: Cost    3: Effects    4: Timeline' "$rule")
       field=0 text=
       read -r field text 2>/dev/null <"$FAKE/field"
@@ -295,23 +297,38 @@ case $cmd in
             F:*) line=" ◐ ${w#F:}" ;;
             *) [ "$n" = "$sel" ] && m=▌ || m=' '
                title="row $n"
-               # FAKE_TG=1: a glyph inside the title, differing after it.
-               [ -n "${FAKE_TG:-}" ] && { local_l=(alpha beta gamma delta); title="worker █ ${local_l[n]:-z}"; }
+               # FAKE_TITLES='a|b|c|d': the title of row n, as in Rabe it may hold
+               # glyphs and double spaces.
+               if [ -n "${FAKE_TITLES:-}" ]; then
+                 IFS='|' read -ra tl <<<"$FAKE_TITLES"
+                 title=${tl[n]:-z}
+               fi
                [ -n "${FAKE_SLEEP:-}" ] && title="sleep ${durs[id]:-}"
                # FAKE_ZTITLE=desc: Claude shows the description, not the comment.
                [ "$id" = 0 ] && [ -e "$FAKE/zebra" ] && [ "${FAKE_ZTITLE:-}" != desc ] && title+=" # zebra nap"
                g=▶
                grep -qx "$id" "$FAKE/ended" 2>/dev/null && g=■
                [ "$w" = i ] && line="$m  $g $title" || line="$m$g $title"
-               # FAKE_BAR: a Timeline bar one space after the title, one cell
-               # longer at each draw, as a running item's bar grows (#233).
+               # FAKE_BAR lays the row out as Rabe does at 90 columns, so the
+               # title column ends at a known cell: Timeline at 24 (marker, name
+               # padded to 23, bar), Cost at 36 (marker, glyph, space, name
+               # padded to 33, space, bar). =1 draws a growing bar of █ (#233);
+               # =eighth one ▌ or ▋ that changes with each b pressed.
                if [ -n "${FAKE_BAR:-}" ]; then
                  b=$(($(cat "$FAKE/bar" 2>/dev/null || echo 1) + 1))
                  echo "$b" >"$FAKE/bar"
-                 line+=" $(printf '█%.0s' $(seq 1 "$b"))"
-                 # =eighth: a short Cost bar of one ▌ or ▋ by turn.
                  if [ "$FAKE_BAR" = eighth ]; then
-                   [ $((b / 4 % 2)) = 0 ] && line="${line% *} ▌" || line="${line% *} ▋"
+                   [ $(($(wc -l <"$FAKE/backs" 2>/dev/null || echo 0) % 2)) = 1 ] && bar=▋ || bar=▌
+                 else
+                   bar=$(printf '█%.0s' $(seq 1 $((b % 40 + 1))))
+                 fi
+                 pad=$title
+                 if [ "$tab" = 2 ]; then
+                   while [ ${#pad} -lt 33 ]; do pad+=' '; done
+                   line="$m$g $pad $bar"
+                 else
+                   while [ ${#pad} -lt 23 ]; do pad+=' '; done
+                   line="$m$pad$bar"
                  fi
                fi ;;
           esac
@@ -493,10 +510,15 @@ sq FAKE_REMOVE=reset 'r that marks the first row instead of the neighbour is FAI
 sq FAKE_REMOVE=keep 'r that keeps the row is FAIL' 1 'FAIL remove-neighbour 0/1' --shells 3 --timeout 50 --sequences remove-neighbour
 sq 'a reopened pane that marks the same row and opens it is PASS' 0 'PASS reopen 1/1' --shells 3 --timeout 50 --sequences reopen
 sq 'b back on the Cost and Timeline tabs is PASS' 0 'PASS back-timeline 1/1' --shells 3 --timeout 50 --sequences back-cost,back-timeline
-sq FAKE_SLEEP= FAKE_BAR=1 'a bar one space after the title is no part of the marked row is PASS' 0 'PASS back-timeline 1/1' --shells 3 --timeout 50 --sequences back-timeline
-sq FAKE_SLEEP= FAKE_BAR=eighth 'a bar that ends on ▌ then ▋ is no part of the marked row is PASS' 0 'PASS back-cost 1/1' --shells 3 --timeout 50 --sequences back-cost
-sq FAKE_BACK=other FAKE_SLEEP= FAKE_BAR=1 FAKE_TG=1 'a glyph inside the title keeps the rows apart: a wrong return is FAIL' 1 'FAIL back-timeline 0/1' --shells 3 --timeout 50 --sequences back-timeline
-sq FAKE_SLEEP= FAKE_BAR=1 FAKE_TG=1 'a glyph inside the title with the right return is PASS' 0 'PASS back-timeline 1/1' --shells 3 --timeout 50 --sequences back-timeline
+t22=xxxxxxxxxxxxxxxxxxxxx
+bk() { sq FAKE_SLEEP= FAKE_BAR=1 "$@"; }
+bk "FAKE_TITLES=${t22}a|${t22}b|${t22}c|${t22}d" 'a title that fills its column, one space before the bar, is PASS' 0 'PASS back-timeline 1/1' --shells 3 --timeout 50 --sequences back-timeline
+bk 'FAKE_TITLES=worker █|worker ▌|worker ▋|worker ▊' FAKE_BACK=other 'titles that differ in a last glyph: a wrong return is FAIL' 1 'FAIL back-timeline 0/1' --shells 3 --timeout 50 --sequences back-timeline
+bk 'FAKE_TITLES=worker  alpha|worker  beta|worker  gamma|worker  delta' FAKE_BACK=other 'titles that differ after a double space: a wrong return is FAIL' 1 'FAIL back-timeline 0/1' --shells 3 --timeout 50 --sequences back-timeline
+bk 'FAKE_TITLES=worker █|worker ▌|worker ▋|worker ▊' 'titles that differ in a last glyph, the right return, is PASS' 0 'PASS back-timeline 1/1' --shells 3 --timeout 50 --sequences back-timeline
+bk 'FAKE_TITLES=worker  alpha|worker  beta|worker  gamma|worker  delta' 'titles with a double space, the right return, is PASS' 0 'PASS back-timeline 1/1' --shells 3 --timeout 50 --sequences back-timeline
+sq FAKE_SLEEP= FAKE_BAR=eighth 'a Cost bar of ▌ then ▋ between the two captures is no part of the row is PASS' 0 'PASS back-cost 1/1' --shells 3 --timeout 50 --sequences back-cost
+bk FAKE_BAR=1 'a Cost row with a long bar is PASS' 0 'PASS back-cost 1/1' --shells 3 --timeout 50 --sequences back-cost
 sq FAKE_BACK=items 'b that goes to the first tab is FAIL on both' 1 'FAIL back-timeline 0/1' --shells 3 --timeout 50 --sequences back-cost,back-timeline
 sq FAKE_TABKEY=stop 'one failing sequence sets the exit code' 1 'PASS search-keys 1/1' --shells 3 --timeout 50 --sequences ring-2,search-keys
 

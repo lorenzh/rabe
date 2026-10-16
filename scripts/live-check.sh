@@ -443,11 +443,32 @@ ident() {
   d=$(shellof "$1")
   if [ -n "$d" ]; then echo "$d"; else tr -d 0-9 <<<"${1:1}" | tr -s ' '; fi
 }
-# A row without its Timeline or Cost bar (#233). A title that fills its column
-# leaves one space before the bar, so the cut at the first double space may
-# keep it: drop a trailing run of bar glyphs (hooks/ui/cells/grid.ts) too. A
-# glyph inside the title stays, so titles that differ after it stay apart.
-rowtitle() { local r=${1:1}; r=${r%%  *}; echo "${1:0:1}$(sed -E 's/( ?[█▏▎▍▌▋▊▉◂])+$//' <<<"$r")"; }
+# The width of the pane: its tab rule (─ and ━ only) spans it.
+panewidth() {
+  local l
+  for l in "${view[@]}"; do
+    [[ $l == *━* && $l != *[!─━]* ]] && { echo "${#l}"; return; }
+  done
+  echo 0
+}
+# The title of a row on a tab (#233), cut at the column where the view puts
+# the bar, so a title with glyphs or double spaces stays whole and a bar never
+# enters it. Timeline: marker, name in a column of min(24, width/3). Cost:
+# marker, glyph, space, name in a column of max(12, min(36, width-36)) minus 3.
+rowtitle() { # row, tab key
+  local w c
+  w=$(panewidth)
+  if [ "$w" -gt 0 ] && [ "$2" = 4 ]; then
+    c=$((w / 3 > 24 ? 24 : w / 3))
+    echo "${1:0:1}${1:1:c-2}"
+  elif [ "$w" -gt 0 ] && [ "$2" = 2 ]; then
+    c=$((w - 36 > 36 ? 36 : w - 36))
+    [ "$c" -lt 12 ] && c=12
+    echo "${1:0:1}${1:3:c-3}"
+  else
+    echo "${1:0:1}${1:1}"
+  fi
+}
 # Clicks the last row that shows a running seeded shell (▶) other than the
 # marked one, and sets `clicked` to its duration.
 click_running() {
@@ -700,7 +721,7 @@ seq_back() { # tab key
   # counts: a Timeline bar grows while the row stays the same.
   local marked
   for i in "${!view[@]}"; do
-    [[ ${view[i]} == ▌* ]] && { marked=$(ident "$(rowtitle "${view[i]}")"); break; }
+    [[ ${view[i]} == ▌* ]] && { marked=$(ident "$(rowtitle "${view[i]}" "$1")"); break; }
   done
   keys Enter
   snap
@@ -708,7 +729,7 @@ seq_back() { # tab key
   keys b
   snap
   for i in "${!view[@]}"; do
-    [[ ${view[i]} == ▌* ]] && { [ "$(ident "$(rowtitle "${view[i]}")")" = "$marked" ] && return 0; break; }
+    [[ ${view[i]} == ▌* ]] && { [ "$(ident "$(rowtitle "${view[i]}" "$1")")" = "$marked" ] && return 0; break; }
   done
   why="b did not keep the marked row '$marked'"
   return 1
