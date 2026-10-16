@@ -308,9 +308,14 @@ sleep 5
 
 if [ "$seed" -gt 0 ]; then
   cmds=
+  # The search sequences need a row that matches what they type: the first
+  # shell carries a comment with "zebra nap", so "zeb" leaves a row (#219).
+  tag=
+  [[ " ${seqs[*]} " == *" search-keys "* || " ${seqs[*]} " == *" search-esc "* ]] && tag="# zebra nap"
   durations=
   for i in $(seq 1 "$seed"); do
-    cmds="$cmds sleep $((base + i)),"
+    cmds="$cmds sleep $((base + i))${tag:+ $tag},"
+    tag=
     durations="$durations|$((base + i))"
   done
   durations=${durations#|}
@@ -514,23 +519,37 @@ seq_click_stop() {
   stopped "$before" "$clicked"
 }
 seq_search_keys() {
-  keys s z z x
+  local all
+  look
+  listscan
+  all=${#lrows[@]}
+  keys s z e b
   snap
-  pane_has 'search:? +zzx' || { why="the field does not read zzx"; return 1; }
+  pane_has 'search:? +zeb' || { why="the field does not read zeb"; return 1; }
   # Backspace back to rows: the field keeps the focus, so typing goes on in it.
-  keys BSpace BSpace BSpace l e
+  # zeb matches the seeded "zebra nap" row: a lost Backspace (#180) leaves text.
+  listscan
+  local i seen=
+  for i in "${lrows[@]}"; do [[ ${view[i]} == *'zebra nap'* ]] && seen=1; done
+  [ -n "$seen" ] || { why="no row matching zeb shows before the Backspaces: the seeded zebra nap row is missing"; return 1; }
+  keys BSpace BSpace BSpace
+  snap
+  listscan
+  # A Backspace that lost its change handler leaves the filter: the rows stay narrowed.
+  [ "${#lrows[@]}" = "$all" ] || { why="after Backspace to empty the list shows ${#lrows[@]} rows, not $all: the filter stayed (#213)"; return 1; }
+  keys l e
   snap
   pane_has 'search:? +le([^e]|$)' || { why="after Backspace to the rows the field does not read le: the focus left it"; return 1; }
 }
 seq_search_esc() {
-  keys s z z
+  keys s z e
   snap
-  pane_has 'search:? +zz([^z]|$)' || { why="the field does not read zz before Esc"; return 1; }
-  keys Escape z
+  pane_has 'search:? +ze([^e]|$)' || { why="the field does not read ze before Esc"; return 1; }
+  keys Escape e
   snap
   opened || { why="Esc closed the pane"; return 1; }
-  # The field keeps its text, so a z after Esc that left it changes nothing.
-  pane_has 'search:? +zz([^z]|$)' || { why="after Esc and z the field does not read zz: the focus stayed in it"; return 1; }
+  # The field keeps its text, so an e after Esc that left it changes nothing.
+  pane_has 'search:? +ze([^e]|$)' || { why="after Esc and e the field does not read ze: the focus stayed in it"; return 1; }
 }
 seq_search_enter() {
   local want

@@ -30,6 +30,23 @@ export type RabeCodexCall = {
 // One model and effort an agent ran with; `effort` is absent for a model without one.
 export type RabeModelPair = { model: string; effort?: string }
 
+// The recorded diff of one file operation, kept in `rabe.diffs` by editor id
+// (an item id or `main`). `lines` carry `@@` hunk headers and lines that start
+// with `+`, `-` or a space; they are cut at 200 lines and 8192 code units
+// (`isTruncated`), and emptied when the retained total is over 262144 code
+// units (`isEvicted`). `added` and `removed` count the whole change.
+export type RabeDiff = {
+  path: string
+  at: number
+  lines: string[]
+  added: number
+  removed: number
+  hunks: number
+  note?: 'too-large' | 'unchanged'
+  isTruncated?: true
+  isEvicted?: true
+}
+
 export type RabeAgentDetail = {
   agentId: string
   isTeammate?: true
@@ -214,6 +231,8 @@ export type RabeRollout = {
   steps: RabeCodexStep[]
   edits?: RabeEdit[]
   checks?: { path: string; from: number; to: number }[]
+  // The diffs of this parse only; the source records them and never keeps them here.
+  diffs?: RabeDiff[]
 }
 
 export type RabeRolloutCursor = {
@@ -287,6 +306,9 @@ declare module 'claude-code' {
       order: RabeOrder
       // The files the main session changed (no agent), newest last.
       edits: RabeEdit[]
+      // Bounded diffs of recorded file operations, by editor id (item id or
+      // `main`), oldest first. Content: see docs/architecture/diffs.md.
+      diffs: Record<string, RabeDiff[]>
       // The ids of ended items the person removed from the views this session.
       removed: string[]
       // The repository's git worktrees; absent without git.

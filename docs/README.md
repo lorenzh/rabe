@@ -35,15 +35,20 @@ Use this index to find the guide that matches your question.
 - [Focus and keys](architecture/focus-and-keys.md): pane behavior, key controls, split-list copy, message and delete actions, and focus moves.
 - [Focus order and arming](architecture/focus-order.md): held order, append-only slots, gone rows that leave the lists, target-bound keys, and arming.
 - [View behavior](architecture/views.md): tabs, cron schedules, workflow agent counts, inert stop controls, removed items, idle labels, live-item sorting, idle detail activity and Timeline windows, session summaries, full command and prompt details, and copy controls.
-- [Pane data](architecture/pane-data.md): clipboard and toast security checks, plus stored-summary validation.
+- [Pane data](architecture/pane-data.md): clipboard and toast security checks, the counts-only text answer of `/rabe` where no pane draws, plus stored-summary validation.
 - [Shell words](architecture/shell-words.md): shell words, quoting, here-doc bodies and the write detector boundary.
-- [Touched files](architecture/touched.md): file edits, conflicts, worktree rows and private list helpers.
+- [Touched files](architecture/touched.md): file edits, conflicts, worktree rows, private list helpers and the diffs the Effects tab shows for the selected file.
+- [File diffs](architecture/diffs.md): how diffs of file operations are captured at record time, capped, evicted with their items and kept private.
 
 ## Feasibility
 
 - [Feasibility overview](feasibility.md): overview, confirmed cron fire identity and turn-end limits, stat-only idle reader benchmark, and links to the source limits.
 - [Claude agents and workflows](feasibility/agents.md): agent and teammate identity, worktree, and workflow data with script path limits.
 - [Codex and background work](feasibility/background-work.md): Codex jobs, foreground Bash calls, direct codex exec runs, shells, monitors, cron jobs, polling intervals, silent-server ports on Linux, and task output path limits.
-- [User interface limits](feasibility/ui.md): API limits for rendering and input, and the pinned header spike (overflow clipping with a negative `marginTop`).
+- [User interface limits](feasibility/ui.md): API limits for rendering and input, the pinned header spike (overflow clipping with a negative `marginTop`), and sessions without a terminal (desktop app, VS Code, `claude -p`, Agent SDK).
 - [Price data](feasibility/prices.md): price inputs and view data.
 - [Files and runtime limits](feasibility/files.md): script edits from Bash diffs, confirmed shell writes, coverage settings, and open runtime questions.
+
+## Research
+
+- [0.10.0 design decisions](research/0-10-0-decisions.md): research report and recommendations for #199 (main-session tokens per model), #218 (dropped message submit) and #162 (diff in the Effects tab).
