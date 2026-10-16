@@ -48,6 +48,16 @@ export function geometry(model: Model, size: Size, sel: Selection): Fresh | unde
   return { above, rows, head, isTight }
 }
 
+// The lines that go on the row at `at` (`joins`), drawn under it.
+function joined(body: Piece[], at: number): number {
+  let n = 0
+  while (true) {
+    const next = body[at + 1 + n]
+    if (!next || !('spans' in next) || !next.joins) return n
+    n++
+  }
+}
+
 const isTool = (piece?: Piece) => piece !== undefined && ('button' in piece || 'input' in piece)
 
 // The pieces under the clipped box: the hint, and each control or Input that
@@ -141,7 +151,7 @@ export function measure(
       ? undefined
       : piece && 'button' in piece
         ? [rowsIn(body.slice(0, at + 1), size) - 1, 1]
-        : [rowsIn(body.slice(0, at), size), rowsIn([piece as Piece], size)]
+        : [rowsIn(body.slice(0, at), size), rowsIn([piece as Piece], size) + joined(body, at)]
 
   return {
     above,

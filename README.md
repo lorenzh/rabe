@@ -47,7 +47,10 @@ The pane has four tabs:
 
   ![The Cost tab: the session cost, the estimated dollars of the Claude agents, the session id, and a token bar with an estimate per agent; c copies the resume command](docs/assets/tab-cost.gif)
 
-  The session cost as `/cost` totals it, this session's id (`c` copies `claude --resume <id>`), the estimated dollars of the Claude agents and of the Codex jobs when those sources exist, and per agent and Codex job a bar of tokens and its estimate. Worker names use more of the pane width. The header says "sorted by tokens when opened". Workers keep that order while the pane is open, and new workers follow them. Agents that look slow or stuck show under "Load".
+  The session cost as `/cost` totals it, this session's id (`c` copies `claude --resume <id>`), the estimated dollars of the Claude agents and of the Codex jobs when those sources exist, and per agent and Codex job a bar of tokens and its estimate. Worker names use more of the pane width; in a 26-column pane a name keeps its first 23 characters. The header says "sorted by tokens when opened". Workers keep that order while the pane is open, and new workers follow them. Agents that look slow or stuck show under "Load".
+
+  `i`, `o` and `h` group the rows by agent, by model or by harness (Claude Code against Codex); one grouping is active, and the rows keep their order while the pane is open. The main session gets a row marked partial, one per model when grouped by model and one combined row otherwise: it counts only the steps Rabe saw since it loaded, and its dollars are an estimate at the 1-hour cache-write rate (`n/a` without a price). In a narrow pane a group row puts its numbers on a second line; a long name loses its middle, never `(partial)`. Claude rows add up to the band; Codex is shown on top. A forwarding agent's spend counts once, in its Codex job.
+
 - **Effects**
 
   ![The Effects tab: the files raven.md and notes.md with the agent or main session that wrote them, the main worktree with who worked there, and port 4173 with its ssh -L line, which c copies](docs/assets/tab-effects.gif)
@@ -119,7 +122,7 @@ Known limit: in a burst such as `2 1 Down Down Down Down` with 30 to 50 ms betwe
 | Codex detail | `b x`; `c` when a thread id is known; `f` when a forwarder is known |
 | Cron job detail | `b c d` |
 | Scheduled wakeup detail | `b c`; no `d` |
-| Cost | `c` when the current session id is known |
+| Cost | `i` agent, `o` model and `h` harness grouping; `c` when the current session id is known |
 | Effects | `c` on the first port's SSH row while that port exists |
 | Timeline | `w` when `timelineHours` is greater than zero; `c` when the previous session id is known |
 
