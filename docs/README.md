@@ -28,7 +28,7 @@ Use this index to find the guide that matches your question.
 - [Diagnostics](architecture/diagnostics.md): per-source poll records in `rabe.diag`, incremental bytes and unchanged-file skips, `/rabe-diag`, fixed error categories and report failures.
 - [Sources](architecture/sources.md): poll callbacks that return changes, source modules, Linux listener parsing in `hooks/ports.ts`, and source tests.
 - [Codex data](architecture/codex-data.md): Codex job parsing and incremental rollout parsing with restored step checks.
-- [Agent items](architecture/agent-items.md): metadata cache recovery that preserves newer event fields, transcripts and turns.
+- [Agent items](architecture/agent-items.md): metadata cache recovery that preserves newer event fields, transcripts, turns, and the model and effort history.
 - [Price estimate](architecture/prices.md): price lookup and cost estimates.
 - [UI rendering](architecture/ui.md): view contract, renderer, palette, cells, sizing, band, and the shared formatting helpers (`na`, `idOrNa`, `cut`).
 - [Pane interaction state](architecture/interaction.md): pure transitions for focus, nested presses, queued arrow bursts and wraparound, refused moves, held order, regain, opening and arming.

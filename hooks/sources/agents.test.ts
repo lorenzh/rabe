@@ -1967,6 +1967,111 @@ test('a newly listed completed agent pushes out a foreground row, not itself', a
   expect(items.some(item => item.id === 'shell:fg-0')).toBe(false)
 })
 
+test('turn steps keep one model and effort pair per change, skipping synthetic', async ($, on) => {
+  const held = engine(on, 'a1')
+  const answered = ['claude-opus-5-5', 'claude-opus-5-5', '<synthetic>', 'claude-haiku-5']
+  // biome-ignore lint/correctness/useYield: the engine's stand-in answers without chunks
+  on('turn.step', async function* (_$, e) {
+    return {
+      turnId: e.turnId,
+      index: e.index,
+      answer: '',
+      toolUses: [],
+      stopReason: 'end_turn' as const,
+      usage: {
+        input_tokens: 1,
+        output_tokens: 1,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+        model: answered[e.index] ?? 'm',
+      },
+    }
+  })
+  await $.agent.spawn(SPAWN)
+  const efforts = ['high', 'high', 'low', undefined] as const
+  for (const index of [0, 1, 2, 3]) {
+    const effort = efforts[index]
+    const stream = $.turn.step({
+      turnId: 't1',
+      index,
+      model: 'm',
+      ...(effort && { effort }),
+      messageCount: 1,
+      agentId: 'a1',
+    })
+    for await (const _ of stream);
+  }
+  expect(held.items?.[0]?.detail).toMatchObject({
+    models: [{ model: 'claude-opus-5-5', effort: 'high' }, { model: 'claude-haiku-5' }],
+  })
+})
+
+async function stepsWith(on: On, $: Engine, steps: { model?: string; effort?: string }[]) {
+  const held = engine(on, 'a1')
+  // biome-ignore lint/correctness/useYield: the engine's stand-in answers without chunks
+  on('turn.step', async function* (_$, e) {
+    const model = steps[e.index]?.model
+    return {
+      turnId: e.turnId,
+      index: e.index,
+      answer: '',
+      toolUses: [],
+      stopReason: model ? ('end_turn' as const) : null,
+      usage: model
+        ? {
+            input_tokens: 1,
+            output_tokens: 1,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+            model,
+          }
+        : null,
+    }
+  })
+  await $.agent.spawn(SPAWN)
+  for (const [index, step] of steps.entries()) {
+    const stream = $.turn.step({
+      turnId: 't1',
+      index,
+      model: 'm',
+      ...(step.effort && { effort: step.effort as 'high' }),
+      messageCount: 1,
+      agentId: 'a1',
+    })
+    for await (const _ of stream);
+  }
+
+  return held
+}
+
+test('an effort-only change adds a pair; an unanswered request adds none', async ($, on) => {
+  const held = await stepsWith(on, $, [
+    { model: 'claude-opus-5-5', effort: 'high' },
+    { model: 'claude-opus-5-5', effort: 'low' },
+    { effort: 'high' },
+  ])
+  expect(modelsOf(held)).toEqual([
+    { model: 'claude-opus-5-5', effort: 'high' },
+    { model: 'claude-opus-5-5', effort: 'low' },
+  ])
+})
+
+test('the model history keeps the newest six pairs', async ($, on) => {
+  const efforts = ['low', 'medium', 'high', 'xhigh', 'max', 'low', 'medium', 'high']
+  const held = await stepsWith(
+    on,
+    $,
+    efforts.map(effort => ({ model: 'claude-opus-5-5', effort })),
+  )
+  const kept = modelsOf(held)
+  expect(kept).toHaveLength(6)
+  expect(kept?.[0]?.effort).toBe('high')
+  expect(kept?.at(-1)?.effort).toBe('high')
+})
+
+const modelsOf = (held: { items?: RabeItem[] }) =>
+  (held.items?.[0]?.detail as { models?: { effort?: string }[] } | undefined)?.models
+
 test('an item a hook write pushes out loses its diffs, though it has no turns', async ($, on) => {
   engine(on, 'a1', false)
   const state = memoryState(on)
