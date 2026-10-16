@@ -30,7 +30,7 @@ Rabe now draws only the band as a Raster; the pane is lines of Text and plain Bu
 5. Button hotkeys such as `x` fire while the pane holds the keys. A letter no Button binds moves the focus to the prompt, and the next keys type into the composer. No hook can keep the keys: there is no `ui.key` event, and a focused Input takes every key and stops the hotkeys. Rabe binds only the letters of controls the current view owns. Dim controls keep their hotkeys with no action. Other letters still reach the prompt, including these hotkeys in views without their control. See the binding table in [the pane architecture](../architecture/focus-and-keys.md#the-pane).
 6. Under tmux the colors become 256-color codes.
 7. Text in Raster cells copies intact through terminal selection.
-8. On the desktop `$.ui.resolve` still returns a Raster constructor, but it draws an empty Box. The text fallback is chosen by `e.surface === 'terminal'`, not by checking for `Raster`.
+8. On the desktop `$.ui.resolve` still returns a Raster constructor, but it draws an empty Box. The text fallback is not chosen by surface name or by checking for `Raster`: `/rabe` opens the pane on every attached surface (`terminal`, `desktop`, `vscode`, `mobile`). The answer is the pane or the text, never both: a placed pane returns no text (text would also enter the transcript), and an unplaced one is closed before the text returns. It answers in text only when `$.session.surfaces()` is empty or `$.ui.open` returns `isPlaced: false`. A bare `-p` run reports `isPlaced: true` although nothing draws, so the empty-surfaces check comes first.
 
 ### Buttons, focus and the mouse
 

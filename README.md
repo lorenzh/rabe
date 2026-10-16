@@ -155,9 +155,9 @@ Ended items keep their stop buttons in place. These buttons stay dim. Pressing t
 
 Commands:
 
-- `/rabe`: open the pane.
+- `/rabe`: open the pane. On any attached surface (terminal, desktop app, VS Code panel, mobile) it opens the pane and adds no text. Where nothing can draw it (a plain `claude -p` run or an SDK session, or a host that cannot place the pane), it answers with text instead: the running, idle and ended counts and one count per kind, never a title or prompt.
 - `/rabe-stop codex:<job id>`: cancel a running Codex job. Use the job id shown in Rabe, not the thread id. Empty arguments or arguments without `codex:` show usage. To stop other items, use `x` in the pane.
-- `/rabe-diag`: show what each source read in its last poll, with versions and options, and no prompts, titles or full paths. Run it when something shows `n/a` or is missing.
+- `/rabe-diag`: (also in non-interactive sessions) show what each source read in its last poll, with versions and options, and no prompts, titles or full paths. Run it when something shows `n/a` or is missing.
 - `/rabe:report-bug`: write a bug report for this repository.
 - `/rabe:feedback`: write an idea or a comment for this repository.
 

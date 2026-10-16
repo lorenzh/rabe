@@ -522,7 +522,7 @@ export const STOP_USAGE =
   'Usage: /rabe-stop codex:<job id>. Use the Codex job id shown in Rabe, not the thread id. To stop other items, use x in the pane.'
 
 export function codex(on: On, file: string, pollers: Pollers): void {
-  on('session.start', { isInteractive: true }, async ($, e, next) => {
+  on('session.start', { isInteractive: [true, false] }, async ($, e, next) => {
     pollers.push({ name: 'codex', run: items => pollCodex($, file, items), initial: false })
     const started = await next(e)
     await $.command.register({
