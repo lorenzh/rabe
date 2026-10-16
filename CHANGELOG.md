@@ -4,12 +4,16 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-16
+
+No migration. Update with `claude plugin update rabe` and `/reload-plugins`; a running session keeps working. The new session values (`rabe.diffs`, the Cost grouping and the main session's usage per model) start empty after the reload, and no option, command or key was removed or renamed.
+
 ### Added
 
 - The Cost tab groups its rows by agent, model or harness with `i`, `o` and `h`; the main session has its own partial rows, per model, from the steps Rabe saw since it loaded and priced at the 1-hour cache-write rate ([#240](https://github.com/lorenzh/rabe/pull/240), refs [#199](https://github.com/lorenzh/rabe/issues/199))
 - Agents show the model that answered and the effort of the request as the hook saw it, including changes (`opus-5-5·high → sonnet-5-5·medium`), in the facts and as a chip on workflow rows ([#232](https://github.com/lorenzh/rabe/pull/232), refs [#200](https://github.com/lorenzh/rabe/issues/200))
 - The Effects tab shows the diff of the selected file beside the list (one summary line below 90 columns), recorded when the change happens and never read from files ([#236](https://github.com/lorenzh/rabe/pull/236), refs [#162](https://github.com/lorenzh/rabe/issues/162))
-- A direct `codex exec` in a Bash call (foreground or background) shows with the Agents as `codex`, with the model, effort and sandbox named by its flags; tokens and cost stay `n/a` ([#237](https://github.com/lorenzh/rabe/pull/237), refs [#179](https://github.com/lorenzh/rabe/issues/179))
+- A direct `codex exec` in a Bash call (foreground or background) shows with the Agents as `codex`, with the model, effort and sandbox named by its flags ([#237](https://github.com/lorenzh/rabe/pull/237), refs [#179](https://github.com/lorenzh/rabe/issues/179))
 - A direct `codex exec` row gets tokens, cost, model and thread from its Codex session file: found by the `session id:` a foreground run prints on stderr, else by its start time (and `-C` directory); only the run's own turn counts; an ambiguous match, a thread another run or Codex job holds, another model than `-m`, or an inline `CODEX_HOME` shows `n/a`. A detached run without `-o` stays running until its session file records the end ([#247](https://github.com/lorenzh/rabe/pull/247), refs [#179](https://github.com/lorenzh/rabe/issues/179))
 - A `-o` path that uses `$S` from a leading `S=/abs/path;` on the same line is resolved ([#247](https://github.com/lorenzh/rabe/pull/247))
 
@@ -292,7 +296,8 @@ The first public version.
 
 - Workflow agents no longer offer stop and message, which Claude Code does not support for a single workflow agent; their detail offers stopping the run. ([#8](https://github.com/lorenzh/rabe/pull/8))
 
-[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/lorenzh/rabe/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/lorenzh/rabe/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/lorenzh/rabe/compare/v0.8.1...v0.9.0
 [0.8.1]: https://github.com/lorenzh/rabe/compare/v0.8.0...v0.8.1
