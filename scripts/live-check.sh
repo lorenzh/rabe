@@ -389,7 +389,8 @@ listscan() {
   local i in=0
   lrows=() lsel=-1
   for i in "${!view[@]}"; do
-    if [[ ${view[i]} == search* ]]; then in=1; continue; fi
+    # A focused field reads "▸ search" (#219).
+    if [[ ${view[i]} =~ ^(▸\ )?search ]]; then in=1; continue; fi
     [ $in = 1 ] || continue
     [[ ${view[i]} =~ ^\ (↑↓|esc|tab\ to) ]] && break
     [[ ${view[i]} == [▾▸]* ]] && continue

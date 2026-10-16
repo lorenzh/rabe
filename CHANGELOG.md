@@ -21,6 +21,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
+- `scripts/live-check.sh` counts the list rows below a focused search field (`▸ search`), so the `search-keys` sequence no longer fails with "no row matches it" ([#256](https://github.com/lorenzh/rabe/pull/256), refs [#219](https://github.com/lorenzh/rabe/issues/219))
 - Enter in an agent's message field sends the message once, or shows `Message not sent` or `Delivery unknown`, also when a redraw released the field's handler first ([#242](https://github.com/lorenzh/rabe/pull/242), fixes [#218](https://github.com/lorenzh/rabe/issues/218))
 - `scripts/live-check.sh` compares only the title of the marked Timeline row after `b`, also when the title fills its column and one space precedes the bar, and it resolves a relative `CLAUDE` path against the current directory instead of failing with a misleading error ([#246](https://github.com/lorenzh/rabe/pull/246), fixes [#233](https://github.com/lorenzh/rabe/issues/233), [#234](https://github.com/lorenzh/rabe/issues/234))
 - `/rabe-diag` and `/rabe-stop` are also registered in non-interactive (SDK) sessions, and `/rabe` answers with a plain-text summary where the pane cannot draw ([#230](https://github.com/lorenzh/rabe/pull/230), fixes [#178](https://github.com/lorenzh/rabe/issues/178))
