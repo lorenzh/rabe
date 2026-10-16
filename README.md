@@ -9,7 +9,7 @@
 
 Rabe (German for raven) is a Claude Code mod. It shows your subagents, Codex jobs, background shells, monitors, cron jobs and workflows in one place. A short band above the prompt shows what runs now. The `/rabe` command opens a pane with the full detail.
 
-![Rabe in a Claude Code session: the band above the prompt counts one claude and three shells with the session cost; /rabe opens the pane, and the Items tab groups the agent and the shells with the detail of the selected row beside the list, with the search field and its buttons above; Enter opens the detail of a shell with its command and output, b goes back to the list, the Cost tab shows the estimate in dollars and the session id, the Timeline tab shows the bars, who started what and the previous session, and Esc closes the pane](docs/assets/demo.gif)
+![Rabe in a Claude Code session: the band above the prompt counts one claude and three shells with the session cost; /rabe opens the pane, and the Items tab groups the agent and the shells with the detail of the selected row beside the list, where the agent shows its model and effort (haiku-5-5·medium); the arrow keys move to a shell and its command; the Cost tab shows the estimate in dollars with partial rows for the main session, o groups the rows by model and i by agent; the Effects tab shows the diff of the edited file beside the list; the Timeline tab shows the bars and who started what, and Esc closes the pane](docs/assets/demo.gif)
 
 Status: early development. See [releases](https://github.com/lorenzh/rabe/releases), the [changelog](CHANGELOG.md), and the [documentation index](docs/README.md).
 
