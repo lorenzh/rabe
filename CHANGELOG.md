@@ -9,6 +9,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - The Cost tab groups its rows by agent, model or harness with `i`, `o` and `h`; the main session has its own partial rows, per model, from the steps Rabe saw since it loaded and priced at the 1-hour cache-write rate ([#240](https://github.com/lorenzh/rabe/pull/240), refs [#199](https://github.com/lorenzh/rabe/issues/199))
 - Agents show the model that answered and the effort of the request as the hook saw it, including changes (`opus-5-5·high → sonnet-5-5·medium`), in the facts and as a chip on workflow rows ([#232](https://github.com/lorenzh/rabe/pull/232), refs [#200](https://github.com/lorenzh/rabe/issues/200))
 - The Effects tab shows the diff of the selected file beside the list (one summary line below 90 columns), recorded when the change happens and never read from files ([#236](https://github.com/lorenzh/rabe/pull/236), refs [#162](https://github.com/lorenzh/rabe/issues/162))
+- A direct `codex exec` in a Bash call (foreground or background) shows with the Agents as `codex`, with the model, effort and sandbox named by its flags; tokens and cost stay `n/a` ([#237](https://github.com/lorenzh/rabe/pull/237), refs [#179](https://github.com/lorenzh/rabe/issues/179))
 
 ### Fixed
 

@@ -494,6 +494,38 @@ test('idle teammates sort with live items before newer ended items', () => {
   ])
 })
 
+const run: RabeItem = {
+  id: 'shell:b9',
+  kind: 'shell',
+  title: 'codex exec',
+  status: 'running',
+  seenAt: NOW,
+  startedAt: NOW,
+  detail: { command: 'codex exec x', taskId: 'b9', codex: { model: 'gpt-6-sol' } },
+}
+
+test('a direct codex run sits with the agents, counts as codex and shows in the band', () => {
+  const groups = grouped([run, dev])
+  expect(groups.map(g => [g.id, g.items.map(i => i.id)])).toEqual([
+    ['agents', ['shell:b9']],
+    ['shells', ['shell:bg_2']],
+  ])
+  expect(groupNote('agents', [run])).toBe('1 running · 1 codex')
+  expect(bandRows([run, dev], NOW)).toEqual([
+    { glyph: '◐', kind: 'codex', count: 1 },
+    { glyph: '▶', kind: 'shell', count: 1 },
+  ])
+})
+
+test('an ended direct codex run adds unknown usage and makes the codex sum n/a', () => {
+  const ended = { ...run, status: 'done' as const, endedAt: NOW }
+  expect(totals([review, ended])).toEqual({
+    tokens: (review.tokens?.input ?? 0) + (review.tokens?.output ?? 0),
+    unknown: 1,
+  })
+  expect(byTokens([review, ended]).map(i => i.id)).toEqual([review.id, ended.id])
+})
+
 test('spend sums tokens, and one missing dollar amount makes the sum unknown', () => {
   const workers = ALL.filter(isWorker)
   expect(spend(workers)).toMatchObject({ input: expect.any(Number), unknown: 2 })

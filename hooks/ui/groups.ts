@@ -1,6 +1,6 @@
 import type { RabeGrouping, RabeMainUsage } from '../../types'
 import type { RabeItem } from '../model'
-import { isWorker, shown, spendBy, stable, withForwarder } from './lists'
+import { isWorker, kindOf, shown, spendBy, stable, withForwarder } from './lists'
 
 // A row of the Cost tab's model and harness groupings. `tokens` is -1 when no
 // member's tokens are known; `isPartial` when only some are (the total then
@@ -57,9 +57,14 @@ export function groupRows(
   const workers = shown(items)
     .filter(isWorker)
     .map(item => withForwarder(item, items))
+  // A direct codex exec is a shell row: its model is on the codex facet.
   const modelOf = (item: RabeItem) =>
-    item.kind === 'agent' || item.kind === 'codex' ? item.detail.model : undefined
-  const keyOf = (item: RabeItem) => (by === 'harness' ? item.kind : (modelOf(item) ?? ''))
+    item.kind === 'shell'
+      ? item.detail.codex?.model
+      : item.kind === 'agent' || item.kind === 'codex'
+        ? item.detail.model
+        : undefined
+  const keyOf = (item: RabeItem) => (by === 'harness' ? kindOf(item) : (modelOf(item) ?? ''))
   const titleOf = (key: string) =>
     by === 'harness'
       ? key === 'codex'

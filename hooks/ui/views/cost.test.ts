@@ -166,6 +166,24 @@ test('idle stays readable when a long agent name is cut on every surface', () =>
   }
 })
 
+test('an ended direct codex run is a worker row with n/a and no "use no tokens" claim', () => {
+  const ended: RabeItem = {
+    id: 'shell:b9',
+    kind: 'shell',
+    title: 'codex exec',
+    status: 'done',
+    seenAt: NOW,
+    startedAt: NOW - 60_000,
+    endedAt: NOW,
+    detail: { command: 'codex exec x', codex: { model: 'gpt-6-sol' } },
+  }
+  const shown = lines(gridOf(costView({ ...MODEL, items: [ended] }, SIZE, NO_SELECTION)).grid)
+  expect(shown[0]).toContain('codex n/a')
+  expect(shown[0]).toContain('1 n/a')
+  expect(shown.some(line => /codex exec +▏ +n\/a +n\/a/.test(line))).toBe(true)
+  expect(shown.join('\n')).not.toContain('use no tokens')
+})
+
 test('the model grouping draws a row per model and the main session apart, partial', () => {
   const main = { 'claude-opus-5-5': { steps: 3, input: 1000, output: 200, cached: 500, usd: 0.5 } }
   const sel = { ...NO_SELECTION, grouping: 'model' as const }

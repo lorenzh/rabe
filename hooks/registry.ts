@@ -46,7 +46,9 @@ export function endItem(items: RabeItem[], id: string, status: EndStatus, now: n
   return updateItem(items, id, { status, endedAt: now })
 }
 
-const isForeground = (item: RabeItem) => item.id.startsWith('shell:fg-')
+// A direct Codex run counts like a Codex job, not as a foreground shell.
+const isForeground = (item: RabeItem) =>
+  item.id.startsWith('shell:fg-') && !(item.kind === 'shell' && item.detail.codex)
 const byEnd = (a: RabeItem, b: RabeItem) => (a.endedAt ?? a.seenAt) - (b.endedAt ?? b.seenAt)
 
 // Ended foreground rows go first, the oldest first, and never more than

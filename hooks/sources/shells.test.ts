@@ -1082,7 +1082,7 @@ test('with a frozen clock the newest ended foreground rows stay', async ($, on) 
   )
 })
 
-test('detached codex exec rows the poll ends keep the foreground cap', async ($, on) => {
+test('ended detached codex exec rows the poll ends are not under the foreground cap', async ($, on) => {
   const clock = mock.clock(on, { now: 1000 })
   const state = memoryState(on)
   let written = false
@@ -1101,7 +1101,7 @@ test('detached codex exec rows the poll ends keep the foreground cap', async ($,
   written = true
   await clock.advance(60_000)
   const items = state['rabe.items']?.value as RabeItem[]
-  expect(items.map(item => item.status)).toEqual(Array(MAX_FOREGROUND).fill('done'))
+  expect(items.map(item => item.status)).toEqual(Array(MAX_FOREGROUND + 1).fill('done'))
 })
 
 test('an interrupted detached codex exec ends as stopped', async ($, on) => {
@@ -1124,6 +1124,132 @@ test('a detached codex exec moved to the background leaves only its background r
   await $.tool.call({ tool: 'Bash', command: 'nohup codex exec -o /tmp/r.txt x &' })
   const items = state['rabe.items']?.value as RabeItem[]
   expect(items.map(item => item.id)).toEqual(['shell:b1'])
+})
+
+const CODEX =
+  'codex exec -m gpt-6-sol -c model_reasoning_effort=high -s workspace-write -o $S/o.md - < b'
+
+test('a background codex exec gets the codex facet', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: CODEX, run_in_background: true })
+  expect(state['rabe.items']?.value).toMatchObject([
+    {
+      id: 'shell:b1',
+      kind: 'shell',
+      status: 'running',
+      detail: { codex: { model: 'gpt-6-sol', effort: 'high', sandbox: 'workspace-write' } },
+    },
+  ])
+})
+
+test('a plain codex exec has an empty facet; other commands have none', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  await $.tool.call({
+    tool: 'Bash',
+    command: 'codex exec x',
+    description: 'one',
+    run_in_background: true,
+  })
+  await $.tool.call({ tool: 'Bash', command: 'ls', description: 'two', run_in_background: true })
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items[0]?.detail).toMatchObject({ codex: {} })
+  expect(items[1]?.detail).not.toHaveProperty('codex')
+})
+
+test('a foreground codex exec row gets the facet and ends as before', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: CODEX })
+  expect(state['rabe.items']?.value).toMatchObject([
+    { status: 'done', detail: { codex: { model: 'gpt-6-sol' } } },
+  ])
+})
+
+test('at Stop a task row from the list gets the facet, without a duplicate', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: 'bun run dev', run_in_background: true })
+  await $.classic.Stop({
+    stop_hook_active: false,
+    background_tasks: [
+      { id: 'b1', type: 'shell', status: 'running', description: 'dev', command: 'bun run dev' },
+      { id: 'b7', type: 'shell', status: 'running', description: 'x', command: CODEX },
+    ],
+  })
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items.map(item => item.id)).toEqual(['shell:b1', 'shell:b7'])
+  expect(items[1]?.detail).toMatchObject({ codex: { effort: 'high', sandbox: 'workspace-write' } })
+  await $.classic.Stop({
+    stop_hook_active: false,
+    background_tasks: [
+      { id: 'b7', type: 'shell', status: 'running', description: 'x', command: CODEX },
+    ],
+  })
+  expect(
+    ((state['rabe.items']?.value ?? []) as RabeItem[]).filter(i => i.id === 'shell:b7'),
+  ).toHaveLength(1)
+})
+
+test('ended codex exec rows are not under the foreground cap', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  for (let i = 0; i < MAX_FOREGROUND + 5; i++) {
+    await clock.set(1000 + i)
+    await $.tool.call({ tool: 'Bash', command: `${CODEX} # ${i}` })
+  }
+  expect(state['rabe.items']?.value).toHaveLength(MAX_FOREGROUND + 5)
+})
+
+test('the codex facet of a background call and of a Stop task reads no environment', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  let reads = 0
+  on('env.get', { name: 'HOME' }, async () => {
+    reads++
+
+    return { value: '/home/me' }
+  })
+  memoryState(on)
+  bash(on)
+  core(on)
+  const count = async (run: () => Promise<unknown>) => {
+    const before = reads
+    await run()
+
+    return reads - before
+  }
+  const stop = (tasks: { id: string; command: string }[]) => () =>
+    $.classic.Stop({
+      stop_hook_active: false,
+      background_tasks: tasks.map(task => ({
+        ...task,
+        type: 'shell',
+        status: 'running',
+        description: task.id,
+      })),
+    })
+  const bg = await count(() =>
+    $.tool.call({ tool: 'Bash', command: CODEX, description: 'c1', run_in_background: true }),
+  )
+  const fg = await count(() => $.tool.call({ tool: 'Bash', command: CODEX }))
+  const unseen = await count(stop([{ id: 'c2', command: CODEX }]))
+  const none = await count(stop([]))
+  // Other sources read HOME for a Bash call; only a foreground call adds the shells read.
+  expect(bg).toBeLessThan(fg)
+  // An unseen Stop task, with no preceding Bash call, reads none.
+  expect(unseen).toBe(0)
+  expect(none).toBe(0)
 })
 
 test('an item a hook write pushes out loses its diffs, though it has no turns', async ($, on) => {

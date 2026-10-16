@@ -67,3 +67,18 @@ test('a row with some unknown tokens is partial; one with none known stays n/a',
   const [none] = groupRows('harness', [plan])
   expect([none?.tokens, none?.isPartial]).toEqual([-1, false])
 })
+
+test('a direct codex exec counts in the Codex harness row and under its model', () => {
+  const run = {
+    id: 'shell:b9',
+    kind: 'shell',
+    title: 'codex exec',
+    status: 'done',
+    seenAt: 0,
+    detail: { command: 'codex exec x', codex: { model: 'gpt-6-sol' } },
+  } as RabeItem
+  expect(groupRows('harness', [run]).map(row => [row.id, row.title])).toEqual([
+    ['by:harness:codex', 'Codex'],
+  ])
+  expect(groupRows('model', [run]).map(row => row.id)).toEqual(['by:model:gpt-6-sol'])
+})

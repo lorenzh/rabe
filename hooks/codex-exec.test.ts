@@ -11,6 +11,7 @@ test('a foreground codex exec has no detached flag', () => {
   expect(codexExec('codex exec -m gpt-5.5 -o /tmp/r.txt - < /tmp/b.md')).toEqual({
     resultPath: '/tmp/r.txt',
     isDetached: false,
+    model: 'gpt-5.5',
   })
 })
 
@@ -19,7 +20,7 @@ test('a codex exec run with nohup and & is detached', () => {
     codexExec(
       'cd /x && setsid nohup codex exec -s read-only --output-last-message /tmp/r.txt - < b > l 2>&1 &',
     ),
-  ).toEqual({ resultPath: '/tmp/r.txt', isDetached: true })
+  ).toEqual({ resultPath: '/tmp/r.txt', isDetached: true, sandbox: 'read-only' })
   expect(codexExec('nohup codex exec --output-last-message=/tmp/r.txt - &')).toEqual({
     resultPath: '/tmp/r.txt',
     isDetached: true,
@@ -177,4 +178,127 @@ test('a & after the closing ) detaches the group past newlines and ends inside i
   expect(codexExec('(codex exec -o /tmp/r.txt x\n)\necho y &')).toEqual(fg)
   expect(codexExec('(codex exec -o /tmp/r.txt x |& tee l)')).toEqual(fg)
   expect(codexExec('(a)\ncodex exec -o /tmp/r.txt x\n) &')).toEqual(fg)
+})
+
+test('model, effort, sandbox and directory come from the flags', () => {
+  expect(
+    codexExec(
+      'codex exec -m gpt-6-sol -c model_reasoning_effort=high -s workspace-write --skip-git-repo-check -C /w/tree -o /tmp/o.md - < b',
+    ),
+  ).toEqual({
+    resultPath: '/tmp/o.md',
+    isDetached: false,
+    model: 'gpt-6-sol',
+    effort: 'high',
+    sandbox: 'workspace-write',
+    dir: '/w/tree',
+  })
+})
+
+test('the long and = forms parse, and TOML quotes go', () => {
+  const run = codexExec(
+    `codex exec --model=gpt-5.5 --config 'model_reasoning_effort="low"' --sandbox=read-only --cd /x y`,
+  )
+  expect(run).toEqual({
+    isDetached: false,
+    model: 'gpt-5.5',
+    effort: 'low',
+    sandbox: 'read-only',
+    dir: '/x',
+  })
+  expect(codexExec('codex exec --model gpt-5.5 --config=model_reasoning_effort=xhigh x')).toEqual({
+    isDetached: false,
+    model: 'gpt-5.5',
+    effort: 'xhigh',
+  })
+})
+
+test('an expanded or odd value is undefined, not guessed', () => {
+  expect(codexExec('codex exec -m "$M" -c model_reasoning_effort=$E -s "$S" -C $D x')).toEqual({
+    isDetached: false,
+  })
+  expect(codexExec('codex exec -m ";rm" -c model_reasoning_effort=Hi!x x')).toEqual({
+    isDetached: false,
+  })
+})
+
+test('a profile makes the model unknown', () => {
+  expect(codexExec('codex exec -p fast -m gpt-5.5 x')).toEqual({ isDetached: false })
+})
+
+test('resume and review keep their flags', () => {
+  expect(codexExec('codex exec resume --last -m gpt-5.5 x')?.model).toBe('gpt-5.5')
+  expect(codexExec('codex exec review -m gpt-5.5 -c model_reasoning_effort=high')).toEqual({
+    isDetached: false,
+    model: 'gpt-5.5',
+    effort: 'high',
+  })
+})
+
+test('an inline CODEX_HOME is flagged', () => {
+  expect(codexExec('CODEX_HOME=/tmp/h codex exec -m gpt-5.5 x')?.hasCodexHome).toBe(true)
+  expect(codexExec('codex exec x')?.hasCodexHome).toBeUndefined()
+})
+
+test('the #152 and #220 lines parse model and effort though -o is expanded', () => {
+  const line =
+    'SPATZ_SUGGESTION_ID=abc codex exec -m gpt-6-sol -c model_reasoning_effort=high -s workspace-write --skip-git-repo-check -C /w -o $S/out.md - < $S/brief.md > $S/log.txt 2>&1'
+  expect(codexExec(line)).toEqual({
+    isDetached: false,
+    model: 'gpt-6-sol',
+    effort: 'high',
+    sandbox: 'workspace-write',
+    dir: '/w',
+  })
+})
+
+test('flags after `--` and redirect targets are not flags', () => {
+  expect(codexExec('codex exec -m gpt-6-sol -- "--model=spoof"')).toMatchObject({
+    model: 'gpt-6-sol',
+  })
+  expect(codexExec('codex exec -m gpt-6-sol x > --model=spoof')).toMatchObject({
+    model: 'gpt-6-sol',
+  })
+  expect(codexExec('codex exec -m gpt-6-sol x 2> -s')).toMatchObject({ model: 'gpt-6-sol' })
+})
+
+test('a later value with expansion makes the earlier one unknown', () => {
+  const exec = codexExec(
+    'codex exec -m gpt-6-sol -m "$M" -s read-only -s "$S" -c model_reasoning_effort=high -c model_reasoning_effort="$E" x',
+  )
+  expect(exec).not.toHaveProperty('model')
+  expect(exec).not.toHaveProperty('sandbox')
+  expect(exec).not.toHaveProperty('effort')
+})
+
+test('every redirect operator takes its operand', () => {
+  for (const op of ['<<<', '&>>', '&>', '>>', '>|', '<>', '>&', '<&']) {
+    expect(codexExec(`codex exec -m gpt-6-sol x ${op} --model=spoof`)).toMatchObject({
+      model: 'gpt-6-sol',
+    })
+  }
+})
+
+test('a quoted flag with inline expansion voids the earlier value', () => {
+  const exec = codexExec(
+    'codex exec -m gpt-6-sol --model "--model=$M" -s read-only "--sandbox=$S" x',
+  )
+  expect(exec).not.toHaveProperty('model')
+  expect(exec).not.toHaveProperty('sandbox')
+})
+
+test('a backslash-escaped flag with a later unknown value voids the earlier model', () => {
+  const exec = codexExec('codex exec -m gpt-6-sol --mo\\del="$M" x')
+  expect(exec).not.toHaveProperty('model')
+})
+
+test('the bypass flag is reported as the sandbox', () => {
+  const exec = codexExec('codex exec --dangerously-bypass-approvals-and-sandbox x')
+  expect(exec?.sandbox).toBe('danger-full-access')
+  expect(codexExec('codex exec --yolo x')?.sandbox).toBe('danger-full-access')
+})
+
+test('a backslash-newline continuation inside a flag voids the earlier model', () => {
+  const exec = codexExec('codex exec -m gpt-6-sol --mo\\\ndel="$M" x')
+  expect(exec).not.toHaveProperty('model')
 })

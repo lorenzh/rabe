@@ -413,6 +413,7 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
         return next
       }
       const outputPath = taskOutput(items, task.id)
+      const facet = codexFacet(codexExec(task.command))
 
       return addItem(
         next,
@@ -421,13 +422,28 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
           kind: 'shell',
           title: shellTitle(task.description, task.command, task.id),
           status: 'running',
-          detail: { command: task.command, taskId: task.id, ...(outputPath && { outputPath }) },
+          detail: {
+            command: task.command,
+            taskId: task.id,
+            ...(outputPath && { outputPath }),
+            ...facet,
+          },
         },
         now,
       )
     }, held),
   )
 }
+
+// The `detail.codex` facet of a direct `codex exec`: what its flags name.
+const codexFacet = (exec: ReturnType<typeof codexExec>) =>
+  exec && {
+    codex: {
+      ...(exec.model && { model: exec.model }),
+      ...(exec.effort && { effort: exec.effort }),
+      ...(exec.sandbox && { sandbox: exec.sandbox }),
+    },
+  }
 
 type BashCall = { tool_use_id: string; command: string; description?: string; agentId?: string }
 
@@ -437,7 +453,11 @@ async function foreground(
   e: BashCall,
   id: string,
   startedAt: number,
-  { resultPath, end }: { resultPath?: string; end?: EndStatus } = {},
+  {
+    resultPath,
+    end,
+    exec,
+  }: { resultPath?: string; end?: EndStatus; exec?: ReturnType<typeof codexExec> } = {},
 ) {
   const now = await $.clock.now()
   await write($, held => {
@@ -450,7 +470,7 @@ async function foreground(
         status: 'running',
         startedAt: startedAt || now,
         ...(e.agentId && { parentId: itemId('agent', e.agentId) }),
-        detail: { command: e.command, ...(resultPath && { resultPath }) },
+        detail: { command: e.command, ...(resultPath && { resultPath }), ...codexFacet(exec) },
       },
       now,
     )
@@ -481,13 +501,18 @@ export function shells(on: On, pollers: Pollers): void {
     let added = false
     let startedAt = 0
     let exec: ReturnType<typeof codexExec>
-    if (!e.run_in_background) {
+    // The facet needs no home directory; only a foreground call reads HOME, for `~` in `-o`.
+    if (e.run_in_background) {
+      try {
+        exec = codexExec(e.command)
+      } catch {}
+    } else {
       try {
         startedAt = await $.clock.now()
         exec = codexExec(e.command, await $.env.get('HOME').catch(() => undefined))
         shown = $.clock
           .sleep(SLOW_MS, { signal: stop.signal })
-          .then(() => foreground($, e, id, startedAt))
+          .then(() => foreground($, e, id, startedAt, { exec }))
           .then(() => {
             added = true
           })
@@ -501,7 +526,7 @@ export function shells(on: On, pollers: Pollers): void {
       stop.abort()
       await shown
       if (!e.run_in_background) {
-        await foreground($, e, id, startedAt, { end: 'stopped' }).catch(() => undefined)
+        await foreground($, e, id, startedAt, { end: 'stopped', exec }).catch(() => undefined)
       }
       throw error
     }
@@ -514,8 +539,8 @@ export function shells(on: On, pollers: Pollers): void {
       const end = endOf(answer as Parameters<typeof endOf>[0])
       // A `codex exec ... &` that ran outlives the call: its result file ends the row.
       const keep = exec?.isDetached && end === 'done' && !taskId ? exec.resultPath : undefined
-      if (keep) await foreground($, e, id, startedAt, { resultPath: keep })
-      else if (!taskId && !e.run_in_background) await foreground($, e, id, startedAt, { end })
+      if (keep) await foreground($, e, id, startedAt, { resultPath: keep, exec })
+      else if (!taskId && !e.run_in_background) await foreground($, e, id, startedAt, { end, exec })
       if (taskId) {
         // Claude Code moved the call to the background: the task row replaces it.
         if (added) await write($, held => held.filter(item => item.id !== id))
@@ -530,7 +555,12 @@ export function shells(on: On, pollers: Pollers): void {
               status: 'running',
               startedAt: startedAt || now,
               ...(e.agentId && { parentId: itemId('agent', e.agentId) }),
-              detail: { command: e.command, taskId, ...(outputPath && { outputPath }) },
+              detail: {
+                command: e.command,
+                taskId,
+                ...(outputPath && { outputPath }),
+                ...codexFacet(exec),
+              },
             },
             now,
           ),

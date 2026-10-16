@@ -8,7 +8,9 @@ import {
   byTokens,
   cost,
   glyph,
+  isCodexRun,
   isWorker,
+  kindOf,
   shown,
   stable,
   tokenSum,
@@ -284,7 +286,7 @@ export const costView: View = (model, size, sel): Drawn => {
       [cost(sum.claude), { fg: C.orange }],
     ])
   }
-  if (model.items.some(item => item.kind === 'codex')) {
+  if (model.items.some(item => kindOf(item) === 'codex')) {
     parts.push([
       ['  codex ', dim],
       [cost(sum.codex), { fg: C.cyan }],
@@ -322,7 +324,10 @@ export const costView: View = (model, size, sel): Drawn => {
     },
   ]
   const free = model.items.some(
-    item => item.kind === 'shell' || item.kind === 'monitor' || item.kind === 'cron',
+    item =>
+      (item.kind === 'shell' && !isCodexRun(item)) ||
+      item.kind === 'monitor' ||
+      item.kind === 'cron',
   )
   const after: Line[] = [
     ...(free ? wrapText('shells, monitors and cron jobs use no tokens', size.columns, ' ') : []),

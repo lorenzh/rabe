@@ -43,7 +43,7 @@ export function glyph(item: RabeItem): string {
   if (item.status === 'stopped') return '■'
   if (item.status === 'idle') return '◷'
 
-  return RUNNING_GLYPH[item.kind]
+  return RUNNING_GLYPH[kindOf(item)]
 }
 
 export function statusLabel(item: RabeItem): string {
@@ -93,8 +93,16 @@ function groupOf(item: RabeItem): Group {
   return item.status === 'failed' ? 'failed' : kindGroupOf(item)
 }
 
+// A shell row whose command is a direct `codex exec`: it lives with the Agents.
+export const isCodexRun = (item: RabeItem): boolean =>
+  item.kind === 'shell' && item.detail.codex !== undefined
+
+// The kind a row is counted and labelled as: a direct Codex run is `codex`.
+export const kindOf = (item: RabeItem): RabeItemKind => (isCodexRun(item) ? 'codex' : item.kind)
+
 // The group of an item's kind, whatever its status.
 function kindGroupOf(item: RabeItem): Group {
+  if (isCodexRun(item)) return 'agents'
   if (item.kind === 'shell') return 'shells'
   if (item.kind === 'monitor') return 'monitors'
   if (item.kind === 'cron') return 'cron'
@@ -112,7 +120,7 @@ export function matches(item: RabeItem, query: string): boolean {
   const q = query.trim().toLowerCase()
   if (!q) return true
   const d = item.detail as Record<string, unknown>
-  const words = [item.title, KIND_LABEL[item.kind], d.command, d.prompt, d.description, d.type]
+  const words = [item.title, KIND_LABEL[kindOf(item)], d.command, d.prompt, d.description, d.type]
 
   return words.some(word => typeof word === 'string' && word.toLowerCase().includes(q))
 }
@@ -310,7 +318,7 @@ export function groupNote(id: Group, items: RabeItem[]): string {
     .join(' · ')
   if (id === 'agents') {
     const kinds = (['agent', 'codex', 'workflow'] as const)
-      .map(kind => [items.filter(item => item.kind === kind).length, KIND_LABEL[kind]] as const)
+      .map(kind => [items.filter(item => kindOf(item) === kind).length, KIND_LABEL[kind]] as const)
       .filter(([count]) => count > 0)
       .map(([count, label]) => `${count} ${label}`)
       .join(' · ')
@@ -369,10 +377,10 @@ type Totals = {
 }
 
 // The workers that spend: Claude agents and Codex jobs.
-export const isWorker = (item: RabeItem) => item.kind === 'agent' || item.kind === 'codex'
+export const isWorker = (item: RabeItem) => kindOf(item) === 'agent' || kindOf(item) === 'codex'
 
 export const harnessOf = (item: RabeItem): 'claude' | 'codex' =>
-  item.kind === 'agent' ? 'claude' : 'codex'
+  kindOf(item) === 'agent' ? 'claude' : 'codex'
 
 export type Spend = {
   input: number
@@ -461,11 +469,11 @@ export type BandRow = { glyph: string; kind: RabeItemKind; count: number; failed
 // What the band counts per kind, failed (in the last 10 minutes) first.
 export function bandRows(items: RabeItem[], now: number): BandRow[] {
   const running = (kind: RabeItemKind) =>
-    shown(items).filter(item => item.kind === kind && item.status === 'running').length
+    shown(items).filter(item => kindOf(item) === kind && item.status === 'running').length
   const failed = KINDS.flatMap(kind => {
     const count = items.filter(
       item =>
-        item.kind === kind &&
+        kindOf(item) === kind &&
         item.status === 'failed' &&
         now - (item.endedAt ?? item.seenAt) < 10 * 60_000,
     ).length

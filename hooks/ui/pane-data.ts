@@ -1,5 +1,6 @@
 import type { RabeItem, RabePrevious } from '../../types'
 import { isEnded } from '../model'
+import { kindOf } from './lists'
 
 export function toastText(text: string): string {
   return text.replace(/\s+/g, ' ').replace(/[\p{Cc}\p{Cf}]/gu, '?')
@@ -46,7 +47,7 @@ export function itemsText(items: RabeItem[]): string {
   const ended = items.filter(isEnded).length
   const idle = items.filter(one => one.status === 'idle').length
   const kinds = new Map<string, number>()
-  for (const one of items) kinds.set(one.kind, (kinds.get(one.kind) ?? 0) + 1)
+  for (const one of items) kinds.set(kindOf(one), (kinds.get(kindOf(one)) ?? 0) + 1)
   const rows = [...kinds].map(([kind, count]) => `- ${kind}: ${count}`)
 
   return [
