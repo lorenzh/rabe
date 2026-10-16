@@ -1,4 +1,5 @@
-import type { RabeCodexStep, RabeEdit, RabeRollout, RabeRolloutCursor } from '../../types'
+import type { RabeCodexStep, RabeDiff, RabeEdit, RabeRollout, RabeRolloutCursor } from '../../types'
+import { fromContent, fromUnified } from '../diffs'
 import { clip, type EndStatus, itemId, type NewItem } from '../model'
 import type { CodexRequest } from '../prices'
 import { isRecord, list, num, parseJson, type Rec, rec, str } from '../reading'
@@ -150,6 +151,22 @@ function fileChanges(changes: unknown, at: number): RabeEdit[] {
   })
 }
 
+// The diffs of a completed FileChange: `unified_diff` of an update (at its new
+// path when moved) and `content` of an added file. A delete has none.
+function fileDiffs(changes: unknown, at: number): RabeDiff[] {
+  return Object.entries(rec(changes)).flatMap(([path, value]): RabeDiff[] => {
+    const change = rec(value)
+    const target = str(change.move_path) ?? path
+    if (change.type === 'add' && typeof change.content === 'string') {
+      return [fromContent(target, at, change.content)]
+    }
+    const patch = str(change.unified_diff)
+    if (change.type === 'update' && patch) return [fromUnified(target, at, patch)]
+
+    return []
+  })
+}
+
 // A count that is missing makes the request one without a model: no price.
 function request(value: unknown, model: string | undefined): CodexRequest {
   const usage = rec(value)
@@ -185,11 +202,13 @@ export function advanceRollout(
     ? { ...held.out, requests: [], steps: [...held.out.steps] }
     : { requests: [], commandCount: 0, steps: [] }
   delete out.checks
+  delete out.diffs
   let total = held?.total ?? ''
   let base = held?.base
   let isResumed = held?.isResumed ?? false
   const edits: RabeEdit[] = [...(out.edits ?? [])]
   const checks: Check[] = []
+  const diffs: RabeDiff[] = []
   const pending = { ...held?.pending }
   let at = held?.at
   for (const raw of text.split('\n')) {
@@ -238,6 +257,7 @@ export function advanceRollout(
       if (item.type === 'UserMessage') out.prompt ??= str(texts(item.content, 'text'))
       if (item.type === 'FileChange' && item.status === 'completed') {
         edits.push(...fileChanges(item.changes, at))
+        diffs.push(...fileDiffs(item.changes, at))
       }
       const from = num(payload.started_at_ms)
       if (item.type === 'CommandExecution' && item.exit_code === 0 && from !== undefined) {
@@ -293,6 +313,7 @@ export function advanceRollout(
   }
   if (edits.length) out.edits = edits.slice(-MAX_EDITS)
   if (checks.length) out.checks = checks.slice(-MAX_EDITS)
+  if (diffs.length) out.diffs = diffs.slice(-MAX_EDITS)
 
   return { out: defined(out), total, base, isResumed, pending, at }
 }

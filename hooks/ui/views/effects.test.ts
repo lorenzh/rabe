@@ -8,8 +8,10 @@ import { ALL, dev, explore, gridOf, NOW, plan, review } from '../fixtures'
 import { orderOf } from '../lists'
 import { isPress, type Model, NO_SELECTION, type Press, rowKeys, type Size, stepRow } from '../view'
 import { effectsView } from './effects'
+import { paneView } from './pane'
 
-const SIZE: Size = { columns: 90, rows: 30, surface: 'terminal', hasInput: false }
+// One column below the split (SPLIT_COLUMNS), so the list takes the whole width.
+const SIZE: Size = { columns: 89, rows: 30, surface: 'terminal', hasInput: false }
 
 const api: RabeItem = {
   id: 'agent:a3',
@@ -68,7 +70,7 @@ test('a file edited by two agents in one tree heads the tab as a conflict', () =
   const shown = lines(grid)
   expect(shown[0]).toBe(' ⚠ conflict  src/logger.ts is edited by Plan auth split and logger in api')
   expect(cell(grid, 1, 0)).toEqual(['⚠'.codePointAt(0), C.red, CHIP.failed.bg])
-  expect(cell(grid, 89, 0)[2]).toBe(CHIP.failed.bg)
+  expect(cell(grid, 88, 0)[2]).toBe(CHIP.failed.bg)
 })
 
 test('files touched list each file with who edited it and how often, conflicts first', () => {
@@ -78,7 +80,7 @@ test('files touched list each file with who edited it and how often, conflicts f
   expect(head).toBeGreaterThan(0)
   expect(shown[head + 1]).toMatch(/^ {2}FILE +BY +CHANGE$/)
   expect(shown[head + 2]).toMatch(
-    /^▌ src\/logger\.ts +Plan auth split, logger in api +3 changes: edit$/,
+    /^▌ src\/logger\.ts +Plan auth split, logger in a… 3 changes: edit$/,
   )
   expect(shown[head + 3]).toMatch(/^ {2}src\/api\/server\.ts +logger in api +edit$/)
   expect(shown.some(line => /^ {2}src\/db\/pool\.ts +Explore verifyToken +edit$/.test(line))).toBe(
@@ -161,7 +163,7 @@ test('ports show the command and the ssh line, a Button that copies; c presses t
   expect(shown[head + 1]).toBe('  :5173  bun run dev')
   expect(shown[head + 2]).toBe('   c: ssh -L 5173:localhost:5173 <your-host>')
   expect(cell(drawn.grid, 0, head + 2)[2]).toBe(CHIP.monitor.bg)
-  expect(cell(drawn.grid, 89, head + 2)[2]).toBe(CHIP.monitor.bg)
+  expect(cell(drawn.grid, 88, head + 2)[2]).toBe(CHIP.monitor.bg)
   expect(presses(drawn).find(one => one.key === 'row:ssh:5173')).toMatchObject({
     label: 'ssh -L 5173:localhost:5173 <your-host>',
     hotkey: 'c',
@@ -458,4 +460,116 @@ test('a conflict names the main tree only when git places the file there', () =>
   expect(draw('/repo/shared.txt', undefined, '/repo/.wt/fix')).toBe(
     by.replace('shared.txt', '/repo/shared.txt'),
   )
+})
+
+const WIDE: Size = { ...SIZE, columns: 120 }
+const OPERATION = { path: '/repo/src/logger.ts', at: NOW - 10_000 }
+const patch = {
+  ...OPERATION,
+  lines: ['@@ -1,2 +1,2 @@', ' keep', '-old', '+new\tx'],
+  added: 12,
+  removed: 3,
+  hunks: 2,
+}
+
+test('a wide pane draws the latest recorded diff of the selected file beside the list', () => {
+  const diffs = { [api.id]: [{ ...patch, at: NOW - 30_000, lines: ['+older'] }, patch] }
+  const drawn = gridOf(effectsView({ ...MODEL, diffs }, WIDE, NO_SELECTION))
+  const shown = lines(drawn.grid)
+  expect(shown.some(line => /│ src\/logger\.ts/.test(line))).toBe(true)
+  expect(shown.some(line => line.includes('+12 -3 · 2 hunks · edit by logger in api'))).toBe(true)
+  expect(shown.some(line => /│ \+new {4}x/.test(line))).toBe(true)
+  expect(shown.some(line => line.includes('+older'))).toBe(false)
+  // no new Buttons: the focus order is the list's
+  const all = (model: Model, size: Size) => rowKeys(effectsView(model, size, NO_SELECTION))
+  expect(rowKeys(drawn)).toEqual(all(MODEL, WIDE))
+  expect(all({ ...MODEL, diffs }, SIZE)).toEqual(all(MODEL, SIZE))
+  expect(all(MODEL, SIZE).filter(key => key.startsWith('row:file:'))).toEqual([
+    'row:file:/repo/src/logger.ts',
+    'row:file:/repo/src/api/server.ts',
+    'row:file:/repo/.claude/worktrees/pkg-db/src/db/pool.ts',
+    'row:file:/repo/src/cli/main.ts',
+  ])
+  expect(all(MODEL, SIZE)).toEqual([
+    'row:file:/repo/src/logger.ts',
+    'row:file:/repo/src/api/server.ts',
+    'row:file:/repo/.claude/worktrees/pkg-db/src/db/pool.ts',
+    'row:file:/repo/src/cli/main.ts',
+    'row:ssh:5173',
+  ])
+})
+
+test('a file without a recorded diff for its latest operation says so', () => {
+  const diffs = { [api.id]: [{ ...patch, at: NOW - 99_000 }] }
+  const shown = lines(gridOf(effectsView({ ...MODEL, diffs }, WIDE, NO_SELECTION)).grid)
+  expect(shown.some(line => line.includes('diff n/a: content not recorded'))).toBe(true)
+  const big = { [api.id]: [{ ...patch, lines: [], note: 'too-large' as const }] }
+  const text = lines(gridOf(effectsView({ ...MODEL, diffs: big }, WIDE, NO_SELECTION)).grid)
+  expect(text.some(line => line.includes('diff n/a: file too large'))).toBe(true)
+})
+
+test('a narrow pane shows one summary line instead of the diff', () => {
+  const diffs = { [api.id]: [patch] }
+  const shown = lines(gridOf(effectsView({ ...MODEL, diffs }, SIZE, NO_SELECTION)).grid)
+  expect(
+    shown.filter(line => line.includes('+12 -3 · 2 hunks · edit by logger in api')),
+  ).toHaveLength(1)
+  expect(shown.some(line => line.includes('+new'))).toBe(false)
+})
+
+test('the summary of a narrow pane stays inside the rows the pane shows, whatever the file count', () => {
+  const paths = Array.from({ length: 25 }, (_, n) => `/repo/src/f${n}.ts`)
+  const model: Model = {
+    ...MODEL,
+    items: [editing(api, [NOW - 5000, ...paths])],
+    turns: {},
+    diffs: { [api.id]: [patch] },
+  }
+  const window = { top: 0, rows: 10 }
+  const size: Size = { ...SIZE, rows: 10, window }
+  for (const selected of [paths[0], paths[12], paths[24]]) {
+    const drawn = gridOf(
+      effectsView(model, size, { ...NO_SELECTION, selected: `file:${selected}` }),
+    )
+    const shown = lines(drawn.grid)
+    const row = shown.findIndex(line => line.includes('· edit by'))
+    const focus = drawn.nodes.findIndex(node =>
+      'spans' in node ? node.spans.some(part => isPress(part) && part.autoFocus) : false,
+    )
+    // the engine scrolls no further than it must to keep the focus in view
+    const from = Math.max(0, focus - window.rows + 1, Math.min(window.top, focus))
+    expect(row).toBeGreaterThanOrEqual(from)
+    expect(row).toBeLessThan(from + window.rows)
+    expect(rowKeys(drawn).filter(key => key.startsWith('row:file:'))).toHaveLength(25)
+  }
+})
+
+test('the summary stays in the rows the whole pane shows, with the tab row above', () => {
+  const paths = Array.from({ length: 25 }, (_, n) => `/repo/src/f${n}.ts`)
+  const model: Model = {
+    ...MODEL,
+    items: [editing(api, [NOW - 5000, ...paths])],
+    turns: {},
+    diffs: { [api.id]: [patch] },
+  }
+  const size: Size = { ...SIZE, rows: 10, window: { top: 0, rows: 10 } }
+  for (const selected of [paths[0], paths[12]]) {
+    const drawn = gridOf(
+      paneView(model, size, { ...NO_SELECTION, tab: 'effects', selected: `file:${selected}` }),
+    )
+    const row = lines(drawn.grid).findIndex(line => line.includes('· edit by'))
+    const focus = drawn.nodes.findIndex(node =>
+      'spans' in node ? node.spans.some(part => isPress(part) && part.autoFocus) : false,
+    )
+    // the engine scrolls no further than it must to keep the focus in view
+    const from = Math.max(0, focus - 9)
+    expect(row).toBeGreaterThanOrEqual(from)
+    expect(row).toBeLessThan(from + 10)
+  }
+})
+
+test('a file without recorded content shows the sentence once', () => {
+  const shown = lines(gridOf(effectsView({ ...MODEL, diffs: {} }, WIDE, NO_SELECTION)).grid)
+  const count = shown.filter(line => line.includes('diff n/a: content not recorded')).length
+  expect(count).toBe(1)
 })

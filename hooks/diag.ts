@@ -87,7 +87,7 @@ export function diag(on: On, all: Record<string, unknown>): void {
   const options = Object.fromEntries(
     ['hideBuiltinTasks', 'pricesFile', 'timelineHours'].map(key => [key, all[key]]),
   )
-  on('session.start', { isInteractive: true }, async ($, e, next) => {
+  on('session.start', { isInteractive: [true, false] }, async ($, e, next) => {
     const started = await next(e)
     await $.command
       .register({

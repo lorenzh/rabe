@@ -1,6 +1,7 @@
 import type { RenderSurface } from 'claude-code'
 
 import type {
+  RabeDiff,
   RabeEdit,
   RabeGrouping,
   RabeLines,
@@ -32,6 +33,7 @@ export type Model = {
   usd?: number
   previous?: RabePrevious
   edits?: RabeEdit[]
+  diffs?: Record<string, RabeDiff[]>
   cwd?: string
   sessionId?: string
   worktrees?: RabeWorktree[]
