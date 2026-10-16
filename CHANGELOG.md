@@ -6,10 +6,15 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Added
 
+- Agents show the model that answered and the effort of the request as the hook saw it, including changes (`opus-5-5·high → sonnet-5-5·medium`), in the facts and as a chip on workflow rows ([#232](https://github.com/lorenzh/rabe/pull/232), refs [#200](https://github.com/lorenzh/rabe/issues/200))
 - The Effects tab shows the diff of the selected file beside the list (one summary line below 90 columns), recorded when the change happens and never read from files ([#236](https://github.com/lorenzh/rabe/pull/236), refs [#162](https://github.com/lorenzh/rabe/issues/162))
 - A direct `codex exec` in a Bash call (foreground or background) shows with the Agents as `codex`, with the model, effort and sandbox named by its flags; tokens and cost stay `n/a` ([#237](https://github.com/lorenzh/rabe/pull/237), refs [#179](https://github.com/lorenzh/rabe/issues/179))
 - A direct `codex exec` row gets tokens, cost, model and thread from its Codex session file: found by the `session id:` a foreground run prints on stderr, else by its start time (and `-C` directory); only the run's own turn counts; an ambiguous match, a thread another run or Codex job holds, another model than `-m`, or an inline `CODEX_HOME` shows `n/a`. A detached run without `-o` stays running until its session file records the end ([#247](https://github.com/lorenzh/rabe/pull/247), refs [#179](https://github.com/lorenzh/rabe/issues/179))
 - A `-o` path that uses `$S` from a leading `S=/abs/path;` on the same line is resolved ([#247](https://github.com/lorenzh/rabe/pull/247))
+
+### Fixed
+
+- Enter in an agent's message field sends the message once, or shows `Message not sent` or `Delivery unknown`, also when a redraw released the field's handler first ([#242](https://github.com/lorenzh/rabe/pull/242), fixes [#218](https://github.com/lorenzh/rabe/issues/218))
 
 ## [0.9.1] - 2026-10-14
 
@@ -23,6 +28,7 @@ No migration. Update with `claude plugin update rabe` and `/reload-plugins`; a r
 
 ### Fixed
 
+- `scripts/live-check.sh` compares only the title of the marked Timeline row after `b`, also when the title fills its column and one space precedes the bar, and it resolves a relative `CLAUDE` path against the current directory instead of failing with a misleading error ([#246](https://github.com/lorenzh/rabe/pull/246), fixes [#233](https://github.com/lorenzh/rabe/issues/233), [#234](https://github.com/lorenzh/rabe/issues/234))
 - `/rabe-diag` and `/rabe-stop` are also registered in non-interactive (SDK) sessions, and `/rabe` answers with a plain-text summary where the pane cannot draw ([#230](https://github.com/lorenzh/rabe/pull/230), fixes [#178](https://github.com/lorenzh/rabe/issues/178))
 - `b` (Back) returns to the Items row you opened, not to an older tab, when the item whose detail was open left the list before ([#227](https://github.com/lorenzh/rabe/pull/227), fixes [#223](https://github.com/lorenzh/rabe/issues/223))
 - A direct `codex exec` in a subshell group sent to the background with `&` shows as detached also when a newline or another command comes before the closing `)`, as in `(codex exec ... -o f x\n) &` ([#226](https://github.com/lorenzh/rabe/pull/226), fixes [#222](https://github.com/lorenzh/rabe/issues/222))

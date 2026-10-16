@@ -27,6 +27,9 @@ export type RabeCodexCall = {
   threadId?: string
 }
 
+// One model and effort an agent ran with; `effort` is absent for a model without one.
+export type RabeModelPair = { model: string; effort?: string }
+
 // The recorded diff of one file operation, kept in `rabe.diffs` by editor id
 // (an item id or `main`). `lines` carry `@@` hunk headers and lines that start
 // with `+`, `-` or a space; they are cut at 200 lines and 8192 code units
@@ -50,6 +53,7 @@ export type RabeAgentDetail = {
   name?: string
   type?: string
   model?: string
+  models?: RabeModelPair[]
   description?: string
   prompt?: string
   transcriptPath?: string

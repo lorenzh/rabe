@@ -17,8 +17,8 @@ Status: early development. See [releases](https://github.com/lorenzh/rabe/releas
 
 | Kind | In the band | In the pane |
 |---|---|---|
-| Claude subagents | Count (`claude`) | Name when Claude Code provides one, otherwise the task description; tokens, prompt, turns and agent id |
-| Workflows | Count (`workflow`) | Phases and their agents in start order, with tokens and time; select an agent to open it |
+| Claude subagents | Count (`claude`) | Name when Claude Code provides one, otherwise the task description; model and effort (every change, newest six), tokens, prompt, turns and agent id |
+| Workflows | Count (`workflow`) | Phases and their agents in start order, with model and effort, tokens and time (the model chip drops on a narrow pane); select an agent to open it |
 | Codex jobs (from the Codex plugin) | Count (`codex`) | Model, effort and sandbox, tokens, the prompt, each message and command with its exit code, the thread id (`c` copies `codex resume <thread id>`) |
 | Background shells | Count (`shell`) | Bash description and task id, output lines, exit code and port from output or the process tree’s listening sockets on Linux; a foreground command shows as a running shell after 2 s and stays as an ended row (done, failed, or stopped when refused or interrupted) when it returns, also a quick one; the newest 50 ended foreground rows are kept, and they go before other ended items when the list is full. A detached `codex exec -o <file> &` stays running until its result file appears. A direct `codex exec` (foreground or background) is listed with the Agents as `codex`, with its model, effort and sandbox from the command flags. Rabe then finds its Codex session file, by the `session id:` that a foreground run prints on stderr (leave stderr unredirected) or by its start time, and shows tokens, cost, model and thread like a Codex job; only this run's own turn counts, not a later resume of the thread; when the match is not unique, the thread is already another run's or Codex job's, or the file's model is not the one `-m` asked for, tokens and cost show `n/a`. A detached run without `-o` stays running until its session file records the end |
 | Monitors | Count (`monitor`) | Each line with the time Rabe received it |
@@ -87,7 +87,7 @@ The band shows by itself while background work runs. Type `/rabe` to open the pa
 | `g` | Stop the group among rows the search shows (the button shows its count), or the workflow run of the selected run or workflow agent |
 | `r` | Remove the selected row once it is done, failed or stopped |
 | `a` | Remove every done, failed or stopped row the search shows |
-| `m` | Send a message to an agent. Enter sends it and gives the keys back to the pane |
+| `m` | Send a message to an agent. Enter sends it and gives the keys back to the pane. If the pane was redrawn as you pressed Enter, the text is still sent once. A toast says `Message not sent` when the send was refused, or `Delivery unknown` when it failed after it started; Rabe never retries, and an unknown delivery may already have reached the agent |
 | `f` | Open the Claude agent that forwarded a Codex job (it has no row of its own); `b` then goes back to the job's row |
 | `c` | Copy the command, the prompt, the `ssh -L` line, an agent's id, or the command that resumes a session or a Codex thread. If the clipboard cannot be reached (for example over SSH in a terminal without OSC 52), a message shows the text to select |
 | `d` | Delete a running cron job |
@@ -239,7 +239,7 @@ Run all checks (lint, type check, manifest check and tests), as CI does:
 bun run check
 ```
 
-[Contributing](CONTRIBUTING.md) explains the setup, workflow and review process. [How to test Rabe](docs/testing.md) covers the tests and live checks with `scripts/live-check.sh`. [AGENTS.md](AGENTS.md) has the rules for coding agents, and [Security guidelines](docs/security.md) the security rules for changes and review. [The documentation index](docs/README.md) links to the architecture and feasibility guides. See the [user guide](docs/guide.md) for options and common problems.
+[Contributing](CONTRIBUTING.md) explains the setup, workflow and review process. [How to test Rabe](docs/testing.md) covers the tests and live checks with `scripts/live-check.sh`; set `CLAUDE` to another binary, as an absolute path or a relative one, which the script resolves against the current directory. [AGENTS.md](AGENTS.md) has the rules for coding agents, and [Security guidelines](docs/security.md) the security rules for changes and review. [The documentation index](docs/README.md) links to the architecture and feasibility guides. See the [user guide](docs/guide.md) for options and common problems.
 
 ## Feedback and bugs
 

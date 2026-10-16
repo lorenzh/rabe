@@ -1,5 +1,6 @@
 import { isEnded, isInside, type RabeItem, runOf } from '../../model'
 import { nextRuns } from '../../schedule'
+import { pairsText } from '../../sources/agent-items'
 import { type Span, wrap } from '../cells/grid'
 import { C, type Style } from '../cells/palette'
 import { ago, clockTime, duration, middleEllipsis, tokens, usd, validId } from '../format'
@@ -235,6 +236,13 @@ function codexLines(item: RabeItem, columns: number): Line[] {
   )
 }
 
+// The agent's last model and effort, as a chip before its tokens.
+function pairText(agent: RabeItem): string {
+  const last = agent.kind === 'agent' ? agent.detail.models?.at(-1) : undefined
+
+  return last ? `${pairsText([last])} · ` : ''
+}
+
 function workflowLines(model: Model, item: RabeItem, columns: number, sel?: Selection): Line[] {
   const list = phases(model.items, item)
   const mark = { done: '✓', running: '◐', failed: '✗', waiting: '·' } as const
@@ -256,9 +264,14 @@ function workflowLines(model: Model, item: RabeItem, columns: number, sel?: Sele
     })
     for (const agent of stable(p.agents, sel?.order?.timeline, byStart)) {
       const tok = tokenSum(agent)
+      const row = itemLine(agent, model.now, agent.id === sel?.selected)
+      const tail = `${tok < 0 ? 'n/a' : tokens(tok)} · ${timeLabel(agent, model.now)} `
+      const chip = pairText(agent)
+      // The chip goes first when the row is too narrow to keep the name button.
+      const keep = 4 + Math.min(12, [...agent.title].length)
       out.push({
-        ...itemLine(agent, model.now, agent.id === sel?.selected),
-        right: [[`${tok < 0 ? 'n/a' : tokens(tok)} · ${timeLabel(agent, model.now)} `, dim]],
+        ...row,
+        right: [[columns - [...(chip + tail)].length - 1 >= keep ? chip + tail : tail, dim]],
       })
     }
   }

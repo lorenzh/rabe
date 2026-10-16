@@ -808,3 +808,38 @@ test('an idle teammate keeps its last activity label in detail', () => {
     expect(shown).toContain('active')
   }
 })
+
+test('a workflow row shows the last model and effort of its agent', () => {
+  const models = [{ model: 'claude-haiku-5' }, { model: 'claude-sonnet-5-5', effort: 'medium' }]
+  const tuned = { ...verify, detail: { ...verify.detail, models } } as typeof verify
+  const items = ALL.map(item => (item.id === verify.id ? tuned : item))
+  const shown = lines(open(model(items), flow.id).grid)
+  expect(shown.some(line => /◐ verify:db\.ts +sonnet-5-5·medium · 22k · 40s$/.test(line))).toBe(
+    true,
+  )
+})
+
+test('the model history wraps in the opened agent so no pair is cut at 60 columns', () => {
+  const names = ['opus-5-5', 'sonnet-5-5', 'haiku-5', 'opus-4-8', 'fable-5', 'sonnet-4-6']
+  const models = names.map(n => ({ model: `claude-${n}`, effort: 'high' }))
+  const tuned = { ...verify, detail: { ...verify.detail, models } } as typeof verify
+  const items = ALL.map(item => (item.id === verify.id ? tuned : item))
+  const shown = lines(open(model(items), verify.id).grid).join('')
+  for (const n of names) expect(shown).toContain(`${n}·high`)
+})
+
+test('a workflow row at 30 columns keeps the agent button and drops the chip', () => {
+  const models = [{ model: 'claude-sonnet-5-5', effort: 'medium' }]
+  const tuned = { ...verify, detail: { ...verify.detail, models } } as typeof verify
+  const items = ALL.map(item => (item.id === verify.id ? tuned : item))
+  const drawn = open(model(items), flow.id, { ...TERMINAL, columns: 30 })
+  expect(rowKeys(drawn)).toContain(`row:${verify.id}`)
+  expect(lines(drawn.grid).join('')).not.toContain('sonnet-5-5·medium')
+})
+
+test('a very long branch name stays one cut fact line in the opened agent', () => {
+  const detail = { ...verify.detail, worktreeBranch: 'b'.repeat(120000) }
+  const tuned = { ...verify, detail } as typeof verify
+  const items = ALL.map(item => (item.id === verify.id ? tuned : item))
+  expect(lines(open(model(items), verify.id).grid).length).toBeLessThan(200)
+})
