@@ -273,7 +273,7 @@ case $cmd in
       tabs=(' 1: Items 4    2: Cost    3: Effects    4: Timeline' "$rule")
       field=0 text=
       read -r field text 2>/dev/null <"$FAKE/field"
-      if [ "$field" = 1 ] || [ -n "$text" ]; then tabs+=("search: $text"); else tabs+=('search: title, kind or command'); fi
+      if [ "$field" = 1 ]; then tabs+=("▸ search: $text  ⏎ filter"); elif [ -n "$text" ]; then tabs+=("search: $text"); else tabs+=('search: title, kind or command'); fi
       visible
       : >"$FAKE/opened"
       { [ -n "${FAKE_DETAIL:-}" ] || [ -e "$FAKE/detail" ]; } && tabs+=(' b back · esc close')
