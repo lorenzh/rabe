@@ -15,7 +15,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
-- `scripts/live-check.sh` counts the list rows below a focused search field (`▸ search`), so the `search-keys` sequence no longer fails with "no row matches it" ([#PR](https://github.com/lorenzh/rabe/pull/PR), refs [#219](https://github.com/lorenzh/rabe/issues/219))
+- `scripts/live-check.sh` counts the list rows below a focused search field (`▸ search`), so the `search-keys` sequence no longer fails with "no row matches it" ([#256](https://github.com/lorenzh/rabe/pull/256), refs [#219](https://github.com/lorenzh/rabe/issues/219))
 - Enter in an agent's message field sends the message once, or shows `Message not sent` or `Delivery unknown`, also when a redraw released the field's handler first ([#242](https://github.com/lorenzh/rabe/pull/242), fixes [#218](https://github.com/lorenzh/rabe/issues/218))
 
 ## [0.9.1] - 2026-10-14
