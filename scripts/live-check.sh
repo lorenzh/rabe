@@ -137,8 +137,14 @@ if [ $dry = 1 ]; then
 fi
 
 claude=${CLAUDE:-claude}
+# tmux starts it in the scratch folder, so a relative path would not be found.
+[[ $claude == */* && $claude != /* ]] && claude=$PWD/$claude
 command -v tmux >/dev/null || fail "tmux is not installed"
-command -v "$claude" >/dev/null || fail "$claude is not on PATH"
+if [[ $claude == */* ]]; then
+  [ -x "$claude" ] && [ ! -d "$claude" ] || fail "$claude was not found or is not executable"
+else
+  command -v "$claude" >/dev/null || fail "$claude is not on PATH"
+fi
 # Any session on the socket belongs to someone else, and cleanup must not end it.
 tmux -L "$name" list-sessions >/dev/null 2>&1 && fail "tmux socket $name is in use; pick another --name"
 
@@ -437,6 +443,32 @@ ident() {
   d=$(shellof "$1")
   if [ -n "$d" ]; then echo "$d"; else tr -d 0-9 <<<"${1:1}" | tr -s ' '; fi
 }
+# The width of the pane: its tab rule (─ and ━ only) spans it.
+panewidth() {
+  local l
+  for l in "${view[@]}"; do
+    [[ $l == *━* && $l != *[!─━]* ]] && { echo "${#l}"; return; }
+  done
+  echo 0
+}
+# The title of a row on a tab (#233), cut at the column where the view puts
+# the bar, so a title with glyphs or double spaces stays whole and a bar never
+# enters it. Timeline: marker, name in a column of min(24, width/3). Cost:
+# marker, glyph, space, name in a column of max(12, min(36, width-36)) minus 3.
+rowtitle() { # row, tab key
+  local w c
+  w=$(panewidth)
+  if [ "$w" -gt 0 ] && [ "$2" = 4 ]; then
+    c=$((w / 3 > 24 ? 24 : w / 3))
+    echo "${1:0:1}${1:1:c-2}"
+  elif [ "$w" -gt 0 ] && [ "$2" = 2 ]; then
+    c=$((w - 36 > 36 ? 36 : w - 36))
+    [ "$c" -lt 12 ] && c=12
+    echo "${1:0:1}${1:3:c-3}"
+  else
+    echo "${1:0:1}${1:1}"
+  fi
+}
 # Clicks the last row that shows a running seeded shell (▶) other than the
 # marked one, and sets `clicked` to its duration.
 click_running() {
@@ -527,11 +559,11 @@ seq_search_keys() {
   snap
   pane_has 'search:? +zeb' || { why="the field does not read zeb"; return 1; }
   # Backspace back to rows: the field keeps the focus, so typing goes on in it.
-  # zeb matches the seeded "zebra nap" row: a lost Backspace (#180) leaves text.
+  # zeb matches the command of the seeded "zebra nap" row: a lost Backspace (#180) leaves text.
   listscan
-  local i seen=
-  for i in "${lrows[@]}"; do [[ ${view[i]} == *'zebra nap'* ]] && seen=1; done
-  [ -n "$seen" ] || { why="no row matching zeb shows before the Backspaces: the seeded zebra nap row is missing"; return 1; }
+  # The row title is Claude's description, not the comment: one row is left.
+  { [ "${#lrows[@]}" -ge 1 ] && [ "${#lrows[@]}" -lt "$all" ]; } ||
+    { why="zeb left ${#lrows[@]} of $all rows before the Backspaces: no row matches it"; return 1; }
   keys BSpace BSpace BSpace
   snap
   listscan
@@ -689,7 +721,7 @@ seq_back() { # tab key
   # counts: a Timeline bar grows while the row stays the same.
   local marked
   for i in "${!view[@]}"; do
-    [[ ${view[i]} == ▌* ]] && { marked=$(ident "${view[i]%%  *}"); break; }
+    [[ ${view[i]} == ▌* ]] && { marked=$(ident "$(rowtitle "${view[i]}" "$1")"); break; }
   done
   keys Enter
   snap
@@ -697,7 +729,7 @@ seq_back() { # tab key
   keys b
   snap
   for i in "${!view[@]}"; do
-    [[ ${view[i]} == ▌* ]] && { [ "$(ident "${view[i]%%  *}")" = "$marked" ] && return 0; break; }
+    [[ ${view[i]} == ▌* ]] && { [ "$(ident "$(rowtitle "${view[i]}" "$1")")" = "$marked" ] && return 0; break; }
   done
   why="b did not keep the marked row '$marked'"
   return 1

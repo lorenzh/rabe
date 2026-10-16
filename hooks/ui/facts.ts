@@ -1,4 +1,5 @@
 import { parentOf, type RabeItem } from '../model'
+import { pairsText } from '../sources/agent-items'
 import { clockTime, duration, idOrNa, na } from './format'
 import { children, forwarderOf, glyph, KIND_LABEL, kindOf, nextAt, statusLabel } from './lists'
 
@@ -42,7 +43,10 @@ export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: stri
         : d.cwd && d.cwd === cwd
           ? 'main tree'
           : 'tree n/a'
-      lines.push(`${na(d.type)} · ${na(d.model)} · ${tree}`)
+      const last = d.models?.at(-1)
+      const model = last ? pairsText([last]) : na(d.model)
+      lines.push(`${na(d.type)} · ${model} · ${tree}`)
+      if (d.models && d.models.length > 1) lines.push(`models ${pairsText(d.models)}`)
       if (d.worktreeBranch) lines.push(`branch ${d.worktreeBranch}`)
       if (d.workflowPhase) lines.push(`phase ${d.workflowPhase}`)
       lines.push(`agent ${idOrNa(d.agentId)}`, by, ran(item, now))
