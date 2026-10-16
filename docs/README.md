@@ -24,13 +24,13 @@ Use this index to find the guide that matches your question.
 - [Architecture overview](architecture.md): module map, the shared poll loop, pure scheduling rules, repeated starts, idle backoff, and links to detailed behavior.
 - [Incremental file reads](architecture/reading.md): atomic output cursors, UTF-8 limits, stat-only idle polls, bounded parsing, shared object-only JSON helpers, desktop rollout reads, and metadata caches without process access.
 - [Shared poll loop](architecture/loop.md): scheduling rules, source changes, repeated starts, and one completed write.
-- [State and items](architecture/state.md): item model, idle teammates, registry, state writes, and turns.
+- [State and items](architecture/state.md): item model, idle teammates, registry, the shared `parentOf`, `runOf` and `KINDS` helpers, state writes, and turns.
 - [Diagnostics](architecture/diagnostics.md): per-source poll records in `rabe.diag`, incremental bytes and unchanged-file skips, `/rabe-diag`, fixed error categories and report failures.
 - [Sources](architecture/sources.md): poll callbacks that return changes, source modules, Linux listener parsing in `hooks/ports.ts`, and source tests.
 - [Codex data](architecture/codex-data.md): Codex job parsing and incremental rollout parsing with restored step checks.
 - [Agent items](architecture/agent-items.md): metadata cache recovery that preserves newer event fields, transcripts, turns, and the model and effort history.
 - [Price estimate](architecture/prices.md): price lookup and cost estimates.
-- [UI rendering](architecture/ui.md): view contract, renderer, palette, cells, sizing, and band.
+- [UI rendering](architecture/ui.md): view contract, renderer, palette, cells, sizing, band, and the shared formatting helpers (`na`, `idOrNa`, `cut`).
 - [Pane interaction state](architecture/interaction.md): pure transitions for focus, nested presses, queued arrow bursts and wraparound, refused moves, held order, regain, opening and arming.
 - [Focus and keys](architecture/focus-and-keys.md): pane behavior, key controls, split-list copy, message and delete actions, and focus moves.
 - [Focus order and arming](architecture/focus-order.md): held order, append-only slots, gone rows that leave the lists, target-bound keys, and arming.

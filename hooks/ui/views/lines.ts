@@ -2,6 +2,7 @@ import type { RabeItem } from '../../model'
 import { type Span, safe, wrap } from '../cells/grid'
 import { C, type Style, tone } from '../cells/palette'
 import { facts } from '../facts'
+import { cut } from '../format'
 import { glyph, nameSpans, statusLabel, timeLabel } from '../lists'
 import { isPress, type Line, type Model, type Part } from '../view'
 
@@ -10,11 +11,6 @@ const prefix = (part: Part) => (isPress(part) && part.hotkey ? part.hotkey.lengt
 
 const width = (list: Part[]) =>
   list.reduce((n, part) => n + prefix(part) + [...(isPress(part) ? part.label : part[0])].length, 0)
-
-export const cut = (text: string, room: number) => {
-  const chars = [...safe(text)]
-  return chars.length > room ? `${chars.slice(0, room - 1).join('')}…` : chars.join('')
-}
 
 // A line exactly `width` cells wide, as a grid row was: the parts cut with `…`
 // where they run out, the right part at the end, padded between. The line's
@@ -28,7 +24,7 @@ export function fitLine(line: Line, columns: number): Line {
   let used = 0
   const add = (part: Part, limit: number) => {
     if (used + prefix(part) >= limit) return
-    const shown = cut(isPress(part) ? part.label : part[0], limit - used - prefix(part))
+    const shown = cut(safe(isPress(part) ? part.label : part[0]), limit - used - prefix(part))
     if (!shown) return
     used += prefix(part) + [...shown].length
     if (isPress(part)) {

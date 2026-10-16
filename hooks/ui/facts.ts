@@ -1,12 +1,11 @@
-import type { RabeItem } from '../model'
+import { parentOf, type RabeItem } from '../model'
 import { pairsText } from '../sources/agent-items'
-import { clockTime, duration, validId } from './format'
+import { clockTime, duration, idOrNa, na } from './format'
 import { children, forwarderOf, glyph, KIND_LABEL, nextAt, statusLabel } from './lists'
 
 // `long` is the last fact, drawn in full across lines.
 export type Facts = { title: string; status: string; lines: string[]; long?: string }
 
-const na = (value: unknown) => (value === undefined || value === '' ? 'n/a' : String(value))
 const base = (path: string) => path.split('/').filter(Boolean).at(-1) ?? path
 
 function statusWord(item: RabeItem, now: number): string {
@@ -32,7 +31,7 @@ function ran(item: RabeItem, now: number): string {
 }
 
 export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: string): Facts {
-  const parent = items.find(one => one.id === item.parentId)
+  const parent = parentOf(item, items)
   const by = `started by ${parent ? `${KIND_LABEL[parent.kind]} ${parent.title}` : 'main session'}`
   const lines: string[] = []
   let long: string | undefined
@@ -50,7 +49,7 @@ export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: stri
       if (d.models && d.models.length > 1) lines.push(`models ${pairsText(d.models)}`)
       if (d.worktreeBranch) lines.push(`branch ${d.worktreeBranch}`)
       if (d.workflowPhase) lines.push(`phase ${d.workflowPhase}`)
-      lines.push(`agent ${validId(d.agentId) ? d.agentId : 'n/a'}`, by, ran(item, now))
+      lines.push(`agent ${idOrNa(d.agentId)}`, by, ran(item, now))
       long = `transcript ${na(d.transcriptPath)}`
       break
     }
@@ -66,7 +65,7 @@ export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: stri
       lines.push(`model ${na(d.model)} · effort ${na(d.effort)} · sandbox ${na(d.sandbox)}`)
       const forwarder = forwarderOf(item, items)
       lines.push(
-        `job ${d.jobId} · thread ${validId(d.threadId) ? d.threadId : 'n/a'} · session file ${file}`,
+        `job ${d.jobId} · thread ${idOrNa(d.threadId)} · session file ${file}`,
         forwarder ? `forwarded by claude ${forwarder.title} · its tokens count here` : by,
         ran(item, now),
       )

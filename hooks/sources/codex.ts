@@ -11,6 +11,7 @@ import {
   inodeOf,
   isRecord,
   list,
+  nextCursor,
   parseJson,
   type Rec,
   readChunk,
@@ -292,12 +293,7 @@ async function readSession(
   const isUnpriced = (!reset && previous?.isUnpriced === true) || cost === undefined
   const hasRequests = (!reset && previous?.hasRequests === true) || rollout.requests.length > 0
   const usd = (reset ? 0 : (previous?.usd ?? 0)) + (cost ?? 0)
-  const cursor = {
-    ...stamp,
-    offset: offset + chunk.bytes,
-    partial: chunk.partial,
-    isDiscarding: chunk.isDiscarding,
-  }
+  const cursor = nextCursor(stamp, offset, chunk)
   const hasSkipped = (!reset && previous?.hasSkipped === true) || chunk.isDiscarding === true
   await $.state.set(
     { plugin: 'rabe', key: 'rollouts' },

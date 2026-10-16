@@ -19,6 +19,21 @@ export type ItemPatch = Partial<
 
 export type EndStatus = Exclude<RabeItemStatus, 'running' | 'idle'>
 
+// Every kind, in the band order; diagnostics use it to check membership only.
+export const KINDS = ['agent', 'codex', 'workflow', 'shell', 'monitor', 'cron'] as const
+
+// The item that started `item`, if it is in the list.
+export function parentOf(item: Pick<RabeItem, 'parentId'>, items: readonly RabeItem[]) {
+  return item.parentId === undefined ? undefined : items.find(one => one.id === item.parentId)
+}
+
+// The workflow run that started `item`, if it is in the list.
+export function runOf(item: Pick<RabeItem, 'parentId'>, items: readonly RabeItem[]) {
+  const parent = parentOf(item, items)
+
+  return parent?.kind === 'workflow' ? parent : undefined
+}
+
 export function isEnded(item: Pick<RabeItem, 'status'>): boolean {
   return item.status !== 'running' && item.status !== 'idle'
 }
