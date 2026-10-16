@@ -10,6 +10,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - Agents show the model that answered and the effort of the request as the hook saw it, including changes (`opus-5-5·high → sonnet-5-5·medium`), in the facts and as a chip on workflow rows ([#232](https://github.com/lorenzh/rabe/pull/232), refs [#200](https://github.com/lorenzh/rabe/issues/200))
 - The Effects tab shows the diff of the selected file beside the list (one summary line below 90 columns), recorded when the change happens and never read from files ([#236](https://github.com/lorenzh/rabe/pull/236), refs [#162](https://github.com/lorenzh/rabe/issues/162))
 - A direct `codex exec` in a Bash call (foreground or background) shows with the Agents as `codex`, with the model, effort and sandbox named by its flags; tokens and cost stay `n/a` ([#237](https://github.com/lorenzh/rabe/pull/237), refs [#179](https://github.com/lorenzh/rabe/issues/179))
+- A direct `codex exec` row gets tokens, cost, model and thread from its Codex session file: found by the `session id:` a foreground run prints on stderr, else by its start time (and `-C` directory); only the run's own turn counts; an ambiguous match, a thread another run or Codex job holds, another model than `-m`, or an inline `CODEX_HOME` shows `n/a`. A detached run without `-o` stays running until its session file records the end ([#247](https://github.com/lorenzh/rabe/pull/247), refs [#179](https://github.com/lorenzh/rabe/issues/179))
+- A `-o` path that uses `$S` from a leading `S=/abs/path;` on the same line is resolved ([#247](https://github.com/lorenzh/rabe/pull/247))
 
 ### Fixed
 

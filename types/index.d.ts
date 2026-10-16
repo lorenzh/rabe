@@ -121,6 +121,33 @@ export type RabeCodexDetail = {
   edits?: RabeEdit[]
 }
 
+// A direct `codex exec` run. Model, effort and sandbox come from the flags and,
+// once matched, from the session file. A field nothing gives is missing.
+export type RabeCodexRun = {
+  model?: string
+  effort?: string
+  sandbox?: string
+  // The `-C` directory, which the session file's directory must equal.
+  dir?: string
+  // The thread id: from `session id:` on stderr, or from the matched session file.
+  threadId?: string
+  sessionPath?: string
+  // True when `model` came from `-m`: only then does a time match have to agree with it.
+  isModelAsked?: boolean
+  // How the file was found: the stderr session id, or the start time (checked against `-m` on each read).
+  matchedBy?: 'id' | 'time'
+  sessionUpdatedAt?: number
+  isSessionPartial?: boolean
+  // When this run's own task completed in the session file.
+  sessionEndedAt?: number
+  // No unique session file (ambiguous, none, another model, an inline CODEX_HOME): n/a.
+  isUnmatched?: boolean
+  // A `&` run without a result file: running until its session file completes.
+  isDetached?: boolean
+  // Such a run without a session file: it ended as done, but when is not known.
+  isEndUnknown?: boolean
+}
+
 export type RabeShellDetail = {
   command: string
   taskId?: string
@@ -131,9 +158,9 @@ export type RabeShellDetail = {
   port?: number
   // When Rabe found the port; orders the Effects tab's ports found since the open.
   portAt?: number
-  // Set when the command is a direct `codex exec`: what its flags name.
-  // A field the flags do not give (or give with an expansion) is missing.
-  codex?: { model?: string; effort?: string; sandbox?: string }
+  // Set when the command is a direct `codex exec`: what its flags name, then
+  // what its session file (rollout) gives; see RabeCodexRun.
+  codex?: RabeCodexRun
 }
 
 export type RabeMonitorDetail = {
@@ -250,6 +277,8 @@ export type RabeRollout = {
   steps: RabeCodexStep[]
   edits?: RabeEdit[]
   checks?: { path: string; from: number; to: number }[]
+  // When the first task from the parse's start on completed (`task_complete`).
+  endedAt?: number
   // The diffs of this parse only; the source records them and never keeps them here.
   diffs?: RabeDiff[]
 }

@@ -83,9 +83,11 @@ export function facts(item: RabeItem, now: number, items: RabeItem[], cwd?: stri
       const d = item.detail
       lines.push(`task ${na(d.taskId)}`, by, ran(item, now))
       if (d.codex) {
-        const { model, effort, sandbox } = d.codex
+        const { model, effort, sandbox, threadId, sessionPath, isSessionPartial } = d.codex
         lines.push(`model ${na(model)} · effort ${na(effort)} · sandbox ${na(sandbox)}`)
-        lines.push('tokens n/a · cost n/a')
+        const file = isSessionPartial ? 'partial' : sessionPath ? 'read' : 'n/a'
+        const end = d.codex.isEndUnknown ? ' · end n/a' : ''
+        lines.push(`thread ${idOrNa(threadId)} · session file ${file}${end}`)
       }
       long = `command ${d.command}`
       if (d.exitCode !== undefined) lines.push(`exit code ${d.exitCode}`)

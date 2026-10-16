@@ -116,7 +116,36 @@ test('a direct codex run shows model, effort and sandbox, n/a for missing', () =
   const { title, lines } = facts(item, NOW, [item])
   expect(title).toBe('codex · codex exec')
   expect(lines).toContain('model gpt-6-sol · effort high · sandbox n/a')
-  expect(lines).toContain('tokens n/a · cost n/a')
+  expect(lines).toContain('thread n/a · session file n/a')
+})
+
+test('a direct codex run names its thread and session file, and an unknown end', () => {
+  const item = {
+    id: 'shell:fg-1',
+    kind: 'shell',
+    title: 'codex exec',
+    status: 'done',
+    seenAt: NOW,
+    startedAt: NOW,
+    endedAt: NOW,
+    detail: {
+      command: 'codex exec x &',
+      codex: { threadId: '01a14163-d731-71c3-825e-494f278f73c7', sessionPath: '/r.jsonl' },
+    },
+  } as const
+  expect(facts(item, NOW, [item]).lines).toContain(
+    'thread 01a14163-d731-71c3-825e-494f278f73c7 · session file read',
+  )
+  const partial = {
+    ...item,
+    detail: { ...item.detail, codex: { sessionPath: '/r', isSessionPartial: true } },
+  }
+  expect(facts(partial, NOW, [partial]).lines).toContain('thread n/a · session file partial')
+  const lost = {
+    ...item,
+    detail: { ...item.detail, codex: { isUnmatched: true, isEndUnknown: true } },
+  }
+  expect(facts(lost, NOW, [lost]).lines).toContain('thread n/a · session file n/a · end n/a')
 })
 
 test('an agent that changed model or effort shows the pairs in order', () => {

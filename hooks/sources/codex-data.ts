@@ -77,7 +77,8 @@ export function rolloutCursor(value: unknown): RabeRolloutCursor | undefined {
       index => typeof index === 'number' && Number.isInteger(index) && index >= 0,
     ) ||
     (value.base !== undefined && !isRecord(value.base)) ||
-    (value.at !== undefined && (typeof value.at !== 'number' || !Number.isFinite(value.at)))
+    (value.at !== undefined && (typeof value.at !== 'number' || !Number.isFinite(value.at))) ||
+    (value.out.endedAt !== undefined && typeof value.out.endedAt !== 'number')
   )
     return
   return value as RabeRolloutCursor
@@ -218,6 +219,11 @@ export function advanceRollout(
     const timestamp = Date.parse(str(record.timestamp) ?? '')
     if (until !== undefined && timestamp > until) continue
     if (Number.isFinite(timestamp)) at = Math.max(at ?? 0, timestamp)
+    // the first task from `since` on that completed: a later resume does not move it
+    const isOwn = since === undefined || !Number.isFinite(timestamp) || timestamp >= since
+    if (record.type === 'event_msg' && payload.type === 'task_complete' && isOwn) {
+      out.endedAt ??= Number.isFinite(timestamp) ? timestamp : at
+    }
     if (record.type === 'turn_context') {
       const settings = rec(rec(payload.collaboration_mode).settings)
       out.model = str(payload.model) ?? str(settings.model) ?? out.model
@@ -371,4 +377,57 @@ export function codexItem(job: CodexJob, session: CodexSession | undefined): New
   const isUnchanged = session?.updatedAt !== undefined && !rollout
 
   return session && !isUnchanged ? { ...item, costUsd: session.usd } : item
+}
+
+// Codex prints `session id: <uuid>` to stderr when it starts. One id names the
+// thread; none, or two different ones, name none.
+export function sessionIdOf(text: string): string | undefined {
+  const ids = new Set(
+    [...text.matchAll(/^session id: ([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/gm)].map(
+      match => match[1],
+    ),
+  )
+
+  return ids.size === 1 ? [...ids][0] : undefined
+}
+
+// The first record of a rollout a direct `codex exec` wrote: its thread id,
+// start time and directory. Codex subagents and other clients write another `source`.
+export type ExecMeta = { path: string; id: string; at: number; cwd?: string }
+
+export function execMeta(first: string, path: string): ExecMeta | undefined {
+  const record = parseJson(first)
+  const payload = rec(record?.payload)
+  const id = str(payload.id)
+  if (record?.type !== 'session_meta' || payload.source !== 'exec' || !id) return undefined
+  const at = Date.parse(str(payload.timestamp) ?? '') || Date.parse(str(record.timestamp) ?? '')
+  if (!Number.isFinite(at)) return undefined
+  const cwd = folder(payload.cwd)
+
+  return { path, id, at, ...(cwd && { cwd }) }
+}
+
+// A rollout belongs to a run when it started from 5 s before the run's start
+// to 10 s after it, in the run's `-C` directory when the command names one.
+export const EXEC_BEFORE_MS = 5000
+export const EXEC_AFTER_MS = 10_000
+
+export type ExecRun = { id: string; startedAt: number; dir?: string }
+
+const fits = (run: ExecRun, file: ExecMeta) =>
+  file.at >= run.startedAt - EXEC_BEFORE_MS &&
+  file.at <= run.startedAt + EXEC_AFTER_MS &&
+  (run.dir === undefined || file.cwd === run.dir)
+
+// Each run with exactly one fitting file that no other run fits too.
+export function matchExec(runs: ExecRun[], files: ExecMeta[]): Map<string, ExecMeta> {
+  const matched = new Map<string, ExecMeta>()
+  for (const run of runs) {
+    const [file, ...more] = files.filter(one => fits(run, one))
+    if (file && more.length === 0 && runs.filter(one => fits(one, file)).length === 1) {
+      matched.set(run.id, file)
+    }
+  }
+
+  return matched
 }

@@ -1252,6 +1252,86 @@ test('the codex facet of a background call and of a Stop task reads no environme
   expect(none).toBe(0)
 })
 
+const SESSION = '01a14163-d731-71c3-825e-494f278f73c7'
+
+test('a foreground codex exec keeps the session id its stderr names', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  on('tool.call', { tool: 'Bash' }, async () => ({
+    result: {
+      stdout: 'OK',
+      stderr: `model: gpt-6-sol\nsession id: ${SESSION}\n`,
+      interrupted: false,
+    },
+    text: 'ok',
+  }))
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: 'codex exec -C /w -s read-only - < b' })
+  expect(state['rabe.items']?.value).toMatchObject([
+    { status: 'done', detail: { codex: { threadId: SESSION, dir: '/w', sandbox: 'read-only' } } },
+  ])
+})
+
+test('a detached codex exec without a result file stays running for its session file', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: 'nohup codex exec - < b > l 2>&1 &' })
+  // with its own CODEX_HOME no session file can be found: it ends when the call returns
+  await $.tool.call({ tool: 'Bash', command: 'CODEX_HOME=/h nohup codex exec - < b > l 2>&1 &' })
+  expect(state['rabe.items']?.value).toMatchObject([
+    { status: 'running', detail: { codex: { isDetached: true } } },
+    { status: 'done', detail: { codex: { isUnmatched: true, isEndUnknown: true } } },
+  ])
+})
+
+test('a foreground row that ends keeps the session fields another source wrote', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const release = slowBash(on)
+  core(on)
+  const call = $.tool.call({ tool: 'Bash', command: 'codex exec -m gpt-6-sol - < b' })
+  await clock.advance(3000)
+  const [row] = (state['rabe.items']?.value ?? []) as RabeItem[]
+  if (row?.kind !== 'shell') throw new Error('no shell row')
+  state['rabe.items'] = {
+    value: [
+      { ...row, detail: { ...row.detail, codex: { model: 'gpt-6-sol', sessionPath: '/r' } } },
+    ],
+    version: (state['rabe.items']?.version ?? 0) + 1,
+  }
+  release()
+  await call
+  expect(state['rabe.items']?.value).toMatchObject([
+    { status: 'done', detail: { codex: { model: 'gpt-6-sol', sessionPath: '/r' } } },
+  ])
+})
+
+test('a background call starts when it was called, not when it returned', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const release = slowBash(on, { backgroundTaskId: 'b9' })
+  core(on)
+  const call = $.tool.call({ tool: 'Bash', command: 'codex exec - < b', run_in_background: true })
+  await clock.advance(3000)
+  release()
+  await call
+  expect(state['rabe.items']?.value).toMatchObject([{ id: 'shell:b9', startedAt: 1000 }])
+})
+
+test('a model from -m is marked as asked; a command without -m marks none', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: 'codex exec -m gpt-6-sol - < b' })
+  await $.tool.call({ tool: 'Bash', command: 'codex exec - < b' })
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items[0]?.detail).toMatchObject({ codex: { model: 'gpt-6-sol', isModelAsked: true } })
+  expect(items[1]?.detail).not.toMatchObject({ codex: { isModelAsked: true } })
+})
+
 test('an item a hook write pushes out loses its diffs, though it has no turns', async ($, on) => {
   mock.clock(on, { now: 1000 })
   const state = memoryState(on)
