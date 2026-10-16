@@ -5,7 +5,9 @@ import { itemId, type RabeItem } from '../model'
 import {
   cursorOf,
   inodeOf,
+  isOwnFile,
   linesOf,
+  nextCursor,
   outputUpdate,
   readChunk,
   readPlan,
@@ -59,9 +61,17 @@ async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Pro
     const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'turns' })
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const next = prune(value, dropped, items)
-    if (next === value) return
+    if (next === value) break
     const turns = await $.state.set({ plugin: 'rabe', key: 'turns' }, next, { ifVersion: version })
-    if (turns.isSet) return
+    if (turns.isSet) break
+  }
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, dropped, items)
+    if (next === value) return
+    const diffs = await $.state.set({ plugin: 'rabe', key: 'diffs' }, next, { ifVersion: version })
+    if (diffs.isSet) return
   }
 }
 
@@ -90,12 +100,7 @@ async function readFile(
     if (!folder) return {}
     const root = await $.fs.stat(folder, { resolve: true })
     const stat = await $.fs.stat(path, { resolve: true })
-    if (
-      !root.realPath ||
-      stat.realPath !== `${root.realPath}/${path.slice(path.lastIndexOf('/') + 1)}` ||
-      stat.kind !== 'file'
-    )
-      return {}
+    if (!isOwnFile(root, stat, path.slice(path.lastIndexOf('/') + 1)) || !stat.realPath) return {}
     path = stat.realPath
     const { value: saved } = await $.state.get({ plugin: 'rabe', key: 'lines' })
     const value = restored(saved)
@@ -169,12 +174,7 @@ async function readFile(
       reset,
       !reset && held?.partial === true,
       parsed.ended !== undefined,
-      {
-        ...stamp,
-        offset: offset + chunk.bytes,
-        partial: chunk.partial,
-        isDiscarding: chunk.isDiscarding,
-      },
+      nextCursor(stamp, offset, chunk),
       { ended: parsed.ended, exitCode: parsed.exitCode },
     )
     return { text: chunk.text, ended: parsed.ended, exitCode: parsed.exitCode }

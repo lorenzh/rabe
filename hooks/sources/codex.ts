@@ -1,6 +1,7 @@
 import type { EngineInterface, FsStat, On } from 'claude-code'
 
-import type { RabeCodexRun, RabeEdit } from '../../types'
+import type { RabeCodexRun, RabeDiff, RabeEdit } from '../../types'
+import { keep } from '../diffs'
 import { linkForwarders } from '../forwarders'
 import { fault, type Pollers, skipped, tally } from '../loop'
 import { itemId, type NewItem, type RabeItem, type RabeItemOf } from '../model'
@@ -10,9 +11,15 @@ import {
   cursorOf,
   inodeOf,
   isRecord,
+  list,
+  nextCursor,
+  parseJson,
+  type Rec,
   readChunk,
   readPlan,
+  rec,
   restored,
+  str,
   unchanged,
 } from '../reading'
 import {
@@ -39,15 +46,10 @@ import {
   jobEnd,
   jobStart,
   jobStop,
-  list,
   matchExec,
-  parseJson,
   parseRollout,
-  type Rec,
   type Rollout,
-  rec,
   rolloutCursor,
-  str,
 } from './codex-data'
 
 export { advanceRollout, codexItem, jobEnd, parseRollout } from './codex-data'
@@ -92,9 +94,17 @@ async function forget($: Pick<EngineInterface, 'state'>, dropped: string[]): Pro
     const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'turns' })
     const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
     const next = prune(value, dropped, items)
-    if (next === value) return
+    if (next === value) break
     const turns = await $.state.set({ plugin: 'rabe', key: 'turns' }, next, { ifVersion: version })
-    if (turns.isSet) return
+    if (turns.isSet) break
+  }
+  for (;;) {
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const next = prune(value, dropped, items)
+    if (next === value) return
+    const diffs = await $.state.set({ plugin: 'rabe', key: 'diffs' }, next, { ifVersion: version })
+    if (diffs.isSet) return
   }
 }
 
@@ -178,6 +188,33 @@ async function prices($: EngineInterface, file: string): Promise<Prices> {
   return own ? withOverride(built, own) : []
 }
 
+// The file diffs of one parse, kept under the job's item id (see `keep`).
+async function recordDiffs(
+  $: EngineInterface,
+  id: string,
+  diffs: RabeDiff[] | undefined,
+  isStaged: boolean,
+): Promise<void> {
+  if (!diffs?.length) return
+  for (;;) {
+    // A job the list no longer holds leaves no diff behind; a job this poll
+    // stages after the read is not held yet, and the commit's cleanup drops
+    // its diffs again if the cap pushes it out.
+    if (!isStaged) {
+      const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+      if (!items.some(one => one.id === id)) return
+    }
+    const { value = {}, version } = await $.state.get({ plugin: 'rabe', key: 'diffs' })
+    const next = keep(value, id, diffs)
+    if (next === value) return
+    const { isSet } = await $.state.set({ plugin: 'rabe', key: 'diffs' }, next, {
+      ifVersion: version,
+    })
+    // An eviction may have finished its cleanup after the check above: drop what this write left.
+    if (isSet) return isStaged ? undefined : forget($, [id])
+  }
+}
+
 async function readSession(
   $: EngineInterface,
   codexHome: string,
@@ -259,6 +296,7 @@ async function readSession(
       parseRollout(String(text), await $.env.get('HOME'), jobStart(job), until),
       looks,
     )
+    await recordDiffs($, itemId('codex', job.id), rollout.diffs, !held)
     return { path, updatedAt, rollout, usd: codexUsd(await prices($, file), rollout.requests) }
   }
   const stamp = { size: stat.size, mtimeMs: stat.mtimeMs, identity }
@@ -297,17 +335,14 @@ async function readSession(
     until,
   )
   const rollout = await confirmed($, parser.out, looks)
-  parser.out = { ...rollout, requests: [] }
+  await recordDiffs($, key, rollout.diffs, !held)
+  const { diffs: _diffs, ...kept } = rollout
+  parser.out = { ...kept, requests: [] }
   const cost = rollout.requests.length ? codexUsd(await prices($, file), rollout.requests) : 0
   const isUnpriced = (!reset && previous?.isUnpriced === true) || cost === undefined
   const hasRequests = (!reset && previous?.hasRequests === true) || rollout.requests.length > 0
   const usd = (reset ? 0 : (previous?.usd ?? 0)) + (cost ?? 0)
-  const cursor = {
-    ...stamp,
-    offset: offset + chunk.bytes,
-    partial: chunk.partial,
-    isDiscarding: chunk.isDiscarding,
-  }
+  const cursor = nextCursor(stamp, offset, chunk)
   const hasSkipped = (!reset && previous?.hasSkipped === true) || chunk.isDiscarding === true
   await $.state.set(
     { plugin: 'rabe', key: 'rollouts' },
@@ -761,7 +796,7 @@ export const STOP_USAGE =
   'Usage: /rabe-stop codex:<job id>. Use the Codex job id shown in Rabe, not the thread id. To stop other items, use x in the pane.'
 
 export function codex(on: On, file: string, pollers: Pollers): void {
-  on('session.start', { isInteractive: true }, async ($, e, next) => {
+  on('session.start', { isInteractive: [true, false] }, async ($, e, next) => {
     pollers.push({ name: 'codex', run: items => pollCodex($, file, items), initial: false })
     const started = await next(e)
     await $.command.register({

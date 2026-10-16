@@ -2,6 +2,8 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 
 import type { RabeItem } from '../model'
+import { MAX_ENDED } from '../registry'
+import { memoryState, overCap } from '../testing'
 import { phaseNames } from './workflows'
 
 const SCRIPT = `export const meta = {
@@ -28,6 +30,7 @@ function engine(
   on: On,
   path = '/home/me/.claude/projects/-repo/s1/workflows/scripts/review.js',
   realPath = path,
+  isWatching = true,
 ): Held {
   const held: Held = { reads: [] }
   on('session.id', async () => ({ value: 's1' }))
@@ -43,11 +46,12 @@ function engine(
     },
   }))
   mock.clock(on, { now: 7000 })
-  on('state.set', async (_$, e, next) => {
-    if (e.plugin === 'rabe' && e.key === 'items') held.items = e.value as RabeItem[]
+  if (isWatching)
+    on('state.set', async (_$, e, next) => {
+      if (e.plugin === 'rabe' && e.key === 'items') held.items = e.value as RabeItem[]
 
-    return next(e)
-  })
+      return next(e)
+    })
   on('tool.call', async () => ({
     result: {
       status: 'async_launched' as const,
@@ -148,3 +152,13 @@ for (const path of [
     expect(held.items?.[0]?.detail).not.toHaveProperty('phases')
   })
 }
+
+test('an item a hook write pushes out loses its diffs, though it has no turns', async ($, on) => {
+  engine(on, undefined, undefined, false)
+  const state = memoryState(on)
+  const held = overCap(MAX_ENDED)
+  state['rabe.items'] = { value: held.items, version: 1 }
+  state['rabe.diffs'] = { value: held.diffs, version: 1 }
+  await $.tool.call({ tool: 'Workflow', script: SCRIPT })
+  expect(state['rabe.diffs']?.value).toEqual({ 'shell:old1': held.diffs['shell:old1'] })
+})

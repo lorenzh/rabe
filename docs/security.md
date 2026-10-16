@@ -28,7 +28,7 @@ Text from transcripts, meta files, output files, Codex files and workflow script
 
 ### Terminal output and the clipboard
 
-- Text from files reaches the screen only through `safe()` in `hooks/ui/cells/grid.ts`. `safe` uses an allow list, so escape and control characters become `?`. The views call it through `fitLine` and `cut` in `hooks/ui/views/lines.ts` and through `wrap` and `fit` in the cell engine. A new view that draws text from a file uses these helpers too.
+- Text from files reaches the screen only through `safe()` in `hooks/ui/cells/grid.ts`. `safe` uses an allow list, so escape and control characters become `?`. The views call it through `fitLine` in `hooks/ui/views/lines.ts` and through `wrap` and `fit` in the cell engine. `cut` in `hooks/ui/format.ts` only shortens text and does not call `safe`: a caller cuts `cut(safe(text), room)`, or uses `fitLine`. A new view that draws text from a file uses these helpers too.
 - Stop, remove and message toasts name items by kind and native id. Never use an item title or an agent name.
 - Every toast goes through `toast($, text)` in `hooks/ui/pane.tsx`, which applies `toastText`: whitespace becomes one space, and Unicode control (`Cc`) and format (`Cf`) characters become `?`. Do not call `$.ui.toast` directly.
 - Never pass raw ANSI from a file through to the terminal.
@@ -72,6 +72,7 @@ Rabe sends nothing anywhere. It does not call `$.http.fetch`, and it does not ru
 - Never put message text, prompts or tokens into `$.store`, toasts, bug reports or notes to Claude ([#38](https://github.com/lorenzh/rabe/issues/38)). Notes to Claude hold the kind and id of an item only: titles come from files (a Codex summary, a workflow script) or are prompts (a cron job's). The `/rabe-stop` answer is a transcript line Claude reads, so it names a Codex job by its id too. A companion refusal returns fixed text. The first stderr or thrown error line stays in the item’s session state as `stopError` for the pane toast. The detail never enters the transcript answer or `$.store`.
 - A toast names a cron job by its job id. Its title is its prompt. A copied prompt toast names the field and counts its lines and characters without the text.
 - A previous-session summary stores failed item ids in `failedIds`, never titles. When reading an older summary, remove its `failed` field and save the cleaned record. Do this at an empty session’s end too.
+- Diff hunks in `rabe.diffs` can hold file content. Record them only from tool results, `bashEditDiff` and Codex rollouts; never read a file or run `git diff` for a diff. Keep the caps (200 lines, 8192 code units each, 262144 in all). Never put diff content into toasts, the clipboard, `/rabe-diag`, notes to Claude, bug reports or `$.store`.
 - `$.store` lasts across sessions. Keep in it only what the README lists under Privacy.
 - Bug reports and feedback replace home paths, user and project names, ids and tokens with placeholders before the person sees the draft.
 - Diagnostics store fixed error categories only. Never keep or print raw errors or file names in `rabe.diag`. `/rabe-diag` and the `Rabe diagnostics:` report context contain only fixed words, numbers and numeric versions. Check restored values before formatting them. A failed report returns `diagnostics unavailable`.

@@ -1,4 +1,6 @@
 import type { RabeItem, RabePrevious } from '../../types'
+import { isEnded } from '../model'
+import { kindOf } from './lists'
 
 export function toastText(text: string): string {
   return text.replace(/\s+/g, ' ').replace(/[\p{Cc}\p{Cf}]/gu, '?')
@@ -35,4 +37,21 @@ export function asPrevious(value: unknown): RabePrevious | undefined {
     usd: prev.usd,
     failedIds: Array.isArray(prev.failedIds) ? prev.failedIds : [],
   }
+}
+
+// The answer of `/rabe` where the pane cannot draw. It enters Claude's
+// transcript, so it holds counts and fixed words only: no title, prompt or
+// file text (docs/security.md).
+export function itemsText(items: RabeItem[]): string {
+  if (items.length === 0) return 'Rabe: no background work.'
+  const ended = items.filter(isEnded).length
+  const idle = items.filter(one => one.status === 'idle').length
+  const kinds = new Map<string, number>()
+  for (const one of items) kinds.set(kindOf(one), (kinds.get(kindOf(one)) ?? 0) + 1)
+  const rows = [...kinds].map(([kind, count]) => `- ${kind}: ${count}`)
+
+  return [
+    `Rabe: ${items.length - ended - idle} running, ${idle} idle, ${ended} ended.`,
+    ...rows,
+  ].join('\n')
 }

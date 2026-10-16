@@ -145,6 +145,19 @@ test('/rabe-diag runs during a turn', async ($, on) => {
   expect(registered).toContainEqual(expect.objectContaining({ name: 'rabe-diag', immediate: true }))
 })
 
+test('/rabe-diag is registered in a non-interactive session', async ($, on) => {
+  memoryState(on)
+  const registered: unknown[] = []
+  on('session.start', async (_$, e) => ({ cwd: e.cwd }))
+  on('command.register', async (_$, e) => {
+    registered.push(e)
+    return { value: { command: e.name } }
+  })
+  diag(on, {})
+  await $.session.start({ cwd: '/repo', surface: null, isInteractive: false } as never)
+  expect(registered).toContainEqual(expect.objectContaining({ name: 'rabe-diag' }))
+})
+
 test('/rabe:report-bug keeps its text and context and gets the diagnostics', async ($, on) => {
   memoryState(on)
   core(on)

@@ -2,7 +2,8 @@ import type { On } from 'claude-code'
 import { type Engine, expect, mock, test } from 'claude-code/testing'
 
 import type { RabeItem } from '../model'
-import { core, files, memoryState } from '../testing'
+import { MAX_ENDED } from '../registry'
+import { core, files, memoryState, overCap } from '../testing'
 
 const DIR = '/tmp/claude-1000/-home-me-app/5f1c/tasks'
 const OUT = `${DIR}/m1.output`
@@ -508,4 +509,16 @@ test('the task list replays a cached monitor exit after a discarded item write',
     background_tasks: [],
   } as never)
   expect((state['rabe.items']?.value as RabeItem[])?.[0]?.status).toBe('done')
+})
+
+test('an item a hook write pushes out loses its diffs, though it has no turns', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const held = overCap(MAX_ENDED)
+  tools(on)
+  core(on)
+  state['rabe.items'] = { value: held.items, version: 1 }
+  state['rabe.diffs'] = { value: held.diffs, version: 1 }
+  await arm($)
+  expect(state['rabe.diffs']?.value).toEqual({ 'shell:old1': held.diffs['shell:old1'] })
 })

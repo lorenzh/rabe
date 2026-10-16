@@ -71,3 +71,22 @@ export function core(on: On): void {
   on('command.register', async (_$, e) => ({ value: { command: e.name } }))
   on('classic.Stop', async () => ({}))
 }
+
+// One ended shell over the cap and a recorded diff for it and for the next:
+// the first write that caps the list evicts shell:old0 and only its diffs go.
+export function overCap(max: number): { items: unknown[]; diffs: Record<string, unknown[]> } {
+  const diff = (path: string) => [{ path, at: 1, lines: ['+x'], added: 1, removed: 0, hunks: 1 }]
+
+  return {
+    items: Array.from({ length: max + 1 }, (_, n) => ({
+      id: `shell:old${n}`,
+      kind: 'shell',
+      title: `old${n}`,
+      status: 'done',
+      seenAt: 10 + n,
+      endedAt: 10 + n,
+      detail: { command: `old${n}` },
+    })),
+    diffs: { 'shell:old0': diff('/a'), 'shell:old1': diff('/b') },
+  }
+}

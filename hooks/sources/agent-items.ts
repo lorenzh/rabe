@@ -10,7 +10,9 @@ import {
   type RabeItemOf,
   type RabeItemStatus,
   type RabeTokens,
+  runOf,
 } from '../model'
+import { parseJson } from '../reading'
 import { addItem, endItem, updateItem } from '../registry'
 
 export type Turns = Record<string, RabeTurn[]>
@@ -45,20 +47,17 @@ export function toolSummary(input: unknown): string | undefined {
 }
 
 export function metaPatch(text: string): Partial<AgentItem['detail']> | undefined {
-  try {
-    const meta = JSON.parse(text) as Record<string, unknown>
+  const meta = parseJson(text)
+  if (!meta) return undefined
 
-    return Object.fromEntries(
-      META_FIELDS.filter(name => typeof meta[name] === 'string').map(name => [name, meta[name]]),
-    )
-  } catch {
-    return undefined
-  }
+  return Object.fromEntries(
+    META_FIELDS.filter(name => typeof meta[name] === 'string').map(name => [name, meta[name]]),
+  )
 }
 
 export function metaPath(item: AgentItem, items: RabeItem[]): string | undefined {
-  const parent = items.find(one => one.id === item.parentId)
-  if (parent?.kind === 'workflow') {
+  const parent = runOf(item, items)
+  if (parent) {
     const folder =
       parent.detail.transcriptDir ??
       parent.detail.scriptPath?.replace(
