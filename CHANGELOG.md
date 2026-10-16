@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+### Fixed
+
+- The live-check test for a Cost bar that changes its eighth glyph now fails on the old title cut: the row has a full-width title and a tail one space after the bar ([#252](https://github.com/lorenzh/rabe/issues/252)).
+
 ## [0.10.0] - 2026-10-16
 
 No migration. Update with `claude plugin update rabe` and `/reload-plugins`; a running session keeps working. The new session values (`rabe.diffs`, the Cost grouping and the main session's usage per model) start empty after the reload, and no option, command or key was removed or renamed.
