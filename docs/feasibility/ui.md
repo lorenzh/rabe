@@ -1,8 +1,8 @@
 ---
 title: User interface limits
-description: What the mod API exposes for Rabe’s band and pane, buttons, focus, and desktop app.
+description: What the mod API exposes for Rabe’s band and pane, buttons, focus, and sessions without a terminal (desktop app, VS Code, -p, SDK).
 tags: [feasibility, ui, limits]
-keywords: [user interface, raster, buttons, focus, desktop app, next.trace, TraceEntry, focus rewrite, swallowed focus, tier builtin, own focus call, append-only, view change, landing, dock, inline, state.set in ui.render, plain Button, dimColor, hover, ui.scroll, ui.focus, ui.press, pointer, arrow keys, mouse, fullscreen, ansi256, xterm-256, combining mark, Hangul Jamo, cells, bodyColumns, autoFocus, closeOnEscape, PromptHint, TurnDuration, disableAgentView, OSC 52, pinned header, sticky header, clipping, overflow, marginTop, #83]
+keywords: [user interface, raster, buttons, focus, desktop app, VS Code, claude -p, Agent SDK, sdk-ts, ui_attach, surfaces, next.trace, TraceEntry, focus rewrite, swallowed focus, tier builtin, own focus call, append-only, view change, landing, dock, inline, state.set in ui.render, plain Button, dimColor, hover, ui.scroll, ui.focus, ui.press, pointer, arrow keys, mouse, fullscreen, ansi256, xterm-256, combining mark, Hangul Jamo, cells, bodyColumns, autoFocus, closeOnEscape, PromptHint, TurnDuration, disableAgentView, OSC 52, pinned header, sticky header, clipping, overflow, marginTop, #83]
 ---
 
 # User interface limits
@@ -93,9 +93,16 @@ In each of the 4 lost rounds the trace has `press tab-cost` and `focus plugin ta
 
 So the engine drops the key before any hook runs; a mod cannot fix it. What is not shown: whether a press with another `requestId` arrived, since only hooks of the pane were traced, and whether it depends on load (the earlier idle-VM counts in the issue were 3 of 28 on main, 2 of 28 on v0.6.0). The README states the limit.
 
-### The Claude desktop app
+### Sessions without a terminal
 
-The maintainer last checked the Claude desktop app on Windows with Rabe 0.1.0. In that check, the pane drew plain text and buttons. A plugin installed while the app ran needed `/reload-plugins` or a new session to load. Desktop support is unverified since that check. [#117](https://github.com/lorenzh/rabe/issues/117) investigates current desktop support.
+Measured with Claude Code 2.1.296 on 2026-10-15 ([#177](https://github.com/lorenzh/rabe/issues/177)). Rabe's hooks module is not tied to the terminal, but nothing draws outside a host that sends `ui_attach`.
+
+- **Hooks load.** In `claude -p` and in an SDK session (`CLAUDE_CODE_ENTRYPOINT=sdk-ts`, stream-json) the debug log shows `hooks module rabe@inline loaded` and `session.start: raised (surface none, not interactive)`. The `initialize` reply lists `/rabe`, `/rabe-diag` and `/rabe-stop` (on main before [#230](https://github.com/lorenzh/rabe/pull/230) only `/rabe`, which answered a false "Rabe opened.").
+- **The poll loop runs.** A background shell shows in `/rabe`: `Rabe: 1 running, 0 idle, 0 ended.` The worktrees source runs only in interactive sessions (`isInteractive: true`).
+- **Nothing draws until a host asks.** `$.session.surfaces()` is empty until a host sends `ui_attach`. The engine draws only on request: a `ui_render` for AbovePrompt or Pane returns Rabe's tree for `desktop` and `vscode`. In a bare `-p` run `$.ui.open` still answers `isPlaced: true` although nothing draws (d.ts around 2492-2496), so `/rabe` checks `surfaces()` first.
+- **Official table** (code.claude.com/docs/en/plugins/mods/overview, "Where mods run"): the CLI and the Code tab of the Desktop app (v2.1.286+, not WSL) run and draw mods. The VS Code chat panel: hooks yes, draws no. `claude -p` and the Agent SDK: hooks yes, draws no.
+- **VS Code extension 2.1.299** contains a `vscode` drawing client gated on the CLI capability `ui_surface_v1`: `extension.js` sends `ui_attach` with surface `vscode` and relays `engine_ui_render` for AbovePrompt and Pane. [not measured]: it was not run live (no GUI on the VM). The owner sees no `/rabe` in VS Code 2.1.296 and Desktop 2.31226.1; the cause is unexplained, and the Claude Code version Desktop bundles is unknown.
+- **Desktop** is unverified since Rabe 0.1.0 ([#126](https://github.com/lorenzh/rabe/issues/126)). The 0.1.0 check drew plain text and buttons, and a plugin installed while the app ran needed `/reload-plugins` or a new session.
 
 ### Claude Code's own count of background work
 

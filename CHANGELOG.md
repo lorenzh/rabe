@@ -10,6 +10,7 @@ No migration. Update with `claude plugin update rabe` and `/reload-plugins`; a r
 
 ### Changed
 
+- The README, guide and `docs/feasibility/ui.md` state where Rabe loads and draws: measured in `claude -p` and the Agent SDK, unverified in the VS Code extension and the desktop app, and how `/rabe` answers with or without a surface ([#241](https://github.com/lorenzh/rabe/pull/241), refs [#177](https://github.com/lorenzh/rabe/issues/177))
 - The README demo GIF shows the 0.9.0 pane: search field, per-tab selection and the current Items, Cost and Timeline content ([#225](https://github.com/lorenzh/rabe/pull/225), fixes [#224](https://github.com/lorenzh/rabe/issues/224))
 - JSON and JSONL record reading lives once in `hooks/reading.ts`; `AGENTS.md` lists the shared helpers ([#228](https://github.com/lorenzh/rabe/pull/228), refs [#202](https://github.com/lorenzh/rabe/issues/202))
 
