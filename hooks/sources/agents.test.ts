@@ -1,10 +1,10 @@
 import type { AgentSpawnInput, AgentStatus, FsStat, On } from 'claude-code'
 import { type Engine, expect, mock, test } from 'claude-code/testing'
 
-import type { RabeEdit } from '../../types'
+import type { RabeDiff, RabeEdit } from '../../types'
 import type { RabeItem, RabeItemOf, RabeTurn } from '../model'
 import { MAX_ENDED } from '../registry'
-import { core, files, memoryState } from '../testing'
+import { core, files, memoryState, overCap } from '../testing'
 import { addTurn, agentTranscript, metaPatch, metaPath, toolSummary } from './agents'
 
 const SPAWN: AgentSpawnInput = {
@@ -31,13 +31,19 @@ const agent: RabeItem = {
 
 const turn = (index: number): RabeTurn => ({ index, at: index, text: `t${index}`, tools: [] })
 
-type Held = { items?: RabeItem[]; turns?: Record<string, RabeTurn[]>; edits?: RabeEdit[] }
+type Held = {
+  items?: RabeItem[]
+  turns?: Record<string, RabeTurn[]>
+  edits?: RabeEdit[]
+  diffs?: Record<string, RabeDiff[]>
+}
 
 function watch(on: On): Held {
   const held: Held = {}
   on('state.set', async (_$, e, next) => {
     if (e.plugin === 'rabe' && e.key === 'items') held.items = e.value as RabeItem[]
     if (e.plugin === 'rabe' && e.key === 'turns') held.turns = e.value as Held['turns']
+    if (e.plugin === 'rabe' && e.key === 'diffs') held.diffs = e.value as Held['diffs']
     if (e.plugin === 'rabe' && e.key === 'edits') held.edits = e.value as RabeEdit[]
 
     return next(e)
@@ -46,13 +52,13 @@ function watch(on: On): Held {
   return held
 }
 
-function engine(on: On, agentId: string): Held {
+function engine(on: On, agentId: string, isWatching = true): Held {
   mock.clock(on, { now: 5000 })
   on('agent.spawn', async () => ({ model: 'claude-opus-5-5', agentId }))
   on('classic.SubagentStart', async () => ({}))
   on('turn.complete', async () => ({ text: '' }))
 
-  return watch(on)
+  return isWatching ? watch(on) : {}
 }
 
 test('the tool summary is the first useful argument on one short line', () => {
@@ -329,6 +335,44 @@ test('a step adds tokens, tools and a turn; the end of the run ends the agent', 
       tools: [{ name: 'Read', summary: 'src/db.ts' }],
     },
   ])
+})
+
+test('the diff of an Edit or Write result is kept by its editor, never read from a file', async ($, on) => {
+  const held = engine(on, 'a1')
+  const reads: string[] = []
+  on('fs.read', async (_$, e) => {
+    reads.push(`fs.read ${e.path}`)
+
+    return { deny: 'no reads' }
+  })
+  on('process.run', async (_$, e) => {
+    reads.push(`process.run ${e.argv?.[0]}`)
+
+    return { deny: 'no processes' }
+  })
+  const hunk = { oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+b'] }
+  on('tool.call', { tool: ['Edit', 'Write'] }, async (_$, e) => ({
+    result: (e.tool === 'Edit'
+      ? { filePath: e.file_path, structuredPatch: [hunk], originalFile: 'a' }
+      : { type: 'create', filePath: e.file_path, content: 'x\ny', structuredPatch: [] }) as never,
+  }))
+  await $.agent.spawn(SPAWN)
+  await $.tool.call({
+    tool: 'Edit',
+    file_path: '/r/a.ts',
+    old_string: 'a',
+    new_string: 'b',
+    agentId: 'a1',
+  } as never)
+  await $.tool.call({ tool: 'Write', file_path: '/r/n.ts', content: 'x\ny' } as never)
+  expect(held.diffs?.['agent:a1']?.[0]).toMatchObject({
+    path: '/r/a.ts',
+    at: 5000,
+    added: 1,
+    removed: 1,
+  })
+  expect(held.diffs?.main?.[0]).toMatchObject({ path: '/r/n.ts', added: 2, removed: 0 })
+  expect(reads).toEqual([])
 })
 
 test('an edit the engine ran is kept on its agent; a refused or failed one is not', async ($, on) => {
@@ -1077,6 +1121,11 @@ test('a poll that ends an agent drops the turns and lines of what the cap pushes
   const lines = { seen: 1, lines: [{ at: 1, text: 'ready' }] }
   state['rabe.lines'] = { value: { 'agent:w0': lines, 'agent:w1': lines }, version: 1 }
   state['rabe.turns'] = { value: { 'agent:w0': [turn(1)], 'agent:w1': [turn(1)] }, version: 1 }
+  const { diffs } = overCap(0)
+  state['rabe.diffs'] = {
+    value: { 'agent:w0': diffs['shell:old0'], 'agent:w1': diffs['shell:old1'] },
+    version: 1,
+  }
   core(on)
   let listed: { id: string; description: string; type: string; status: AgentStatus }[] = []
   on('agent.list', async () => ({ value: listed }))
@@ -1089,6 +1138,7 @@ test('a poll that ends an agent drops the turns and lines of what the cap pushes
   expect(items.some(item => item.id === 'agent:w0')).toBe(false)
   expect(state['rabe.turns']?.value).toEqual({ 'agent:w1': [turn(1)] })
   expect(state['rabe.lines']?.value).toEqual({ 'agent:w1': lines })
+  expect(Object.keys(state['rabe.diffs']?.value as object)).toEqual(['agent:w1'])
 })
 
 test('a poll that lists an ended agent as running again puts it back to running', async ($, on) => {
@@ -1915,4 +1965,84 @@ test('a newly listed completed agent pushes out a foreground row, not itself', a
   expect(items.find(item => item.id === 'agent:late')?.status).toBe('done')
   expect(items.filter(item => item.id.startsWith('agent:'))).toHaveLength(151)
   expect(items.some(item => item.id === 'shell:fg-0')).toBe(false)
+})
+
+test('an item a hook write pushes out loses its diffs, though it has no turns', async ($, on) => {
+  engine(on, 'a1', false)
+  const state = memoryState(on)
+  const held = overCap(MAX_ENDED)
+  state['rabe.items'] = { value: held.items, version: 1 }
+  state['rabe.diffs'] = { value: held.diffs, version: 1 }
+  await $.agent.spawn(SPAWN)
+  expect(state['rabe.diffs']?.value).toEqual({ 'shell:old1': held.diffs['shell:old1'] })
+})
+
+test('a poll that pushes out an agent without turns still drops its diffs', async ($, on) => {
+  const clock = mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  const running: RabeItem = { ...agent, id: 'agent:r', detail: { agentId: 'r' } }
+  state['rabe.items'] = { value: [...ended(MAX_ENDED), running], version: 1 }
+  const { diffs } = overCap(0)
+  state['rabe.diffs'] = {
+    value: { 'agent:w0': diffs['shell:old0'], 'agent:w1': diffs['shell:old1'] },
+    version: 1,
+  }
+  core(on)
+  on('agent.list', async () => ({
+    value: [{ id: 'r', description: 'r', type: 'Explore', status: 'completed' as AgentStatus }],
+  }))
+  await $.session.start({ cwd: '/p', surface: 'terminal', isInteractive: true })
+  await clock.advance(4000)
+  expect(Object.keys(state['rabe.diffs']?.value as object)).toEqual(['agent:w1'])
+})
+
+test('a late Edit result of an evicted agent leaves no diff entry', async ($, on) => {
+  engine(on, 'a1', false)
+  const state = memoryState(on)
+  const hunk = { oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+b'] }
+  on('tool.call', { tool: ['Edit'] }, async (_$, e) => ({
+    result: { filePath: e.file_path, structuredPatch: [hunk], originalFile: 'a' } as never,
+  }))
+  await $.agent.spawn(SPAWN)
+  state['rabe.items'] = { value: [], version: 9 }
+  await $.tool.call({
+    tool: 'Edit',
+    file_path: '/r/a.ts',
+    old_string: 'a',
+    new_string: 'b',
+    agentId: 'a1',
+  } as never)
+  expect(state['rabe.diffs']?.value ?? {}).toEqual({})
+})
+
+test('an eviction between the membership check and the diff write leaves no diff entry', async ($, on) => {
+  engine(on, 'a1', false)
+  const hunk = { oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, lines: ['-a', '+b'] }
+  on('tool.call', { tool: ['Edit'] }, async (_$, e) => ({
+    result: { filePath: e.file_path, structuredPatch: [hunk], originalFile: 'a' } as never,
+  }))
+  let state: ReturnType<typeof memoryState> = {}
+  // once armed, the first read of the diffs follows the membership check; the eviction follows it
+  let isArmed = false
+  let isEvicted = false
+  on('state.get', { key: 'diffs' }, async (_$, e, next) => {
+    const out = await next(e)
+    if (isArmed && !isEvicted) {
+      isEvicted = true
+      state['rabe.items'] = { value: [], version: 9 }
+    }
+    return out
+  })
+  state = memoryState(on)
+  await $.agent.spawn(SPAWN)
+  isArmed = true
+  await $.tool.call({
+    tool: 'Edit',
+    file_path: '/r/a.ts',
+    old_string: 'a',
+    new_string: 'b',
+    agentId: 'a1',
+  } as never)
+  expect(isEvicted).toBe(true)
+  expect(state['rabe.diffs']?.value ?? {}).toEqual({})
 })

@@ -45,6 +45,19 @@ export function usd(n: number): string {
   return `$${n.toFixed(2)}`
 }
 
+// The text as it is, or cut to `room` characters with a last `…`.
+export function cut(text: string, room: number): string {
+  const chars = [...text]
+
+  return chars.length > room ? `${chars.slice(0, room - 1).join('')}…` : text
+}
+
+// A value for a fact line: `n/a` where it is unknown or empty.
+export const na = (value: unknown) => (value === undefined || value === '' ? 'n/a' : String(value))
+
+// An agent, thread or session id, or `n/a` when it is not a safe id.
+export const idOrNa = (id: string | undefined) => (validId(id) ? id : 'n/a')
+
 export function middleEllipsis(value: string, width: number): string {
   const chars = [...value]
   if (chars.length <= width) return value

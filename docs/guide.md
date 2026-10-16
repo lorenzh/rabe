@@ -66,7 +66,7 @@ Rabe reads subagent metadata and workflow scripts for phase names. It reads shel
 
 ### Which platforms does Rabe support?
 
-Rabe is built and tested with Claude Code 2.1.296. Use the terminal UI in a terminal session. The maintainer last checked the Claude desktop app on Windows with Rabe 0.1.0. In that check, the app drew a plain-text pane with buttons. Desktop support is unverified since that check. [#117](https://github.com/lorenzh/rabe/issues/117) investigates current desktop support. Other platform combinations are not documented as tested.
+Rabe needs Claude Code 2.1.296. Its band and pane draw in a terminal session. In the Claude desktop app (Code tab, local session, not WSL), Claude Code draws mods from 2.1.286, but Rabe has not been checked there since 0.1.0 ([#126](https://github.com/lorenzh/rabe/issues/126)). Measured with `claude -p` and an SDK-mode stream-json probe (2.1.296): Rabe loads and tracks background work, nothing draws, and `/rabe`, `/rabe-diag` and `/rabe-stop` answer as text. In the VS Code extension this is unverified: Rabe was not run there (not measured), the extension is documented to run hooks but not draw mods, it contains a `vscode` drawing client that was not tested, and the commands may be missing from the slash menu ([#177](https://github.com/lorenzh/rabe/issues/177)). With a `vscode` surface attached, `/rabe` opens the pane and returns no text; it answers with text only when no surface is attached or the pane is not placed. The git worktrees source runs only in interactive sessions. Other platform combinations are not documented as tested.
 
 ### How do I update Rabe?
 

@@ -1,5 +1,5 @@
 import type { RabeEdit, RabeOrder, RabePrevious } from '../../types'
-import { isEnded, type RabeItem, type RabeItemKind } from '../model'
+import { isEnded, KINDS, type RabeItem, type RabeItemKind, runOf } from '../model'
 import { nextRuns } from '../schedule'
 import { byConflict, touched } from './touched'
 
@@ -297,7 +297,7 @@ export function byParent(list: RabeItem[], items: RabeItem[]): Family[] {
     let block = blocks.find(one => one.id === id)
     if (!block) {
       const parent = items.find(one => one.id === id)
-      const run = parent && items.find(one => one.id === parent.parentId && one.kind === 'workflow')
+      const run = parent && runOf(parent, items)
       const title = !parent ? 'agent n/a' : run ? `${run.title} › ${parent.title}` : parent.title
       block = { id, ...(parent && { parent }), title, items: [] }
       blocks.push(block)
@@ -376,28 +376,61 @@ type Totals = {
   codex?: number
 }
 
-const plus = (sum: number | undefined, value: number | undefined) =>
-  value === undefined ? sum : (sum ?? 0) + value
+// The workers that spend: Claude agents and Codex jobs.
+export const isWorker = (item: RabeItem) => kindOf(item) === 'agent' || kindOf(item) === 'codex'
+
+export const harnessOf = (item: RabeItem): 'claude' | 'codex' =>
+  kindOf(item) === 'agent' ? 'claude' : 'codex'
+
+export type Spend = {
+  input: number
+  output: number
+  cached: number
+  // items with token data, and items without it
+  known: number
+  unknown: number
+  // undefined when no item is given or one has no dollar amount: that item
+  // makes the sum unknown, not smaller
+  usd?: number
+}
+
+export function spend(items: readonly RabeItem[]): Spend {
+  const out: Spend = { input: 0, output: 0, cached: 0, known: 0, unknown: 0 }
+  for (const item of items) {
+    if (item.tokens) {
+      out.known += 1
+      out.input += item.tokens.input
+      out.output += item.tokens.output
+      out.cached += item.tokens.cached ?? 0
+    } else out.unknown += 1
+  }
+  if (items.length && items.every(item => item.costUsd !== undefined)) {
+    out.usd = items.reduce((n, item) => n + (item.costUsd ?? 0), 0)
+  }
+
+  return out
+}
+
+export function spendBy<K>(items: readonly RabeItem[], keyOf: (item: RabeItem) => K) {
+  const groups = new Map<K, RabeItem[]>()
+  for (const item of items) {
+    const key = keyOf(item)
+    groups.set(key, [...(groups.get(key) ?? []), item])
+  }
+
+  return new Map([...groups].map(([key, group]) => [key, spend(group)]))
+}
 
 export function totals(items: RabeItem[]): Totals {
-  const out: Totals = { tokens: 0, unknown: 0 }
-  const unpriced = new Set<'claude' | 'codex'>()
-  for (const item of items) {
-    const kind = kindOf(item)
-    if (kind !== 'agent' && kind !== 'codex') continue
-    const side = kind === 'agent' ? 'claude' : 'codex'
-    if (!item.tokens) out.unknown += 1
-    out.tokens += item.tokens ? item.tokens.input + item.tokens.output : 0
-    if (item.costUsd === undefined) {
-      unpriced.add(side)
-      continue
-    }
-    out.usd = plus(out.usd, item.costUsd)
-    out[side] = plus(out[side], item.costUsd)
+  const workers = items.filter(isWorker)
+  const all = spend(workers)
+  const by = spendBy(workers, harnessOf)
+  const out: Totals = { tokens: all.input + all.output, unknown: all.unknown }
+  if (all.usd !== undefined) out.usd = all.usd
+  for (const side of ['claude', 'codex'] as const) {
+    const usd = by.get(side)?.usd
+    if (usd !== undefined) out[side] = usd
   }
-  // a worker without a dollar amount makes its sum unknown, not smaller
-  for (const side of unpriced) delete out[side]
-  if (unpriced.size) delete out.usd
 
   return out
 }
@@ -408,9 +441,7 @@ export const tokenSum = (item: RabeItem) =>
   item.tokens ? item.tokens.input + item.tokens.output : -1
 
 export function byTokens(items: RabeItem[]): RabeItem[] {
-  return items
-    .filter(item => kindOf(item) === 'agent' || kindOf(item) === 'codex')
-    .toSorted((a, b) => tokenSum(b) - tokenSum(a))
+  return items.filter(isWorker).toSorted((a, b) => tokenSum(b) - tokenSum(a))
 }
 
 export function share(items: RabeItem[], item: RabeItem): string {
@@ -439,20 +470,18 @@ export type BandRow = { glyph: string; kind: RabeItemKind; count: number; failed
 export function bandRows(items: RabeItem[], now: number): BandRow[] {
   const running = (kind: RabeItemKind) =>
     shown(items).filter(item => kindOf(item) === kind && item.status === 'running').length
-  const failed = (['agent', 'codex', 'workflow', 'shell', 'monitor', 'cron'] as const).flatMap(
-    kind => {
-      const count = items.filter(
-        item =>
-          kindOf(item) === kind &&
-          item.status === 'failed' &&
-          now - (item.endedAt ?? item.seenAt) < 10 * 60_000,
-      ).length
-      return count ? [{ glyph: '✗', kind, count, failed: true }] : []
-    },
-  )
+  const failed = KINDS.flatMap(kind => {
+    const count = items.filter(
+      item =>
+        kindOf(item) === kind &&
+        item.status === 'failed' &&
+        now - (item.endedAt ?? item.seenAt) < 10 * 60_000,
+    ).length
+    return count ? [{ glyph: '✗', kind, count, failed: true }] : []
+  })
   const rows: BandRow[] = [
     ...failed,
-    ...(['agent', 'codex', 'workflow', 'shell', 'monitor', 'cron'] as const).map(kind => ({
+    ...KINDS.map(kind => ({
       glyph: RUNNING_GLYPH[kind],
       kind,
       count: running(kind),
