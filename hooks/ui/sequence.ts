@@ -30,6 +30,50 @@ export function sequence<T>(run: () => Promise<T>): Promise<T> {
   return result
 }
 
+// The last run per key, which the next run of that key waits for.
+const lanes = new Map<string, Promise<void>>()
+
+// Runs `run` once every earlier run of the same key settled; other keys do
+// not wait.
+export function inTurn<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const result = (lanes.get(key) ?? Promise.resolve()).then(run)
+  const done = result.then(
+    () => undefined,
+    () => undefined,
+  )
+  lanes.set(key, done)
+  void done.then(() => {
+    if (lanes.get(key) === done) lanes.delete(key)
+  })
+  return result
+}
+
+export type Slot<P> = { press?: P }
+
+// The events under way per key, oldest first. `enter` runs an event with its
+// own new slot and drops the slot when the run settles; `leave` fills the
+// oldest empty slot of a key (the closure beneath does not know its event).
+export function slots<P>() {
+  const waiting = new Map<string, Slot<P>[]>()
+  return {
+    async enter<R>(key: string, run: (mine: Slot<P>) => Promise<R>): Promise<R> {
+      const mine: Slot<P> = {}
+      waiting.set(key, [...(waiting.get(key) ?? []), mine])
+      try {
+        return await run(mine)
+      } finally {
+        const rest = (waiting.get(key) ?? []).filter(one => one !== mine)
+        if (rest.length > 0) waiting.set(key, rest)
+        else waiting.delete(key)
+      }
+    },
+    leave(key: string, press: P): void {
+      const slot = waiting.get(key)?.find(one => !one.press)
+      if (slot) slot.press = press
+    },
+  }
+}
+
 // How long a landing waits for a drawing of the new view, and how long after
 // it before the focus call (a drawing reaches the screen some time after the
 // render hook returns: docs/feasibility/ui.md, item 9). Timing, not a barrier.

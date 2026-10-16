@@ -32,7 +32,7 @@ Use this index to find the guide that matches your question.
 - [Price estimate](architecture/prices.md): price lookup and cost estimates.
 - [UI rendering](architecture/ui.md): view contract, renderer, palette, cells, sizing, band, and the shared formatting helpers (`na`, `idOrNa`, `cut`).
 - [Pane interaction state](architecture/interaction.md): pure transitions for focus, nested presses, queued arrow bursts and wraparound, refused moves, held order, regain, opening and arming.
-- [Focus and keys](architecture/focus-and-keys.md): pane behavior, key controls, split-list copy, message and delete actions, and focus moves.
+- [Focus and keys](architecture/focus-and-keys.md): pane behavior, key controls, split-list copy, message and delete actions, focus moves, per-event action slots and one-at-a-time Input events of a field (`sequence.ts`), and the sending of a message whose drawing a redraw released.
 - [Focus order and arming](architecture/focus-order.md): held order, append-only slots, gone rows that leave the lists, target-bound keys, and arming.
 - [View behavior](architecture/views.md): tabs, cron schedules, workflow agent counts, inert stop controls, removed items, idle labels, live-item sorting, idle detail activity and Timeline windows, session summaries, full command and prompt details, and copy controls.
 - [Pane data](architecture/pane-data.md): clipboard and toast security checks, the counts-only text answer of `/rabe` where no pane draws, plus stored-summary validation.

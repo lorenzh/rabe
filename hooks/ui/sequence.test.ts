@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { DRAW_MS, reserve, SHOW_MS, screens, sequence } from './sequence'
+import { DRAW_MS, inTurn, reserve, SHOW_MS, screens, sequence, slots } from './sequence'
 
 test('queued focus work runs in order and continues after a failure', async () => {
   const seen: number[] = []
@@ -20,6 +20,72 @@ test('queued focus work runs in order and continues after a failure', async () =
   await expect(first).rejects.toThrow('focus failed')
   await second
   expect(seen).toEqual([1, 2])
+})
+
+test('runs of one key wait for the earlier ones, even a failed one; other keys do not wait', async () => {
+  const seen: string[] = []
+  let release!: () => void
+  const gate = new Promise<void>(resolve => {
+    release = resolve
+  })
+  const first = inTurn('message:a', async () => {
+    await gate
+    seen.push('a1')
+    throw new Error('released')
+  })
+  const second = inTurn('message:a', async () => {
+    seen.push('a2')
+  })
+  await inTurn('search', async () => {
+    seen.push('search')
+  })
+  expect(seen).toEqual(['search'])
+  release()
+  await expect(first).rejects.toThrow('released')
+  await second
+  expect(seen).toEqual(['search', 'a1', 'a2'])
+})
+
+// GPT review of 42f1a46: the engine queues a field's Input events before
+// Rabe's hook, so the kit cannot overlap them. Here two events of one field
+// reach the hook while the first is held beneath, before its closure ran; each
+// closure fills the oldest empty slot of its key, as `leave` in pane.tsx does.
+test('overlapping events of one key each keep their own action only when they take turns', async () => {
+  const overlap = async (isInTurn: boolean) => {
+    const table = slots<string>()
+    const key = 'terminal message:a'
+    const entered: string[] = []
+    let release!: () => void
+    const gate = new Promise<void>(resolve => {
+      release = resolve
+    })
+    // The hook: a new slot per event, then the chain beneath runs the closure.
+    const hook = (event: string, beneath: () => Promise<void>) => {
+      entered.push(event)
+      const run = () =>
+        table.enter(key, async mine => {
+          await beneath()
+          table.leave(key, `${event}'s action`)
+          return mine.press
+        })
+      return isInTurn ? inTurn(key, run) : run()
+    }
+    const first = hook('first', () => gate)
+    const second = hook('second', async () => undefined)
+    for (let i = 0; i < 5; i++) await Promise.resolve()
+    const enteredWhileHeld = [...entered]
+    release()
+    return { enteredWhileHeld, actions: await Promise.all([first, second]) }
+  }
+
+  const taking = await overlap(true)
+  expect(taking.enteredWhileHeld).toEqual(['first', 'second'])
+  expect(taking.actions).toEqual(["first's action", "second's action"])
+  // Without turns the second closure fills the held first event's slot and
+  // the second event carries out nothing.
+  const racing = await overlap(false)
+  expect(racing.enteredWhileHeld).toEqual(['first', 'second'])
+  expect(racing.actions).toEqual(["second's action", undefined])
 })
 
 test('a reserved focus turn keeps later arrows behind the press that entered first', async () => {
