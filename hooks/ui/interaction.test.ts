@@ -1,5 +1,13 @@
 import { expect, test } from 'claude-code/testing'
-import { deferredFocus, IDLE, interact, isHeldBack, movedFocus } from './interaction'
+import {
+  deferredFocus,
+  heldOf,
+  IDLE,
+  interact,
+  isHeldBack,
+  movedFocus,
+  scopeOf,
+} from './interaction'
 import { reserve, sequence } from './sequence'
 import type { Piece } from './view'
 
@@ -336,4 +344,16 @@ test('an all-fit arrow received during the safe-tab detour keeps its direction',
   state = interact(state, focus('tab-items', false, false)).state
   state = interact(state, focus('row:a', false)).state
   expect(movedFocus(state, [...keys, 'find', 'row:a', 'row:b'], { by: 1 })).toBe('row:b')
+})
+
+test('the Cost tab grouping is part of the scope that holds the key order', () => {
+  const sel = { tab: 'cost', open: '', query: '', folded: [] } as unknown as Parameters<
+    typeof scopeOf
+  >[0]
+  const by = (grouping?: 'agent' | 'model' | 'harness') => ({ ...sel, grouping })
+  expect(scopeOf(by('model'))).not.toBe(scopeOf(by('harness')))
+  expect(scopeOf(by('model'))).not.toBe(scopeOf(by()))
+  const held = { ...IDLE, holds: { terminal: { scope: scopeOf(by('model')), keys: [] } } }
+  expect(heldOf(held as never, 'terminal', by('model') as never)).toEqual([])
+  expect(heldOf(held as never, 'terminal', by('harness') as never)).toBeUndefined()
 })

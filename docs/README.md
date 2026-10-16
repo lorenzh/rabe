@@ -39,6 +39,8 @@ Use this index to find the guide that matches your question.
 - [Shell words](architecture/shell-words.md): shell words, quoting, here-doc bodies and the write detector boundary.
 - [Touched files](architecture/touched.md): file edits, conflicts, worktree rows, private list helpers and the diffs the Effects tab shows for the selected file.
 - [File diffs](architecture/diffs.md): how diffs of file operations are captured at record time, capped, evicted with their items and kept private.
+- [Cost groupings](architecture/groups.md): model and harness rows of the Cost tab, partial totals and held order.
+- [Main-session usage](architecture/main-usage.md): per-model sums of the main session's steps for the partial Cost rows.
 
 ## Feasibility
 

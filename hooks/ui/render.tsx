@@ -67,8 +67,8 @@ function slot(one: Held): Piece {
 // right after the last held one. With `inPlace` new rows are seated and gone
 // rows leave instead (`seat`). A slot follows the element held before it,
 // so it never stands under the heading of the next. A line with several
-// Buttons (the tab row) moves as one. Returns the pieces to draw and the
-// keys to hold next.
+// Buttons (the tab row) moves as one, and so does a line with the lines that
+// `joins` it. Returns the pieces to draw and the keys to hold next.
 export function hold(
   list: Piece[],
   held?: readonly Held[],
@@ -77,8 +77,15 @@ export function hold(
   const drawn = list.flatMap(keysOf)
   if (!held) return { list, held: drawn }
   const before = inPlace ? seat(list, held) : held
+  const units: Piece[][] = []
+  for (const piece of list) {
+    const prev = units.at(-1)
+    if (prev && 'spans' in piece && piece.joins) prev.push(piece)
+    else units.push([piece])
+  }
+  const keysIn = (unit: Piece[]) => unit.flatMap(keysOf)
   const rank = new Map(before.map((one, i) => [one.key, i]))
-  const where = new Map(list.flatMap((piece, i) => keysOf(piece).map(one => [one.key, i] as const)))
+  const where = new Map(units.flatMap((unit, i) => keysIn(unit).map(one => [one.key, i] as const)))
   const last = Math.max(-1, ...before.map(one => where.get(one.key) ?? -1))
   const out: Piece[] = []
   const done = new Set<number>()
@@ -93,7 +100,7 @@ export function hold(
       if (at === undefined) out.push(slot(one))
       else if (!done.has(at)) {
         done.add(at)
-        out.push(list[at] as Piece)
+        out.push(...(units[at] as Piece[]))
       }
     }
   }
@@ -102,14 +109,14 @@ export function hold(
     out.push(...moved)
     isClosed = true
   }
-  list.forEach((piece, i) => {
+  units.forEach((unit, i) => {
     if (i > last && !isClosed) close()
     if (done.has(i)) return
-    const keys = keysOf(piece)
+    const keys = keysIn(unit)
     const first = Math.min(...keys.map(one => rank.get(one.key) ?? Infinity))
-    if (keys.length === 0 || isClosed) out.push(piece)
+    if (keys.length === 0 || isClosed) out.push(...unit)
     else if (first < Infinity) upTo(first + 1)
-    else moved.push(piece)
+    else moved.push(...unit)
   })
   if (!isClosed) close()
   const now = new Map(drawn.map(one => [one.key, one]))

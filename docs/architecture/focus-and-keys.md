@@ -23,6 +23,8 @@ keywords: [append-only, focus order, target-bound keys, arming, arrow keys, ui.f
 | `rabe.open` | The item whose full detail shows; `''` shows the list |
 | `rabe.order` | The list order taken when the pane opened (`RabeOrder`, see [The held order](focus-order.md#the-held-order)) |
 | `rabe.removed` | The ids of ended items the person removed this session (see [Removing ended items](views.md#removing-ended-items)) |
+| `rabe.grouping` | The Cost tab's grouping (`RabeGrouping`: `agent`, `model` or `harness`), set by `i`, `o` and `h`; absent: `agent`. A change is the person's own: the hold starts anew, and `act` lands the ring on `tab-cost`, then the grouping's Button |
+| `rabe.mainUsage` | The main session's steps per model since Rabe loaded (`RabeMainUsage`: steps, tokens and the price of the steps at the 1-hour cache-write rate), written by the `turn.step` hook of `agents.ts` for a step with no `agentId` |
 | `rabe.window` | The Timeline's window (`RabeWindow`: `base` hours from the option, the `hours` shown and their start `since`), set by `/rabe` and by `w`; absent, the pane takes the option's |
 
 #### Focus and the arrow keys
@@ -52,7 +54,7 @@ The pane catches these letters while it holds the keys outside input fields:
 | Codex detail | `b x`; `c` when a thread id is known; `f` when a forwarder is known |
 | Cron job detail | `b c d` |
 | Scheduled wakeup detail | `b c`; no `d` |
-| Cost | `c` when the current session id is known |
+| Cost | `i` agent, `o` model, `h` harness grouping; `c` when the current session id is known |
 | Effects | `c` on the first port's SSH row while that port exists |
 | Timeline | `w` when `timelineHours` is greater than zero; `c` when the previous session id is known |
 
