@@ -1383,9 +1383,14 @@ test('a direct codex exec with two rollouts near its start gets none', async ($,
 })
 
 test('a rollout of another model than the -m flag is not the run', async ($, on) => {
-  const { items } = await pollExec($, on, [execRow('a', { model: 'gpt-6-luna' })], {
-    [EXEC_PATH]: execRollout(EXEC_ID, '1970-01-01T00:00:01.500Z'),
-  })
+  const { items } = await pollExec(
+    $,
+    on,
+    [execRow('a', { model: 'gpt-6-luna', isModelAsked: true })],
+    {
+      [EXEC_PATH]: execRollout(EXEC_ID, '1970-01-01T00:00:01.500Z'),
+    },
+  )
   expect(items()[0]).toMatchObject({
     detail: { codex: { model: 'gpt-6-luna', isUnmatched: true } },
   })
@@ -1538,9 +1543,14 @@ test('a resumed thread counts usage from the run start, not from the matching al
 
 test('a time match that a later turn_context shows to be another model is dropped', async ($, on) => {
   const meta = execRollout(EXEC_ID, '1970-01-01T00:00:01.500Z').split('\n')[0] ?? ''
-  const { items, w } = await pollExec($, on, [execRow('a', { model: 'gpt-6-luna' })], {
-    [EXEC_PATH]: meta,
-  })
+  const { items, w } = await pollExec(
+    $,
+    on,
+    [execRow('a', { model: 'gpt-6-luna', isModelAsked: true })],
+    {
+      [EXEC_PATH]: meta,
+    },
+  )
   expect(items()[0]).toMatchObject({ detail: { codex: { sessionPath: EXEC_PATH } } })
   w.files.set(EXEC_PATH, {
     text: execRollout(EXEC_ID, '1970-01-01T00:00:01.500Z'),
@@ -1552,4 +1562,74 @@ test('a time match that a later turn_context shows to be another model is droppe
   expect(row?.tokens).toBeUndefined()
   expect(row?.costUsd).toBeUndefined()
   expect(row?.detail).not.toMatchObject({ codex: { sessionPath: expect.any(String) } })
+})
+
+test('a run that holds its file loses it when a later run or a plugin job names its thread', async ($, on) => {
+  const held = execRow(
+    'a',
+    {
+      threadId: EXEC_ID,
+      sessionPath: EXEC_PATH,
+      matchedBy: 'id',
+      sessionUpdatedAt: 5000,
+      sessionEndedAt: 3000,
+    },
+    { tokens: { input: 1, output: 1 }, costUsd: 0.01 },
+  )
+  const job: RabeItem = {
+    id: 'codex:task-9',
+    kind: 'codex',
+    title: 'job',
+    status: 'running',
+    seenAt: 1000,
+    detail: { jobId: 'task-9', threadId: OTHER_ID },
+  }
+  const other = execRow('c', {
+    threadId: OTHER_ID,
+    sessionPath: OTHER_PATH,
+    matchedBy: 'time',
+    sessionEndedAt: 3000,
+  })
+  const { items } = await pollExec(
+    $,
+    on,
+    [held, execRow('b', { threadId: EXEC_ID }, { startedAt: 9000 }), other, job],
+    {
+      [EXEC_PATH]: execRollout(EXEC_ID, '1970-01-01T00:00:01.500Z'),
+      [OTHER_PATH]: execRollout(OTHER_ID, '1970-01-01T00:00:01.500Z'),
+    },
+  )
+  for (const id of ['shell:fg-a', 'shell:fg-b', 'shell:fg-c']) {
+    const row = items().find(one => one.id === id)
+    expect(row?.detail).toMatchObject({ codex: { isUnmatched: true } })
+    expect(row?.detail).not.toMatchObject({ codex: { sessionPath: expect.any(String) } })
+    expect(row?.tokens).toBeUndefined()
+    expect(row?.costUsd).toBeUndefined()
+  }
+})
+
+test('a model the file named is no -m constraint: a later model keeps the match', async ($, on) => {
+  const first = execRollout(EXEC_ID, '1970-01-01T00:00:01.500Z')
+  const { items, w } = await pollExec(
+    $,
+    on,
+    [execRow('a', {}, { status: 'running', endedAt: undefined })],
+    {
+      [EXEC_PATH]: first,
+    },
+  )
+  expect(items()[0]).toMatchObject({
+    detail: { codex: { model: 'gpt-6.1-sol', matchedBy: 'time' } },
+  })
+  w.files.set(EXEC_PATH, {
+    text: `${first}\n${line('turn_context', { model: 'gpt-6-luna' })}`,
+    mtimeMs: 15_000,
+  })
+  await w.clock.advance(2000)
+  const row = items()[0]
+  expect(row?.detail).not.toMatchObject({ codex: { isUnmatched: true } })
+  expect(row).toMatchObject({
+    tokens: { input: 25000 },
+    detail: { codex: { model: 'gpt-6-luna', sessionPath: EXEC_PATH } },
+  })
 })

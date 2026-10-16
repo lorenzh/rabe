@@ -438,7 +438,7 @@ async function correct($: EngineInterface, tasks: readonly BackgroundTask[]): Pr
 const codexFacet = (exec: ReturnType<typeof codexExec>): { codex: RabeCodexRun } | undefined =>
   exec && {
     codex: {
-      ...(exec.model && { model: exec.model }),
+      ...(exec.model && { model: exec.model, isModelAsked: true }),
       ...(exec.effort && { effort: exec.effort }),
       ...(exec.sandbox && { sandbox: exec.sandbox }),
       ...(exec.dir && { dir: exec.dir }),

@@ -1319,3 +1319,15 @@ test('a background call starts when it was called, not when it returned', async 
   await call
   expect(state['rabe.items']?.value).toMatchObject([{ id: 'shell:b9', startedAt: 1000 }])
 })
+
+test('a model from -m is marked as asked; a command without -m marks none', async ($, on) => {
+  mock.clock(on, { now: 1000 })
+  const state = memoryState(on)
+  bash(on)
+  core(on)
+  await $.tool.call({ tool: 'Bash', command: 'codex exec -m gpt-6-sol - < b' })
+  await $.tool.call({ tool: 'Bash', command: 'codex exec - < b' })
+  const items = state['rabe.items']?.value as RabeItem[]
+  expect(items[0]?.detail).toMatchObject({ codex: { model: 'gpt-6-sol', isModelAsked: true } })
+  expect(items[1]?.detail).not.toMatchObject({ codex: { isModelAsked: true } })
+})

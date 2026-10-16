@@ -497,6 +497,12 @@ async function pollExec(
     if (threadId) rowThreads.set(threadId, (rowThreads.get(threadId) ?? 0) + 1)
   }
   const claimed = new Set(rows.flatMap(row => row.detail.codex.sessionPath ?? []))
+  // a row that holds its file loses it once a plugin job or another row names its thread
+  for (const row of rows) {
+    const { threadId, sessionPath, isUnmatched } = row.detail.codex
+    if (!sessionPath || isUnmatched || !threadId) continue
+    if (jobThreads.has(threadId) || (rowThreads.get(threadId) ?? 0) > 1) unmatched.add(row.id)
+  }
   for (const row of rows) {
     const { threadId, sessionPath, isUnmatched } = row.detail.codex
     if (sessionPath || isUnmatched || !threadId) continue
@@ -579,12 +585,13 @@ async function pollExec(
     const rollout = session?.rollout
     // matched by time: the model `-m` asked for must be the file's, checked on each read;
     // until the file names one, the match holds no usage
-    const isOtherModel = byTime && codex.model && rollout?.model && rollout.model !== codex.model
+    const asked = codex.isModelAsked ? codex.model : undefined
+    const isOtherModel = byTime && asked && rollout?.model && rollout.model !== asked
     if (isOtherModel) {
       unmatched.add(row.id)
       continue
     }
-    const isPending = byTime && codex.model !== undefined && rollout && !rollout.model
+    const isPending = byTime && asked !== undefined && rollout && !rollout.model
     const isUnchanged = session?.updatedAt !== undefined && !rollout
     stage(poll, held => {
       const current = held.find(one => one.id === row.id)
@@ -597,7 +604,7 @@ async function pollExec(
         ...(session?.updatedAt !== undefined && { sessionUpdatedAt: session.updatedAt }),
         ...(rollout &&
           !isPending && {
-            model: current.detail.codex.model ?? rollout.model,
+            model: asked ?? rollout.model ?? current.detail.codex.model,
             ...(rollout.effort && { effort: rollout.effort }),
             ...(rollout.sandbox && { sandbox: rollout.sandbox }),
             isSessionPartial: session?.isPartial === true,

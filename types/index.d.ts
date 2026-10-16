@@ -95,6 +95,8 @@ export type RabeCodexRun = {
   // The thread id: from `session id:` on stderr, or from the matched session file.
   threadId?: string
   sessionPath?: string
+  // True when `model` came from `-m`: only then does a time match have to agree with it.
+  isModelAsked?: boolean
   // How the file was found: the stderr session id, or the start time (checked against `-m` on each read).
   matchedBy?: 'id' | 'time'
   sessionUpdatedAt?: number
