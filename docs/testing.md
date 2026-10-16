@@ -141,7 +141,7 @@ scripts/live-check.sh --shells 3 --keys 'Down Down Enter' --expect 'b: back'
 | `--dry-run` | off | Print the plan and stop. |
 | `--model NAME` | Claude Code's | The model of the session. A cheap one will do. |
 
-The binary is `claude` on `PATH`, or the one named in the environment variable `CLAUDE`. The exit code is 0 when every round passed, 1 when a round failed and 2 for a usage or setup error: the socket already has a session, tmux could not start the session, the seeded shells did not start, Rabe did not open, a round could not select the first row, or a capture failed.
+The binary is `claude` on `PATH`, or the one named in the environment variable `CLAUDE`; a relative path is resolved against the current directory. The exit code is 0 when every round passed, 1 when a round failed and 2 for a usage or setup error: the socket already has a session, tmux could not start the session, the seeded shells did not start, Rabe did not open, a round could not select the first row, or a capture failed.
 
 ### Key sequences
 
