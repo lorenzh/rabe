@@ -5,9 +5,15 @@ import {
   cursorOf,
   fileOffset,
   inodeOf,
+  jsonRecords,
+  list,
+  num,
   outputLines,
+  parseJson,
   readChunk,
   readPlan,
+  rec,
+  str,
 } from './reading'
 
 const stat = { size: 6, mtimeMs: 1, identity: '1' }
@@ -104,4 +110,19 @@ test('restored cursors reject fractional byte positions and invalid fields', () 
     expect(cursorOf(value)).toBeUndefined()
   }
   expect(cursorOf(held)).toBe(held)
+})
+
+test('JSON helpers keep objects and drop everything else', () => {
+  expect(parseJson('{"a":1}')).toEqual({ a: 1 })
+  expect(parseJson('[1]')).toBeUndefined()
+  expect(parseJson('3')).toBeUndefined()
+  expect(parseJson('not json')).toBeUndefined()
+  expect(jsonRecords('{"a":1}\n\nbad\n[2]\n{"b":2}')).toEqual([{ a: 1 }, { b: 2 }])
+  expect(rec([1])).toEqual({})
+  expect(rec({ a: 1 })).toEqual({ a: 1 })
+  expect(list('x')).toEqual([])
+  expect(str('')).toBeUndefined()
+  expect(str('a')).toBe('a')
+  expect(num('1')).toBeUndefined()
+  expect(num(1)).toBe(1)
 })

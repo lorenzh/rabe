@@ -38,6 +38,15 @@
 - `data/prices.csv`: list prices per model. The agents and Codex sources read it at run time under `$.plugin.root`, with the user's file (option `pricesFile`) first; `hooks/prices.ts` parses and applies it (see `docs/feasibility/prices.md` and `docs/architecture/prices.md`).
 - `types/claude-code.d.ts`, `types/claude-code-tools.d.ts`: API types and built-in tool types written by Claude Code (`.claude-plugin/types/claude-code/` and `claude-code-tools/`). Do not edit; replace both when the pinned Claude Code version changes.
 
+## Shared helpers: look here before writing one
+Search this table and grep before you write a helper. Put new shared logic in the named file and add a row in the same pull request. Helpers that take `$` stay in their hook's file.
+
+| Need | Helper | File | Test |
+|------|--------|------|------|
+| Is a value an object (not an array) | `isRecord`, `rec` | `hooks/reading.ts` | `hooks/reading.test.ts` |
+| Safe `list`, `str`, `num` from unknown JSON | `list`, `str`, `num` | `hooks/reading.ts` | `hooks/reading.test.ts` |
+| Parse one JSON object or a JSONL text | `parseJson`, `jsonRecords` | `hooks/reading.ts` | `hooks/reading.test.ts` |
+
 ## Key Conventions
 - Get data from the mod API first, then from files on disk, then from the Claude Code or Codex source. Record each new source in the relevant document under `docs/feasibility/` and add it to [`docs/README.md`](docs/README.md).
 - Hooks pass on with `next(e)` unless they answer on purpose.

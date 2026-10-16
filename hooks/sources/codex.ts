@@ -10,9 +10,14 @@ import {
   cursorOf,
   inodeOf,
   isRecord,
+  list,
+  parseJson,
+  type Rec,
   readChunk,
   readPlan,
+  rec,
   restored,
+  str,
   unchanged,
 } from '../reading'
 import {
@@ -35,14 +40,9 @@ import {
   jobEnd,
   jobStart,
   jobStop,
-  list,
-  parseJson,
   parseRollout,
-  type Rec,
   type Rollout,
-  rec,
   rolloutCursor,
-  str,
 } from './codex-data'
 
 export { advanceRollout, codexItem, jobEnd, parseRollout } from './codex-data'
