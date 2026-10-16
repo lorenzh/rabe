@@ -242,7 +242,7 @@ Run all checks (lint, type check, manifest check and tests), as CI does:
 bun run check
 ```
 
-[Contributing](CONTRIBUTING.md) explains the setup, workflow and review process. [How to test Rabe](docs/testing.md) covers the tests and live checks with `scripts/live-check.sh`. [AGENTS.md](AGENTS.md) has the rules for coding agents, and [Security guidelines](docs/security.md) the security rules for changes and review. [The documentation index](docs/README.md) links to the architecture and feasibility guides. See the [user guide](docs/guide.md) for options and common problems.
+[Contributing](CONTRIBUTING.md) explains the setup, workflow and review process. [How to test Rabe](docs/testing.md) covers the tests and live checks with `scripts/live-check.sh`; set `CLAUDE` to another binary, as an absolute path or a relative one, which the script resolves against the current directory. [AGENTS.md](AGENTS.md) has the rules for coding agents, and [Security guidelines](docs/security.md) the security rules for changes and review. [The documentation index](docs/README.md) links to the architecture and feasibility guides. See the [user guide](docs/guide.md) for options and common problems.
 
 ## Feedback and bugs
 
