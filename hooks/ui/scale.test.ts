@@ -76,6 +76,25 @@ function session(groups: number): RabeItem[] {
   }).flat()
 }
 
+// Ordinary running agents with their own model: no folded Codex copies hide a
+// read the Cost tab repeats per row.
+function agents(count: number): RabeItem[] {
+  return Array.from(
+    { length: count },
+    (_, n): RabeItem => ({
+      id: `agent:o${n}`,
+      kind: 'agent',
+      title: `agent ${n}`,
+      status: 'running',
+      seenAt: NOW,
+      startedAt: NOW - n * 1000,
+      tokens: { input: n, output: 5 },
+      costUsd: 0.1,
+      detail: { agentId: `o${n}`, toolCount: 1, model: `model-${n % 7}` },
+    }),
+  )
+}
+
 // Items that count each property a function reads: the work it does on them.
 function watched(items: RabeItem[]): { list: RabeItem[]; reads: () => number } {
   let reads = 0
@@ -136,6 +155,20 @@ const WORK: [string, (items: RabeItem[]) => unknown][] = [
 for (const [name, work] of WORK) {
   test(`${name} does work linear in the item count`, () => {
     const ratio = reads(200, work) / reads(50, work)
+    expect(ratio).toBeLessThan(6)
+  })
+}
+
+// Every grouping, drawn for ordinary agents (4x the agents, under 6x the reads).
+for (const by of ['agent', 'model', 'harness'] as const) {
+  test(`the Cost tab by ${by} does work linear in the agent count`, () => {
+    const cost = (count: number) => {
+      const { list, reads } = watched(agents(count))
+      costView(draw(list), SIZE, { ...NO_SELECTION, grouping: by, order: orderOf(list) })
+
+      return reads()
+    }
+    const ratio = cost(200) / cost(50)
     expect(ratio).toBeLessThan(6)
   })
 }
