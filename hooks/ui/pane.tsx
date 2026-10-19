@@ -246,6 +246,21 @@ async function focusOn($: EngineInterface, key: string): Promise<boolean> {
   return isMoved
 }
 
+// A dropped `m` press must not leave the ring away from the field: the typed
+// letters would reach the main prompt. Land the ring, or say that it did not land.
+async function missedMessage($: EngineInterface, element: string): Promise<void> {
+  try {
+    const id = element.slice('message-agent:'.length)
+    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
+    const item = items.find(one => one.id === id)
+    if (item?.kind === 'agent' && !isEnded(item) && !isWorkflowAgent(item)) {
+      if (!(await focusOn($, `message:${id}`))) toast($, 'Message field not focused')
+    } else {
+      toast($, 'Message not sent')
+    }
+  } catch {}
+}
+
 async function regain($: EngineInterface, want: Shift): Promise<void> {
   if (interaction.shift !== want) return
   const result = await $.ui
@@ -750,40 +765,46 @@ export function pane(on: On, hours = baseHours): void {
 
   // Each open sorts the lists once; then they hold their order (see `stable`).
   on('command.run', { command: 'rabe' }, async $ => {
-    const { value: items = [] } = await $.state.get({ plugin: 'rabe', key: 'items' })
-    const surfaces = await $.session.surfaces().catch(() => [])
-    // An empty list means nothing draws (a plain -p run), so text is the answer.
-    // Checked first: `$.ui.open` reports isPlaced true there although nothing draws.
-    if (surfaces.length === 0) return { text: itemsText(items) }
-    const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
-    const { value: mainUsage } = await $.state.get({ plugin: 'rabe', key: 'mainUsage' })
-    await $.state.set(
-      { plugin: 'rabe', key: 'order' },
-      {
-        ...orderOf(items, edits, mainUsage),
-        'cost:model': orderIds('model', items, mainUsage),
-        'cost:harness': orderIds('harness', items, mainUsage),
-      },
-    )
-    await $.state.set({ plugin: 'rabe', key: 'window' }, windowOf(baseHours, await $.clock.now()))
-    isRestored = false
-    pinned = NO_PIN
-    const opened = await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })
-    // Unplaced: the host cannot draw the pane (it waits undrawn). Close it, and
-    // never feed `opened` (that schedules the refocus), so the text is the answer.
-    if (!opened.isPlaced) {
-      // A refused or intercepted close leaves the pane pending: it stays the
-      // only answer. A resolved close counts only when the pane is gone.
-      const closed = await $.ui
-        .close({ id: PANE })
-        .then(async () => !(await $.ui.panes()).some(one => one.id === PANE))
-        .catch(() => false)
-      return closed ? { text: itemsText(items) } : {}
-    }
-    feed($, { type: 'opened' })
+    let items: RabeItem[] = []
+    // A rejected state or ui call must not escape the hook; the text answers.
+    try {
+      items = (await $.state.get({ plugin: 'rabe', key: 'items' })).value ?? []
+      const surfaces = await $.session.surfaces().catch(() => [])
+      // An empty list means nothing draws (a plain -p run), so text is the answer.
+      // Checked first: `$.ui.open` reports isPlaced true there although nothing draws.
+      if (surfaces.length === 0) return { text: itemsText(items) }
+      const { value: edits = [] } = await $.state.get({ plugin: 'rabe', key: 'edits' })
+      const { value: mainUsage } = await $.state.get({ plugin: 'rabe', key: 'mainUsage' })
+      await $.state.set(
+        { plugin: 'rabe', key: 'order' },
+        {
+          ...orderOf(items, edits, mainUsage),
+          'cost:model': orderIds('model', items, mainUsage),
+          'cost:harness': orderIds('harness', items, mainUsage),
+        },
+      )
+      await $.state.set({ plugin: 'rabe', key: 'window' }, windowOf(baseHours, await $.clock.now()))
+      isRestored = false
+      pinned = NO_PIN
+      const opened = await $.ui.open({ id: PANE, title: 'Rabe', closeOnEscape: true })
+      // Unplaced: the host cannot draw the pane (it waits undrawn). Close it, and
+      // never feed `opened` (that schedules the refocus), so the text is the answer.
+      if (!opened.isPlaced) {
+        // A refused or intercepted close leaves the pane pending: it stays the
+        // only answer. A resolved close counts only when the pane is gone.
+        const closed = await $.ui
+          .close({ id: PANE })
+          .then(async () => !(await $.ui.panes()).some(one => one.id === PANE))
+          .catch(() => false)
+        return closed ? { text: itemsText(items) } : {}
+      }
+      feed($, { type: 'opened' })
 
-    // The pane is the answer; text would also reach the transcript.
-    return {}
+      // The pane is the answer; text would also reach the transcript.
+      return {}
+    } catch {
+      return { text: itemsText(items) }
+    }
   })
 
   // A close the host carries out clears every hold; a canceled one keeps it.
@@ -858,9 +879,11 @@ export function pane(on: On, hours = baseHours): void {
       leave({ type: 'tab', tab: tab.tab }, e)
       return { element: e.element }
     }),
-  ).catch((_$, e, next) =>
-    next.called && next.error.message?.includes(RELEASED) ? { element: e.element } : next(e),
-  )
+  ).catch(async ($, e, next) => {
+    if (!(next.called && next.error.message?.includes(RELEASED))) return next(e)
+    if (e.element.startsWith('message-agent:')) await missedMessage($, e.element)
+    return { element: e.element }
+  })
   // A redraw between a key and its closure releases the field's handler. The
   // event carries the field's whole text, so the search filter still follows
   // the field (#180) and a submitted message is still sent once (#218). Any
