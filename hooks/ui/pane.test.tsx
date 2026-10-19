@@ -972,7 +972,7 @@ test('i, o and h group the cost tab by agent, model or harness', async ($, on) =
       expect((await ui.find({ type: 'Button', key }))?.props.hotkey).toBe(hotkey)
     }
     let shown = await screen(ui)
-    expect(shown.some(line => line.includes('by worker'))).toBe(true)
+    expect(shown.some(line => line.includes('by agent'))).toBe(true)
     expect(shown.some(line => /main session +\(partial\)/.test(line))).toBe(true)
     await ui.press({ key: 'by-model' })
     expect(state.grouping).toBe('model')
@@ -3137,4 +3137,76 @@ test('b from the editor of the second effects file lands on that file row', asyn
   expect(state).toMatchObject({ tab: 'effects', open: '' })
   expect(state.picked).toMatchObject({ effects: 'file:/repo/src/b.ts' })
   await ui.unmount()
+})
+
+// Issue #259: a press on `m` that hits a released handle must still move the
+// ring into the agent's field, or the typed letters reach the main prompt.
+// A plugin beneath Rabe holds the press while the pane is drawn again, which
+// releases the Button's handler: the engine then refuses the held press.
+const holdsMessage = {
+  name: 'holds-message',
+  tier: 'append',
+  register(on: On) {
+    on('ui.press', { requestId: 'rabe' }, async ($, e, next) => {
+      if (!e.element.startsWith('message-agent:')) return next(e)
+      await $.store.get(`gate:${e.element}`)
+      return next(e)
+    })
+  },
+} as const
+
+test(
+  'a released m press still focuses the live agent message field',
+  { plugins: [holdsMessage] },
+  async ($, on) => {
+    const state = hold(on, ALL, { open: explore.id })
+    const gated = gates(on)
+    const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    const press = ui.press({ key: `message-agent:${explore.id}` })
+    const go = await gated(`message-agent:${explore.id}`)
+    const title = explore.title
+    explore.title = 'explore, renamed'
+    await ui.redraw()
+    go()
+    await press
+    explore.title = title
+    // The kit refuses Rabe's own move, so the refusal is what shows the attempt.
+    expect(String(state.toasts)).toContain('Message field not focused')
+    await ui.unmount()
+  },
+)
+
+test(
+  'a released m press on an ended agent says the message was not sent',
+  { plugins: [holdsMessage] },
+  async ($, on) => {
+    const ended = { ...explore, status: 'completed', endedAt: NOW } as unknown as RabeItem
+    const state = hold(on, [ended], { open: ended.id })
+    const gated = gates(on)
+    const ui: Mounted<'terminal'> = await $.ui.mount({ surface: 'terminal', ...PANE } as never)
+    const press = ui.press({ key: `message-agent:${ended.id}` })
+    const go = await gated(`message-agent:${ended.id}`)
+    ended.title = 'explore, renamed'
+    await ui.redraw()
+    go()
+    await press
+    expect(String(state.toasts)).toContain('Message not sent')
+    await ui.unmount()
+  },
+)
+
+// Issue #248: a rejected state or ui call in /rabe must not escape the hook.
+test('/rabe does not throw when a state read rejects', async ($, on) => {
+  on('state.get', { plugin: 'rabe', key: 'edits' }, async () => {
+    throw new Error('state gone')
+  })
+  opening(on, true)
+  await expect($.command.run({ command: 'rabe', args: '' } as never)).resolves.toBeDefined()
+})
+
+test('/rabe does not throw when ui.open rejects', async ($, on) => {
+  on('ui.open', async () => {
+    throw new Error('open gone')
+  })
+  await expect($.command.run({ command: 'rabe', args: '' } as never)).resolves.toBeDefined()
 })

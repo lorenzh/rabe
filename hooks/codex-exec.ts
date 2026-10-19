@@ -111,9 +111,17 @@ function flagsOf(args: Tok[]): Flags {
     if (!text.startsWith('-')) continue
     const next = args[i + 1]
     const word = isWord(next) && next.known ? next.text : undefined
-    const eq = text.indexOf('=')
-    const name = eq < 0 ? text : text.slice(0, eq)
-    const inline = eq < 0 || !tok.known ? undefined : text.slice(eq + 1)
+    // clap takes `-mVALUE` as `-m VALUE` (and `-m=VALUE`); only the model is read this way.
+    const attached = /^-m[^-]/.test(text)
+    const eq = attached ? -1 : text.indexOf('=')
+    const name = attached ? '-m' : eq < 0 ? text : text.slice(0, eq)
+    const inline = attached
+      ? tok.known
+        ? text.slice(2).replace(/^=/, '')
+        : undefined
+      : eq < 0 || !tok.known
+        ? undefined
+        : text.slice(eq + 1)
     const value = tok.known ? (inline ?? word) : undefined
     if (name === '-m' || name === '--model') set('model', value)
     else if (name === '-s' || name === '--sandbox') set('sandbox', value)

@@ -1,4 +1,4 @@
-import type { RabeEdit, RabeOrder, RabePrevious } from '../../types'
+import type { RabeEdit, RabeMainUsage, RabeOrder, RabePrevious } from '../../types'
 import {
   firstCodexOf,
   isEnded,
@@ -9,6 +9,7 @@ import {
   runOf,
 } from '../model'
 import { nextRuns } from '../schedule'
+import { mainTotal } from './groups'
 import { byConflict, touched } from './touched'
 
 export { touched, treeOf, worktreeRows } from './touched'
@@ -278,7 +279,11 @@ export const FAMILIES: Group[] = ['shells', 'monitors']
 // monitors in their families), the Cost tab by tokens, the Timeline by start,
 // the Effects files by `byConflict` and its ports (the shells that run with
 // one). Held in `rabe.order` until the next open.
-export function orderOf(all: RabeItem[], edits: RabeEdit[] = []): RabeOrder {
+export function orderOf(
+  all: RabeItem[],
+  edits: RabeEdit[] = [],
+  main?: Record<string, RabeMainUsage>,
+): RabeOrder {
   const ids = (list: RabeItem[]) => list.map(item => item.id)
   const items = shown(all)
 
@@ -299,10 +304,24 @@ export function orderOf(all: RabeItem[], edits: RabeEdit[] = []): RabeOrder {
         ),
       ]),
     ),
-    cost: ids(byTokens(items.map(item => withForwarder(item, all)))),
+    cost: costIds(
+      items.map(item => withForwarder(item, all)),
+      main,
+    ),
     timeline: ids(byStart(items)),
     files: byConflict(touched(all, edits)).map(file => file.id),
   }
+}
+
+// The Cost tab's agent rows by tokens; the main session's row sorts with the workers.
+const costIds = (workers: RabeItem[], main?: Record<string, RabeMainUsage>): string[] => {
+  const total = mainTotal('agent', main ?? {})
+  const rows = [
+    ...byTokens(workers).map(item => ({ id: item.id, tokens: tokenSum(item) })),
+    ...(total ? [total] : []),
+  ]
+
+  return rows.toSorted((a, b) => b.tokens - a.tokens).map(row => row.id)
 }
 
 export type Family = { id: string; parent?: RabeItem; title: string; items: RabeItem[] }
