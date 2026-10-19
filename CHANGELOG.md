@@ -4,6 +4,10 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-19
+
+No migration. Update with `claude plugin update rabe` and `/reload-plugins`; a running session keeps working. No option, command, key or stored format changed.
+
 ### Fixed
 
 - A dropped `m` press (a released handle after a redraw) now moves the ring into the live agent's message field (toast "Message field not focused" if it does not land), or toasts "Message not sent" for an ended agent, so typed text no longer reaches the main prompt ([#259](https://github.com/lorenzh/rabe/issues/259), [#262](https://github.com/lorenzh/rabe/pull/262))
@@ -305,7 +309,8 @@ The first public version.
 
 - Workflow agents no longer offer stop and message, which Claude Code does not support for a single workflow agent; their detail offers stopping the run. ([#8](https://github.com/lorenzh/rabe/pull/8))
 
-[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/lorenzh/rabe/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/lorenzh/rabe/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/lorenzh/rabe/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/lorenzh/rabe/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/lorenzh/rabe/compare/v0.8.1...v0.9.0
