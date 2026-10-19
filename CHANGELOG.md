@@ -6,8 +6,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 
 ### Fixed
 
-- A dropped `m` press (a released handle after a redraw) now moves the ring into the live agent's message field (toast "Message field not focused" if it does not land), or toasts "Message not sent" for an ended agent, so typed text no longer reaches the main prompt ([#259](https://github.com/lorenzh/rabe/issues/259))
-- `/rabe` no longer lets a rejected state or UI call escape; it answers with the list as text ([#248](https://github.com/lorenzh/rabe/issues/248))
+- A dropped `m` press (a released handle after a redraw) now moves the ring into the live agent's message field (toast "Message field not focused" if it does not land), or toasts "Message not sent" for an ended agent, so typed text no longer reaches the main prompt ([#259](https://github.com/lorenzh/rabe/issues/259), [#262](https://github.com/lorenzh/rabe/pull/262))
+- `/rabe` no longer lets a rejected state or UI call escape; it answers with the list as text ([#248](https://github.com/lorenzh/rabe/issues/248), [#262](https://github.com/lorenzh/rabe/pull/262))
 
 ## [0.10.0] - 2026-10-16
 
