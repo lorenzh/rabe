@@ -3205,8 +3205,15 @@ test('/rabe does not throw when a state read rejects', async ($, on) => {
 })
 
 test('/rabe does not throw when ui.open rejects', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  on('state.get', async () => ({ value: { value: undefined, version: 0 } }))
+  on('session.surfaces', async () => ({ value: ['terminal'] }) as never)
+  let opens = 0
   on('ui.open', async () => {
+    opens++
     throw new Error('open gone')
   })
   await expect($.command.run({ command: 'rabe', args: '' } as never)).resolves.toBeDefined()
+  // The hook must reach ui.open, or the catch around it is never tried.
+  expect(opens).toBe(1)
 })

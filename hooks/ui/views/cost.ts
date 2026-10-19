@@ -247,7 +247,10 @@ export const costView: View = (model, size, sel): Drawn => {
     sel.order?.cost,
     all => all.toSorted((a, b) => b.tokens - a.tokens),
   ).map(one => one.id)
-  const items = order.flatMap(id => workers.filter(item => item.id === id))
+  // The first worker of an id, as a lookup: one pass, not a search per row.
+  const workerById = new Map<string, RabeItem>()
+  for (const item of workers) if (!workerById.has(item.id)) workerById.set(item.id, item)
+  const items = order.flatMap(id => workerById.get(id) ?? [])
   // The rows by id: a worker's row has its item's id, a group's its own.
   const rows: GroupRow[] =
     by === 'agent'
@@ -258,6 +261,10 @@ export const costView: View = (model, size, sel): Drawn => {
   const list = by === 'agent' ? items : []
   const ids = by === 'agent' ? order : rows.map(row => row.id)
   const pickedId = ids.includes(sel.selected) ? sel.selected : (ids[0] ?? '')
+  const listById = new Map<string, RabeItem>()
+  for (const item of list) if (!listById.has(item.id)) listById.set(item.id, item)
+  const rowById = new Map<string, GroupRow>()
+  for (const row of rows) if (!rowById.has(row.id)) rowById.set(row.id, row)
   // The column widths are minimums: a long value (a $1000.00 worker) widens
   // its column instead of pushing the next one out of the line.
   const base = widths(by, size.columns)
@@ -346,8 +353,8 @@ export const costView: View = (model, size, sel): Drawn => {
   ]
   const drawn: Line[] = [
     ...ids.flatMap(id => {
-      const item = list.find(one => one.id === id)
-      const row = rows.find(one => one.id === id)
+      const item = listById.get(id)
+      const row = rowById.get(id)
 
       return item
         ? workerLine(item, max, model.now, nameWidth, barWidth, id === pickedId, size.columns, w)
