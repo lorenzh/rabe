@@ -276,11 +276,9 @@ export const timelineView: View = (model, size, sel): Drawn => {
       ]
     : []
   // a forwarder has no row, but stays in the tree above its job
-  const who = treeLines(
-    model.items.filter(
-      item => list.includes(item) || list.some(one => forwarderOf(one, model.items) === item),
-    ),
-  )
+  const inList = new Set(list)
+  const forwarders = new Set(list.map(one => forwarderOf(one, model.items)))
+  const who = treeLines(model.items.filter(item => inList.has(item) || forwarders.has(item)))
   const prev = previousLines(model, isSide ? BOX : size.columns)
   const below = isSide
     ? beside(who, size.columns - BOX - 2, [['  ']], prev, BOX)

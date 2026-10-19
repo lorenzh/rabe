@@ -30,7 +30,21 @@ type Fields = [Set<number>, Set<number>, Set<number>, Set<number>, Set<number>]
 
 type Cron = { fields: Fields; isDayOfMonthAny: boolean; isDayOfWeekAny: boolean }
 
+// A schedule is parsed once, not once per run asked for: the Timeline asks a
+// cron job for a run per cell on every draw. ponytail: cleared at 256 entries,
+// real sessions hold a handful of distinct schedules.
+const parsed = new Map<string, Cron | undefined>()
+
 function parse(expr: string): Cron | undefined {
+  if (!parsed.has(expr)) {
+    if (parsed.size >= 256) parsed.clear()
+    parsed.set(expr, parseOnce(expr))
+  }
+
+  return parsed.get(expr)
+}
+
+function parseOnce(expr: string): Cron | undefined {
   const parts = expr.trim().split(/\s+/)
   if (parts.length !== 5) return undefined
   const fields = parts.map((part, index) => field(part, RANGES[index] as [number, number]))
