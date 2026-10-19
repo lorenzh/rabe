@@ -5,6 +5,7 @@ import type { RabeItem } from '../../model'
 import { cell, lines } from '../cells/grid'
 import { C, CHIP } from '../cells/palette'
 import { ALL, explore, gridOf, NOW, plan, review, reviewed, verify } from '../fixtures'
+import { orderOf } from '../lists'
 import { isPress, type Model, NO_SELECTION, rowKeys, type Size } from '../view'
 import { costView } from './cost'
 
@@ -19,7 +20,7 @@ test('the cost tab heads with the session cost, the totals and the running count
   expect(shown[0]).toBe(' ≈ $0.41 session  claude n/a  codex ≈ $0.09  tokens 91k  running 7  2 n/a')
   expect(cell(grid, 1, 0)).toEqual(['≈'.codePointAt(0), C.bright, C.panel])
   expect(cell(grid, 79, 0)[2]).toBe(C.panel)
-  expect(shown[2]).toBe('by worker · sorted by tokens')
+  expect(shown[2]).toBe('by agent · sorted by tokens')
   expect(shown[3]).toMatch(/^ {2}NAME +TOKENS +COST +TIME$/)
 })
 
@@ -72,7 +73,7 @@ test('a held order keeps the workers in place as their tokens grow', () => {
   expect(rowKeys(drawn)).toEqual(
     [plan, verify, explore, review, reviewed].map(item => `row:${item.id}`),
   )
-  expect(lines(gridOf(drawn).grid)[2]).toBe('by worker · sorted by tokens when opened')
+  expect(lines(gridOf(drawn).grid)[2]).toBe('by agent · sorted by tokens when opened')
 })
 
 test('load notes name a long tool call and an agent with no step for a while', () => {
@@ -439,4 +440,32 @@ test('a long value widens its column; id, load notes and names stay whole when n
     gridOf(costView({ ...MODEL, items: [longName] }, { ...SIZE, columns: 26 }, NO_SELECTION)).grid,
   )
   expect(narrow.join('|')).toContain('◐ Explore the verifyTo')
+})
+
+test('the tokens total counts the main session and its row sorts with the workers', () => {
+  const main = { 'claude-opus-5-5': { steps: 3, input: 90000, output: 10000, cached: 0, usd: 0.5 } }
+  const shown = lines(gridOf(costView({ ...MODEL, mainUsage: main }, SIZE, NO_SELECTION)).grid)
+  expect(shown[0]).toContain('tokens 191k')
+  expect(row(shown, /main session/)).toBeLessThan(row(shown, /Explore verifyToken/))
+})
+
+test('the opening order seeds the main session row by tokens, ahead of a smaller worker', () => {
+  const main = { 'claude-opus-5-5': { steps: 3, input: 90000, output: 10000, cached: 0, usd: 0.5 } }
+  const items = [{ ...explore, id: 'w', tokens: { input: 41000, output: 0 } }] as RabeItem[]
+  const order = orderOf(items, [], main)
+  const sel = { ...NO_SELECTION, order }
+  const keys = rowKeys(costView({ ...MODEL, items, mainUsage: main }, SIZE, sel))
+  const at = (needle: string) => keys.findIndex(key => key.includes(needle))
+  expect(at(':main'), `opening order: 100k main must precede 41k worker; got ${keys}`).toBeLessThan(
+    at('row:w'),
+  )
+})
+
+test('the tokens total counts the main session in every grouping', () => {
+  const main = { 'claude-opus-5-5': { steps: 3, input: 90000, output: 10000, cached: 0, usd: 0.5 } }
+  for (const grouping of ['agent', 'model', 'harness'] as const) {
+    const sel = { ...NO_SELECTION, grouping }
+    const shown = lines(gridOf(costView({ ...MODEL, mainUsage: main }, SIZE, sel)).grid)
+    expect(shown[0], grouping).toContain('tokens 191k')
+  }
 })

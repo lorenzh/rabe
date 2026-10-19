@@ -10,6 +10,7 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - `/rabe` no longer lets a rejected state or UI call escape; it answers with the list as text ([#248](https://github.com/lorenzh/rabe/issues/248), [#262](https://github.com/lorenzh/rabe/pull/262))
 - A direct `codex exec` call shows its model when the flag is written `-mo4`, `-m'o4'` or `-m$'o4'`, as Codex accepts it; `$'o4'` and `--model=$'o4'` are pinned by tests, and a `$'...'` with an escape stays `n/a` ([#249](https://github.com/lorenzh/rabe/issues/249), [#263](https://github.com/lorenzh/rabe/pull/263))
 - The live-check test for a Cost bar that changes its eighth glyph now fails on the old title cut: the row has a full-width title and a tail one space after the bar ([#252](https://github.com/lorenzh/rabe/issues/252), [#264](https://github.com/lorenzh/rabe/pull/264)).
+- The Cost tab counts the main session in its tokens total and sorts its row with the workers; the heading says `by agent`, like the `i: agent` key ([#250](https://github.com/lorenzh/rabe/issues/250), [#251](https://github.com/lorenzh/rabe/issues/251), [#265](https://github.com/lorenzh/rabe/pull/265))
 
 ## [0.10.0] - 2026-10-16
 

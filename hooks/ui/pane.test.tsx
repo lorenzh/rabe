@@ -972,7 +972,7 @@ test('i, o and h group the cost tab by agent, model or harness', async ($, on) =
       expect((await ui.find({ type: 'Button', key }))?.props.hotkey).toBe(hotkey)
     }
     let shown = await screen(ui)
-    expect(shown.some(line => line.includes('by worker'))).toBe(true)
+    expect(shown.some(line => line.includes('by agent'))).toBe(true)
     expect(shown.some(line => /main session +\(partial\)/.test(line))).toBe(true)
     await ui.press({ key: 'by-model' })
     expect(state.grouping).toBe('model')
