@@ -217,6 +217,8 @@ case $cmd in
             fi ;;
           Down) ring=$(((ring + 1) % (rows + FAKE_STOPS))) ;;
           Enter)
+            # FAKE_MAIN=1: the first row of the Cost tab is the main session, which has no detail.
+            [ -n "${FAKE_MAIN:-}" ] && [ "$(cat "$FAKE/tab" 2>/dev/null || echo 1)" = 2 ] && [ "$sel" = 0 ] && exit 0
             [ "${FAKE_ENTER:-}" = nodetail ] || { [ -e "$FAKE/opened" ] && : >"$FAKE/detail"; }
             exit 0 ;;
           x)
@@ -523,6 +525,7 @@ bk 'FAKE_TITLES=worker  alpha|worker  beta|worker  gamma|worker  delta' 'titles 
 t33=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 sq FAKE_SLEEP= FAKE_BAR=eighth "FAKE_TITLES=${t33}|${t33}|${t33}|${t33}" 'a Cost bar of ▌ then ▋ between the two captures is no part of the row is PASS' 0 'PASS back-cost 1/1' --shells 3 --timeout 50 --sequences back-cost
 bk FAKE_BAR=1 'a Cost row with a long bar is PASS' 0 'PASS back-cost 1/1' --shells 3 --timeout 50 --sequences back-cost
+sq FAKE_SLEEP= FAKE_MAIN=1 'FAKE_TITLES=main session (partial)|worker a|worker b|worker c' 'a Cost tab with the main session row first and selected is PASS' 0 'PASS back-cost 1/1' --shells 3 --timeout 50 --sequences back-cost
 sq FAKE_BACK=items 'b that goes to the first tab is FAIL on both' 1 'FAIL back-timeline 0/1' --shells 3 --timeout 50 --sequences back-cost,back-timeline
 sq FAKE_TABKEY=stop 'one failing sequence sets the exit code' 1 'PASS search-keys 1/1' --shells 3 --timeout 50 --sequences ring-2,search-keys
 

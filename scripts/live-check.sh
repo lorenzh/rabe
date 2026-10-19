@@ -119,7 +119,8 @@ fi
 mapfile -t seqs < <(printf '%s\n' "${seqs[@]}" | awk 'NF && !seen[$0]++')
 [ -z "$sequences" ] || [ ${#seqs[@]} -gt 0 ] || fail "--sequences $sequences names no sequence: none is pending"
 # Sequences that stop or remove a shell each take a spare one per round. The
-# Cost tab lists agents and jobs only, so back-cost seeds one subagent.
+# Cost tab lists the main session (no detail), agents and jobs, so back-cost
+# seeds one subagent and moves to its row.
 allowed='Bash(sleep:*)'
 agent=
 [[ " ${seqs[*]} " == *" back-cost "* ]] && { agent=1; allowed="$allowed,Agent"; }
@@ -701,6 +702,11 @@ seq_back() { # tab key
       look
       pane_has 'No agent or Codex job yet' || break
       sleep 1
+    done
+    # The first row is the main session, which has no detail: move to an agent.
+    snap
+    for i in "${!view[@]}"; do
+      [[ ${view[i]} == ▌*'main session'* ]] && { keys Down; break; }
     done
   fi
   keys Enter
