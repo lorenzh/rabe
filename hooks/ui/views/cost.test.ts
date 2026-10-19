@@ -5,6 +5,7 @@ import type { RabeItem } from '../../model'
 import { cell, lines } from '../cells/grid'
 import { C, CHIP } from '../cells/palette'
 import { ALL, explore, gridOf, NOW, plan, review, reviewed, verify } from '../fixtures'
+import { orderOf } from '../lists'
 import { isPress, type Model, NO_SELECTION, rowKeys, type Size } from '../view'
 import { costView } from './cost'
 
@@ -446,4 +447,25 @@ test('the tokens total counts the main session and its row sorts with the worker
   const shown = lines(gridOf(costView({ ...MODEL, mainUsage: main }, SIZE, NO_SELECTION)).grid)
   expect(shown[0]).toContain('tokens 191k')
   expect(row(shown, /main session/)).toBeLessThan(row(shown, /Explore verifyToken/))
+})
+
+test('the opening order seeds the main session row by tokens, ahead of a smaller worker', () => {
+  const main = { 'claude-opus-5-5': { steps: 3, input: 90000, output: 10000, cached: 0, usd: 0.5 } }
+  const items = [{ ...explore, id: 'w', tokens: { input: 41000, output: 0 } }] as RabeItem[]
+  const order = orderOf(items, [], main)
+  const sel = { ...NO_SELECTION, order }
+  const keys = rowKeys(costView({ ...MODEL, items, mainUsage: main }, SIZE, sel))
+  const at = (needle: string) => keys.findIndex(key => key.includes(needle))
+  expect(at(':main'), `opening order: 100k main must precede 41k worker; got ${keys}`).toBeLessThan(
+    at('row:w'),
+  )
+})
+
+test('the tokens total counts the main session in every grouping', () => {
+  const main = { 'claude-opus-5-5': { steps: 3, input: 90000, output: 10000, cached: 0, usd: 0.5 } }
+  for (const grouping of ['agent', 'model', 'harness'] as const) {
+    const sel = { ...NO_SELECTION, grouping }
+    const shown = lines(gridOf(costView({ ...MODEL, mainUsage: main }, SIZE, sel)).grid)
+    expect(shown[0], grouping).toContain('tokens 191k')
+  }
 })

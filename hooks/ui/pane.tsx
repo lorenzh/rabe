@@ -760,7 +760,7 @@ export function pane(on: On, hours = baseHours): void {
     await $.state.set(
       { plugin: 'rabe', key: 'order' },
       {
-        ...orderOf(items, edits),
+        ...orderOf(items, edits, mainUsage),
         'cost:model': orderIds('model', items, mainUsage),
         'cost:harness': orderIds('harness', items, mainUsage),
       },

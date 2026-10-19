@@ -235,8 +235,10 @@ export const costView: View = (model, size, sel): Drawn => {
     .map(item => withForwarder(item, model.items))
   const by = sel.grouping ?? 'agent'
   const main = model.mainUsage ?? {}
-  const mainRow = by === 'agent' ? mainTotal('agent', main) : undefined
-  // The main session's row sorts by tokens with the workers; a held order puts it last.
+  // The tokens total counts the main session whatever the grouping; only the agent grouping draws its row.
+  const mainAll = mainTotal('agent', main)
+  const mainRow = by === 'agent' ? mainAll : undefined
+  // The main session's row sorts by tokens with the workers (`orderOf` seeds the held order with it).
   const order = stable<{ id: string; tokens: number }>(
     [
       ...workers.map(item => ({ id: item.id, tokens: tokenSum(item) })),
@@ -301,7 +303,7 @@ export const costView: View = (model, size, sel): Drawn => {
   }
   parts.push([
     ['  tokens ', dim],
-    [tokens(sum.tokens + (mainRow?.tokens ?? 0)), { fg: C.bright }],
+    [tokens(sum.tokens + (mainAll?.tokens ?? 0)), { fg: C.bright }],
   ])
   parts.push([
     ['  running ', dim],
