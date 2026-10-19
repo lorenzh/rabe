@@ -326,6 +326,9 @@ case $cmd in
                  if [ "$tab" = 2 ]; then
                    while [ ${#pad} -lt 33 ]; do pad+=' '; done
                    line="$m$g $pad $bar"
+                   # eighth: a tail after the bar, one space apart, so a cut at
+                   # the first double space keeps the bar glyph in the title.
+                   [ "$FAKE_BAR" = eighth ] && line+=" 5"
                  else
                    while [ ${#pad} -lt 23 ]; do pad+=' '; done
                    line="$m$pad$bar"
@@ -517,7 +520,8 @@ bk 'FAKE_TITLES=worker █|worker ▌|worker ▋|worker ▊' FAKE_BACK=other 'ti
 bk 'FAKE_TITLES=worker  alpha|worker  beta|worker  gamma|worker  delta' FAKE_BACK=other 'titles that differ after a double space: a wrong return is FAIL' 1 'FAIL back-timeline 0/1' --shells 3 --timeout 50 --sequences back-timeline
 bk 'FAKE_TITLES=worker █|worker ▌|worker ▋|worker ▊' 'titles that differ in a last glyph, the right return, is PASS' 0 'PASS back-timeline 1/1' --shells 3 --timeout 50 --sequences back-timeline
 bk 'FAKE_TITLES=worker  alpha|worker  beta|worker  gamma|worker  delta' 'titles with a double space, the right return, is PASS' 0 'PASS back-timeline 1/1' --shells 3 --timeout 50 --sequences back-timeline
-sq FAKE_SLEEP= FAKE_BAR=eighth 'a Cost bar of ▌ then ▋ between the two captures is no part of the row is PASS' 0 'PASS back-cost 1/1' --shells 3 --timeout 50 --sequences back-cost
+t33=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+sq FAKE_SLEEP= FAKE_BAR=eighth "FAKE_TITLES=${t33}|${t33}|${t33}|${t33}" 'a Cost bar of ▌ then ▋ between the two captures is no part of the row is PASS' 0 'PASS back-cost 1/1' --shells 3 --timeout 50 --sequences back-cost
 bk FAKE_BAR=1 'a Cost row with a long bar is PASS' 0 'PASS back-cost 1/1' --shells 3 --timeout 50 --sequences back-cost
 sq FAKE_BACK=items 'b that goes to the first tab is FAIL on both' 1 'FAIL back-timeline 0/1' --shells 3 --timeout 50 --sequences back-cost,back-timeline
 sq FAKE_TABKEY=stop 'one failing sequence sets the exit code' 1 'PASS search-keys 1/1' --shells 3 --timeout 50 --sequences ring-2,search-keys
