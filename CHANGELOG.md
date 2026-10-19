@@ -12,8 +12,8 @@ All notable changes to Rabe. The format follows [Keep a Changelog](https://keepa
 - The live-check test for a Cost bar that changes its eighth glyph now fails on the old title cut: the row has a full-width title and a tail one space after the bar ([#252](https://github.com/lorenzh/rabe/issues/252), [#264](https://github.com/lorenzh/rabe/pull/264)).
 - The Cost tab counts the main session in its tokens total and sorts its row with the workers; the heading says `by agent`, like the `i: agent` key ([#250](https://github.com/lorenzh/rabe/issues/250), [#251](https://github.com/lorenzh/rabe/issues/251), [#265](https://github.com/lorenzh/rabe/pull/265))
 - A long session with many running items no longer freezes the pane: grouping, nesting, the Timeline's tree and the Cost totals cost the square or the cube of the item count, now linear ([#260](https://github.com/lorenzh/rabe/issues/260), [#266](https://github.com/lorenzh/rabe/pull/266))
-- The Cost tab draw stays fast with thousands of ordinary agents: it looked up each row's worker and group by searching the whole list, the square of the count again after the main-session row; a 20 000-agent draw takes 0.6 s instead of 6 s ([#260](https://github.com/lorenzh/rabe/issues/260))
-- The live-check sequence `back-cost` moves off the main session row, which has no detail, onto the subagent row; it failed 0/2 since the main session row sorts first.
+- The Cost tab draw stays fast with thousands of ordinary agents: it looked up each row's worker and group by searching the whole list, the square of the count again after the main-session row; a 20 000-agent draw takes 0.6 s instead of 6 s ([#260](https://github.com/lorenzh/rabe/issues/260), [#274](https://github.com/lorenzh/rabe/pull/274))
+- The live-check sequence `back-cost` moves off the main session row, which has no detail, onto the subagent row; it failed 0/2 since the main session row sorts first. ([#274](https://github.com/lorenzh/rabe/pull/274))
 
 ## [0.10.0] - 2026-10-16
 
