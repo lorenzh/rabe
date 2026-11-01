@@ -12,7 +12,7 @@
     "check": "bun run lint && bun run typecheck && bun run validate && bun run test && bun run test:scripts && bun run check:blocks"
   },
   "devDependencies": {
-    "@anthropic-ai/claude-code": "2.1.300",
+    "@anthropic-ai/claude-code": "2.1.312",
     "@biomejs/biome": "2.5.15",
     "typescript": "7.0.2"
   },
